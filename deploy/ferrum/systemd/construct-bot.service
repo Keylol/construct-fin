@@ -1,0 +1,20 @@
+[Unit]
+Description=ConstructPC Telegram Bot
+After=network-online.target construct-miniapp-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=construct
+Group=construct
+WorkingDirectory=/srv/construct/app
+EnvironmentFile=/srv/construct/app/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPYCACHEPREFIX=/srv/construct/app/.pycache_tmp
+ExecStart=/srv/construct/app/.venv/bin/python -m bot.main
+Restart=always
+RestartSec=3
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

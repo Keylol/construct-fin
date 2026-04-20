@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.constructpc.postgres.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexander/Documents/Construct/.venv/bin/python</string>
+    <string>/Users/alexander/Documents/Construct/scripts/backup_postgres.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/alexander/Documents/Construct</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/alexander/Documents/Construct/data/launchd.postgres.backup.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/alexander/Documents/Construct/data/launchd.postgres.backup.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pycache_tmp/
+
+# Local environments and tooling caches
+.venv/
+.venv*/
+.nodeenv/
+.setup/cache/
+
+# Secrets
+.env
+credentials.json
+data/credentials.json
+
+# Runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.ndjson
+data/documents/
+data/bot.lock
+data/*.log
+data/*.pid
+
+# Frontend build artifacts
+miniapp_web/node_modules/
+miniapp_web/dist/

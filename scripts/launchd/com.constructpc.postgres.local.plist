@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.constructpc.postgres.local</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexander/Documents/Construct/.setup/tools/postgres/pgsql/bin/postgres</string>
+    <string>-D</string>
+    <string>/Users/alexander/Documents/Construct/.setup/postgres-data</string>
+    <string>-p</string>
+    <string>5432</string>
+    <string>-k</string>
+    <string>/tmp</string>
+    <string>-c</string>
+    <string>listen_addresses=127.0.0.1</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/alexander/Documents/Construct</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/alexander/Documents/Construct/data/launchd.postgres.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/alexander/Documents/Construct/data/launchd.postgres.err.log</string>
+</dict>
+</plist>
