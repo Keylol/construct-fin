@@ -1,6 +1,8 @@
 import { t } from "../i18n";
 import { formatAmount, normalizeAmountInput } from "../utils";
 
+const RECEIPT_ACCEPT = "image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.heic,.heif,.webp";
+
 export function PurchasesTab({
   lang,
   hasAuth,
@@ -19,6 +21,8 @@ export function PurchasesTab({
   startExpenseEdit,
   resetExpenseForm,
   handleDeleteOperation,
+  handleOpenReceipt,
+  handleDeleteReceipt,
 }) {
   return (
     <section className="panel purchases-panel premium-panel">
@@ -104,6 +108,54 @@ export function PurchasesTab({
               </div>
             </div>
 
+            <div>
+              <label>{t(lang, "receiptLabel")}</label>
+              <input
+                type="file"
+                accept={RECEIPT_ACCEPT}
+                capture="environment"
+                onChange={(e) => {
+                  const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                  setExpenseForm((prev) => ({ ...prev, receipt_file: file }));
+                }}
+              />
+              {expenseForm.receipt_file ? (
+                <div className="meta">
+                  {expenseForm.receipt_file.name} ·
+                  {" "}
+                  {(expenseForm.receipt_file.size / 1024 / 1024).toFixed(2)} MB
+                </div>
+              ) : expenseForm.has_receipt ? (
+                <div className="meta">
+                  {t(lang, "receiptCurrent")}
+                  {handleOpenReceipt && expenseForm.id ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="small-button secondary"
+                        onClick={() => handleOpenReceipt(expenseForm.id)}
+                      >
+                        {t(lang, "receiptOpen")}
+                      </button>
+                    </>
+                  ) : null}
+                  {handleDeleteReceipt && expenseForm.id ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="small-button secondary danger-button"
+                        onClick={() => handleDeleteReceipt(expenseForm.id)}
+                      >
+                        {t(lang, "receiptRemove")}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <div className="row-actions">
               <button
                 type="submit"
@@ -135,13 +187,21 @@ export function PurchasesTab({
           ) : (
             businessExpenses.map((item) => (
               <article className="item-card purchase-record-card" key={item.id}>
-                <strong>{item.expense_category || t(lang, "operationCategoryLabel")} · {formatAmount(item.amount)} ₽</strong>
+                <strong>
+                  {item.expense_category || t(lang, "operationCategoryLabel")} · {formatAmount(item.amount)} ₽
+                  {item.has_receipt ? <span style={{ marginLeft: 8 }}>{t(lang, "receiptAttachedBadge")}</span> : null}
+                </strong>
                 <div>{item.description}</div>
                 <div className="meta">{item.date}{item.payment_account ? ` · ${item.payment_account}` : ""}</div>
                 <div className="row-actions compact-row">
                   <button type="button" className="small-button secondary" onClick={() => startExpenseEdit(item)}>
                     {t(lang, "editOperation")}
                   </button>
+                  {item.has_receipt && handleOpenReceipt ? (
+                    <button type="button" className="small-button secondary" onClick={() => handleOpenReceipt(item.id)}>
+                      {t(lang, "receiptOpen")}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="small-button secondary danger-button"

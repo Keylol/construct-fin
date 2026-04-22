@@ -326,6 +326,7 @@ PAYMENT_METHODS = ["карта", "наличные", "перевод"]
 SUPPLIERS = ["ДНС", "Wildberries", "Ozon", "Онлайн Трейд", "Авито"]
 DOCUMENT_TYPES = ["чек", "гарантия", "спецификация", "другое"]
 SUPPORTED_DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx"}
+SUPPORTED_RECEIPT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
 DEFAULT_BUSINESS_DIRECTION = "Розница"
 DEFAULT_PAYMENT_ACCOUNTS = [
     "ИП Каменский АБ",

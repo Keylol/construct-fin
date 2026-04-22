@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import config as legacy_config
 from bot.services.ai_parser import parse_operation
+from miniapp_api.app.config import get_settings
 from miniapp_api.app.db import get_db_session
 from miniapp_api.app.deps import require_roles
-from miniapp_api.app.models import AppUser, MiniOperation, MiniOrder
+from miniapp_api.app.models import AppUser, MiniDocument, MiniOperation, MiniOrder
 from miniapp_api.app.schemas import (
+    DocumentDTO,
     OperationDTO,
     OperationManualCreateRequest,
     OperationManualPreviewRequest,
@@ -24,6 +30,95 @@ from miniapp_api.app.services.operations import normalize_operation_payload, val
 
 
 router = APIRouter(prefix="/operations", tags=["operations"])
+
+
+def _unique_path(path: Path) -> Path:
+    candidate = path
+    counter = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
+        counter += 1
+    return candidate
+
+
+async def _load_operation_with_access(
+    *, db: AsyncSession, operation_id: int, user: AppUser
+) -> MiniOperation:
+    row = await db.execute(
+        select(MiniOperation).where(
+            MiniOperation.id == operation_id, MiniOperation.deleted_at.is_(None)
+        )
+    )
+    operation = row.scalar_one_or_none()
+    if not operation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
+    if str(user.role).lower() != "owner":
+        if operation.order_id is not None:
+            await _validate_order_access(db, order_id=int(operation.order_id), user=user)
+        elif int(operation.created_by_user_id) != int(user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="No access to this operation"
+            )
+    return operation
+
+
+async def _latest_receipt_for_operation(
+    *, db: AsyncSession, operation_id: int
+) -> MiniDocument | None:
+    row = await db.execute(
+        select(MiniDocument)
+        .where(
+            MiniDocument.operation_id == operation_id,
+            MiniDocument.doc_kind == "receipt",
+            MiniDocument.deleted_at.is_(None),
+        )
+        .order_by(desc(MiniDocument.id))
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
+async def _decorate_operation_dto(
+    *, db: AsyncSession, operation: MiniOperation
+) -> OperationDTO:
+    dto = OperationDTO.model_validate(operation)
+    receipt = await _latest_receipt_for_operation(db=db, operation_id=int(operation.id))
+    if receipt is not None:
+        dto.has_receipt = True
+        dto.receipt_document_id = int(receipt.id)
+    return dto
+
+
+async def _decorate_operation_list(
+    *, db: AsyncSession, operations: list[MiniOperation]
+) -> list[OperationDTO]:
+    if not operations:
+        return []
+    ids = [int(op.id) for op in operations]
+    rows = await db.execute(
+        select(MiniDocument.operation_id, MiniDocument.id)
+        .where(
+            MiniDocument.operation_id.in_(ids),
+            MiniDocument.doc_kind == "receipt",
+            MiniDocument.deleted_at.is_(None),
+        )
+        .order_by(desc(MiniDocument.id))
+    )
+    receipt_by_op: dict[int, int] = {}
+    for op_id, doc_id in rows.all():
+        if op_id is None:
+            continue
+        # Keep the first (= latest due to desc order) per operation.
+        receipt_by_op.setdefault(int(op_id), int(doc_id))
+    result: list[OperationDTO] = []
+    for operation in operations:
+        dto = OperationDTO.model_validate(operation)
+        doc_id = receipt_by_op.get(int(operation.id))
+        if doc_id is not None:
+            dto.has_receipt = True
+            dto.receipt_document_id = doc_id
+        result.append(dto)
+    return result
 
 
 async def _validate_order_access(db: AsyncSession, *, order_id: int | None, user: AppUser) -> None:
@@ -80,7 +175,8 @@ async def list_operations(
     elif str(current_user.role).lower() != "owner":
         stmt = stmt.where(MiniOperation.created_by_user_id == current_user.id)
     rows = await db.execute(stmt)
-    return [OperationDTO.model_validate(item) for item in rows.scalars().all()]
+    operations = list(rows.scalars().all())
+    return await _decorate_operation_list(db=db, operations=operations)
 
 
 @router.post("/preview/manual", response_model=OperationPreviewResponse)
@@ -174,7 +270,7 @@ async def create_manual_operation(
         },
     )
     await db.commit()
-    return OperationDTO.model_validate(operation)
+    return await _decorate_operation_dto(db=db, operation=operation)
 
 
 @router.post("/from-text", response_model=OperationDTO)
@@ -233,7 +329,7 @@ async def create_operation_from_text(
         },
     )
     await db.commit()
-    return OperationDTO.model_validate(operation)
+    return await _decorate_operation_dto(db=db, operation=operation)
 
 
 @router.put("/{operation_id}", response_model=OperationDTO)
@@ -303,7 +399,7 @@ async def update_operation(
     )
     await db.commit()
     await db.refresh(operation)
-    return OperationDTO.model_validate(operation)
+    return await _decorate_operation_dto(db=db, operation=operation)
 
 
 @router.delete("/{operation_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -338,6 +434,150 @@ async def delete_operation(
             "amount": operation.amount,
             "order_id": operation.order_id,
         },
+    )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{operation_id}/receipt", response_model=DocumentDTO)
+async def upload_operation_receipt(
+    operation_id: int,
+    file: UploadFile = File(...),
+    doc_type: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db_session),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
+) -> DocumentDTO:
+    """Attach a receipt file (image or PDF) to an existing operation."""
+
+    operation = await _load_operation_with_access(
+        db=db, operation_id=operation_id, user=current_user
+    )
+
+    original_name = Path(file.filename or "receipt").name
+    extension = Path(original_name).suffix.lower()
+    if extension not in legacy_config.SUPPORTED_RECEIPT_EXTENSIONS:
+        allowed = ", ".join(sorted(legacy_config.SUPPORTED_RECEIPT_EXTENSIONS))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported receipt extension. Allowed: {allowed}",
+        )
+
+    settings = get_settings()
+    target_dir = (
+        Path(settings.miniapp_documents_dir).resolve() / f"operation_{int(operation.id)}"
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = _unique_path(target_dir / original_name)
+    max_bytes = max(int(settings.miniapp_max_upload_mb), 1) * 1024 * 1024
+
+    hasher = hashlib.sha256()
+    bytes_written = 0
+    with open(target_path, "wb") as file_obj:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            bytes_written += len(chunk)
+            if bytes_written > max_bytes:
+                file_obj.close()
+                target_path.unlink(missing_ok=True)
+                await file.close()
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail=f"File is too large (max {settings.miniapp_max_upload_mb} MB)",
+                )
+            hasher.update(chunk)
+            file_obj.write(chunk)
+    await file.close()
+    file_hash = hasher.hexdigest()
+
+    # Dedupe: same hash for the same operation? Return existing record, drop the fresh file.
+    existing_row = await db.execute(
+        select(MiniDocument).where(
+            MiniDocument.operation_id == int(operation.id),
+            MiniDocument.file_hash == file_hash,
+            MiniDocument.deleted_at.is_(None),
+        )
+    )
+    existing = existing_row.scalar_one_or_none()
+    if existing is not None:
+        target_path.unlink(missing_ok=True)
+        return DocumentDTO.model_validate(existing)
+
+    normalized_doc_type = (doc_type or "чек").strip().lower() or "чек"
+    document = MiniDocument(
+        order_id=operation.order_id,
+        operation_id=int(operation.id),
+        doc_kind="receipt",
+        doc_type=normalized_doc_type,
+        file_name=target_path.name,
+        file_path=str(target_path),
+        file_hash=file_hash,
+        uploaded_by_user_id=current_user.id,
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    await add_audit_log(
+        db,
+        actor_user_id=current_user.id,
+        action="operation_receipt_uploaded",
+        entity_type="operation",
+        entity_id=int(operation.id),
+        details={
+            "document_id": int(document.id),
+            "file_name": document.file_name,
+        },
+    )
+    await db.commit()
+    return DocumentDTO.model_validate(document)
+
+
+@router.get("/{operation_id}/receipt")
+async def download_operation_receipt(
+    operation_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
+) -> FileResponse:
+    """Download the latest receipt file for an operation."""
+
+    operation = await _load_operation_with_access(
+        db=db, operation_id=operation_id, user=current_user
+    )
+    receipt = await _latest_receipt_for_operation(db=db, operation_id=int(operation.id))
+    if receipt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+    file_path = Path(str(receipt.file_path or "")).resolve()
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Receipt file is missing on disk"
+        )
+    return FileResponse(path=file_path, filename=receipt.file_name)
+
+
+@router.delete("/{operation_id}/receipt", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_operation_receipt(
+    operation_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
+) -> Response:
+    """Soft-delete the latest receipt attached to an operation."""
+
+    operation = await _load_operation_with_access(
+        db=db, operation_id=operation_id, user=current_user
+    )
+    receipt = await _latest_receipt_for_operation(db=db, operation_id=int(operation.id))
+    if receipt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+    receipt.deleted_at = datetime.now()
+    receipt.deleted_by_user_id = current_user.id
+    await add_audit_log(
+        db,
+        actor_user_id=current_user.id,
+        action="operation_receipt_deleted",
+        entity_type="operation",
+        entity_id=int(operation.id),
+        details={"document_id": int(receipt.id)},
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

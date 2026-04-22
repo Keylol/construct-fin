@@ -10,6 +10,9 @@ export const DEFAULT_EXPENSE_FORM = {
   expense_category: "",
   payment_account: "",
   payment_method: "",
+  receipt_file: null,
+  has_receipt: false,
+  receipt_document_id: null,
 };
 
 export function createEmptySaleDraft() {

@@ -120,7 +120,7 @@ class MiniOperation(Base):
 
 
 class MiniDocument(Base):
-    """Uploaded document bound to Mini App order."""
+    """Uploaded document bound to Mini App order or operation."""
 
     __tablename__ = "miniapp_documents"
     __table_args__ = (
@@ -128,7 +128,11 @@ class MiniDocument(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("miniapp_orders.id"), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("miniapp_orders.id"), nullable=True, index=True)
+    operation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("miniapp_operations.id"), nullable=True, index=True
+    )
+    doc_kind: Mapped[str] = mapped_column(String(32), default="client", index=True)
     doc_type: Mapped[str] = mapped_column(String(64), default="другое")
     file_name: Mapped[str] = mapped_column(String(255))
     file_path: Mapped[str] = mapped_column(String(1024))

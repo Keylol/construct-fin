@@ -969,11 +969,69 @@ export function App() {
       expense_category: item.expense_category || "",
       payment_account: item.payment_account || paymentAccounts[0] || "",
       payment_method: item.payment_method || "",
+      receipt_file: null,
+      has_receipt: Boolean(item.has_receipt),
+      receipt_document_id: item.receipt_document_id || null,
     });
   }
 
   function resetExpenseForm() {
     setExpenseForm({ ...DEFAULT_EXPENSE_FORM, payment_account: paymentAccounts[0] || "" });
+  }
+
+  async function uploadExpenseReceipt(operationId, file) {
+    if (!operationId || !file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    await apiRequest(`/operations/${operationId}/receipt`, {
+      token,
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    });
+  }
+
+  async function handleDeleteReceipt(operationId) {
+    if (!operationId || !token) return;
+    if (!window.confirm(t(lang, "receiptRemoveConfirm"))) return;
+    try {
+      await apiRequest(`/operations/${operationId}/receipt`, { token, method: "DELETE" });
+      setExpenseForm((prev) =>
+        prev.id === operationId
+          ? { ...prev, has_receipt: false, receipt_document_id: null, receipt_file: null }
+          : prev,
+      );
+      setStatus("success", t(lang, "receiptRemoved"));
+      await loadOperations(token);
+    } catch (err) {
+      setStatus("error", t(lang, "receiptUploadFail", { error: humanizeError(lang, err) }));
+    }
+  }
+
+  function handleOpenReceipt(operationId) {
+    if (!operationId) return;
+    const base = (window.CONSTRUCT_API_BASE || import.meta.env.VITE_API_BASE || "/api/v1").replace(/\/$/, "");
+    const url = `${base}/operations/${operationId}/receipt`;
+    // Fetch as blob so we can attach Authorization header, then open as object URL.
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const tg = window.Telegram?.WebApp;
+        if (tg?.openLink) {
+          tg.openLink(objectUrl, { try_instant_view: false });
+        } else {
+          window.open(objectUrl, "_blank", "noopener");
+        }
+        // Revoke after a minute; browser usually keeps window alive longer than needed.
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      })
+      .catch((err) => {
+        setStatus("error", t(lang, "receiptUploadFail", { error: humanizeError(lang, err) }));
+      });
   }
 
   async function handleSaveExpense(event) {
@@ -993,12 +1051,23 @@ export function App() {
         payment_account: expenseForm.payment_account || null,
         payment_method: expenseForm.payment_method || null,
       };
+      const pendingReceipt = expenseForm.receipt_file || null;
+      let operationId = expenseForm.id || null;
       if (expenseForm.id) {
         await apiRequest(`/operations/${expenseForm.id}`, { token, method: "PUT", body: JSON.stringify(payload) });
         setStatus("success", t(lang, "operationUpdated"));
       } else {
-        await apiRequest("/operations/manual", { token, method: "POST", body: JSON.stringify(payload) });
+        const created = await apiRequest("/operations/manual", { token, method: "POST", body: JSON.stringify(payload) });
+        operationId = created && created.id ? created.id : operationId;
         setStatus("success", t(lang, "operationSaved"));
+      }
+      if (pendingReceipt && operationId) {
+        try {
+          await uploadExpenseReceipt(operationId, pendingReceipt);
+          setStatus("success", t(lang, "receiptUploaded"));
+        } catch (uploadErr) {
+          setStatus("error", t(lang, "receiptUploadFail", { error: humanizeError(lang, uploadErr) }));
+        }
       }
       resetExpenseForm();
       await Promise.all([loadOperations(token), loadReports(token, reportDays)]);
@@ -1174,6 +1243,8 @@ export function App() {
               startExpenseEdit={startExpenseEdit}
               resetExpenseForm={resetExpenseForm}
               handleDeleteOperation={handleDeleteOperation}
+              handleOpenReceipt={handleOpenReceipt}
+              handleDeleteReceipt={handleDeleteReceipt}
             />
           ) : null}
 

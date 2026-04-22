@@ -132,6 +132,8 @@ class OperationDTO(BaseModel):
     order_id: int | None = None
     created_by_user_id: int
     created_at: datetime
+    has_receipt: bool = False
+    receipt_document_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -187,7 +189,9 @@ class ReportPointDTO(BaseModel):
 
 class DocumentDTO(BaseModel):
     id: int
-    order_id: int
+    order_id: int | None = None
+    operation_id: int | None = None
+    doc_kind: str = "client"
     doc_type: str
     file_name: str
     file_path: str
