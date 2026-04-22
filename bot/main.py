@@ -308,6 +308,15 @@ async def cmd_app(update: Update, context):
         )
         return
 
+    # Update per-chat menu button so the blue button always has the correct URL
+    try:
+        await context.bot.set_chat_menu_button(
+            chat_id=update.effective_chat.id,
+            menu_button=MenuButtonWebApp(text="Mini App", web_app=WebAppInfo(url=miniapp_url)),
+        )
+    except Exception:
+        logger.warning("Could not update per-chat menu button", exc_info=True)
+
     keyboard = [[KeyboardButton(text="Открыть Mini App", web_app=WebAppInfo(url=miniapp_url))]]
     markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
     await update.message.reply_text(

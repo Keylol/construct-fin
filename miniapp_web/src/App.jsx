@@ -297,14 +297,25 @@ export function App() {
     if (token || isBootstrapping) return;
     let timeoutId = 0;
     let attempts = 0;
+    const MAX_ATTEMPTS = 40; // 40 × 375ms = 15 seconds
     const tryBootstrapAuth = () => {
       const initData = getTelegramInitData();
       if (initData) { handleTelegramAuth(initData); return; }
       attempts += 1;
-      if (attempts < 8) timeoutId = window.setTimeout(tryBootstrapAuth, 350);
+      if (attempts < MAX_ATTEMPTS) timeoutId = window.setTimeout(tryBootstrapAuth, 375);
     };
+    // Also re-try immediately after window load event fires
+    const onLoad = () => {
+      window.clearTimeout(timeoutId);
+      attempts = 0;
+      tryBootstrapAuth();
+    };
+    window.addEventListener("load", onLoad, { once: true });
     tryBootstrapAuth();
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("load", onLoad);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBootstrapping, token]);
 
@@ -383,8 +394,12 @@ export function App() {
   useEffect(() => {
     const tg = getTelegramWebApp();
     if (!tg?.MainButton) return;
-    const onMainButton = () => hasAuth ? handleRefreshData() : handleTelegramAuth();
-    tg.MainButton.setText(hasAuth ? t(lang, "tgMainRefresh") : t(lang, "authButton"));
+    if (!hasAuth) {
+      tg.MainButton.hide();
+      return;
+    }
+    const onMainButton = () => handleRefreshData();
+    tg.MainButton.setText(t(lang, "tgMainRefresh"));
     tg.MainButton.show();
     if (isBootstrapping || isReportsLoading || isOrdersLoading || isOperationsLoading) {
       tg.MainButton.disable?.();
@@ -485,7 +500,7 @@ export function App() {
   async function handleTelegramAuth(initDataOverride = "") {
     const initData = String(initDataOverride || getTelegramInitData() || "");
     if (!initData) {
-      setStatus("error", t(lang, "authFail", { error: t(lang, "authMissingInitData") }));
+      // Don't show error — just silently wait, user can retry manually
       return;
     }
     setIsBootstrapping(true);
@@ -1017,7 +1032,7 @@ export function App() {
           <h1>{t(lang, "heroHeadline")}</h1>
           {!hasAuth ? (
             <button type="button" className="small-button secondary header-action-button" onClick={handleTelegramAuth} disabled={isBootstrapping}>
-              {isBootstrapping ? t(lang, "authInProgress") : t(lang, "authButtonShort")}
+              {isBootstrapping ? "…" : "↻"}
             </button>
           ) : (
             <button
