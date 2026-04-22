@@ -29,7 +29,6 @@ from bot.services.database import (
     add_audit_log,
     close_order,
     create_order,
-    delete_operation,
     get_last_operation,
     get_operation_by_id,
     get_or_create_client_by_phone,
@@ -169,13 +168,6 @@ def check_user_access(func):
         user_id = int(user.id)
 
         role = config.resolve_user_role(user_id)
-        if not role and not (config.OWNER_USER_IDS or config.OPERATOR_USER_IDS):
-            allowlist = set(getattr(config, "ALLOWED_USER_IDS", []) or [])
-            if not allowlist:
-                role = "owner"
-            elif allowlist == {661916730}:
-                role = "owner"
-
         if not role:
             logger.warning("Access denied for user: %s", user_id)
             await _safe_audit_log(
@@ -441,61 +433,6 @@ async def cmd_recent(update: Update, context):
 
 
 @check_user_access
-async def _legacy_cmd_delete_unused(update: Update, context):
-    user = update.effective_user
-    created_by = f"{user.id}:{user.first_name}"
-
-    if not context.args:
-        rows = await list_recent_operations(limit=5, created_by=created_by)
-        hint = _format_recent_operations(rows) if rows else "У вас пока нет операций."
-        await update.message.reply_text(
-            "Формат: /delete <id> или /delete last\n\n"
-            f"{hint}"
-        )
-        return
-
-    arg = context.args[0].strip().lower()
-    if arg in {"last", "последняя"}:
-        operation = await get_last_operation(created_by=created_by)
-        if not operation:
-            await update.message.reply_text("Не нашел вашу последнюю операцию.")
-            return
-        operation_id = int(operation["id"])
-    else:
-        if not arg.isdigit():
-            await update.message.reply_text("Нужен числовой ID. Пример: /delete 123")
-            return
-        operation_id = int(arg)
-
-    await queue_delete_confirmation(
-        update,
-        context,
-        target_id=operation_id,
-        requested_by=user.id,
-    )
-    operation = await get_operation_by_id(operation_id)
-    if not operation:
-        await update.message.reply_text(f"Операция #{operation_id} не найдена.")
-        return
-
-    deleted = await delete_operation(operation_id)
-    if not deleted:
-        await update.message.reply_text(f"Не удалось удалить операцию #{operation_id}.")
-        return
-
-    try:
-        await setup_management_spreadsheet()
-    except Exception:
-        logger.warning("Could not resync sheets after delete operation #%s", operation_id, exc_info=True)
-
-    await update.message.reply_text(
-        f"Операция #{operation_id} удалена.\n"
-        f"{operation['date']} | {operation['operation_type']} | "
-        f"{operation['amount']:,.0f} ₽ | {operation['description']}"
-    )
-
-
-@check_user_access
 async def cmd_delete(update: Update, context):
     """
     Final delete handler:
@@ -702,7 +639,6 @@ def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    asyncio.get_event_loop = lambda: loop
 
     if sys.platform == "win32":
         try:

@@ -213,12 +213,6 @@ def _normalize_parsed_data(parsed_data: dict) -> dict:
         if not normalized.get("expense_category"):
             normalized["expense_category"] = "Офис"
         normalized["_confidence"] = max(float(normalized.get("_confidence", 0.75)), 0.9)
-    if (
-        normalized.get("operation_type") == "расход"
-        and not normalized.get("expense_category")
-        and ai_parser._is_office_opex_text(normalized.get("description", ""))  # noqa: SLF001
-    ):
-        normalized["expense_category"] = "Офис"
 
     normalized_category, normalized_subcategory = config.normalize_expense_taxonomy(
         category=normalized.get("expense_category"),
