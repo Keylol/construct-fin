@@ -27,4 +27,11 @@ data/*.pid
 
 # Frontend build artifacts
 miniapp_web/node_modules/
-miniapp_web/dist/
+
+# Local-only directories
+.DS_Store
+miniapp_web/.DS_Store
+.tmp/
+backups/
+docs/
+memory/

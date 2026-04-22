@@ -1,0 +1,20 @@
+{
+  "name": "constructpc-miniapp-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 8081",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 8081",
+    "serve": "node server.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.7.0",
+    "vite": "7.3.2"
+  }
+}
