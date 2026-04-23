@@ -35,3 +35,7 @@ miniapp_web/.DS_Store
 backups/
 docs/
 memory/
+.claude/
+.setup/postgres-data/
+build/
+data/
