@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/ai-model", response_model=AiModelStateResponse)
 async def get_ai_model_state(
-    current_user: AppUser = Depends(require_roles("owner")),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> AiModelStateResponse:
     """Returns owner-visible runtime AI model state."""
 
@@ -35,7 +35,7 @@ async def get_ai_model_state(
 async def update_ai_model_state(
     payload: AiModelUpdateRequest,
     db: AsyncSession = Depends(get_db_session),
-    current_user: AppUser = Depends(require_roles("owner")),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> AiModelStateResponse:
     """Persists runtime AI model switch without restarting services."""
 
@@ -62,7 +62,7 @@ async def update_ai_model_state(
 @router.post("/google-sheets/sync", response_model=GoogleSheetsSyncResponse)
 async def sync_google_sheets(
     db: AsyncSession = Depends(get_db_session),
-    current_user: AppUser = Depends(require_roles("owner")),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> GoogleSheetsSyncResponse:
     """Runs a full Google Sheets sync from current Mini App data."""
 

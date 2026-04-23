@@ -24,8 +24,6 @@ async def _validate_order_access(*, db: AsyncSession, order_id: int, user: AppUs
     order = row.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    if str(user.role).lower() != "owner" and int(order.opened_by_user_id) != int(user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access to this order")
     return order
 
 
@@ -159,8 +157,6 @@ async def list_orders(
 
     stmt = select(MiniOrder).order_by(desc(MiniOrder.id)).limit(100)
     stmt = stmt.where(MiniOrder.deleted_at.is_(None))
-    if str(current_user.role).lower() != "owner":
-        stmt = stmt.where(MiniOrder.opened_by_user_id == current_user.id)
     rows = await db.execute(stmt)
     orders = rows.scalars().all()
     finance_map = await _load_finance_map(db, order_ids=[int(item.id) for item in orders])
@@ -299,7 +295,7 @@ async def reopen_order(
 async def delete_order(
     order_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: AppUser = Depends(require_roles("owner")),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> Response:
     """Soft-deletes order with linked operations and documents."""
 

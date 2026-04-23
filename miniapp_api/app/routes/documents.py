@@ -49,8 +49,6 @@ async def _validate_order_access(*, db: AsyncSession, order_id: int, user: AppUs
     order = row.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    if str(user.role).lower() != "owner" and int(order.opened_by_user_id) != int(user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access to this order")
     return order
 
 
@@ -96,12 +94,6 @@ async def list_documents(
     if order_id is not None:
         await _validate_order_access(db=db, order_id=order_id, user=current_user)
         stmt = stmt.where(MiniDocument.order_id == order_id)
-    elif str(current_user.role).lower() != "owner":
-        allowed_order_ids_subquery = select(MiniOrder.id).where(
-            MiniOrder.opened_by_user_id == current_user.id,
-            MiniOrder.deleted_at.is_(None),
-        )
-        stmt = stmt.where(MiniDocument.order_id.in_(allowed_order_ids_subquery))
 
     rows = await db.execute(stmt)
     return [DocumentDTO.model_validate(item) for item in rows.scalars().all()]
@@ -206,12 +198,6 @@ async def export_all_documents(
     """Downloads all visible documents in a single zip archive."""
 
     stmt = select(MiniDocument).where(MiniDocument.deleted_at.is_(None)).order_by(desc(MiniDocument.order_id), desc(MiniDocument.id))
-    if str(current_user.role).lower() != "owner":
-        allowed_order_ids_subquery = select(MiniOrder.id).where(
-            MiniOrder.opened_by_user_id == current_user.id,
-            MiniOrder.deleted_at.is_(None),
-        )
-        stmt = stmt.where(MiniDocument.order_id.in_(allowed_order_ids_subquery))
 
     rows = await db.execute(stmt)
     documents = rows.scalars().all()

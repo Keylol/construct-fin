@@ -59,8 +59,6 @@ async def _load_operations(
         )
         .order_by(desc(MiniOperation.id))
     )
-    if str(current_user.role).lower() != "owner":
-        stmt = stmt.where(MiniOperation.created_by_user_id == current_user.id)
 
     rows = await db.execute(stmt)
     operations = [
@@ -83,8 +81,6 @@ async def _load_operations(
 
 async def _load_visible_orders(*, db: AsyncSession, current_user: AppUser) -> list[dict]:
     stmt = select(MiniOrder.id, MiniOrder.status).where(MiniOrder.deleted_at.is_(None)).order_by(desc(MiniOrder.id))
-    if str(current_user.role).lower() != "owner":
-        stmt = stmt.where(MiniOrder.opened_by_user_id == current_user.id)
 
     rows = await db.execute(stmt)
     return [{"id": order_id, "status": str(order_status)} for order_id, order_status in rows.all()]
@@ -192,9 +188,6 @@ async def export_report_csv(
         )
         .order_by(desc(MiniOperation.id))
     )
-    if str(current_user.role).lower() != "owner":
-        stmt = stmt.where(MiniOperation.created_by_user_id == current_user.id)
-
     rows = (await db.execute(stmt)).scalars().all()
     buffer = StringIO()
     writer = csv.writer(buffer)

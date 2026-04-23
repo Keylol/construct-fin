@@ -52,7 +52,7 @@ class AppUser(Base):
             values_callable=_enum_values,
             validate_strings=True,
         ),
-        default=UserRole.OPERATOR,
+        default=UserRole.OWNER,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

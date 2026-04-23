@@ -52,13 +52,6 @@ async def _load_operation_with_access(
     operation = row.scalar_one_or_none()
     if not operation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
-    if str(user.role).lower() != "owner":
-        if operation.order_id is not None:
-            await _validate_order_access(db, order_id=int(operation.order_id), user=user)
-        elif int(operation.created_by_user_id) != int(user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="No access to this operation"
-            )
     return operation
 
 
@@ -128,8 +121,6 @@ async def _validate_order_access(db: AsyncSession, *, order_id: int | None, user
     order = row.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    if str(user.role).lower() != "owner" and int(order.opened_by_user_id) != int(user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access to this order")
 
 
 def _to_preview_payload(normalized: dict) -> OperationManualPreviewRequest:
@@ -172,8 +163,6 @@ async def list_operations(
     if order_id is not None:
         await _validate_order_access(db, order_id=order_id, user=current_user)
         stmt = stmt.where(MiniOperation.order_id == order_id)
-    elif str(current_user.role).lower() != "owner":
-        stmt = stmt.where(MiniOperation.created_by_user_id == current_user.id)
     rows = await db.execute(stmt)
     operations = list(rows.scalars().all())
     return await _decorate_operation_list(db=db, operations=operations)
@@ -346,12 +335,6 @@ async def update_operation(
     if not operation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
 
-    if str(current_user.role).lower() != "owner":
-        if operation.order_id is not None:
-            await _validate_order_access(db, order_id=int(operation.order_id), user=current_user)
-        elif int(operation.created_by_user_id) != int(current_user.id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access to this operation")
-
     normalized = normalize_operation_payload(payload.model_dump())
     missing_fields = validate_operation_payload(normalized)
     if missing_fields:
@@ -414,12 +397,6 @@ async def delete_operation(
     operation = row.scalar_one_or_none()
     if not operation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
-
-    if str(current_user.role).lower() != "owner":
-        if operation.order_id is not None:
-            await _validate_order_access(db, order_id=int(operation.order_id), user=current_user)
-        elif int(operation.created_by_user_id) != int(current_user.id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access to this operation")
 
     operation.deleted_at = datetime.now()
     operation.deleted_by_user_id = current_user.id

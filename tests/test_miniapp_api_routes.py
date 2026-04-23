@@ -173,26 +173,26 @@ def test_order_identity_can_be_updated(miniapp_test_client):
     assert payload["client_name"] == "Client After"
 
 
-def test_operator_cannot_use_foreign_order(miniapp_test_client):
-    owner_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=777, first_name="Owner")
-    owner_headers = {"Authorization": f"Bearer {owner_token}"}
-    owner_order = miniapp_test_client.post(
+def test_any_user_can_access_all_orders_and_operations(miniapp_test_client):
+    user1_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=777, first_name="Partner1")
+    user1_headers = {"Authorization": f"Bearer {user1_token}"}
+    order = miniapp_test_client.post(
         "/api/v1/orders",
-        headers=owner_headers,
-        json={"order_phone": "+79990000002", "client_name": "Owner Client"},
+        headers=user1_headers,
+        json={"order_phone": "+79990000002", "client_name": "Partner1 Client"},
     )
-    assert owner_order.status_code == 200, owner_order.text
-    order_id = owner_order.json()["id"]
+    assert order.status_code == 200, order.text
+    order_id = order.json()["id"]
 
-    operator_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Operator")
-    operator_headers = {"Authorization": f"Bearer {operator_token}"}
+    user2_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Partner2")
+    user2_headers = {"Authorization": f"Bearer {user2_token}"}
 
-    forbidden = miniapp_test_client.post(
+    op = miniapp_test_client.post(
         "/api/v1/operations/manual",
-        headers=operator_headers,
+        headers=user2_headers,
         json={
             "operation_type": "расход",
-            "description": "try foreign order",
+            "description": "cross-partner operation",
             "amount": 100,
             "order_id": order_id,
             "expense_category": "Офис",
@@ -200,36 +200,11 @@ def test_operator_cannot_use_foreign_order(miniapp_test_client):
             "payment_account": "ИП Каменский АБ",
         },
     )
-    assert forbidden.status_code == 403
-    assert forbidden.json()["detail"] == "No access to this order"
+    assert op.status_code == 200, op.text
 
-    owner_operation = miniapp_test_client.post(
-        "/api/v1/operations/manual",
-        headers=owner_headers,
-        json={
-            "operation_type": "закупка",
-            "description": "owner purchase",
-            "amount": 500,
-            "order_id": order_id,
-            "payment_account": "ИП Каменский АБ",
-        },
-    )
-    assert owner_operation.status_code == 200, owner_operation.text
-
-    delete_forbidden = miniapp_test_client.delete(
-        f"/api/v1/operations/{owner_operation.json()['id']}",
-        headers=operator_headers,
-    )
-    assert delete_forbidden.status_code == 403
-    assert delete_forbidden.json()["detail"] == "No access to this order"
-
-    update_forbidden = miniapp_test_client.put(
-        f"/api/v1/orders/{order_id}",
-        headers=operator_headers,
-        json={"client_name": "Hijack"},
-    )
-    assert update_forbidden.status_code == 403
-    assert update_forbidden.json()["detail"] == "No access to this order"
+    orders_resp = miniapp_test_client.get("/api/v1/orders", headers=user2_headers)
+    assert orders_resp.status_code == 200
+    assert any(item["id"] == order_id for item in orders_resp.json())
 
 
 def test_meta_options_available(miniapp_test_client):
@@ -838,45 +813,40 @@ def test_owner_can_delete_order_with_related_data(miniapp_test_client):
     )
 
 
-def test_operator_cannot_delete_own_order(miniapp_test_client):
-    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Operator")
+def test_any_user_can_delete_order(miniapp_test_client):
+    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Partner")
     headers = {"Authorization": f"Bearer {token}"}
     order = miniapp_test_client.post(
         "/api/v1/orders",
         headers=headers,
-        json={"order_phone": "+79990000112", "client_name": "Operator Client"},
+        json={"order_phone": "+79990000112", "client_name": "Partner Client"},
     )
     assert order.status_code == 200, order.text
     order_id = order.json()["id"]
 
     deleted = miniapp_test_client.delete(f"/api/v1/orders/{order_id}", headers=headers)
-    assert deleted.status_code == 403, deleted.text
-    assert deleted.json()["detail"] == "Insufficient role"
-    
-    orders = miniapp_test_client.get("/api/v1/orders", headers=headers)
-    assert orders.status_code == 200, orders.text
-    assert any(item["id"] == order_id for item in orders.json())
+    assert deleted.status_code == 204, deleted.text
 
 
-def test_owner_can_view_audit_logs_and_operator_cannot(miniapp_test_client):
-    owner_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=777, first_name="Owner")
-    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+def test_any_user_can_view_audit_logs(miniapp_test_client):
+    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=777, first_name="Partner")
+    headers = {"Authorization": f"Bearer {token}"}
 
     order = miniapp_test_client.post(
         "/api/v1/orders",
-        headers=owner_headers,
+        headers=headers,
         json={"order_phone": "+79990000113", "client_name": "Audit Client"},
     )
     assert order.status_code == 200, order.text
 
-    logs = miniapp_test_client.get("/api/v1/audit/logs?limit=10", headers=owner_headers)
+    logs = miniapp_test_client.get("/api/v1/audit/logs?limit=10", headers=headers)
     assert logs.status_code == 200, logs.text
     assert any(item["action"] == "order_created" for item in logs.json())
 
-    operator_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Operator")
-    operator_headers = {"Authorization": f"Bearer {operator_token}"}
-    forbidden = miniapp_test_client.get("/api/v1/audit/logs?limit=10", headers=operator_headers)
-    assert forbidden.status_code == 403
+    other_token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Partner2")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    logs2 = miniapp_test_client.get("/api/v1/audit/logs?limit=10", headers=other_headers)
+    assert logs2.status_code == 200, logs2.text
 
 
 def test_owner_can_sync_google_sheets_from_miniapp(miniapp_test_client, monkeypatch):
@@ -935,13 +905,6 @@ def test_owner_can_sync_google_sheets_from_miniapp(miniapp_test_client, monkeypa
     assert "Нет цены продажи" in row["review_flags"]
 
 
-def test_operator_cannot_sync_google_sheets(miniapp_test_client):
-    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Operator")
-    headers = {"Authorization": f"Bearer {token}"}
-
-    response = miniapp_test_client.post("/api/v1/admin/google-sheets/sync", headers=headers)
-    assert response.status_code == 403, response.text
-    assert response.json()["detail"] == "Insufficient role"
 
 
 def test_owner_can_get_and_switch_ai_model(miniapp_test_client):
@@ -966,19 +929,6 @@ def test_owner_can_get_and_switch_ai_model(miniapp_test_client):
     assert refreshed.json()["active_model"] == "gpt-5.4"
 
 
-def test_operator_cannot_switch_ai_model(miniapp_test_client):
-    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=888, first_name="Operator")
-    headers = {"Authorization": f"Bearer {token}"}
-
-    forbidden = miniapp_test_client.get("/api/v1/admin/ai-model", headers=headers)
-    assert forbidden.status_code == 403
-
-    forbidden_update = miniapp_test_client.post(
-        "/api/v1/admin/ai-model",
-        headers=headers,
-        json={"model": "gpt-5.4"},
-    )
-    assert forbidden_update.status_code == 403
 
 
 def test_reports_export_csv(miniapp_test_client):

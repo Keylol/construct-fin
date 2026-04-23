@@ -19,9 +19,9 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 async def list_audit_logs(
     limit: int = Query(default=100, ge=1, le=500),
     db: AsyncSession = Depends(get_db_session),
-    current_user: AppUser = Depends(require_roles("owner")),
+    current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> list[AuditLogDTO]:
-    """Returns recent audit records for owners."""
+    """Returns recent audit records."""
 
     rows = await db.execute(select(MiniAuditLog).order_by(desc(MiniAuditLog.id)).limit(limit))
     return [AuditLogDTO.model_validate(item) for item in rows.scalars().all()]
