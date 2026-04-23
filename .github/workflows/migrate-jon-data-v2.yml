@@ -18,19 +18,16 @@ jobs:
           echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-      - name: Copy receipt and run migration
+      - name: Copy and run migration
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           scp -i ~/.ssh/deploy_key \
             scripts/migrate_jon_data_v2.py \
             root@$DEPLOY_HOST:/tmp/migrate_jon_data_v2.py
-          scp -i ~/.ssh/deploy_key \
-            "data/miniapp_documents/operation_17/чек 22.jpg" \
-            root@$DEPLOY_HOST:/tmp/receipt_jon.jpg
           ssh -i ~/.ssh/deploy_key root@$DEPLOY_HOST bash -e << 'EOF'
             cd /srv/construct/app
             .venv/bin/pip install asyncpg python-dotenv -q
             .venv/bin/python /tmp/migrate_jon_data_v2.py
-            rm -f /tmp/migrate_jon_data_v2.py /tmp/receipt_jon.jpg
+            rm -f /tmp/migrate_jon_data_v2.py
           EOF
