@@ -138,10 +138,14 @@ def main() -> int:
                 write_runtime_url(seen_url)
                 update_env_url(seen_url)
                 wait_until_public(seen_url)
-                try:
-                    update_telegram_menu_button(seen_url)
-                except Exception as exc:  # pragma: no cover - network dependent
-                    print(f"[miniapp_tunnel] menu button update failed: {exc}", flush=True)
+                skip_menu = str(os.getenv("MINIAPP_TUNNEL_SKIP_MENU_BUTTON", "")).strip().lower()
+                if skip_menu not in ("1", "true", "yes"):
+                    try:
+                        update_telegram_menu_button(seen_url)
+                    except Exception as exc:  # pragma: no cover - network dependent
+                        print(f"[miniapp_tunnel] menu button update failed: {exc}", flush=True)
+                else:
+                    print(f"[miniapp_tunnel] MINIAPP_TUNNEL_SKIP_MENU_BUTTON=true, skipping menu button update", flush=True)
         return process.wait()
     finally:
         if process.poll() is None:

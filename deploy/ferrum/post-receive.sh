@@ -47,6 +47,7 @@ fi
 if [[ "$DEPS_CHANGED" == "1" ]]; then
     echo "=== [deploy] Installing Python dependencies ==="
     sudo -u construct "$VENV/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
+    sudo -u construct "$VENV/bin/pip" install --quiet -r "$APP_DIR/miniapp_api/requirements.txt"
 else
     echo "=== [deploy] requirements.txt unchanged, skipping pip install ==="
 fi
