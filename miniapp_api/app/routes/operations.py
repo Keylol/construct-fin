@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config as legacy_config
 from bot.services.ai_parser import parse_operation
 from miniapp_api.app.config import get_settings
-from miniapp_api.app.db import get_db_session
+from miniapp_api.app.db import get_db_session, get_session_factory
 from miniapp_api.app.deps import require_roles
 from miniapp_api.app.models import AppUser, MiniDocument, MiniOperation, MiniOrder
 from miniapp_api.app.schemas import (
@@ -26,7 +27,20 @@ from miniapp_api.app.schemas import (
     OperationTextCreateRequest,
 )
 from miniapp_api.app.services.audit import add_audit_log
+from miniapp_api.app.services.google_sheets import sync_google_sheets_from_miniapp
 from miniapp_api.app.services.operations import normalize_operation_payload, validate_operation_payload
+
+logger = logging.getLogger(__name__)
+
+
+async def _sync_sheets_background() -> None:
+    """Fire-and-forget Google Sheets sync after any operation mutation."""
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            await sync_google_sheets_from_miniapp(db)
+    except Exception:
+        logger.exception("Google Sheets background sync failed")
 
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -217,6 +231,7 @@ async def preview_operation_from_text(
 @router.post("/manual", response_model=OperationDTO)
 async def create_manual_operation(
     payload: OperationManualCreateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OperationDTO:
@@ -259,12 +274,14 @@ async def create_manual_operation(
         },
     )
     await db.commit()
+    background_tasks.add_task(_sync_sheets_background)
     return await _decorate_operation_dto(db=db, operation=operation)
 
 
 @router.post("/from-text", response_model=OperationDTO)
 async def create_operation_from_text(
     payload: OperationTextCreateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OperationDTO:
@@ -318,6 +335,7 @@ async def create_operation_from_text(
         },
     )
     await db.commit()
+    background_tasks.add_task(_sync_sheets_background)
     return await _decorate_operation_dto(db=db, operation=operation)
 
 
@@ -325,6 +343,7 @@ async def create_operation_from_text(
 async def update_operation(
     operation_id: int,
     payload: OperationManualCreateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OperationDTO:
@@ -382,12 +401,14 @@ async def update_operation(
     )
     await db.commit()
     await db.refresh(operation)
+    background_tasks.add_task(_sync_sheets_background)
     return await _decorate_operation_dto(db=db, operation=operation)
 
 
 @router.delete("/{operation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_operation(
     operation_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> Response:
@@ -413,6 +434,7 @@ async def delete_operation(
         },
     )
     await db.commit()
+    background_tasks.add_task(_sync_sheets_background)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
