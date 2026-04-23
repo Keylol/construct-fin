@@ -1,0 +1,22 @@
+[Unit]
+Description=ConstructPC Mini App API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=construct
+Group=construct
+WorkingDirectory=/srv/construct/app
+EnvironmentFile=/srv/construct/app/.env
+Environment=MINIAPP_APPLY_MIGRATIONS=1
+Environment=MINIAPP_RELOAD=0
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPYCACHEPREFIX=/srv/construct/app/.pycache_tmp
+ExecStart=/srv/construct/app/.venv/bin/python -m miniapp_api.run_service
+Restart=always
+RestartSec=3
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

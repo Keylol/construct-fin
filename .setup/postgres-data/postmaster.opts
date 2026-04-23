@@ -1,0 +1,1 @@
+/Users/alexander/Documents/Construct/.setup/tools/postgres/pgsql/bin/postgres "-D" "/Users/alexander/Documents/Construct/.setup/postgres-data" "-p" "5432" "-k" "/tmp" "-c" "listen_addresses=127.0.0.1"

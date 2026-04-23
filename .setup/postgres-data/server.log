@@ -1,0 +1,21 @@
+2026-04-13 22:20:26.990 +05 [28097] FATAL:  shmat(id=327681, addr=0x0, flags=0x0) failed: Operation not permitted
+2026-04-13 22:20:26.990 +05 [28097] LOG:  shmctl(327681, 0, 0) failed: Operation not permitted
+2026-04-13 22:20:26.990 +05 [28097] LOG:  database system is shut down
+2026-04-13 22:21:32.709 +05 [78725] LOG:  starting PostgreSQL 15.12 on x86_64-apple-darwin23.6.0, compiled by Apple clang version 15.0.0 (clang-1500.3.9.4), 64-bit
+2026-04-13 22:21:32.710 +05 [78725] LOG:  listening on IPv6 address "::1", port 5432
+2026-04-13 22:21:32.710 +05 [78725] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2026-04-13 22:21:32.710 +05 [78725] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2026-04-13 22:21:32.712 +05 [78728] LOG:  database system was shut down at 2026-04-13 22:20:16 +05
+2026-04-13 22:21:32.714 +05 [78725] LOG:  database system is ready to accept connections
+2026-04-13 22:25:46.573 +05 [78725] LOG:  received fast shutdown request
+2026-04-13 22:25:46.573 +05 [78725] LOG:  aborting any active transactions
+2026-04-13 22:25:46.573 +05 [78725] LOG:  background worker "logical replication launcher" (PID 78731) exited with exit code 1
+2026-04-13 22:25:46.574 +05 [78726] LOG:  shutting down
+2026-04-13 22:25:46.574 +05 [78726] LOG:  checkpoint starting: shutdown immediate
+2026-04-13 22:25:46.609 +05 [78726] LOG:  checkpoint complete: wrote 939 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.029 s, sync=0.006 s, total=0.035 s; sync files=308, longest=0.001 s, average=0.001 s; distance=4297 kB, estimate=4297 kB
+2026-04-13 22:25:46.611 +05 [78725] LOG:  database system is shut down
+2026-04-17 19:33:19.891 +05 [14447] FATAL:  shmat(id=65536, addr=0x0, flags=0x0) failed: Operation not permitted
+2026-04-17 19:33:19.892 +05 [14447] LOG:  shmctl(65536, 0, 0) failed: Operation not permitted
+2026-04-17 19:33:19.892 +05 [14447] LOG:  database system is shut down
+2026-04-17 19:33:43.602 +05 [14636] FATAL:  lock file "postmaster.pid" already exists
+2026-04-17 19:33:43.602 +05 [14636] HINT:  Is another postmaster (PID 14548) running in data directory "/Users/alexander/Documents/Construct/.setup/postgres-data"?
