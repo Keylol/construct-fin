@@ -34,6 +34,8 @@ def build_summary(
     cash_received = 0.0
     purchases = 0.0
     commercial = 0.0
+    payroll = 0.0
+    contractor = 0.0
     non_operating = 0.0
     sales_count = 0
     order_status_by_id = {
@@ -64,10 +66,14 @@ def build_summary(
             category = str(item.get("expense_category") or "").strip()
             if category in legacy_config.COMMERCIAL_EXPENSE_CATEGORIES:
                 commercial += amount
+            elif category in legacy_config.PAYROLL_EXPENSE_CATEGORIES:
+                payroll += amount
+            elif category in legacy_config.CONTRACTOR_EXPENSE_CATEGORIES:
+                contractor += amount
             else:
                 non_operating += amount
 
-    other_expenses = commercial + non_operating
+    other_expenses = commercial + payroll + contractor + non_operating
     total_expenses = purchases + other_expenses
     profit = income - total_expenses
     order_finance = rollup_order_finance(all_order_operations)
@@ -104,6 +110,8 @@ def build_summary(
         "purchases": round(purchases, 2),
         "other_expenses": round(other_expenses, 2),
         "commercial_expenses": round(commercial, 2),
+        "payroll_expenses": round(payroll, 2),
+        "contractor_expenses": round(contractor, 2),
         "non_operating_expenses": round(non_operating, 2),
         "total_expenses": round(total_expenses, 2),
         "profit": round(profit, 2),

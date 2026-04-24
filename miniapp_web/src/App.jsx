@@ -228,6 +228,30 @@ export function App() {
     return [...opEvents, ...docEvents].sort((a, b) => b.sortAt - a.sortAt);
   }, [documents, lang, orderTimelineOperations, selectedOrderId]);
 
+  const catBreakdown = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - reportDays + 1);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const totals = {};
+    for (const op of businessExpenses) {
+      if ((op.date || "") < cutoffStr) continue;
+      const cat = op.expense_category || "Прочее";
+      totals[cat] = (totals[cat] || 0) + Number(op.amount || 0);
+    }
+    const total = Object.values(totals).reduce((s, v) => s + v, 0);
+    if (total === 0) return [];
+    const entries = Object.entries(totals)
+      .map(([name, amount]) => ({ name, amount, pct: (amount / total) * 100 }))
+      .sort((a, b) => b.amount - a.amount);
+    const main = entries.filter((e) => e.pct >= 2);
+    const rest = entries.filter((e) => e.pct < 2);
+    if (rest.length > 0) {
+      const restAmt = rest.reduce((s, e) => s + e.amount, 0);
+      main.push({ name: "Прочее", amount: restAmt, pct: (restAmt / total) * 100 });
+    }
+    return main;
+  }, [businessExpenses, reportDays]);
+
   const statsTotals = useMemo(() => {
     const sales = Number(summary?.income || 0);
     const cogs = Number(summary?.purchases || 0);
@@ -1263,6 +1287,7 @@ export function App() {
               isSyncingSheets={isSyncingSheets}
               isExportingAllDocs={isExportingAllDocs}
               statsTotals={statsTotals}
+              catBreakdown={catBreakdown}
               handleAiModelChange={handleAiModelChange}
               handleGoogleSheetsSync={handleGoogleSheetsSync}
               handleExportAllDocuments={handleExportAllDocuments}

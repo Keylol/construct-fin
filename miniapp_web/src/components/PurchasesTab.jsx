@@ -1,6 +1,25 @@
 import { t } from "../i18n";
 import { formatAmount, normalizeAmountInput } from "../utils";
 
+const CAT_COLORS = {
+  "Аренда":               "#3b82f6",
+  "Офис":                 "#8b5cf6",
+  "Зарплатный фонд":      "#0ea5e9",
+  "Внешние исполнители":  "#6366f1",
+  "Интернет":             "#06b6d4",
+  "Расходники":           "#64748b",
+  "Реклама":              "#f59e0b",
+  "Розыгрыши":            "#ec4899",
+  "Доставка":             "#10b981",
+  "Банковские расходы":   "#ef4444",
+  "Налоги":               "#f97316",
+  "Развитие бизнеса":     "#01aeff",
+};
+
+function catColor(cat) {
+  return CAT_COLORS[cat] || "#94a3b8";
+}
+
 const RECEIPT_ACCEPT = "image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.heic,.heif,.webp";
 
 export function PurchasesTab({
@@ -177,23 +196,37 @@ export function PurchasesTab({
         <div className="section-heading compact-heading">
           <h3>{t(lang, "recentPurchasesTitle")}</h3>
         </div>
-        <div className="items-grid">
-          {!hasAuth ? (
-            <div className="inline-empty-note">{t(lang, "signInToContinue")}</div>
-          ) : isOperationsLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <article className="item-card skeleton skeleton-card" key={i} />)
-          ) : businessExpenses.length === 0 ? (
-            <div className="inline-empty-note">{t(lang, "noBusinessPurchases")}</div>
-          ) : (
-            businessExpenses.map((item) => (
-              <article className="item-card purchase-record-card" key={item.id}>
-                <strong>
-                  {item.expense_category || t(lang, "operationCategoryLabel")} · {formatAmount(item.amount)} ₽
-                  {item.has_receipt ? <span style={{ marginLeft: 8 }}>{t(lang, "receiptAttachedBadge")}</span> : null}
-                </strong>
-                <div>{item.description}</div>
-                <div className="meta">{item.date}{item.payment_account ? ` · ${item.payment_account}` : ""}</div>
-                <div className="row-actions compact-row">
+        {!hasAuth ? (
+          <div className="inline-empty-note">{t(lang, "signInToContinue")}</div>
+        ) : isOperationsLoading ? (
+          <div className="expense-list">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div className="expense-row skeleton" key={i} style={{ minHeight: 44 }} />
+            ))}
+          </div>
+        ) : businessExpenses.length === 0 ? (
+          <div className="inline-empty-note">{t(lang, "noBusinessPurchases")}</div>
+        ) : (
+          <div className="expense-list">
+            {businessExpenses.map((item) => (
+              <div className="expense-row" key={item.id}>
+                <div className="expense-row-main">
+                  <span className="expense-date">{item.date}</span>
+                  {item.expense_category ? (
+                    <span
+                      className="expense-cat-badge"
+                      style={{ background: catColor(item.expense_category) }}
+                    >
+                      {item.expense_category}
+                    </span>
+                  ) : null}
+                  <span className="expense-desc">{item.description}</span>
+                  <span className="expense-amount">
+                    {formatAmount(item.amount)} ₽
+                    {item.has_receipt ? <span className="expense-receipt-icon" title={t(lang, "receiptAttachedBadge")}>🧾</span> : null}
+                  </span>
+                </div>
+                <div className="expense-row-actions compact-row">
                   <button type="button" className="small-button secondary" onClick={() => startExpenseEdit(item)}>
                     {t(lang, "editOperation")}
                   </button>
@@ -211,10 +244,10 @@ export function PurchasesTab({
                     {deletingOperationId === item.id ? t(lang, "deleting") : t(lang, "deleteOperation")}
                   </button>
                 </div>
-              </article>
-            ))
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </section>
   );

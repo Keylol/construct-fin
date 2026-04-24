@@ -702,6 +702,8 @@ async def parse_operation(text: str) -> dict | None:
         f"sale_type только: {', '.join(config.SALE_TYPES)}.\n"
         f"income_channel только: {', '.join(config.INCOME_CHANNELS)} или null.\n"
         f"Допустимые payment_account: {', '.join(config.DEFAULT_PAYMENT_ACCOUNTS)}.\n"
+        f"expense_category только из: {', '.join(config.EXPENSE_CATEGORIES)}.\n"
+        "Для фрилансеров и подрядчиков (фриланс/исполнитель/внешний/подряд) ставь expense_category='Внешние исполнители'.\n"
         "Для явных офисных трат (в офис/для офиса/на склад/на содержание/на бизнес) ставь operation_type='расход' и expense_category='Офис'.\n"
         "confidence от 0 до 1.\n"
         "Если поля нет в тексте, используй null. Никакого текста вне JSON.\n\n"

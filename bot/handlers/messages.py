@@ -297,7 +297,7 @@ def _question_for(field: str, payload: dict | None = None) -> str:
             return str(payload["_clarify_question"])
         return "Уточните, пожалуйста: это операция по заказу клиента или общий расход бизнеса?"
     if field == "expense_category":
-        return "Укажите категорию расхода (например: Офис, Аренда, Зарплаты, Развитие бизнеса)."
+        return "Укажите категорию расхода (например: Офис, Аренда, Зарплатный фонд, Внешние исполнители, Развитие бизнеса)."
     if field == "expense_subcategory":
         category = str((payload or {}).get("expense_category") or "категория")
         return f"Укажите подкатегорию для `{category}`."

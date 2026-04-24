@@ -168,6 +168,8 @@ class ReportSummaryDTO(BaseModel):
     purchases: float
     other_expenses: float
     commercial_expenses: float
+    payroll_expenses: float
+    contractor_expenses: float
     non_operating_expenses: float
     total_expenses: float
     profit: float
