@@ -260,7 +260,7 @@ def build_income_rows(month_operations: list[dict], all_operations: list[dict]) 
     cogs_by_order = _build_order_cogs_map(all_operations)
 
     for operation in _sorted_operations(month_operations):
-        if operation["operation_type"] not in {"продажа", "предоплата", "постоплата"}:
+        if operation["operation_type"] not in {"продажа", "корректировка продажи", "предоплата", "постоплата"}:
             continue
         cogs_value = 0.0
         if operation["operation_type"] == "продажа" and operation.get("order_id"):
@@ -293,7 +293,7 @@ def build_month_summary_rows(operations: list[dict], all_operations: list[dict] 
     sold_order_ids = {
         int(operation["order_id"])
         for operation in operations
-        if _is_revenue_operation(operation) and operation.get("order_id")
+        if _is_sale_recognition_operation(operation) and operation.get("order_id")
     }
 
     revenue = sum(
@@ -324,6 +324,10 @@ def _is_closed_order(operation: dict) -> bool:
 
 
 def _is_revenue_operation(operation: dict) -> bool:
+    return operation.get("operation_type") in {"продажа", "корректировка продажи"} and _is_closed_order(operation)
+
+
+def _is_sale_recognition_operation(operation: dict) -> bool:
     return operation.get("operation_type") == "продажа" and _is_closed_order(operation)
 
 
@@ -429,7 +433,7 @@ def build_pl_rows(month_operations_map: dict[str, list[dict]], selected_period: 
         sold_order_ids = {
             int(op["order_id"])
             for op in operations
-            if _is_revenue_operation(op) and op.get("order_id")
+            if _is_sale_recognition_operation(op) and op.get("order_id")
         }
         cogs = sum(cogs_by_order.get(order_id, 0.0) for order_id in sold_order_ids)
         gross = revenue - cogs
@@ -508,7 +512,7 @@ def build_plan_fact_rows(
         sold_order_ids = {
             int(op["order_id"])
             for op in operations
-            if _is_revenue_operation(op) and op.get("order_id")
+            if _is_sale_recognition_operation(op) and op.get("order_id")
         }
         cogs = sum(cogs_by_order.get(order_id, 0.0) for order_id in sold_order_ids)
         commercial = sum(op["amount"] for op in operations if _is_commercial_expense(op))
@@ -780,7 +784,7 @@ def build_dashboard_rows(
         sold_order_ids = {
             int(operation["order_id"])
             for operation in operations
-            if _is_revenue_operation(operation) and operation.get("order_id")
+            if _is_sale_recognition_operation(operation) and operation.get("order_id")
         }
         cogs = sum(cogs_by_order.get(order_id, 0.0) for order_id in sold_order_ids)
         commercial = sum(operation["amount"] for operation in operations if _is_commercial_expense(operation))
@@ -857,7 +861,7 @@ def build_print_rows(
         sold_order_ids.update(
             int(operation["order_id"])
             for operation in operations
-            if _is_revenue_operation(operation) and operation.get("order_id")
+            if _is_sale_recognition_operation(operation) and operation.get("order_id")
         )
         opex += sum(operation["amount"] for operation in operations if operation["operation_type"] == "расход")
     cogs = sum(cogs_by_order.get(order_id, 0.0) for order_id in sold_order_ids)

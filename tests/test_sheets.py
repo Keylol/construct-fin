@@ -80,6 +80,23 @@ def test_build_month_summary_rows_contains_five_lines():
     assert rows[5][1] == 30000
 
 
+def test_sale_correction_counts_as_revenue_without_double_cogs():
+    rows = sheets.build_month_summary_rows(
+        [
+            {"operation_type": "корректировка продажи", "amount": 2000, "order_id": 10, "order_status": "closed"},
+        ],
+        all_operations=[
+            {"operation_type": "продажа", "amount": 100000, "order_id": 10, "order_status": "closed"},
+            {"operation_type": "закупка", "amount": 60000, "order_id": 10},
+            {"operation_type": "корректировка продажи", "amount": 2000, "order_id": 10, "order_status": "closed"},
+        ],
+    )
+
+    assert rows[1][1] == 2000
+    assert rows[2][1] == 0.0
+    assert rows[5][1] == 2000
+
+
 def test_build_dashboard_rows_has_dds_opiu_budget_blocks():
     month_ops = {
         "2026-04": [

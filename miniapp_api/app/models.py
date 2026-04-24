@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from miniapp_api.app.db import Base
@@ -104,7 +105,7 @@ class MiniOperation(Base):
     date: Mapped[str] = mapped_column(String(16), index=True)
     operation_type: Mapped[str] = mapped_column(String(32), index=True)
     description: Mapped[str] = mapped_column(String(1024))
-    amount: Mapped[float]
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     supplier: Mapped[str | None] = mapped_column(String(255), nullable=True)
     expense_category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     expense_subcategory: Mapped[str | None] = mapped_column(String(255), nullable=True)

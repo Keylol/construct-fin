@@ -92,7 +92,7 @@ def upgrade() -> None:
         sa.Column("date", sa.String(length=16), nullable=False),
         sa.Column("operation_type", sa.String(length=32), nullable=False),
         sa.Column("description", sa.String(length=1024), nullable=False),
-        sa.Column("amount", sa.Float(), nullable=False),
+        sa.Column("amount", sa.Numeric(14, 2), nullable=False),
         sa.Column("supplier", sa.String(length=255), nullable=True),
         sa.Column("expense_category", sa.String(length=255), nullable=True),
         sa.Column("expense_subcategory", sa.String(length=255), nullable=True),

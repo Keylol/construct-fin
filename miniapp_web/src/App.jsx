@@ -162,11 +162,9 @@ export function App() {
   const prepaymentAmountValue = activeSaleDraft.usePrepayment ? parsePositiveAmount(activeSaleDraft.prepaymentAmount) : 0;
   const postpaymentAmountValue = activeSaleDraft.usePostpayment ? parsePositiveAmount(activeSaleDraft.postpaymentAmount) : 0;
 
-  const recordedSaleAmount = Number(selectedOrder?.sale_amount || 0);
   const recordedPrepaymentAmount = Number(selectedOrder?.prepayment_amount || 0);
   const recordedPostpaymentAmount = Number(selectedOrder?.postpayment_amount || 0);
   const recordedPaymentReceiptAmount = Number(selectedOrder?.payment_receipt_amount || 0);
-  const recordedRecognizedCogs = Number(selectedOrder?.recognized_cogs || 0);
   const hasRecordedSplitPayments = recordedPrepaymentAmount > 0 || recordedPostpaymentAmount > 0;
 
   const orderPurchaseOperations = useMemo(
@@ -680,59 +678,26 @@ export function App() {
     setIsFinalizingSale(true);
     try {
       const orderId = Number(selectedOrderId);
-      const isChangedFlow = Boolean(reopenedOrderIds[selectedOrderId]);
-      const changePrefix = isChangedFlow ? `${t(lang, "changeMark")}: ` : "";
       const splitIncomeMode = activeSaleDraft.usePrepayment || activeSaleDraft.usePostpayment || hasRecordedSplitPayments;
       const totalPaid = prepaymentAmountValue + postpaymentAmountValue;
       const shouldCloseOrder = !splitIncomeMode || Math.abs(totalPaid - saleAmountValue) <= 0.01;
-      const saleDelta = Number((saleAmountValue - recordedSaleAmount).toFixed(2));
-      const prepaymentDelta = Math.max(0, prepaymentAmountValue - recordedPrepaymentAmount);
-      const postpaymentDelta = Math.max(0, postpaymentAmountValue - recordedPostpaymentAmount);
-      const paymentReceiptDelta = Math.max(0, Number((saleAmountValue - recordedPaymentReceiptAmount).toFixed(2)));
-      const cogsDelta = Number((componentsCostTotal - recordedRecognizedCogs).toFixed(2));
-
-      if (Math.abs(saleDelta) > 0.009) {
-        await apiRequest("/operations/manual", {
-          token, method: "POST",
-          body: JSON.stringify({
-            operation_type: recordedSaleAmount > 0 ? "корректировка продажи" : "продажа",
-            description: `${changePrefix}${t(lang, "saleOperationLabel")}`,
-            amount: saleDelta, order_id: orderId,
-          }),
-        });
-      }
-      if (splitIncomeMode) {
-        if (prepaymentDelta > 0) {
-          await apiRequest("/operations/manual", {
-            token, method: "POST",
-            body: JSON.stringify({ operation_type: "предоплата", description: `${changePrefix}${t(lang, "prepaymentOperationLabel")}`, amount: prepaymentDelta, order_id: orderId }),
-          });
-        }
-        if (postpaymentDelta > 0) {
-          await apiRequest("/operations/manual", {
-            token, method: "POST",
-            body: JSON.stringify({ operation_type: "постоплата", description: `${changePrefix}${t(lang, "postpaymentOperationLabel")}`, amount: postpaymentDelta, order_id: orderId }),
-          });
-        }
-      } else if (paymentReceiptDelta > 0) {
-        await apiRequest("/operations/manual", {
-          token, method: "POST",
-          body: JSON.stringify({ operation_type: "оплата", description: `${changePrefix}${t(lang, "saleOperationLabel")}`, amount: paymentReceiptDelta, order_id: orderId }),
-        });
-      }
-      if (shouldCloseOrder) {
-        if (Math.abs(cogsDelta) > 0.009) {
-          await apiRequest("/operations/manual", {
-            token, method: "POST",
-            body: JSON.stringify({ operation_type: "себестоимость", description: `${changePrefix}${t(lang, "componentsTotalLabel")}`, amount: cogsDelta, order_id: orderId }),
-          });
-        }
-        await apiRequest(`/orders/${orderId}/close`, { token, method: "POST" });
+      const updatedOrder = await apiRequest(`/orders/${orderId}/finalize`, {
+        token,
+        method: "POST",
+        body: JSON.stringify({
+          sale_amount: saleAmountValue,
+          use_split_payments: splitIncomeMode,
+          prepayment_amount: splitIncomeMode ? prepaymentAmountValue : 0,
+          postpayment_amount: splitIncomeMode ? postpaymentAmountValue : 0,
+        }),
+      });
+      const orderClosed = String(updatedOrder?.status || "").toLowerCase() === "closed";
+      if (orderClosed) {
         setSaleDraftByOrder((prev) => { const next = { ...prev }; delete next[selectedOrderId]; return next; });
       }
       setShowSaleCloseConfirm(false);
       await Promise.all([loadOrders(token), loadOperations(token), loadReports(token, reportDays), loadDocuments(token, orderId), loadOrderTimeline(token, orderId)]);
-      setStatus("success", shouldCloseOrder ? t(lang, "saleOrderClosed") : t(lang, "saleOrderSavedOpen"));
+      setStatus("success", orderClosed || shouldCloseOrder ? t(lang, "saleOrderClosed") : t(lang, "saleOrderSavedOpen"));
     } catch (err) {
       setStatus("error", t(lang, "createFail", { error: humanizeError(lang, err) }));
     } finally {

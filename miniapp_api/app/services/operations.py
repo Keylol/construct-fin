@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 import config as legacy_config
@@ -51,9 +52,12 @@ def _normalize_amount(raw_value: Any) -> float:
     if isinstance(value, str):
         value = value.replace(" ", "").replace(",", ".").strip()
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
         return 0.0
+    if not amount.is_finite():
+        return 0.0
+    return float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def normalize_operation_payload(

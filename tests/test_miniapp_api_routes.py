@@ -86,7 +86,7 @@ def test_owner_end_to_end_flow(miniapp_test_client, monkeypatch):
     async def _fake_parse_operation(_: str) -> dict:
         return {
             "date": "2026-04-13",
-            "operation_type": "расход",
+            "operation_type": "закупка",
             "description": "parsed operation",
             "amount": 1200.0,
             "expense_category": "Офис",
@@ -141,13 +141,74 @@ def test_owner_end_to_end_flow(miniapp_test_client, monkeypatch):
     assert order_operations.status_code == 200, order_operations.text
     assert len(order_operations.json()) == 2
 
-    close_order = miniapp_test_client.post(f"/api/v1/orders/{order_id}/close", headers=headers)
-    assert close_order.status_code == 200, close_order.text
-    assert close_order.json()["status"] == "closed"
+    finalize_order = miniapp_test_client.post(
+        f"/api/v1/orders/{order_id}/finalize",
+        headers=headers,
+        json={"sale_amount": 55000},
+    )
+    assert finalize_order.status_code == 200, finalize_order.text
+    assert finalize_order.json()["status"] == "closed"
+    assert finalize_order.json()["sale_amount"] == 55000
+    assert finalize_order.json()["paid_amount"] == 55000
+    assert finalize_order.json()["purchase_cost"] == 1200
+    assert finalize_order.json()["recognized_cogs"] == 1200
+
+    finalized_operations = miniapp_test_client.get(f"/api/v1/operations?order_id={order_id}", headers=headers)
+    assert finalized_operations.status_code == 200, finalized_operations.text
+    finalized_types = [item["operation_type"] for item in finalized_operations.json()]
+    assert finalized_types.count("продажа") == 1
+    assert "оплата" in finalized_types
+    assert "себестоимость" in finalized_types
+
+    blocked_change = miniapp_test_client.post(
+        "/api/v1/operations/manual",
+        headers=headers,
+        json={
+            "operation_type": "закупка",
+            "description": "late purchase",
+            "amount": 1,
+            "order_id": order_id,
+            "payment_account": "ИП Каменский АБ",
+        },
+    )
+    assert blocked_change.status_code == 409
 
     reopen_order = miniapp_test_client.post(f"/api/v1/orders/{order_id}/reopen", headers=headers)
     assert reopen_order.status_code == 200, reopen_order.text
     assert reopen_order.json()["status"] == "open"
+
+
+def test_close_order_requires_financial_invariants(miniapp_test_client):
+    token = _auth(miniapp_test_client, bot_token="123456:TEST_TOKEN", user_id=777, first_name="Owner")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    order = miniapp_test_client.post(
+        "/api/v1/orders",
+        headers=headers,
+        json={"order_phone": "+79990000002", "client_name": "Invariant Client"},
+    )
+    assert order.status_code == 200, order.text
+    order_id = order.json()["id"]
+
+    sale = miniapp_test_client.post(
+        "/api/v1/operations/manual",
+        headers=headers,
+        json={
+            "operation_type": "продажа",
+            "description": "Продажа без оплаты и себестоимости",
+            "amount": 1000,
+            "order_id": order_id,
+        },
+    )
+    assert sale.status_code == 200, sale.text
+
+    close_order = miniapp_test_client.post(f"/api/v1/orders/{order_id}/close", headers=headers)
+    assert close_order.status_code == 422
+    assert close_order.json()["detail"] in {
+        "Order has no purchase cost",
+        "Order has unpaid balance",
+        "Order COGS is not recognized",
+    }
 
 
 def test_order_identity_can_be_updated(miniapp_test_client):
@@ -395,13 +456,28 @@ def test_reports_summary_and_timeseries(miniapp_test_client):
             "operation_type": "расход",
             "description": "Реклама",
             "amount": 100,
-            "date": (date.today() + timedelta(days=1)).isoformat(),
+            "date": date.today().isoformat(),
             "expense_category": "Реклама",
             "expense_subcategory": "Таргет",
             "payment_account": "ИП Каменский АБ",
         },
     )
     assert expense.status_code == 200, expense.text
+
+    future_expense = miniapp_test_client.post(
+        "/api/v1/operations/manual",
+        headers=headers,
+        json={
+            "operation_type": "расход",
+            "description": "Будущая реклама",
+            "amount": 999,
+            "date": (date.today() + timedelta(days=1)).isoformat(),
+            "expense_category": "Реклама",
+            "expense_subcategory": "Таргет",
+            "payment_account": "ИП Каменский АБ",
+        },
+    )
+    assert future_expense.status_code == 200, future_expense.text
 
     close_order = miniapp_test_client.post(f"/api/v1/orders/{order_id}/close", headers=headers)
     assert close_order.status_code == 200, close_order.text
@@ -955,11 +1031,27 @@ def test_reports_export_csv(miniapp_test_client):
     )
     assert operation.status_code == 200, operation.text
 
+    future_operation = miniapp_test_client.post(
+        "/api/v1/operations/manual",
+        headers=headers,
+        json={
+            "operation_type": "расход",
+            "description": "Future CSV expense",
+            "amount": 100,
+            "date": (date.today() + timedelta(days=1)).isoformat(),
+            "expense_category": "Офис",
+            "expense_subcategory": "Прочее",
+            "payment_account": "ИП Каменский АБ",
+        },
+    )
+    assert future_operation.status_code == 200, future_operation.text
+
     export = miniapp_test_client.get("/api/v1/reports/export.csv?days=7", headers=headers)
     assert export.status_code == 200, export.text
     assert "text/csv" in (export.headers.get("content-type") or "")
     assert "operation_type" in export.text
     assert "CSV sale" in export.text
+    assert "Future CSV expense" not in export.text
 
 
 def test_document_upload_size_limit(tmp_path, monkeypatch):

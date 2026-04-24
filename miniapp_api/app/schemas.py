@@ -58,6 +58,15 @@ class OrderUpdateRequest(BaseModel):
         return self
 
 
+class OrderFinalizeRequest(BaseModel):
+    sale_amount: float = Field(gt=0, allow_inf_nan=False)
+    use_split_payments: bool = False
+    prepayment_amount: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    postpayment_amount: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    payment_account: str | None = Field(default=None, max_length=128)
+    payment_method: str | None = Field(default=None, max_length=64)
+
+
 class OrderDTO(BaseModel):
     id: int
     order_phone: str
@@ -84,7 +93,7 @@ class OrderDTO(BaseModel):
 class OperationManualCreateRequest(BaseModel):
     operation_type: str = Field(min_length=3, max_length=32)
     description: str = Field(min_length=2, max_length=1024)
-    amount: float
+    amount: float = Field(allow_inf_nan=False)
     date: str | None = Field(default=None, max_length=16)
     order_id: int | None = None
     supplier: str | None = Field(default=None, max_length=255)
@@ -104,7 +113,7 @@ class OperationTextCreateRequest(BaseModel):
 class OperationManualPreviewRequest(BaseModel):
     operation_type: str | None = Field(default=None, max_length=32)
     description: str | None = Field(default=None, max_length=1024)
-    amount: float | None = None
+    amount: float | None = Field(default=None, allow_inf_nan=False)
     date: str | None = Field(default=None, max_length=16)
     order_id: int | None = None
     supplier: str | None = Field(default=None, max_length=255)

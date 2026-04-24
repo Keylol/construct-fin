@@ -136,13 +136,7 @@ async def export_miniapp_operations_for_sheets(db: AsyncSession) -> list[dict]:
         exported_rows.append(
             {
                 "id": int(operation.id),
-                "date": (
-                    operation.created_at.date().isoformat()
-                    if str(operation.operation_type or "").strip().lower() == "расход"
-                    and operation.order_id is None
-                    and operation.created_at
-                    else str(operation.date or "")
-                ),
+                "date": str(operation.date or ""),
                 "operation_type": str(operation.operation_type or ""),
                 "description": str(operation.description or ""),
                 "amount": float(operation.amount or 0.0),

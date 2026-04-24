@@ -128,13 +128,32 @@ async def _decorate_operation_list(
     return result
 
 
-async def _validate_order_access(db: AsyncSession, *, order_id: int | None, user: AppUser) -> None:
+async def _validate_order_access(
+    db: AsyncSession,
+    *,
+    order_id: int | None,
+    user: AppUser,
+    require_open: bool = False,
+) -> MiniOrder | None:
     if order_id is None:
-        return
+        return None
     row = await db.execute(select(MiniOrder).where(MiniOrder.id == order_id, MiniOrder.deleted_at.is_(None)))
     order = row.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if require_open and str(order.status or "").strip().lower() == "closed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is closed; reopen it before changing operations")
+    return order
+
+
+async def _ensure_operation_order_mutable(db: AsyncSession, operation: MiniOperation, user: AppUser) -> None:
+    if operation.order_id is None:
+        return
+    await _validate_order_access(db, order_id=int(operation.order_id), user=user, require_open=True)
+
+
+def _audit_amount(value: object) -> float:
+    return round(float(value or 0.0), 2)
 
 
 def _to_preview_payload(normalized: dict) -> OperationManualPreviewRequest:
@@ -191,7 +210,7 @@ async def preview_manual_operation(
     """Normalizes operation from form fields and returns confirmation preview."""
 
     normalized = normalize_operation_payload(payload.model_dump())
-    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user)
+    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user, require_open=True)
     missing_fields = validate_operation_payload(normalized)
     return OperationPreviewResponse(
         operation=_to_preview_payload(normalized),
@@ -208,7 +227,7 @@ async def preview_operation_from_text(
 ) -> OperationPreviewResponse:
     """Parses free text, normalizes fields and returns confirmation preview."""
 
-    await _validate_order_access(db, order_id=payload.order_id, user=current_user)
+    await _validate_order_access(db, order_id=payload.order_id, user=current_user, require_open=True)
     parsed = await parse_operation(payload.text.strip())
     if not parsed:
         raise HTTPException(
@@ -242,7 +261,7 @@ async def create_manual_operation(
     if missing_fields:
         raise _validation_error(missing_fields)
 
-    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user)
+    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user, require_open=True)
     operation = MiniOperation(
         date=str(normalized["date"]),
         operation_type=str(normalized["operation_type"]),
@@ -269,7 +288,7 @@ async def create_manual_operation(
         entity_id=operation.id,
         details={
             "operation_type": operation.operation_type,
-            "amount": operation.amount,
+            "amount": _audit_amount(operation.amount),
             "order_id": operation.order_id,
         },
     )
@@ -287,7 +306,7 @@ async def create_operation_from_text(
 ) -> OperationDTO:
     """Parses operation from free text and stores normalized record."""
 
-    await _validate_order_access(db, order_id=payload.order_id, user=current_user)
+    await _validate_order_access(db, order_id=payload.order_id, user=current_user, require_open=True)
     parsed = await parse_operation(payload.text.strip())
     if not parsed:
         raise HTTPException(
@@ -329,7 +348,7 @@ async def create_operation_from_text(
         entity_id=operation.id,
         details={
             "operation_type": operation.operation_type,
-            "amount": operation.amount,
+            "amount": _audit_amount(operation.amount),
             "order_id": operation.order_id,
             "source": "text",
         },
@@ -359,13 +378,14 @@ async def update_operation(
     if missing_fields:
         raise _validation_error(missing_fields)
 
-    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user)
+    await _ensure_operation_order_mutable(db, operation, current_user)
+    await _validate_order_access(db, order_id=normalized.get("order_id"), user=current_user, require_open=True)
 
     before = {
         "date": operation.date,
         "operation_type": operation.operation_type,
         "description": operation.description,
-        "amount": operation.amount,
+        "amount": _audit_amount(operation.amount),
         "order_id": operation.order_id,
     }
 
@@ -394,7 +414,7 @@ async def update_operation(
                 "date": operation.date,
                 "operation_type": operation.operation_type,
                 "description": operation.description,
-                "amount": operation.amount,
+                "amount": _audit_amount(operation.amount),
                 "order_id": operation.order_id,
             },
         },
@@ -419,6 +439,7 @@ async def delete_operation(
     if not operation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
 
+    await _ensure_operation_order_mutable(db, operation, current_user)
     operation.deleted_at = datetime.now()
     operation.deleted_by_user_id = current_user.id
     await add_audit_log(
@@ -429,7 +450,7 @@ async def delete_operation(
         entity_id=operation.id,
         details={
             "operation_type": operation.operation_type,
-            "amount": operation.amount,
+            "amount": _audit_amount(operation.amount),
             "order_id": operation.order_id,
         },
     )

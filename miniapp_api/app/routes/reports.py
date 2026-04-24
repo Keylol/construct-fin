@@ -8,7 +8,7 @@ from io import StringIO
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from miniapp_api.app.config import get_settings
@@ -31,8 +31,6 @@ async def _load_operations(
     normalized_days = max(1, min(int(days or 30), 365))
     period_start = resolve_period_start(normalized_days)
     period_end = date.today().isoformat()
-    period_start_date = date.fromisoformat(period_start)
-    period_end_date = date.fromisoformat(period_end)
 
     stmt = (
         select(
@@ -47,15 +45,8 @@ async def _load_operations(
         .outerjoin(MiniOrder, MiniOperation.order_id == MiniOrder.id)
         .where(
             MiniOperation.deleted_at.is_(None),
-            or_(
-                and_(MiniOperation.date >= period_start, MiniOperation.date <= period_end),
-                and_(
-                    MiniOperation.operation_type == "расход",
-                    MiniOperation.order_id.is_(None),
-                    func.date(MiniOperation.created_at) >= period_start_date,
-                    func.date(MiniOperation.created_at) <= period_end_date,
-                ),
-            ),
+            MiniOperation.date >= period_start,
+            MiniOperation.date <= period_end,
         )
         .order_by(desc(MiniOperation.id))
     )
@@ -63,18 +54,14 @@ async def _load_operations(
     rows = await db.execute(stmt)
     operations = [
         {
-            "date": (
-                created_at.date().isoformat()
-                if str(operation_type or "").strip().lower() == "расход" and order_id is None and created_at
-                else date_value
-            ),
+            "date": date_value,
             "operation_type": operation_type,
             "amount": amount,
             "expense_category": expense_category,
             "order_id": order_id,
             "order_status": str(order_status or ""),
         }
-        for date_value, operation_type, amount, expense_category, order_id, order_status, created_at in rows.all()
+        for date_value, operation_type, amount, expense_category, order_id, order_status, _created_at in rows.all()
     ]
     return operations, period_start, period_end, normalized_days
 
@@ -169,22 +156,13 @@ async def export_report_csv(
     requested_days = days or int(settings.miniapp_report_default_days or 7)
     period_start = resolve_period_start(requested_days)
     period_end = date.today().isoformat()
-    period_start_date = date.fromisoformat(period_start)
-    period_end_date = date.fromisoformat(period_end)
 
     stmt = (
         select(MiniOperation)
         .where(
             MiniOperation.deleted_at.is_(None),
-            or_(
-                and_(MiniOperation.date >= period_start, MiniOperation.date <= period_end),
-                and_(
-                    MiniOperation.operation_type == "расход",
-                    MiniOperation.order_id.is_(None),
-                    func.date(MiniOperation.created_at) >= period_start_date,
-                    func.date(MiniOperation.created_at) <= period_end_date,
-                ),
-            ),
+            MiniOperation.date >= period_start,
+            MiniOperation.date <= period_end,
         )
         .order_by(desc(MiniOperation.id))
     )
@@ -214,9 +192,7 @@ async def export_report_csv(
         writer.writerow(
             [
                 item.id,
-                item.created_at.date().isoformat()
-                if str(item.operation_type or "").strip().lower() == "расход" and item.order_id is None and item.created_at
-                else item.date,
+                item.date,
                 item.operation_type,
                 item.description,
                 item.amount,
