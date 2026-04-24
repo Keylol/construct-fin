@@ -129,8 +129,6 @@ button {
   box-sizing: border-box;
 }
 
-.panel,
-.step-card,
 .preview-card,
 .panel-soft,
 .feature-panel,
@@ -138,11 +136,22 @@ button {
 .hero-metric-card,
 .order-hero-shell,
 .stats-banner,
-.item-card,
 .metric-card,
 .timeline-item,
 .soft-note {
   border: 1px solid var(--surface-border);
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+.panel,
+.step-card,
+.item-card {
+  border: none;
+  border-bottom: 1px solid var(--surface-border);
   border-radius: 0;
   background: var(--surface);
   box-shadow: none;
@@ -1260,7 +1269,6 @@ button:disabled {
   gap: 8px;
   min-height: 44px;
   padding: 8px 14px;
-  overflow: hidden;
 }
 
 .expense-date {
@@ -1321,7 +1329,6 @@ button:disabled {
 
 .stats-kpi-card {
   background: var(--surface);
-  border: 1px solid var(--surface-border);
   border-left: 3px solid var(--hover-color);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(22, 38, 64, 0.10);
@@ -1546,7 +1553,6 @@ button:disabled {
 
   .hero-metric-card {
     border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(22, 38, 64, 0.08);
   }
 
   .compact-hero-metric {
@@ -1660,4 +1666,62 @@ button:disabled {
   .purchase-form-card form {
     max-width: 100%;
   }
+}
+
+/* ── Three-dot expense menu ─────────────────────────────────── */
+.expense-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.expense-menu-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  padding: 0;
+}
+
+.expense-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: white;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  min-width: 140px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.expense-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  margin: 0;
+  text-transform: none;
+  font-weight: 400;
+  color: var(--main-color);
+}
+
+.expense-dropdown-item:hover {
+  background: var(--main-background);
+}
+
+.expense-dropdown-item.danger {
+  color: var(--danger);
 }

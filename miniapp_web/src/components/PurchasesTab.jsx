@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { t } from "../i18n";
 import { formatAmount, normalizeAmountInput } from "../utils";
 
@@ -43,6 +44,13 @@ export function PurchasesTab({
   handleOpenReceipt,
   handleDeleteReceipt,
 }) {
+  const [openMenuId, setOpenMenuId] = useState(null);
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [openMenuId]);
   return (
     <section className="panel purchases-panel premium-panel">
       <div className="section-intro">
@@ -52,11 +60,6 @@ export function PurchasesTab({
       <section className="step-card stage-card purchase-form-card">
         <div className="section-heading compact-heading">
           <h3>{expenseForm.id ? t(lang, "editOperation") : t(lang, "savePurchase")}</h3>
-          {businessExpensesTotal > 0 ? (
-            <div className="metrics-ribbon compact-inline-ribbon">
-              <span>{formatAmount(businessExpensesTotal)} ₽</span>
-            </div>
-          ) : null}
         </div>
         <form onSubmit={handleSaveExpense}>
           <fieldset className="form-fieldset" disabled={!hasAuth || isSavingExpense}>
@@ -225,24 +228,35 @@ export function PurchasesTab({
                     {formatAmount(item.amount)} ₽
                     {item.has_receipt ? <span className="expense-receipt-icon" title={t(lang, "receiptAttachedBadge")}>🧾</span> : null}
                   </span>
-                </div>
-                <div className="expense-row-actions compact-row">
-                  <button type="button" className="small-button secondary" onClick={() => startExpenseEdit(item)}>
-                    {t(lang, "editOperation")}
-                  </button>
-                  {item.has_receipt && handleOpenReceipt ? (
-                    <button type="button" className="small-button secondary" onClick={() => handleOpenReceipt(item.id)}>
-                      {t(lang, "receiptOpen")}
+                  <div className="expense-menu-wrap">
+                    <button
+                      type="button"
+                      className="expense-menu-btn"
+                      onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
+                    >
+                      ···
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="small-button secondary danger-button"
-                    onClick={() => handleDeleteOperation(item.id)}
-                    disabled={deletingOperationId === item.id}
-                  >
-                    {deletingOperationId === item.id ? t(lang, "deleting") : t(lang, "deleteOperation")}
-                  </button>
+                    {openMenuId === item.id ? (
+                      <div className="expense-dropdown">
+                        <button type="button" className="expense-dropdown-item" onClick={() => { startExpenseEdit(item); setOpenMenuId(null); }}>
+                          {t(lang, "editOperation")}
+                        </button>
+                        {item.has_receipt && handleOpenReceipt ? (
+                          <button type="button" className="expense-dropdown-item" onClick={() => { handleOpenReceipt(item.id); setOpenMenuId(null); }}>
+                            {t(lang, "receiptOpen")}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="expense-dropdown-item danger"
+                          onClick={() => { handleDeleteOperation(item.id); setOpenMenuId(null); }}
+                          disabled={deletingOperationId === item.id}
+                        >
+                          {deletingOperationId === item.id ? t(lang, "deleting") : t(lang, "deleteOperation")}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ))}
