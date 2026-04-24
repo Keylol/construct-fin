@@ -51,6 +51,8 @@ html,
 body,
 #root {
   min-height: 100%;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -117,11 +119,14 @@ button {
 }
 
 .app {
+  width: 100%;
   max-width: 1068px;
   margin: 0 auto;
   padding: 10px 14px 84px;
   display: grid;
   gap: 10px;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .panel,
@@ -141,6 +146,8 @@ button {
   border-radius: 0;
   background: var(--surface);
   box-shadow: none;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 .panel,
@@ -258,7 +265,7 @@ button {
 }
 
 .hero-metrics-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 6px;
 }
 
@@ -351,7 +358,7 @@ button {
 
 .sales-workboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
 }
 
@@ -1076,6 +1083,8 @@ button:disabled {
   display: grid;
   justify-items: center;
   gap: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tab-button.active {
@@ -1151,6 +1160,7 @@ button:disabled {
   .brand-hero,
   .purchases-layout,
   .stats-hero,
+  .sales-overview-grid,
   .hero-metrics-grid,
   .order-hero-ribbon,
   .order-route-strip,
@@ -1375,8 +1385,15 @@ button:disabled {
 .donut-canvas-wrap {
   position: relative;
   width: 160px;
-  height: 160px;
+  max-width: 100%;
+  aspect-ratio: 1;
   flex-shrink: 0;
+}
+
+.donut-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .donut-center {
@@ -1450,6 +1467,9 @@ button:disabled {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cat-table th {
@@ -1504,13 +1524,24 @@ button:disabled {
 }
 
 @media (max-width: 480px) {
-  /* Hero metrics: 2-column grid, third card spans full width */
-  .hero-metrics-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .app {
+    padding: 6px 8px 80px;
   }
 
-  .hero-metrics-grid .hero-metric-card:last-child {
-    grid-column: 1 / -1;
+  .hero-metrics-grid,
+  .stats-kpi-grid,
+  .form-grid-two,
+  .form-grid-three,
+  .sales-mode-switch,
+  .order-section-tabs,
+  .owner-tools-grid,
+  .sales-workboard,
+  .order-list-grid,
+  .metrics-grid,
+  .order-summary-strip,
+  .order-hero-ribbon,
+  .order-route-strip {
+    grid-template-columns: 1fr;
   }
 
   .hero-metric-card {
@@ -1527,7 +1558,6 @@ button:disabled {
     font-size: 20px;
   }
 
-  /* Section headings */
   .section-intro h2 {
     font-size: 18px;
     overflow: hidden;
@@ -1535,12 +1565,28 @@ button:disabled {
     white-space: nowrap;
   }
 
-  /* Sales workboard: single column */
-  .sales-workboard {
+  .donut-wrap {
     grid-template-columns: 1fr;
+    justify-items: center;
   }
 
-  /* Tap targets */
+  .bottom-tabs {
+    width: calc(100% - 8px);
+  }
+
+  .section-intro,
+  .section-heading,
+  .compact-heading,
+  .app-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .section-intro-actions,
+  .period-switch {
+    width: 100%;
+  }
+
   .small-button {
     min-height: 44px;
     padding: 10px 16px;
@@ -1549,7 +1595,6 @@ button:disabled {
     justify-content: center;
   }
 
-  /* Form inputs — prevent iOS zoom (requires 16px) */
   input,
   select,
   textarea {
@@ -1563,7 +1608,6 @@ button:disabled {
     min-height: auto;
   }
 
-  /* Purchase form submit button */
   .purchases-panel .row-actions > button[type="submit"] {
     width: 100%;
     min-height: 48px;
