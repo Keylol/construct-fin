@@ -41,6 +41,11 @@
   --success: #00c66e;
   --font-family: "Roboto", sans-serif;
   --second-family: "Roboto Flex", sans-serif;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius:    8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
 * {
@@ -140,7 +145,7 @@ button {
 .timeline-item,
 .soft-note {
   border: 1px solid var(--surface-border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--surface);
   box-shadow: none;
   overflow-x: hidden;
@@ -377,6 +382,7 @@ button {
   padding: 12px;
   background: var(--main-background);
   border: 1px solid transparent;
+  border-radius: var(--radius);
 }
 
 .sales-action-card.accent {
@@ -419,6 +425,7 @@ button {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
   background: #fff;
 }
 
@@ -518,6 +525,7 @@ button {
 
 .order-summary-card {
   border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
   background: var(--main-background);
   padding: 7px 8px;
   display: grid;
@@ -626,14 +634,23 @@ label {
 
 input,
 textarea,
-select,
-button {
+select {
   width: 100%;
   border-radius: 0;
   border: 1px solid var(--surface-border);
   padding: 10px 12px;
   background: #fff;
   color: var(--main-color);
+}
+
+button {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-border);
+  padding: 10px 12px;
+  background: #fff;
+  color: var(--main-color);
+  min-height: 44px;
 }
 
 textarea {
@@ -653,14 +670,15 @@ button {
   color: var(--main-color);
   font-weight: 700;
   text-transform: uppercase;
+  border-radius: var(--radius-md);
+  min-height: 44px;
 }
 
 button.secondary,
-.tab-button,
 .small-button.secondary {
-  background: #fff;
+  background: transparent;
   color: var(--main-color);
-  border: 1px solid var(--surface-border);
+  border: 1.5px solid var(--surface-border);
 }
 
 button:disabled {
@@ -698,6 +716,7 @@ button:disabled {
 .payment-toggle-card {
   padding: 8px 10px 10px;
   border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
   background: #fff;
 }
 
@@ -754,6 +773,7 @@ button:disabled {
   min-width: 84px;
   padding: 10px 12px;
   border: 1px solid var(--main-color);
+  border-radius: var(--radius);
   background: #fff;
   color: var(--main-color);
   display: grid;
@@ -807,6 +827,7 @@ button:disabled {
   min-height: 34px;
   padding: 7px 10px;
   font-size: 11px;
+  border-radius: var(--radius-md);
 }
 
 .active-switch {
@@ -816,9 +837,9 @@ button:disabled {
 }
 
 .danger-button {
-  background: #fff !important;
+  background: transparent !important;
   color: var(--danger) !important;
-  border: 1px solid var(--danger) !important;
+  border-color: transparent !important;
 }
 
 .wrap-actions {
@@ -890,6 +911,7 @@ button:disabled {
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
   background: #f8fbff;
 }
 
@@ -1072,7 +1094,8 @@ button:disabled {
   z-index: 50;
   padding: 6px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
-  border: 1px solid var(--surface-border);
+  border: none;
+  border-top: 1px solid var(--surface-border);
 }
 
 .tabs-switcher {
@@ -1086,20 +1109,22 @@ button:disabled {
   margin: 0;
   min-height: 48px;
   padding: 6px 8px;
-  background: #fff;
-  border: 1px solid var(--surface-border);
+  background: transparent;
+  border: none;
   color: var(--muted);
   display: grid;
   justify-items: center;
   gap: 2px;
   min-width: 0;
   overflow: hidden;
+  border-radius: var(--radius-md);
 }
 
 .tab-button.active {
-  background: rgba(1, 174, 255, 0.12);
-  border-color: var(--hover-color);
+  background: transparent;
+  border: none;
   color: var(--main-color);
+  font-weight: 700;
 }
 
 .tab-label {
@@ -1110,6 +1135,7 @@ button:disabled {
 
 .status-banner {
   border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
   padding: 8px 10px;
   font-size: 12px;
 }
@@ -1282,13 +1308,14 @@ button:disabled {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
   color: #fff;
   white-space: nowrap;
   letter-spacing: 0.02em;
+  filter: saturate(0.85);
 }
 
 .expense-desc {
@@ -1329,9 +1356,9 @@ button:disabled {
 
 .stats-kpi-card {
   background: var(--surface);
-  border-left: 3px solid var(--hover-color);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(22, 38, 64, 0.10);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  box-shadow: none;
   padding: 14px 16px;
   display: grid;
   gap: 4px;
@@ -1358,22 +1385,13 @@ button:disabled {
 }
 
 .stats-section-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--muted);
-  margin: 4px 0;
-}
-
-.stats-section-title::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--surface-border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  margin-top: 4px;
 }
 
 /* Donut chart */
@@ -1552,7 +1570,7 @@ button:disabled {
   }
 
   .hero-metric-card {
-    border-radius: 10px;
+    border-radius: var(--radius-md);
   }
 
   .compact-hero-metric {
@@ -1695,8 +1713,8 @@ button:disabled {
   top: 100%;
   background: white;
   border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
   min-width: 140px;
   z-index: 100;
   overflow: hidden;
