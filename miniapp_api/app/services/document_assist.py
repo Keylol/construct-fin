@@ -12,7 +12,7 @@ def _average_confidence(items: list[dict]) -> float | None:
     confidences = []
     for item in items:
         try:
-            confidences.append(float(item.get("confidence") or 0.0))
+            confidences.append(float(item.get("confidence") or 0))
         except Exception:  # noqa: BLE001
             continue
     if not confidences:
@@ -28,13 +28,13 @@ def _spec_like(document: MiniDocument) -> bool:
 
 def _generic_receipt_response(finance: dict[str, float]) -> dict:
     actions = []
-    if float(finance.get("purchase_cost") or 0.0) <= 0.0:
+    if float(finance.get("purchase_cost") or 0) <= 0.0:
         actions.append("Добавьте закупку к заказу")
     else:
         actions.append("Сверьте сумму закупки с файлом")
-    if float(finance.get("sale_amount") or 0.0) <= 0.0:
+    if float(finance.get("sale_amount") or 0) <= 0.0:
         actions.append("Проверьте цену продажи")
-    if float(finance.get("balance_due") or 0.0) > 0.01:
+    if float(finance.get("balance_due") or 0) > 0.01:
         actions.append("После сверки проверьте доплату по заказу")
     return {
         "mode": "receipt",
@@ -53,7 +53,7 @@ def _generic_receipt_response(finance: dict[str, float]) -> dict:
 
 def _generic_warranty_response(finance: dict[str, float]) -> dict:
     actions = ["Проверьте модель и серийный номер вручную", "Оставьте файл в заказе как гарантийный документ"]
-    if float(finance.get("sale_amount") or 0.0) <= 0.0:
+    if float(finance.get("sale_amount") or 0) <= 0.0:
         actions.insert(0, "Проверьте цену продажи")
     return {
         "mode": "warranty",
@@ -112,9 +112,9 @@ async def build_document_assist_payload(
 
         if customer_total:
             highlights.append(f"Найдена сумма продажи: {int(float(customer_total)):,} ₽".replace(",", " "))
-            if float(finance.get("sale_amount") or 0.0) <= 0.0:
+            if float(finance.get("sale_amount") or 0) <= 0.0:
                 actions.append("Проверьте и внесите цену продажи из спецификации")
-            elif abs(float(finance.get("sale_amount") or 0.0) - float(customer_total)) > 0.01:
+            elif abs(float(finance.get("sale_amount") or 0) - float(customer_total)) > 0.01:
                 actions.append("Сверьте сумму продажи со спецификацией")
         else:
             actions.append("Проверьте итоговую цену продажи вручную")
@@ -128,9 +128,9 @@ async def build_document_assist_payload(
                 highlights.append(f"Телефон в документе отличается: {parsed_order_phone}")
                 actions.append("Сверьте телефон в документе с текущим заказом")
 
-        if float(finance.get("purchase_cost") or 0.0) <= 0.0:
+        if float(finance.get("purchase_cost") or 0) <= 0.0:
             actions.append("После проверки добавьте закупки по комплектующим")
-        if float(finance.get("balance_due") or 0.0) > 0.01:
+        if float(finance.get("balance_due") or 0) > 0.01:
             actions.append("После заполнения проверьте остаток к доплате")
 
         if items:
@@ -150,7 +150,7 @@ async def build_document_assist_payload(
                 {
                     "component_name": str(item.get("component_name") or "").strip(),
                     "component_value": str(item.get("component_value") or "").strip(),
-                    "confidence": float(item.get("confidence") or 0.0) if item.get("confidence") is not None else None,
+                    "confidence": float(item.get("confidence") or 0) if item.get("confidence") is not None else None,
                 }
                 for item in items
                 if str(item.get("component_name") or "").strip() and str(item.get("component_value") or "").strip()

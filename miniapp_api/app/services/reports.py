@@ -46,7 +46,7 @@ def build_summary(
 
     for item in period_operations:
         op_type = str(item.get("operation_type") or "").strip().lower()
-        amount = float(item.get("amount") or 0.0)
+        amount = float(item.get("amount") or 0)
         order_id = item.get("order_id")
         order_status = order_status_by_id.get(int(order_id or 0), str(item.get("order_status") or "").strip().lower())
         is_closed_order = order_status == "closed"
@@ -87,15 +87,15 @@ def build_summary(
     for order in orders:
         order_id = int(order.get("id") or 0)
         finance = order_finance.get(order_id, {})
-        sale_amount = float(finance.get("sale_amount") or 0.0)
+        sale_amount = float(finance.get("sale_amount") or 0)
         if sale_amount <= 0:
             continue
         if str(order.get("status") or "").strip().lower() != "open":
             continue
 
-        paid_amount = float(finance.get("paid_amount") or 0.0)
-        purchase_cost = float(finance.get("purchase_cost") or 0.0)
-        recognized_cogs = float(finance.get("recognized_cogs") or 0.0)
+        paid_amount = float(finance.get("paid_amount") or 0)
+        purchase_cost = float(finance.get("purchase_cost") or 0)
+        recognized_cogs = float(finance.get("recognized_cogs") or 0)
 
         open_orders_count += 1
         open_orders_revenue += sale_amount
@@ -136,7 +136,7 @@ def build_timeseries(operations: list[dict]) -> list[dict]:
             continue
 
         op_type = str(item.get("operation_type") or "").strip().lower()
-        amount = float(item.get("amount") or 0.0)
+        amount = float(item.get("amount") or 0)
         order_status = str(item.get("order_status") or "").strip().lower()
         is_closed_order = order_status == "closed"
         if op_type in REVENUE_OPERATION_TYPES and is_closed_order:

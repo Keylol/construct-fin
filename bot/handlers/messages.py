@@ -484,7 +484,11 @@ async def _handle_close_order_intent(update: Update, context: ContextTypes.DEFAU
     context.user_data.pop(ACTIVE_CLIENT_ID_KEY, None)
     context.user_data.pop(ACTIVE_ORDER_PHONE_KEY, None)
     if closed:
-        await update.message.reply_text(f"Заказ #{order_id} закрыт.")
+        await update.message.reply_text(
+            f"Заказ #{order_id} помечен закрытым в боте.\n\n"
+            "Для финансового закрытия (продажа / оплата / себестоимость) — "
+            "используйте Мини-Приложение."
+        )
     else:
         await update.message.reply_text("Заказ уже был закрыт или не найден.")
 

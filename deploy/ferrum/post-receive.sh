@@ -7,6 +7,8 @@
 #   chmod +x /srv/construct/repo.git/hooks/post-receive
 
 set -euo pipefail
+# set -euo pipefail is intentional: any failed backup, preflight, or migration
+# command aborts the deploy immediately. No silent failures in this hook.
 
 APP_DIR=/srv/construct/app
 REPO_DIR=/srv/construct/repo.git

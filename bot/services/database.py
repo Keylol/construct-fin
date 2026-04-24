@@ -420,7 +420,12 @@ async def create_order(
 
 
 async def close_order(order_id: int, closed_by: str) -> bool:
-    """Closes order by id."""
+    """Closes order by id in the bot's SQLite DB (bot.db).
+
+    LEGACY: sets status='closed' only. Does NOT touch the miniapp PostgreSQL
+    database and has NO financial invariant checks (sale/payment/COGS).
+    Use the Mini App /orders/{id}/finalize endpoint for proper order closure.
+    """
     async with _get_db() as db:
         cursor = await db.execute(
             """

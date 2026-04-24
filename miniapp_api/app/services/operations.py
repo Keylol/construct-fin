@@ -47,17 +47,17 @@ def _normalize_date(raw_value: str | None) -> tuple[str, bool]:
         return value[:10], True
 
 
-def _normalize_amount(raw_value: Any) -> float:
+def _normalize_amount(raw_value: Any) -> Decimal:
     value = raw_value
     if isinstance(value, str):
         value = value.replace(" ", "").replace(",", ".").strip()
     try:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
-        return 0.0
+        return Decimal("0")
     if not amount.is_finite():
-        return 0.0
-    return float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        return Decimal("0")
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def normalize_operation_payload(
@@ -132,7 +132,7 @@ def validate_operation_payload(payload: dict[str, Any]) -> list[str]:
     if operation_type not in ALL_OPERATION_TYPES:
         missing.append("operation_type")
 
-    amount = float(payload.get("amount") or 0.0)
+    amount = Decimal(str(payload.get("amount") or 0))
     if operation_type in SIGNED_AMOUNT_OPERATION_TYPES:
         if abs(amount) <= 0:
             missing.append("amount")

@@ -957,7 +957,7 @@ def _replace_sheet_contents(worksheet: gspread.Worksheet, rows: list[list], min_
     col_count = max(max((len(row) for row in rows), default=1), min_cols)
     worksheet.clear()
     worksheet.resize(rows=row_count, cols=col_count)
-    worksheet.update("A1", rows, value_input_option="USER_ENTERED")
+    worksheet.update(rows, "A1", value_input_option="USER_ENTERED")
 
 
 def _sheet_has_user_data(worksheet: gspread.Worksheet) -> bool:
@@ -1493,7 +1493,7 @@ def _apply_dashboard_controls(
     ]
     try:
         spreadsheet.batch_update({"requests": requests})
-        worksheet.update("A1:C1", [["Dashboard", "Период", selected_period]], value_input_option="USER_ENTERED")
+        worksheet.update([["Dashboard", "Период", selected_period]], "A1:C1", value_input_option="USER_ENTERED")
     except Exception:
         logger.warning("Could not apply dashboard controls", exc_info=True)
 

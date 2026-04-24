@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import hmac
 import json
@@ -55,6 +56,10 @@ def _check(name: str, fn):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-cleanup", dest="cleanup", action="store_false", default=True,
+                        help="Keep smoke test order in DB after run.")
+    args = parser.parse_args()
     load_dotenv()
 
     api_base = os.getenv("SMOKE_API_BASE", "http://127.0.0.1:8080/api/v1").rstrip("/")
@@ -207,6 +212,13 @@ def main() -> int:
 
         checks_ok.append(_check("Finalize order atomically", check_finalize_order))
         checks_ok.append(_check("Reports summary + export", check_reports))
+
+        if args.cleanup and order_id:
+            def _cleanup():
+                r = client.delete(f"{api_base}/orders/{order_id}", headers=headers)
+                if r.status_code not in (200, 204, 404):
+                    raise RuntimeError(f"cleanup failed {r.status_code}: {r.text}")
+            checks_ok.append(_check("Cleanup: delete smoke order", _cleanup))
 
         time.sleep(0.1)
         if all(checks_ok):

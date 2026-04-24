@@ -36,11 +36,11 @@ def _build_review_flags(
         flags.append("Заказ переоткрывали")
     if str(order.status or "").strip().lower() == "open":
         flags.append("Заказ не закрыт")
-    if float(finance.get("balance_due") or 0.0) > 0.01:
+    if float(finance.get("balance_due") or 0) > 0.01:
         flags.append("Есть недоплата")
     if documents_count <= 0:
         flags.append("Нет файлов по заказу")
-    if op_type == "закупка" and float(finance.get("sale_amount") or 0.0) <= 0.0:
+    if op_type == "закупка" and float(finance.get("sale_amount") or 0) <= 0.0:
         flags.append("Нет цены продажи")
     return flags
 
@@ -139,7 +139,7 @@ async def export_miniapp_operations_for_sheets(db: AsyncSession) -> list[dict]:
                 "date": str(operation.date or ""),
                 "operation_type": str(operation.operation_type or ""),
                 "description": str(operation.description or ""),
-                "amount": float(operation.amount or 0.0),
+                "amount": float(operation.amount or 0),
                 "supplier": str(operation.supplier or ""),
                 "expense_category": str(operation.expense_category or ""),
                 "expense_subcategory": str(operation.expense_subcategory or ""),

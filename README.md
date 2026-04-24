@@ -68,6 +68,17 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
+### Smoke test (integration, требует живой сервер)
+
+```bash
+python scripts/smoke_miniapp_release.py           # создаёт и удаляет тестовые данные
+python scripts/smoke_miniapp_release.py --no-cleanup  # оставить данные для отладки
+```
+
+Env vars: `SMOKE_API_BASE` (default: `http://127.0.0.1:8080/api/v1`), `MINIAPP_URL`,
+`TELEGRAM_BOT_TOKEN`, `OWNER_USER_IDS`.
+Ручной запуск через GitHub Actions → **Smoke** workflow.
+
 ## Автозапуск через launchd (macOS)
 
 Установить и сразу запустить сервис:

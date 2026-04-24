@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile, status
@@ -140,7 +141,10 @@ async def _ensure_operation_order_mutable(db: AsyncSession, operation: MiniOpera
 
 
 def _audit_amount(value: object) -> float:
-    return round(float(value or 0.0), 2)
+    try:
+        return float(Decimal(str(value or 0)).quantize(Decimal("0.01")))
+    except Exception:
+        return 0.0
 
 
 def _to_preview_payload(normalized: dict) -> OperationManualPreviewRequest:
@@ -253,7 +257,7 @@ async def create_manual_operation(
         date=str(normalized["date"]),
         operation_type=str(normalized["operation_type"]),
         description=str(normalized["description"]),
-        amount=float(normalized["amount"]),
+        amount=normalized["amount"],
         supplier=normalized.get("supplier"),
         expense_category=normalized.get("expense_category"),
         expense_subcategory=normalized.get("expense_subcategory"),
@@ -313,7 +317,7 @@ async def create_operation_from_text(
         date=str(normalized["date"]),
         operation_type=str(normalized["operation_type"]),
         description=str(normalized["description"]),
-        amount=float(normalized["amount"]),
+        amount=normalized["amount"],
         supplier=normalized.get("supplier"),
         expense_category=normalized.get("expense_category"),
         expense_subcategory=normalized.get("expense_subcategory"),
@@ -379,7 +383,7 @@ async def update_operation(
     operation.date = str(normalized["date"])
     operation.operation_type = str(normalized["operation_type"])
     operation.description = str(normalized["description"])
-    operation.amount = float(normalized["amount"])
+    operation.amount = normalized["amount"]
     operation.supplier = normalized.get("supplier")
     operation.expense_category = normalized.get("expense_category")
     operation.expense_subcategory = normalized.get("expense_subcategory")

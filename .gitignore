@@ -28,6 +28,10 @@ data/*.pid
 # Frontend build artifacts
 miniapp_web/node_modules/
 
+# NOTE: miniapp_web/dist/ is intentionally NOT ignored.
+# Production server has no Node.js — pre-built dist is committed and served directly.
+# CI verifies dist is current via the stale-dist check in ci.yml.
+
 # Local-only directories
 .DS_Store
 miniapp_web/.DS_Store

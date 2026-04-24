@@ -44,3 +44,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Check dist is not stale
+        working-directory: ${{ github.workspace }}
+        run: |
+          git diff --quiet miniapp_web/dist/ || {
+            echo "ERROR: miniapp_web/dist/ is stale — run npm run build and commit."
+            exit 1
+          }

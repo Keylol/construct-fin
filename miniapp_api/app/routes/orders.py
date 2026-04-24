@@ -20,7 +20,7 @@ from miniapp_api.app.services.sheets_sync import sync_sheets_background
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
-MONEY_EPSILON = 0.01
+MONEY_EPSILON = Decimal("0.01")
 
 
 async def _validate_order_access(
@@ -40,17 +40,17 @@ async def _validate_order_access(
     return order
 
 
-def _round_money(value: float | int | None) -> float:
+def _round_money(value: float | int | Decimal | None) -> Decimal:
     try:
-        amount = Decimal(str(value or 0.0))
+        amount = Decimal(str(value or 0))
     except (InvalidOperation, TypeError, ValueError):
-        return 0.0
+        return Decimal("0")
     if not amount.is_finite():
-        return 0.0
-    return float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        return Decimal("0")
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _money_delta(target: float, current: float) -> float:
+def _money_delta(target: float | Decimal, current: float | Decimal) -> Decimal:
     return _round_money(_round_money(target) - _round_money(current))
 
 
@@ -90,7 +90,7 @@ def _append_order_operation(
     user_id: int,
     operation_type: str,
     description: str,
-    amount: float,
+    amount: float | Decimal,
     payment_account: str | None = None,
     payment_method: str | None = None,
 ) -> None:
@@ -460,9 +460,9 @@ async def finalize_order(
         entity_type="order",
         entity_id=order.id,
         details={
-            "sale_amount": sale_amount,
-            "planned_paid_amount": _round_money(planned_paid_amount),
-            "purchase_cost": purchase_cost,
+            "sale_amount": float(sale_amount),
+            "planned_paid_amount": float(_round_money(planned_paid_amount)),
+            "purchase_cost": float(purchase_cost),
             "closed": should_close_order,
         },
     )

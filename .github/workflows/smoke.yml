@@ -1,0 +1,29 @@
+name: Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: "API base URL"
+        required: true
+        default: "http://127.0.0.1:8080/api/v1"
+      miniapp_url:
+        description: "Public Mini App URL"
+        required: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt -r miniapp_api/requirements.txt
+      - run: python scripts/smoke_miniapp_release.py
+        env:
+          SMOKE_API_BASE: ${{ inputs.api_base }}
+          MINIAPP_URL: ${{ inputs.miniapp_url }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OWNER_USER_IDS: ${{ secrets.OWNER_USER_IDS }}
