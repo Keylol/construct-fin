@@ -1127,16 +1127,7 @@ export function App() {
             <button type="button" className="small-button secondary header-action-button" onClick={handleTelegramAuth} disabled={isBootstrapping}>
               {isBootstrapping ? "…" : "↻"}
             </button>
-          ) : (
-            <button
-              type="button"
-              className="small-button secondary header-action-button"
-              onClick={handleRefreshData}
-              disabled={isBootstrapping || isReportsLoading || isOrdersLoading || isOperationsLoading}
-            >
-              {t(lang, "tgMainRefreshShort")}
-            </button>
-          )}
+          ) : null}
         </div>
         <div className="hero-metrics-grid compact-summary-row">
           <HeroMetricCard label={t(lang, "openOrdersMetric")} value={hasAuth ? String(openOrders.length) : "—"} note={t(lang, "heroOrdersNote")} />
