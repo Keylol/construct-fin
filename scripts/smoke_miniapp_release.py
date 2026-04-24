@@ -135,15 +135,16 @@ def main() -> int:
 
         checks_ok.append(_check("Create order", check_order_create))
 
-        def check_preview_and_save():
+        def check_purchase_preview_and_save():
             preview_res = client.post(
                 f"{api_base}/operations/preview/manual",
                 headers=headers,
                 json={
-                    "operation_type": "продажа",
-                    "description": "Smoke sale",
-                    "amount": 12345,
+                    "operation_type": "закупка",
+                    "description": "Smoke purchase",
+                    "amount": 4000,
                     "order_id": order_id,
+                    "payment_account": "ИП Каменский АБ",
                 },
             )
             preview_res.raise_for_status()
@@ -154,7 +155,7 @@ def main() -> int:
             save_res = client.post(f"{api_base}/operations/manual", headers=headers, json=preview["operation"])
             save_res.raise_for_status()
 
-        checks_ok.append(_check("Preview + save operation", check_preview_and_save))
+        checks_ok.append(_check("Preview + save purchase", check_purchase_preview_and_save))
 
         def check_reports():
             res = client.get(f"{api_base}/reports/summary?days=7", headers=headers)
@@ -167,8 +168,6 @@ def main() -> int:
             export.raise_for_status()
             if "text/csv" not in str(export.headers.get("content-type", "")):
                 raise RuntimeError("csv content-type missing")
-
-        checks_ok.append(_check("Reports summary + export", check_reports))
 
         def check_documents():
             files = {"file": ("smoke.pdf", b"%PDF-1.4 smoke", "application/pdf")}
@@ -184,14 +183,30 @@ def main() -> int:
 
         checks_ok.append(_check("Documents upload + list", check_documents))
 
-        def check_close_order():
-            res = client.post(f"{api_base}/orders/{order_id}/close", headers=headers)
+        def check_finalize_order():
+            res = client.post(
+                f"{api_base}/orders/{order_id}/finalize",
+                headers=headers,
+                json={"sale_amount": 12345},
+            )
             res.raise_for_status()
             payload = res.json()
             if str(payload.get("status", "")).lower() != "closed":
                 raise RuntimeError(f"unexpected status: {payload}")
+            expected_amounts = {
+                "sale_amount": 12345.0,
+                "paid_amount": 12345.0,
+                "purchase_cost": 4000.0,
+                "recognized_cogs": 4000.0,
+                "balance_due": 0.0,
+            }
+            for key, expected in expected_amounts.items():
+                actual = float(payload.get(key) or 0.0)
+                if abs(actual - expected) > 0.01:
+                    raise RuntimeError(f"unexpected {key}: expected={expected}, actual={actual}, payload={payload}")
 
-        checks_ok.append(_check("Close order", check_close_order))
+        checks_ok.append(_check("Finalize order atomically", check_finalize_order))
+        checks_ok.append(_check("Reports summary + export", check_reports))
 
         time.sleep(0.1)
         if all(checks_ok):

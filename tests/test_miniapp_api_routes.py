@@ -160,6 +160,23 @@ def test_owner_end_to_end_flow(miniapp_test_client, monkeypatch):
     assert "оплата" in finalized_types
     assert "себестоимость" in finalized_types
 
+    retry_finalize = miniapp_test_client.post(
+        f"/api/v1/orders/{order_id}/finalize",
+        headers=headers,
+        json={"sale_amount": 55000},
+    )
+    assert retry_finalize.status_code == 200, retry_finalize.text
+    retry_operations = miniapp_test_client.get(f"/api/v1/operations?order_id={order_id}", headers=headers)
+    assert retry_operations.status_code == 200, retry_operations.text
+    assert len(retry_operations.json()) == len(finalized_operations.json())
+
+    mismatch_retry = miniapp_test_client.post(
+        f"/api/v1/orders/{order_id}/finalize",
+        headers=headers,
+        json={"sale_amount": 56000},
+    )
+    assert mismatch_retry.status_code == 409
+
     blocked_change = miniapp_test_client.post(
         "/api/v1/operations/manual",
         headers=headers,

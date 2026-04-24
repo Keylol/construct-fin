@@ -186,8 +186,8 @@ It blocks on closed orders with broken sale/payment/COGS invariants, invalid ope
 `smoke_miniapp_release.py` validates:
 - health + public MINIAPP_URL
 - Telegram auth
-- orders/operations/reports/documents full flow
-- final close order
+- orders/operations/documents/reports full flow
+- server-side atomic order finalization
 
 Reliability hardening:
 
@@ -215,7 +215,7 @@ Backup output:
 Main Mini App API features now:
 
 - `GET /api/v1/meta/options` - dictionaries for form selectors
-- `GET/POST /api/v1/orders`, `POST /api/v1/orders/{order_id}/close`
+- `GET/POST /api/v1/orders`, `POST /api/v1/orders/{order_id}/finalize`, `POST /api/v1/orders/{order_id}/close`
 - `GET /api/v1/operations`
 - `POST /api/v1/operations/preview/manual`
 - `POST /api/v1/operations/preview/from-text`

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from miniapp_api.app.models import AppUser, MiniDocument, MiniOperation, MiniOrd
 from miniapp_api.app.schemas import OrderCreateRequest, OrderDTO, OrderFinalizeRequest, OrderUpdateRequest
 from miniapp_api.app.services.audit import add_audit_log
 from miniapp_api.app.services.order_finance import empty_order_finance, rollup_order_finance
+from miniapp_api.app.services.sheets_sync import sync_sheets_background
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -282,6 +283,7 @@ async def create_order(
 async def update_order(
     order_id: int,
     payload: OrderUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OrderDTO:
@@ -315,6 +317,7 @@ async def update_order(
         )
         await db.commit()
         await db.refresh(order)
+        background_tasks.add_task(sync_sheets_background)
 
     finance_map = await _load_finance_map(db, order_ids=[int(order.id)])
     meta_map = await _load_order_meta(db, order_ids=[int(order.id)])
@@ -325,15 +328,13 @@ async def update_order(
 async def finalize_order(
     order_id: int,
     payload: OrderFinalizeRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OrderDTO:
     """Atomically applies sale/payment/COGS deltas and closes fully paid orders."""
 
     order = await _validate_order_access(db=db, order_id=order_id, user=current_user, for_update=True)
-    if str(order.status or "").strip().lower() == "closed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is already closed; reopen it first")
-
     finance_map = await _load_finance_map(db, order_ids=[int(order.id)])
     finance = finance_map.get(int(order.id), empty_order_finance())
 
@@ -346,6 +347,16 @@ async def finalize_order(
     recorded_postpayment = _round_money(finance.get("postpayment_amount"))
     recorded_payment_receipt = _round_money(finance.get("payment_receipt_amount"))
     recorded_cogs = _round_money(finance.get("recognized_cogs"))
+
+    if str(order.status or "").strip().lower() == "closed":
+        _validate_prepared_to_close(finance)
+        if abs(recorded_sale_amount - sale_amount) > MONEY_EPSILON:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Order is already closed with a different sale amount; reopen it first",
+            )
+        meta_map = await _load_order_meta(db, order_ids=[int(order.id)])
+        return _to_dto(order, finance_map, meta_map)
 
     if purchase_cost <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Add order components before finalizing")
@@ -456,6 +467,7 @@ async def finalize_order(
         },
     )
     await db.commit()
+    background_tasks.add_task(sync_sheets_background)
     await db.refresh(order)
 
     finance_map = await _load_finance_map(db, order_ids=[int(order.id)])
@@ -466,6 +478,7 @@ async def finalize_order(
 @router.post("/{order_id}/close", response_model=OrderDTO)
 async def close_order(
     order_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OrderDTO:
@@ -485,6 +498,7 @@ async def close_order(
         details={"status": "closed"},
     )
     await db.commit()
+    background_tasks.add_task(sync_sheets_background)
     await db.refresh(order)
     meta_map = await _load_order_meta(db, order_ids=[int(order.id)])
     return _to_dto(order, finance_map, meta_map)
@@ -493,6 +507,7 @@ async def close_order(
 @router.post("/{order_id}/reopen", response_model=OrderDTO)
 async def reopen_order(
     order_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> OrderDTO:
@@ -510,6 +525,7 @@ async def reopen_order(
         details={"status": "open"},
     )
     await db.commit()
+    background_tasks.add_task(sync_sheets_background)
     await db.refresh(order)
     finance_map = await _load_finance_map(db, order_ids=[int(order.id)])
     meta_map = await _load_order_meta(db, order_ids=[int(order.id)])
@@ -519,6 +535,7 @@ async def reopen_order(
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_order(
     order_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     current_user: AppUser = Depends(require_roles("owner", "operator")),
 ) -> Response:
@@ -557,4 +574,5 @@ async def delete_order(
         },
     )
     await db.commit()
+    background_tasks.add_task(sync_sheets_background)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
