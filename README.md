@@ -175,6 +175,14 @@ curl http://127.0.0.1:8080/healthz
 ./.venv/bin/python scripts/smoke_miniapp_release.py
 ```
 
+Before financial releases, run the read-only DB preflight:
+
+```bash
+./.venv/bin/python scripts/preflight_financial_release.py
+```
+
+It blocks on closed orders with broken sale/payment/COGS invariants, invalid operation dates, missing order links, non-kopiyka precision and other data risks. Use `--json` for CI/deploy automation.
+
 `smoke_miniapp_release.py` validates:
 - health + public MINIAPP_URL
 - Telegram auth
