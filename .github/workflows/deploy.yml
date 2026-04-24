@@ -32,6 +32,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
+      - name: Install production deploy hook
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          export SSH_OPTS="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes"
+          scp $SSH_OPTS deploy/ferrum/post-receive.sh "root@${DEPLOY_HOST}:/srv/construct/repo.git/hooks/post-receive"
+          ssh $SSH_OPTS "root@${DEPLOY_HOST}" "chmod +x /srv/construct/repo.git/hooks/post-receive"
+
       - name: Push to production
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

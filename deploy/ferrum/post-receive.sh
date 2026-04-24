@@ -30,6 +30,24 @@ fi
 echo "=== [deploy] Checking out $NEW_REV to $APP_DIR ==="
 git --work-tree="$APP_DIR" --git-dir="$REPO_DIR" checkout -f main
 
+echo "=== [deploy] Creating PostgreSQL backup before migrations ==="
+if [[ -x "$APP_DIR/scripts/backup_postgres.sh" ]]; then
+    cd "$APP_DIR"
+    sudo -u construct -E "$APP_DIR/scripts/backup_postgres.sh"
+else
+    echo "Backup script missing or not executable: $APP_DIR/scripts/backup_postgres.sh"
+    exit 1
+fi
+
+echo "=== [deploy] Running financial preflight before migrations ==="
+if [[ -f "$APP_DIR/scripts/preflight_financial_release.py" ]]; then
+    cd "$APP_DIR"
+    sudo -u construct -E "$VENV/bin/python" scripts/preflight_financial_release.py
+else
+    echo "Preflight script missing: $APP_DIR/scripts/preflight_financial_release.py"
+    exit 1
+fi
+
 # Detect what changed (if we have a previous rev).
 CHANGED_FILES=""
 if [[ "$OLD_REV" =~ ^0+$ || -z "$OLD_REV" ]]; then
