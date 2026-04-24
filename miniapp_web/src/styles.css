@@ -197,6 +197,13 @@ button {
   max-width: none;
 }
 
+.app-header-row h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-header-row,
 .section-intro-copy,
 .feature-panel-copy,
@@ -1061,7 +1068,7 @@ button:disabled {
 .tab-button {
   width: auto;
   margin: 0;
-  min-height: 42px;
+  min-height: 48px;
   padding: 6px 8px;
   background: #fff;
   border: 1px solid var(--surface-border);
@@ -1257,8 +1264,8 @@ button:disabled {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-size: 10px;
   font-weight: 700;
   color: #fff;
@@ -1305,6 +1312,7 @@ button:disabled {
 .stats-kpi-card {
   background: var(--surface);
   border: 1px solid var(--surface-border);
+  border-left: 3px solid var(--hover-color);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(22, 38, 64, 0.10);
   padding: 14px 16px;
@@ -1318,16 +1326,16 @@ button:disabled {
 }
 
 .stats-kpi-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .stats-kpi-value {
-  font-size: 20px;
-  font-weight: 900;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--main-color);
   letter-spacing: -0.02em;
 }
@@ -1336,10 +1344,10 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--muted);
   margin: 4px 0;
 }
@@ -1492,5 +1500,72 @@ button:disabled {
 
   .donut-legend {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Hero metrics: 2-column grid, third card spans full width */
+  .hero-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero-metrics-grid .hero-metric-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .hero-metric-card {
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(22, 38, 64, 0.08);
+  }
+
+  .compact-hero-metric {
+    min-height: 72px;
+    padding: 12px 14px;
+  }
+
+  .hero-metric-card strong {
+    font-size: 20px;
+  }
+
+  /* Section headings */
+  .section-intro h2 {
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Sales workboard: single column */
+  .sales-workboard {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tap targets */
+  .small-button {
+    min-height: 44px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Form inputs — prevent iOS zoom (requires 16px) */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+
+  input[type="checkbox"],
+  input[type="file"],
+  input[type="date"] {
+    min-height: auto;
+  }
+
+  /* Purchase form submit button */
+  .purchases-panel .row-actions > button[type="submit"] {
+    width: 100%;
+    min-height: 48px;
   }
 }
