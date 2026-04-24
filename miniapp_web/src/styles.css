@@ -1494,3 +1494,51 @@ button:disabled {
     width: 100%;
   }
 }
+
+/* ── Purchase form — underline field style ──────────────────── */
+.purchase-form-card form {
+  max-width: 480px;
+  width: 100%;
+}
+
+.purchase-form-card label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.purchase-form-card input,
+.purchase-form-card select,
+.purchase-form-card textarea {
+  border: none;
+  border-bottom: 1.5px solid var(--surface-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 4px;
+}
+
+.purchase-form-card input:focus,
+.purchase-form-card select:focus,
+.purchase-form-card textarea:focus {
+  border-bottom-color: var(--hover-color);
+  outline: none;
+}
+
+.purchase-form-card input[type="file"] {
+  padding: 6px 0;
+}
+
+.purchase-form-card button[type="submit"] {
+  max-width: 480px;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .purchase-form-card form {
+    max-width: 100%;
+  }
+}
