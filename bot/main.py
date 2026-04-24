@@ -10,7 +10,7 @@ from functools import wraps
 from pathlib import Path
 
 import httpx
-from telegram import BotCommand, KeyboardButton, MenuButtonWebApp, ReplyKeyboardMarkup, Update, WebAppInfo
+from telegram import BotCommand, MenuButtonWebApp, Update, WebAppInfo
 from telegram.error import Conflict, NetworkError
 from telegram.request import HTTPXRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
@@ -317,12 +317,7 @@ async def cmd_app(update: Update, context):
     except Exception:
         logger.warning("Could not update per-chat menu button", exc_info=True)
 
-    keyboard = [[KeyboardButton(text="Открыть Mini App", web_app=WebAppInfo(url=miniapp_url))]]
-    markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
-    await update.message.reply_text(
-        "Откройте Mini App кнопкой ниже.",
-        reply_markup=markup,
-    )
+    await update.message.reply_text("Mini App доступен через кнопку меню слева от поля ввода.")
 
 
 @check_user_access
