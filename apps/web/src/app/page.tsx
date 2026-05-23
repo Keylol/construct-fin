@@ -1,6 +1,11 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 
 export default function HomePage() {
+  const cookie = cookies().get('construct_jwt');
+  if (cookie) redirect('/dashboard');
+
   return (
     <main className="min-h-dvh flex items-center justify-center p-6">
       <div className="glass rounded-3xl p-8 max-w-md w-full text-center">
