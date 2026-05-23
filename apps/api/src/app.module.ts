@@ -8,6 +8,8 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { AccountModule } from './account/account.module';
 import { CategoryModule } from './category/category.module';
 import { CounterpartyModule } from './counterparty/counterparty.module';
+import { TransactionModule } from './transaction/transaction.module';
+import { AttachmentModule } from './attachment/attachment.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { CounterpartyModule } from './counterparty/counterparty.module';
     AccountModule,
     CategoryModule,
     CounterpartyModule,
+    TransactionModule,
+    AttachmentModule,
   ],
   controllers: [HealthController],
 })
