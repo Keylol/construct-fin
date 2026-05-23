@@ -64,13 +64,16 @@ export function verifyTelegramInitData(
     return { ok: false, reason: `auth_date out of range (age=${ageSeconds}s)` };
   }
 
-  const pairs: string[] = [];
+  // Сортируем ПО КЛЮЧУ (как делает Python parse_qsl + sorted by lambda pair[0]).
+  // В обычных случаях совпадает с сортировкой полной строки, но для надёжности
+  // делаем именно так.
+  const entries: Array<[string, string]> = [];
   for (const [k, v] of params.entries()) {
     if (k === 'hash') continue;
-    pairs.push(`${k}=${v}`);
+    entries.push([k, v]);
   }
-  pairs.sort();
-  const dataCheckString = pairs.join('\n');
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const dataCheckString = entries.map(([k, v]) => `${k}=${v}`).join('\n');
 
   const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
   const computed = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');

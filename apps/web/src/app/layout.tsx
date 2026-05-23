@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: 'Construct — финансовый учёт',
@@ -37,7 +38,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* Telegram Mini App SDK — beforeInteractive гарантирует, что
+            window.Telegram.WebApp есть до запуска нашего JS */}
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
+        {children}
+      </body>
     </html>
   );
 }
