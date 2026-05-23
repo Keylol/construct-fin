@@ -1,0 +1,29 @@
+{
+  "name": "construct-v6",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter=./apps/* run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:migrate": "pnpm --filter @construct/db exec prisma migrate dev",
+    "db:generate": "pnpm --filter @construct/db exec prisma generate",
+    "db:studio": "pnpm --filter @construct/db exec prisma studio",
+    "db:seed": "pnpm --filter @construct/db run seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}

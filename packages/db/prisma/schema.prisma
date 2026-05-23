@@ -1,0 +1,255 @@
+// Construct v6 — финансовый учёт для малого бизнеса / самозанятых
+// Single-currency (RUB), workspace-scoped, soft-delete pattern, audit log.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Users & Workspaces ─────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  telegramId  BigInt   @unique
+  username    String?
+  firstName   String?
+  lastName    String?
+  photoUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
+  workspaceMemberships WorkspaceMember[]
+  createdTransactions  Transaction[]     @relation("TransactionCreatedBy")
+  auditLogs            AuditLog[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  owner          User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members        WorkspaceMember[]
+  accounts       Account[]
+  categories     Category[]
+  counterparties Counterparty[]
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+  auditLogs      AuditLog[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model WorkspaceMember {
+  workspaceId String
+  userId      String
+  role        Role     @default(OWNER)
+  joinedAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ───────────────────────────── Accounts ─────────────────────────────
+
+model Account {
+  id             String      @id @default(cuid())
+  workspaceId    String
+  name           String
+  type           AccountType
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2)
+  isArchived     Boolean     @default(false)
+  note           String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([workspaceId, isArchived])
+  @@index([workspaceId, deletedAt])
+}
+
+enum AccountType {
+  CASH
+  BANK
+  CARD
+  OTHER
+}
+
+// ───────────────────────────── Categories (2 уровня) ─────────────────────────
+
+model Category {
+  id          String       @id @default(cuid())
+  workspaceId String
+  name        String
+  kind        CategoryKind
+  parentId    String?
+  isFixedCost Boolean      @default(false) // задел под точку безубыточности
+  isArchived  Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children     Category[]    @relation("CategoryTree")
+  transactions Transaction[]
+
+  @@index([workspaceId, kind, parentId])
+  @@index([workspaceId, deletedAt])
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+// ───────────────────────────── Counterparties ─────────────────────────────
+
+model Counterparty {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  contact     String?
+  note        String?
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([workspaceId, isArchived])
+  @@index([workspaceId, deletedAt])
+}
+
+// ───────────────────────────── Transactions ─────────────────────────────
+
+model Transaction {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  date            DateTime
+  amount          Decimal  @db.Decimal(14, 2)
+  type            TxType
+  accountId       String
+  categoryId      String?
+  counterpartyId  String?
+  description     String?
+  recurringRuleId String?
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account       Account        @relation(fields: [accountId], references: [id])
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  counterparty  Counterparty?  @relation(fields: [counterpartyId], references: [id])
+  recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id])
+  createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  attachments   Attachment[]
+
+  @@index([workspaceId, date])
+  @@index([workspaceId, accountId, date])
+  @@index([workspaceId, categoryId, date])
+  @@index([workspaceId, counterpartyId, date])
+  @@index([workspaceId, type, date])
+  @@index([workspaceId, deletedAt])
+}
+
+enum TxType {
+  INCOME
+  EXPENSE
+}
+
+// ───────────────────────────── Recurring rules ─────────────────────────────
+
+model RecurringRule {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  name         String
+  templateJson Json      // {amount, type, accountId, categoryId, counterpartyId?, description?}
+  cron         String    // RRULE или cron-выражение
+  nextRunAt    DateTime
+  lastRunAt    DateTime?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([active, nextRunAt])
+  @@index([workspaceId, deletedAt])
+}
+
+// ───────────────────────────── Attachments ─────────────────────────────
+
+model Attachment {
+  id            String   @id @default(cuid())
+  transactionId String
+  filename      String
+  mimeType      String
+  size          Int
+  storagePath   String
+  hash          String
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@index([hash])
+}
+
+// ───────────────────────────── Audit & Idempotency ─────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String
+  diff        Json
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor     User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+}
+
+model IdempotencyKey {
+  key          String   @id
+  requestHash  String
+  responseBody Json
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([expiresAt])
+}

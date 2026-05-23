@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [v6, main]
+  pull_request:
+    branches: [v6, main]
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: construct
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: construct_v6_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U construct"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://construct:ci_password@localhost:5432/construct_v6_ci?schema=public
+      JWT_SECRET: ci_secret_at_least_16_chars_long
+      TELEGRAM_BOT_TOKEN: 000000:CI_DUMMY_TOKEN
+      TELEGRAM_BOT_USERNAME: CIBotMock
+      TELEGRAM_ALLOWED_IDS: ''
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @construct/db exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm --filter @construct/db exec prisma migrate deploy
+        continue-on-error: true # на момент первого CI миграций ещё нет
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+        continue-on-error: true # пока без ESLint для api
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
