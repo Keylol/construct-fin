@@ -84,6 +84,59 @@ export interface TransactionSummary {
   net: string;
 }
 
+export type ImportSource =
+  | 'GENERIC_CSV'
+  | 'GENERIC_XLSX'
+  | 'ALFA_XLSX'
+  | 'TINKOFF_PDF'
+  | 'WB_PDF';
+
+export interface ColumnMapping {
+  date: string;
+  amount: string;
+  type?: string;
+  description?: string;
+  counterparty?: string;
+  amountDecimalSeparator?: '.' | ',';
+}
+
+export interface PreviewRow {
+  rawIndex: number;
+  date: string;
+  amount: string;
+  type: TxType;
+  description: string | null;
+  counterpartyName: string | null;
+  resolvedCounterpartyId: string | null;
+  importHash: string;
+  isDuplicate: boolean;
+  errors: string[];
+  raw: Record<string, string>;
+}
+
+export interface PreviewResult {
+  source: ImportSource;
+  headers: string[];
+  suggestedMapping: Partial<ColumnMapping>;
+  encoding: string;
+  filename: string;
+  fileHash: string;
+  rows: PreviewRow[];
+  stats: { total: number; valid: number; invalid: number; duplicates: number };
+}
+
+export interface ImportBatch {
+  id: string;
+  source: ImportSource;
+  filename: string;
+  rowsTotal: number;
+  rowsImported: number;
+  rowsSkipped: number;
+  createdAt: string;
+  deletedAt: string | null;
+  user: { firstName: string | null; username: string | null };
+}
+
 export interface UserProfile {
   id: string;
   telegramId: string;

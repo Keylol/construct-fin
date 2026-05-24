@@ -13,27 +13,28 @@ datasource db {
 // ───────────────────────────── Users & Workspaces ─────────────────────────────
 
 model User {
-  id          String   @id @default(cuid())
-  telegramId  BigInt   @unique
-  username    String?
-  firstName   String?
-  lastName    String?
-  photoUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  telegramId BigInt   @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  photoUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
   workspaceMemberships WorkspaceMember[]
   createdTransactions  Transaction[]     @relation("TransactionCreatedBy")
   auditLogs            AuditLog[]
+  importBatches        ImportBatch[]
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   ownerId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   owner          User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
@@ -43,6 +44,7 @@ model Workspace {
   counterparties Counterparty[]
   transactions   Transaction[]
   recurringRules RecurringRule[]
+  importBatches  ImportBatch[]
   auditLogs      AuditLog[]
 
   @@index([ownerId])
@@ -128,14 +130,14 @@ enum CategoryKind {
 // ───────────────────────────── Counterparties ─────────────────────────────
 
 model Counterparty {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   name        String
   contact     String?
   note        String?
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isArchived  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -148,19 +150,21 @@ model Counterparty {
 // ───────────────────────────── Transactions ─────────────────────────────
 
 model Transaction {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   workspaceId     String
   date            DateTime
-  amount          Decimal  @db.Decimal(14, 2)
+  amount          Decimal   @db.Decimal(14, 2)
   type            TxType
   accountId       String
   categoryId      String?
   counterpartyId  String?
   description     String?
   recurringRuleId String?
+  importBatchId   String?
+  importHash      String?
   createdById     String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -168,6 +172,7 @@ model Transaction {
   category      Category?      @relation(fields: [categoryId], references: [id])
   counterparty  Counterparty?  @relation(fields: [counterpartyId], references: [id])
   recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id])
+  importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
   createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
   attachments   Attachment[]
 
@@ -177,6 +182,8 @@ model Transaction {
   @@index([workspaceId, counterpartyId, date])
   @@index([workspaceId, type, date])
   @@index([workspaceId, deletedAt])
+  @@index([workspaceId, importHash])
+  @@index([importBatchId])
 }
 
 enum TxType {
@@ -190,8 +197,8 @@ model RecurringRule {
   id           String    @id @default(cuid())
   workspaceId  String
   name         String
-  templateJson Json      // {amount, type, accountId, categoryId, counterpartyId?, description?}
-  cron         String    // RRULE или cron-выражение
+  templateJson Json // {amount, type, accountId, categoryId, counterpartyId?, description?}
+  cron         String // RRULE или cron-выражение
   nextRunAt    DateTime
   lastRunAt    DateTime?
   active       Boolean   @default(true)
@@ -204,6 +211,37 @@ model RecurringRule {
 
   @@index([active, nextRunAt])
   @@index([workspaceId, deletedAt])
+}
+
+// ───────────────────────────── Import batches ─────────────────────────────
+
+model ImportBatch {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  userId       String
+  source       ImportSource
+  filename     String
+  fileHash     String
+  rowsTotal    Int
+  rowsImported Int
+  rowsSkipped  Int          @default(0)
+  createdAt    DateTime     @default(now())
+  deletedAt    DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, deletedAt])
+}
+
+enum ImportSource {
+  GENERIC_CSV
+  GENERIC_XLSX
+  ALFA_XLSX
+  TINKOFF_PDF
+  WB_PDF
 }
 
 // ───────────────────────────── Attachments ─────────────────────────────
