@@ -60,6 +60,7 @@ jobs:
           push: true
           build-args: |
             NEXT_PUBLIC_API_URL=/api/v1
+            NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=ConstructFinance_bot
           tags: |
             ${{ env.IMAGE_WEB }}:latest
             ${{ env.IMAGE_WEB }}:${{ steps.meta.outputs.sha }}
