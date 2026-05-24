@@ -7,9 +7,6 @@ const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '';
 
 interface TelegramWebApp {
   initData: string;
-  version?: string;
-  platform?: string;
-  initDataUnsafe?: unknown;
   ready?: () => void;
   expand?: () => void;
 }
@@ -26,7 +23,6 @@ export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'detect' | 'miniapp' | 'widget'>('detect');
-  const [debug, setDebug] = useState<string>('init');
 
   // 1. Mini App: если открыты внутри Telegram, автоматически логинимся по initData.
   //    SDK подгружается в layout, но скрипт может быть ещё не выполнен на момент
@@ -41,16 +37,6 @@ export default function LoginPage() {
       if (cancelled) return;
       const wa = window.Telegram?.WebApp;
       const initData = wa?.initData;
-      setDebug(
-        `attempt=${attempts} ` +
-          `tg=${typeof window.Telegram} ` +
-          `wa=${typeof wa} ` +
-          `idLen=${initData?.length ?? 'undef'} ` +
-          `ver=${wa?.version ?? '-'} ` +
-          `plat=${wa?.platform ?? '-'} ` +
-          `bot=${BOT_USERNAME || '(empty)'} ` +
-          `ua=${typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 60) : '-'}`,
-      );
       if (initData && initData.length > 0) {
         setMode('miniapp');
         wa.ready?.();
@@ -142,9 +128,6 @@ export default function LoginPage() {
           </p>
         )}
         {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-        <pre className="mt-6 text-[10px] text-left text-muted whitespace-pre-wrap break-all">
-          debug: {debug}
-        </pre>
       </div>
     </main>
   );
