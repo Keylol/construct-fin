@@ -11,8 +11,9 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_API: ghcr.io/${{ github.repository_owner }}/construct-v6-api
-  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/construct-v6-web
+  # Docker tags must be lowercase; github.repository_owner для Keylol даёт "Keylol".
+  IMAGE_API: ghcr.io/keylol/construct-v6-api
+  IMAGE_WEB: ghcr.io/keylol/construct-v6-web
 
 jobs:
   build-and-push:
