@@ -1,9 +1,17 @@
-import { PDFParse } from 'pdf-parse';
+// pdf-parse v1 имеет баг: index.js пытается читать тестовый файл при импорте.
+// Импортируем внутренний модуль напрямую.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (
+  buffer: Buffer,
+) => Promise<{ text: string; numpages: number }>;
 import { parseAmount, parseDate } from './values';
 import type { ParseResult, ParsedRow } from './types';
 
+// v1 squishes: "DD.MM.YYYY<docNo><±amount>.XX ₽<±amount>.XX ₽"
+// v2 spaces: "HH:MM DD.MM.YYYY <docNo> <±amount>.XX ₽ <±amount>.XX ₽"
+// Покрываем оба варианта.
 const TX_LINE_RX =
-  /^(\d{2}:\d{2})\s+(\d{2}\.\d{2}\.\d{4})\s+(\d+)\s+([+-][\d,]+\.\d{2})\s*₽\s+([+-][\d,]+\.\d{2})\s*₽$/;
+  /(?:^|\s)(?:(\d{2}:\d{2})\s+)?(\d{2}\.\d{2}\.\d{4})\s*(\d+)\s*([+-][\d,]+\.\d{2})\s*₽\s*([+-][\d,]+\.\d{2})\s*₽\s*$/;
 const DATE_ONLY_RX = /^\d{2}\.\d{2}\.\d{4}$/;
 const CARD_TERMINATOR_RX = /^-$/;
 
@@ -16,8 +24,7 @@ function extractCounterparty(description: string): string | null {
 }
 
 export async function parseWbPdf(buffer: Buffer): Promise<ParseResult> {
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
+  const result = await pdfParse(buffer);
   const lines = result.text
     .split('\n')
     .map((l) => l.trim())
@@ -32,12 +39,11 @@ export async function parseWbPdf(buffer: Buffer): Promise<ParseResult> {
     if (!m) continue;
 
     const time = m[1] ?? '';
+    const dateInLine = m[2] ?? '';
     const docNo = m[3] ?? '';
     const amountOpRaw = m[4] ?? '';
 
-    const dateLine = lines[i - 1] ?? '';
-    if (!DATE_ONLY_RX.test(dateLine)) continue;
-    const date = parseDate(dateLine);
+    const date = parseDate(dateInLine);
     if (!date) continue;
 
     const descLines: string[] = [];
@@ -66,7 +72,7 @@ export async function parseWbPdf(buffer: Buffer): Promise<ParseResult> {
       type,
       description: description || null,
       counterpartyName,
-      raw: { date: dateLine, time, docNo, amount: amountOpRaw, description },
+      raw: { date: dateInLine, time, docNo, amount: amountOpRaw, description },
       errors: [],
     });
   }
