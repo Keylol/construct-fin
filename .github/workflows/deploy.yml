@@ -1,0 +1,107 @@
+name: Build & Deploy v6
+
+on:
+  push:
+    branches: [v6]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-v6
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/${{ github.repository_owner }}/construct-v6-api
+  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/construct-v6-web
+
+jobs:
+  build-and-push:
+    name: Build & push images to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha-tag: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/api.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:latest
+            ${{ env.IMAGE_API }}:${{ steps.meta.outputs.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=/api/v1
+          tags: |
+            ${{ env.IMAGE_WEB }}:latest
+            ${{ env.IMAGE_WEB }}:${{ steps.meta.outputs.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 45.82.254.230 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull, restart, migrate
+        run: |
+          ssh -i ~/.ssh/deploy_key root@45.82.254.230 << 'REMOTE'
+            set -e
+            cd /srv/construct-v6
+            echo "--- pull images ---"
+            docker compose pull
+            echo "--- up -d ---"
+            docker compose up -d
+            echo "--- wait healthy ---"
+            for i in $(seq 1 30); do
+              s=$(docker inspect --format '{{.State.Health.Status}}' construct-v6-api-1 2>/dev/null || echo "?")
+              if [ "$s" = "healthy" ]; then echo "api healthy after ${i}*4s"; break; fi
+              sleep 4
+            done
+            echo "--- migrate ---"
+            docker compose exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"
+            echo "--- final status ---"
+            docker compose ps --format "{{.Name}} {{.Status}}"
+            echo "--- prune dangling ---"
+            docker image prune -f >/dev/null
+          REMOTE
+
+      - name: Smoke-test external
+        run: |
+          curl -fsS https://miniapp.aleksandrantropov.online/api/v1/health
+          echo
+          curl -fsS -o /dev/null -w "login: %{http_code}\n" https://miniapp.aleksandrantropov.online/login
