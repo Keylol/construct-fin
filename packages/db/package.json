@@ -10,7 +10,7 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "prisma/schema.prisma", "prisma/migrations"],
   "scripts": {
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
@@ -23,10 +23,10 @@
     "build": "prisma generate && tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
-    "prisma": "^5.22.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
