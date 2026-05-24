@@ -45,6 +45,7 @@ model Workspace {
   transactions   Transaction[]
   recurringRules RecurringRule[]
   importBatches  ImportBatch[]
+  categoryRules  CategoryRule[]
   auditLogs      AuditLog[]
 
   @@index([ownerId])
@@ -113,10 +114,11 @@ model Category {
   updatedAt   DateTime     @updatedAt
   deletedAt   DateTime?
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id])
-  children     Category[]    @relation("CategoryTree")
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent       Category?      @relation("CategoryTree", fields: [parentId], references: [id])
+  children     Category[]     @relation("CategoryTree")
   transactions Transaction[]
+  rules        CategoryRule[]
 
   @@index([workspaceId, kind, parentId])
   @@index([workspaceId, deletedAt])
@@ -256,6 +258,26 @@ enum ImportSource {
   ALFA_XLSX
   TINKOFF_PDF
   WB_PDF
+}
+
+// ───────────────────────────── Category rules (auto-mapping) ─────────────────
+
+model CategoryRule {
+  id          String    @id @default(cuid())
+  workspaceId String
+  keyword     String // substring, case-insensitive
+  categoryId  String
+  priority    Int       @default(0) // higher wins; ties broken by longer keyword
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id])
+
+  @@index([workspaceId, isActive, priority])
+  @@index([workspaceId, deletedAt])
 }
 
 // ───────────────────────────── Attachments ─────────────────────────────
