@@ -21,6 +21,7 @@ const RawConfigSchema = z.object({
     ),
   UPLOAD_DIR: z.string().default('./data/uploads'),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().default(10),
+  AUTH_PASSWORD_HASH: z.string().optional(),
 });
 
 export type ConfigSchema = z.infer<typeof RawConfigSchema>;

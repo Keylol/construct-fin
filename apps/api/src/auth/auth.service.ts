@@ -1,10 +1,13 @@
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyTelegramLogin, verifyTelegramInitData } from './telegram-verify';
 import type { ConfigSchema } from '../config';
 import type { TelegramLoginPayload, UserProfile } from '@construct/shared';
+
+const PASSWORD_USER_TELEGRAM_ID = 1n;
 
 export interface JwtPayload {
   sub: string; // user.id
@@ -54,6 +57,21 @@ export class AuthService {
       lastName: parsed.last_name,
       photoUrl: parsed.photo_url,
     });
+  }
+
+  async loginViaPassword(password: string): Promise<{ token: string; user: UserProfile }> {
+    const hash = this.config.get('AUTH_PASSWORD_HASH', { infer: true });
+    if (!hash) throw new UnauthorizedException('Password auth not configured');
+    const ok = await bcrypt.compare(password, hash);
+    if (!ok) throw new UnauthorizedException('Неверный пароль');
+    const user = await this.prisma.user.upsert({
+      where: { telegramId: PASSWORD_USER_TELEGRAM_ID },
+      update: {},
+      create: { telegramId: PASSWORD_USER_TELEGRAM_ID, firstName: 'Admin' },
+    });
+    const payload: JwtPayload = { sub: user.id, tg: user.telegramId.toString() };
+    const token = await this.jwt.signAsync(payload);
+    return { token, user: this.toProfile(user) };
   }
 
   async getProfile(userId: string): Promise<UserProfile> {

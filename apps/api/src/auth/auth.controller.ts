@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { ConfigSchema } from '../config';
 
 const MiniAppLoginSchema = z.object({ initData: z.string().min(1) });
+const PasswordLoginSchema = z.object({ password: z.string().min(1) });
 
 @Controller('auth')
 export class AuthController {
@@ -33,6 +34,15 @@ export class AuthController {
   async loginViaMiniApp(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const { initData } = MiniAppLoginSchema.parse(body);
     const { token, user } = await this.authService.loginViaMiniApp(initData);
+    this.setCookie(reply, token);
+    return { user };
+  }
+
+  @Post('login')
+  @HttpCode(200)
+  async loginViaPassword(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
+    const { password } = PasswordLoginSchema.parse(body);
+    const { token, user } = await this.authService.loginViaPassword(password);
     this.setCookie(reply, token);
     return { user };
   }
