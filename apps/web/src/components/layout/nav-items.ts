@@ -12,4 +12,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/counterparties', label: 'Контрагенты', icon: '👥' },
   { href: '/recurring', label: 'Повторы', icon: '🔁' },
   { href: '/import', label: 'Импорт', icon: '📥' },
+  { href: '/reports', label: 'Отчёты', icon: '📈' },
 ];
