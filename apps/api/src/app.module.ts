@@ -10,6 +10,7 @@ import { CategoryModule } from './category/category.module';
 import { CounterpartyModule } from './counterparty/counterparty.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { AttachmentModule } from './attachment/attachment.module';
+import { ImportModule } from './import/import.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AttachmentModule } from './attachment/attachment.module';
     CounterpartyModule,
     TransactionModule,
     AttachmentModule,
+    ImportModule,
   ],
   controllers: [HealthController],
 })
