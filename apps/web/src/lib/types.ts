@@ -136,6 +136,7 @@ export interface PreviewRow {
   description: string | null;
   counterpartyName: string | null;
   resolvedCounterpartyId: string | null;
+  suggestedCategoryId: string | null;
   importHash: string;
   isDuplicate: boolean;
   errors: string[];
@@ -163,6 +164,104 @@ export interface ImportBatch {
   createdAt: string;
   deletedAt: string | null;
   user: { firstName: string | null; username: string | null };
+}
+
+// ──────────── Category rules ────────────
+
+export interface CategoryRule {
+  id: string;
+  workspaceId: string;
+  keyword: string;
+  categoryId: string;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  category?: { id: string; name: string; kind: CategoryKind };
+}
+
+// ──────────── Reports ────────────
+
+export type PeriodPreset =
+  | 'this-month'
+  | 'prev-month'
+  | 'this-quarter'
+  | 'prev-quarter'
+  | 'this-year'
+  | 'prev-year'
+  | 'ytd'
+  | 'last-30d'
+  | 'last-90d'
+  | 'last-12m';
+
+export type CompareMode = 'none' | 'prev' | 'yoy' | 'custom';
+
+export interface CategoryBreakdown {
+  categoryId: string | null;
+  categoryName: string | null;
+  income: string;
+  expense: string;
+}
+
+export interface PnlBucket {
+  label: string;
+  from: string;
+  to: string;
+  income: string;
+  expense: string;
+  net: string;
+  byCategory: CategoryBreakdown[];
+}
+
+export interface PnlSeries {
+  period: { from: string; to: string };
+  buckets: PnlBucket[];
+  totals: PnlBucket;
+}
+
+export interface PnlReport {
+  primary: PnlSeries;
+  comparison: PnlSeries | null;
+}
+
+export interface CashflowPoint {
+  label: string;
+  from: string;
+  to: string;
+  inflow: string;
+  outflow: string;
+  net: string;
+  balance: string;
+}
+
+export interface CashflowSeries {
+  accountId: string | null;
+  accountName: string | null;
+  openingBalance: string;
+  points: CashflowPoint[];
+}
+
+export interface CashflowReport {
+  period: { from: string; to: string };
+  series: CashflowSeries[];
+}
+
+export interface BreakdownRow {
+  id: string | null;
+  name: string;
+  income: string;
+  expense: string;
+  total: string;
+  share: number;
+  count: number;
+}
+
+export interface BreakdownReport {
+  period: { from: string; to: string };
+  type: 'INCOME' | 'EXPENSE' | 'ALL';
+  totalIncome: string;
+  totalExpense: string;
+  rows: BreakdownRow[];
 }
 
 export interface UserProfile {
