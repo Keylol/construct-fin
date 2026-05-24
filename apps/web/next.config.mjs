@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   transpilePackages: ['@construct/shared'],
+  outputFileTracingRoot: process.env.NEXT_TRACE_ROOT,
   experimental: {
     typedRoutes: true,
   },
