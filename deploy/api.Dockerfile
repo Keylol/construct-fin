@@ -45,4 +45,4 @@ COPY --from=builder /deploy ./
 
 EXPOSE 4000
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "dist/main.js"]
