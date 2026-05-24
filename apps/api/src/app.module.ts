@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigSchema, validateConfig } from './config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,6 +12,7 @@ import { CounterpartyModule } from './counterparty/counterparty.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { ImportModule } from './import/import.module';
+import { RecurringModule } from './recurring/recurring.module';
 
 @Module({
   imports: [
@@ -19,6 +21,7 @@ import { ImportModule } from './import/import.module';
       cache: true,
       validate: validateConfig,
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     WorkspaceModule,
@@ -28,6 +31,7 @@ import { ImportModule } from './import/import.module';
     TransactionModule,
     AttachmentModule,
     ImportModule,
+    RecurringModule,
   ],
   controllers: [HealthController],
 })

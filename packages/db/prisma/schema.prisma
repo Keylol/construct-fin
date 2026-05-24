@@ -150,22 +150,23 @@ model Counterparty {
 // ───────────────────────────── Transactions ─────────────────────────────
 
 model Transaction {
-  id              String    @id @default(cuid())
-  workspaceId     String
-  date            DateTime
-  amount          Decimal   @db.Decimal(14, 2)
-  type            TxType
-  accountId       String
-  categoryId      String?
-  counterpartyId  String?
-  description     String?
-  recurringRuleId String?
-  importBatchId   String?
-  importHash      String?
-  createdById     String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id                      String    @id @default(cuid())
+  workspaceId             String
+  date                    DateTime
+  amount                  Decimal   @db.Decimal(14, 2)
+  type                    TxType
+  accountId               String
+  categoryId              String?
+  counterpartyId          String?
+  description             String?
+  recurringRuleId         String?
+  recurringOccurrenceDate DateTime?
+  importBatchId           String?
+  importHash              String?
+  createdById             String
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  deletedAt               DateTime?
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   account       Account        @relation(fields: [accountId], references: [id])
@@ -176,6 +177,7 @@ model Transaction {
   createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
   attachments   Attachment[]
 
+  @@unique([recurringRuleId, recurringOccurrenceDate])
   @@index([workspaceId, date])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, categoryId, date])
@@ -194,16 +196,21 @@ enum TxType {
 // ───────────────────────────── Recurring rules ─────────────────────────────
 
 model RecurringRule {
-  id           String    @id @default(cuid())
+  id           String             @id @default(cuid())
   workspaceId  String
   name         String
-  templateJson Json // {amount, type, accountId, categoryId, counterpartyId?, description?}
-  cron         String // RRULE или cron-выражение
+  templateJson Json // {amount, type, accountId, categoryId?, counterpartyId?, description?}
+  frequency    RecurringFrequency
+  interval     Int                @default(1) // каждые N единиц частоты (every 2 weeks → interval=2 + WEEKLY)
+  startDate    DateTime
+  endDate      DateTime?
+  dayOfMonth   Int? // для MONTHLY/YEARLY: 1-31
+  dayOfWeek    Int? // для WEEKLY: 0=пн, 6=вс
   nextRunAt    DateTime
   lastRunAt    DateTime?
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   deletedAt    DateTime?
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -211,6 +218,13 @@ model RecurringRule {
 
   @@index([active, nextRunAt])
   @@index([workspaceId, deletedAt])
+}
+
+enum RecurringFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
 }
 
 // ───────────────────────────── Import batches ─────────────────────────────

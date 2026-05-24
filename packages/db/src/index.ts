@@ -17,4 +17,5 @@ export type {
   CategoryKind,
   TxType,
   ImportSource,
+  RecurringFrequency,
 } from '@prisma/client';
