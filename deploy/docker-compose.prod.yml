@@ -40,6 +40,7 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
       UPLOAD_DIR: /app/data/uploads
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
     volumes:
       - uploads:/app/data/uploads
     ports:
