@@ -13,6 +13,8 @@ import { TransactionModule } from './transaction/transaction.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { ImportModule } from './import/import.module';
 import { RecurringModule } from './recurring/recurring.module';
+import { CategoryRuleModule } from './category-rule/category-rule.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { RecurringModule } from './recurring/recurring.module';
     AttachmentModule,
     ImportModule,
     RecurringModule,
+    CategoryRuleModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
 })

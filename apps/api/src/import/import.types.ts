@@ -9,6 +9,7 @@ export type PreviewRow = {
   description: string | null;
   counterpartyName: string | null;
   resolvedCounterpartyId: string | null;
+  suggestedCategoryId: string | null;
   importHash: string;
   isDuplicate: boolean;
   errors: string[];

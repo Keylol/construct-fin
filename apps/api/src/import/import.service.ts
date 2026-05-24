@@ -6,6 +6,7 @@ import {
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ImportSource } from '@construct/db';
+import { applyRules } from '../category-rule/matcher';
 import {
   detectSourceByFilename,
   parseAlfaXlsx,
@@ -115,6 +116,11 @@ export class ImportService {
     const cpByLcName = new Map<string, string>();
     for (const cp of existingCps) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
+    const rules = await this.prisma.categoryRule.findMany({
+      where: { workspaceId: opts.workspaceId, isActive: true, deletedAt: null },
+      select: { keyword: true, categoryId: true, priority: true },
+    });
+
     const previewRows: PreviewRow[] = [];
     let invalidCount = 0;
     for (const r of parsed.rows) {
@@ -131,6 +137,10 @@ export class ImportService {
         counterpartyName: r.counterpartyName,
         description: r.description,
       });
+      const suggestedCategoryId = applyRules(rules, {
+        description: r.description,
+        counterpartyName: r.counterpartyName,
+      });
       previewRows.push({
         rawIndex: r.rawIndex,
         date: r.date.toISOString(),
@@ -141,6 +151,7 @@ export class ImportService {
         resolvedCounterpartyId: r.counterpartyName
           ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
           : null,
+        suggestedCategoryId,
         importHash,
         isDuplicate: false,
         errors: r.errors,
