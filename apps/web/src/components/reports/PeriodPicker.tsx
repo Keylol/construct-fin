@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import type { PeriodPreset } from '@/lib/types';
+import { Select } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
 
 export type PeriodValue =
   | { mode: 'preset'; preset: PeriodPreset }
@@ -18,74 +19,73 @@ const PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: 'last-12m', label: '12 месяцев' },
 ];
 
-export function PeriodPicker({
-  value,
-  onChange,
-}: {
+interface PeriodPickerProps {
   value: PeriodValue;
   onChange: (v: PeriodValue) => void;
-}) {
-  const [showCustom, setShowCustom] = useState(value.mode === 'custom');
+}
+
+export function PeriodPicker({ value, onChange }: PeriodPickerProps) {
+  const presetValue =
+    value.mode === 'preset' ? value.preset : ('custom' as const);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {PRESETS.map((p) => (
-        <button
-          key={p.value}
-          type="button"
-          onClick={() => {
-            setShowCustom(false);
-            onChange({ mode: 'preset', preset: p.value });
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="flex flex-col text-xs text-muted-foreground">
+        <span className="pb-1">Период</span>
+        <Select
+          value={presetValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'custom') {
+              onChange({
+                mode: 'custom',
+                from: value.mode === 'custom' ? value.from : '',
+                to: value.mode === 'custom' ? value.to : '',
+              });
+            } else {
+              onChange({ mode: 'preset', preset: v as PeriodPreset });
+            }
           }}
-          className={`rounded-full px-3 py-1 text-sm transition ${
-            value.mode === 'preset' && value.preset === p.value
-              ? 'bg-blue-600 text-white'
-              : 'bg-glass/40 hover:bg-glass/60 text-fg'
-          }`}
+          className="h-9 w-[180px]"
         >
-          {p.label}
-        </button>
-      ))}
-      <button
-        type="button"
-        onClick={() => setShowCustom((v) => !v)}
-        className={`rounded-full px-3 py-1 text-sm transition ${
-          value.mode === 'custom'
-            ? 'bg-blue-600 text-white'
-            : 'bg-glass/40 hover:bg-glass/60 text-fg'
-        }`}
-      >
-        Свой диапазон
-      </button>
-      {showCustom && (
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={value.mode === 'custom' ? value.from : ''}
-            onChange={(e) =>
-              onChange({
-                mode: 'custom',
-                from: e.target.value,
-                to: value.mode === 'custom' ? value.to : e.target.value,
-              })
-            }
-            className="rounded border border-glass-border bg-glass/30 px-2 py-1 text-sm"
-          />
-          <span className="text-muted text-sm">—</span>
-          <input
-            type="date"
-            value={value.mode === 'custom' ? value.to : ''}
-            onChange={(e) =>
-              onChange({
-                mode: 'custom',
-                from: value.mode === 'custom' ? value.from : e.target.value,
-                to: e.target.value,
-              })
-            }
-            className="rounded border border-glass-border bg-glass/30 px-2 py-1 text-sm"
-          />
-        </div>
-      )}
+          {PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+          <option value="custom">Свой диапазон…</option>
+        </Select>
+      </label>
+      <label className="flex flex-col text-xs text-muted-foreground">
+        <span className="pb-1">С</span>
+        <Input
+          type="date"
+          value={value.mode === 'custom' ? value.from : ''}
+          onChange={(e) =>
+            onChange({
+              mode: 'custom',
+              from: e.target.value,
+              to: value.mode === 'custom' ? value.to : e.target.value,
+            })
+          }
+          className="h-9 w-[150px]"
+        />
+      </label>
+      <label className="flex flex-col text-xs text-muted-foreground">
+        <span className="pb-1">По</span>
+        <Input
+          type="date"
+          value={value.mode === 'custom' ? value.to : ''}
+          onChange={(e) =>
+            onChange({
+              mode: 'custom',
+              from: value.mode === 'custom' ? value.from : e.target.value,
+              to: e.target.value,
+            })
+          }
+          className="h-9 w-[150px]"
+        />
+      </label>
     </div>
   );
 }

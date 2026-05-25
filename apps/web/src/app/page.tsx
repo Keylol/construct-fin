@@ -1,22 +1,28 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
+import { Button } from '@/components/ui/Button';
 
 export default function HomePage() {
   const cookie = cookies().get('construct_jwt');
   if (cookie) redirect('/dashboard');
 
   return (
-    <main className="min-h-dvh flex items-center justify-center p-6">
-      <div className="glass rounded-3xl p-8 max-w-md w-full text-center">
-        <h1 className="text-3xl font-semibold mb-2">Construct</h1>
-        <p className="text-muted mb-6">Финансовый учёт для малого бизнеса</p>
-        <Link
-          href="/login"
-          className="inline-block bg-tint text-white font-medium px-6 py-3 rounded-2xl hover:opacity-90 transition"
-        >
-          Войти через Telegram
-        </Link>
+    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8 shadow-sm">
+        <div className="mb-6 flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+            C
+          </div>
+          <div className="text-base font-semibold tracking-tight">Construct</div>
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">Финансовый учёт</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Доходы, расходы и отчёты для малого бизнеса и самозанятых.
+        </p>
+        <Button asChild className="mt-6 w-full">
+          <Link href="/login">Войти</Link>
+        </Button>
       </div>
     </main>
   );

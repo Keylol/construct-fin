@@ -2,16 +2,20 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { ArrowRight, ReceiptText, Wallet } from 'lucide-react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
-import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { TransactionListItem } from '@/components/transactions/TransactionListItem';
-import { rangeFor } from '@/lib/periods';
-import { formatRub } from '@construct/shared';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { KpiCard } from '@/components/ui/KpiCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
+import { TransactionListItem } from '@/components/transactions/TransactionListItem';
+import { rangeFor } from '@/lib/periods';
+import { formatRub } from '@construct/shared';
 
 export default function DashboardPage() {
   const { current } = useCurrentWorkspace();
@@ -33,68 +37,100 @@ export default function DashboardPage() {
 
   if (!current) {
     return (
-      <EmptyState
-        title="Нет активного пространства"
-        hint="Создайте первое пространство через переключатель слева."
-      />
+      <>
+        <PageHeader title="Главная" />
+        <div className="p-6">
+          <EmptyState
+            icon={Wallet}
+            title="Нет активного пространства"
+            hint="Создайте первое пространство через переключатель слева."
+          />
+        </div>
+      </>
     );
   }
 
+  const isLoading = summary.isLoading;
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Главная</h1>
-      <p className="text-xs uppercase tracking-wide text-muted">Текущий месяц</p>
+    <>
+      <PageHeader title="Главная" description="Сводка за текущий месяц" />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-muted mb-1">Доход</div>
-          <div className="text-2xl font-semibold text-success tabular-nums">
-            {summary.data ? formatRub(summary.data.income) : '—'}
+      <div className="space-y-6 px-6 py-6">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {isLoading || !summary.data ? (
+            <>
+              <Skeleton className="h-[88px]" />
+              <Skeleton className="h-[88px]" />
+              <Skeleton className="h-[88px]" />
+            </>
+          ) : (
+            <>
+              <KpiCard
+                label="Доход"
+                value={formatRub(summary.data.income)}
+                tone="positive"
+              />
+              <KpiCard
+                label="Расход"
+                value={formatRub(summary.data.expense)}
+                tone="negative"
+              />
+              <KpiCard label="Чистый" value={formatRub(summary.data.net)} />
+            </>
+          )}
+        </div>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold tracking-tight">Последние операции</h2>
+            <Button variant="link" asChild>
+              <Link href="/transactions">
+                Все
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
+            </Button>
           </div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-muted mb-1">Расход</div>
-          <div className="text-2xl font-semibold text-danger tabular-nums">
-            {summary.data ? formatRub(summary.data.expense) : '—'}
-          </div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-muted mb-1">Чистый</div>
-          <div className="text-2xl font-semibold tabular-nums">
-            {summary.data ? formatRub(summary.data.net) : '—'}
-          </div>
-        </Card>
+
+          {recent.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : recent.data && recent.data.items.length === 0 ? (
+            <div className="rounded-lg border border-border bg-card">
+              <EmptyState
+                icon={ReceiptText}
+                title="Пока операций нет"
+                hint="Перейдите в раздел «Операции» и добавьте первую."
+                action={
+                  <Button asChild>
+                    <Link href="/transactions">Перейти к операциям</Link>
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border bg-card divide-y divide-border">
+              {(recent.data?.items ?? []).map((tx) => (
+                <TransactionListItem
+                  key={tx.id}
+                  tx={tx}
+                  account={tx.accountId ? accountById[tx.accountId] : undefined}
+                  category={tx.categoryId ? categoryById[tx.categoryId] : undefined}
+                  counterparty={
+                    tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined
+                  }
+                  onClick={() => {
+                    window.location.href = '/transactions';
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Последние операции</h2>
-        <Link href="/transactions" className="text-tint text-sm hover:underline">
-          Все →
-        </Link>
-      </div>
-
-      {recent.data && recent.data.items.length === 0 ? (
-        <Card>
-          <p className="text-muted text-sm">
-            Пока операций нет. Перейдите в раздел «Операции» и добавьте первую.
-          </p>
-        </Card>
-      ) : (
-        <Card className="!p-2">
-          {(recent.data?.items ?? []).map((tx) => (
-            <TransactionListItem
-              key={tx.id}
-              tx={tx}
-              account={tx.accountId ? accountById[tx.accountId] : undefined}
-              category={tx.categoryId ? categoryById[tx.categoryId] : undefined}
-              counterparty={tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined}
-              onClick={() => {
-                window.location.href = '/transactions';
-              }}
-            />
-          ))}
-        </Card>
-      )}
-    </div>
+    </>
   );
 }

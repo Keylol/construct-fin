@@ -1,19 +1,37 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Plus, ReceiptText, Wallet } from 'lucide-react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
-import { useTransactions, type TransactionFilters as TF } from '@/hooks/useTransactions';
-import { Card } from '@/components/ui/Card';
+import {
+  useTransactions,
+  useTransactionSummary,
+  type TransactionFilters as TF,
+} from '@/hooks/useTransactions';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { TransactionFilters, type ActiveFilters } from '@/components/transactions/TransactionFilters';
-import { TransactionListItem } from '@/components/transactions/TransactionListItem';
+import { KpiCard } from '@/components/ui/KpiCard';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import {
+  TransactionFilters,
+  type ActiveFilters,
+} from '@/components/transactions/TransactionFilters';
 import { TransactionFormDialog } from '@/components/transactions/TransactionFormDialog';
-import { Fab } from '@/components/transactions/Fab';
 import { rangeFor } from '@/lib/periods';
+import { formatRub } from '@construct/shared';
+import { cn } from '@/lib/cn';
+import type { Transaction } from '@/lib/types';
+
+const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
 
 export default function TransactionsPage() {
   const { current } = useCurrentWorkspace();
@@ -43,6 +61,7 @@ export default function TransactionsPage() {
   );
 
   const txs = useTransactions(wsId, apiFilters);
+  const summary = useTransactionSummary(wsId, filters.range);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -51,7 +70,6 @@ export default function TransactionsPage() {
     () => [...(incomeCats.data ?? []), ...(expenseCats.data ?? [])],
     [incomeCats.data, expenseCats.data],
   );
-
   const accountById = useMemo(
     () => Object.fromEntries((accounts.data ?? []).map((a) => [a.id, a])),
     [accounts.data],
@@ -66,12 +84,110 @@ export default function TransactionsPage() {
   );
 
   if (!current) {
-    return <EmptyState title="Нет активного пространства" hint="Выберите или создайте пространство." />;
+    return (
+      <>
+        <PageHeader title="Операции" />
+        <div className="p-6">
+          <EmptyState
+            icon={Wallet}
+            title="Нет активного пространства"
+            hint="Выберите или создайте пространство."
+          />
+        </div>
+      </>
+    );
   }
 
+  const columns: Column<Transaction>[] = [
+    {
+      key: 'date',
+      header: 'Дата',
+      cell: (t) => (
+        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+          {DATE_FMT.format(new Date(t.date))}
+        </span>
+      ),
+      sortable: true,
+      className: 'w-[110px]',
+    },
+    {
+      key: 'description',
+      header: 'Описание',
+      cell: (t) => {
+        const cp = t.counterpartyId ? counterpartyById[t.counterpartyId] : undefined;
+        const cat = t.categoryId ? categoryById[t.categoryId] : undefined;
+        return (
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground">
+              {t.description?.trim() || cp?.name || cat?.name || (t.type === 'INCOME' ? 'Доход' : 'Расход')}
+            </div>
+            {(cp || cat) && (
+              <div className="truncate text-xs text-muted-foreground">
+                {[cat?.name, cp?.name].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'account',
+      header: 'Счёт',
+      cell: (t) => (
+        <span className="text-muted-foreground">{accountById[t.accountId]?.name ?? '—'}</span>
+      ),
+      className: 'w-[160px]',
+    },
+    {
+      key: 'amount',
+      header: 'Сумма',
+      align: 'right',
+      sortable: true,
+      cell: (t) => (
+        <span
+          className={cn(
+            'font-semibold tabular-nums',
+            t.type === 'INCOME' ? 'text-success' : 'text-destructive',
+          )}
+        >
+          {t.type === 'INCOME' ? '+' : '−'}
+          {formatRub(t.amount, 2)}
+        </span>
+      ),
+      className: 'w-[140px]',
+    },
+  ];
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Операции</h1>
+    <>
+      <PageHeader
+        title="Операции"
+        breadcrumbs={[{ label: 'Учёт' }, { label: 'Операции' }]}
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            Добавить
+          </Button>
+        }
+      />
+
+      <div className="space-y-4 px-6 py-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {summary.isLoading || !summary.data ? (
+            <>
+              <Skeleton className="h-[88px]" />
+              <Skeleton className="h-[88px]" />
+              <Skeleton className="h-[88px]" />
+            </>
+          ) : (
+            <>
+              <KpiCard label="Доход" value={formatRub(summary.data.income)} tone="positive" />
+              <KpiCard label="Расход" value={formatRub(summary.data.expense)} tone="negative" />
+              <KpiCard label="Чистый" value={formatRub(summary.data.net)} />
+            </>
+          )}
+        </div>
+      </div>
 
       <TransactionFilters
         active={filters}
@@ -81,33 +197,54 @@ export default function TransactionsPage() {
         counterparties={counterparties.data ?? []}
       />
 
-      {txs.isLoading && <Card>Загрузка…</Card>}
-      {txs.error && <Card className="text-danger">Ошибка: {String(txs.error)}</Card>}
-
-      {txs.data && txs.data.items.length === 0 && (
-        <EmptyState
-          title="За этот период нет операций"
-          hint="Добавьте первую операцию через кнопку + справа внизу."
-          action={<Button onClick={() => setCreating(true)}>+ Добавить операцию</Button>}
-        />
-      )}
-
-      {txs.data && txs.data.items.length > 0 && (
-        <Card className="!p-2">
-          {txs.data.items.map((tx) => (
-            <TransactionListItem
-              key={tx.id}
-              tx={tx}
-              account={tx.accountId ? accountById[tx.accountId] : undefined}
-              category={tx.categoryId ? categoryById[tx.categoryId] : undefined}
-              counterparty={tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined}
-              onClick={() => setEditingId(tx.id)}
+      <div className="rounded-none border-t border-border bg-card">
+        <DataTable
+          data={txs.data?.items ?? []}
+          columns={columns}
+          rowKey={(t) => t.id}
+          onRowClick={(t) => setEditingId(t.id)}
+          loading={txs.isLoading}
+          empty={
+            <EmptyState
+              icon={ReceiptText}
+              title="За этот период нет операций"
+              hint="Добавьте первую операцию через кнопку «Добавить» выше."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" />
+                  Добавить операцию
+                </Button>
+              }
             />
-          ))}
-        </Card>
-      )}
-
-      <Fab onClick={() => setCreating(true)} />
+          }
+          mobileCards={(t) => {
+            const cp = t.counterpartyId ? counterpartyById[t.counterpartyId] : undefined;
+            const cat = t.categoryId ? categoryById[t.categoryId] : undefined;
+            return (
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {t.description?.trim() || cp?.name || cat?.name || (t.type === 'INCOME' ? 'Доход' : 'Расход')}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {DATE_FMT.format(new Date(t.date))} · {accountById[t.accountId]?.name ?? '—'}
+                    {cat && ` · ${cat.name}`}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    'shrink-0 text-sm font-semibold tabular-nums',
+                    t.type === 'INCOME' ? 'text-success' : 'text-destructive',
+                  )}
+                >
+                  {t.type === 'INCOME' ? '+' : '−'}
+                  {formatRub(t.amount, 2)}
+                </div>
+              </div>
+            );
+          }}
+        />
+      </div>
 
       <TransactionFormDialog
         wsId={current.id}
@@ -118,6 +255,6 @@ export default function TransactionsPage() {
           setEditingId(null);
         }}
       />
-    </div>
+    </>
   );
 }
