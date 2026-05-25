@@ -1,19 +1,31 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useState, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
-import { BottomNav } from './BottomNav';
-import { MobileTopBar } from './MobileTopBar';
+import { Header } from './Header';
+import { GlobalCommandPalette } from './GlobalCommandPalette';
+import { Toaster } from '@/components/ui/Toaster';
+import { TooltipProvider } from '@/components/ui/Tooltip';
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const [cmdOpen, setCmdOpen] = useState(false);
+
   return (
-    <div className="min-h-dvh flex">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <MobileTopBar />
-        <main className="flex-1 px-4 md:px-8 py-6 pb-24 md:pb-8 max-w-5xl w-full mx-auto">
-          {children}
-        </main>
-        <BottomNav />
+    <TooltipProvider delayDuration={200}>
+      <div className="flex min-h-dvh bg-background">
+        {/* Desktop sidebar — sticky full height */}
+        <div className="sticky top-0 hidden h-dvh md:flex">
+          <Sidebar />
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header onCommandOpen={() => setCmdOpen(true)} />
+          <main className="min-w-0 flex-1">{children}</main>
+        </div>
       </div>
-    </div>
+
+      <GlobalCommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
+      <Toaster />
+    </TooltipProvider>
   );
 }
