@@ -1,9 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { BarChart3 } from 'lucide-react';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Select } from '@/components/ui/Select';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { FilterBar } from '@/components/ui/FilterBar';
 import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -12,68 +16,87 @@ import { useBreakdownReport } from '@/hooks/useReports';
 export default function CounterpartiesReportPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
-  const [period, setPeriod] = useState<PeriodValue>({ mode: 'preset', preset: 'this-month' });
+  const [period, setPeriod] = useState<PeriodValue>({
+    mode: 'preset',
+    preset: 'this-month',
+  });
   const [type, setType] = useState<'INCOME' | 'EXPENSE' | 'ALL'>('ALL');
 
   const query = useBreakdownReport('by-counterparty', wsId, periodToQuery(period), type);
 
-  if (!wsId) return <EmptyState title="Workspace не выбран" />;
+  if (!wsId) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          icon={BarChart3}
+          title="Нет активного пространства"
+          hint="Выберите или создайте пространство."
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <>
+      <FilterBar>
         <PeriodPicker value={period} onChange={setPeriod} />
-        <div className="flex items-center gap-2 text-sm">
-          <label className="flex items-center gap-1">
-            Тип:
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as 'INCOME' | 'EXPENSE' | 'ALL')}
-              className="rounded border border-glass-border bg-glass/30 px-2 py-1"
-            >
-              <option value="ALL">Всё</option>
-              <option value="EXPENSE">Расход</option>
-              <option value="INCOME">Доход</option>
-            </select>
-          </label>
-        </div>
-        {wsId && (
+        <label className="flex flex-col text-xs text-muted-foreground">
+          <span className="pb-1">Тип</span>
+          <Select
+            value={type}
+            onChange={(e) => setType(e.target.value as 'INCOME' | 'EXPENSE' | 'ALL')}
+            className="h-9 w-[120px]"
+          >
+            <option value="ALL">Всё</option>
+            <option value="EXPENSE">Расход</option>
+            <option value="INCOME">Доход</option>
+          </Select>
+        </label>
+        <div className="ml-auto self-end">
           <ExportButtons
             wsId={wsId}
             kind="by-counterparty"
             params={{ ...periodToQuery(period), type }}
           />
+        </div>
+      </FilterBar>
+
+      <div className="space-y-4 px-6 py-4">
+        {query.isLoading && <Skeleton className="h-64 w-full" />}
+
+        {query.data && (
+          <Card className="overflow-x-auto !p-0">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border">
+                <tr className="text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Контрагент</th>
+                  <th className="px-4 py-2 text-right font-medium">Транзакций</th>
+                  <th className="px-4 py-2 text-right font-medium">Доход</th>
+                  <th className="px-4 py-2 text-right font-medium">Расход</th>
+                  <th className="px-4 py-2 text-right font-medium">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.rows.map((r) => (
+                  <tr key={r.id ?? 'none'} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2">{r.name}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{r.count}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-success">
+                      {formatRub(r.income)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-destructive">
+                      {formatRub(r.expense)}
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium tabular-nums">
+                      {formatRub(r.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         )}
       </div>
-
-      {query.isLoading && <p className="text-muted text-sm">Загрузка…</p>}
-
-      {query.data && (
-        <Card>
-          <table className="w-full text-sm">
-            <thead className="text-muted text-left text-xs uppercase">
-              <tr>
-                <th className="py-2">Контрагент</th>
-                <th className="py-2 text-right">Транзакций</th>
-                <th className="py-2 text-right">Доход</th>
-                <th className="py-2 text-right">Расход</th>
-                <th className="py-2 text-right">Итого</th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data.rows.map((r) => (
-                <tr key={r.id ?? 'none'} className="border-t border-glass-border">
-                  <td className="py-2">{r.name}</td>
-                  <td className="py-2 text-right">{r.count}</td>
-                  <td className="py-2 text-right text-emerald-500">{formatRub(r.income)}</td>
-                  <td className="py-2 text-right text-rose-500">{formatRub(r.expense)}</td>
-                  <td className="py-2 text-right font-medium">{formatRub(r.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-    </div>
+    </>
   );
 }

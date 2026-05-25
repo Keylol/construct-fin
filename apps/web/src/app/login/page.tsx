@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { FormField } from '@/components/ui/FormField';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,27 +36,32 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-dvh flex items-center justify-center p-6">
-      <div className="glass rounded-3xl p-8 max-w-sm w-full">
-        <h1 className="text-2xl font-semibold mb-6 text-center">Вход</h1>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <input
-            type="password"
-            placeholder="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-xl border border-border bg-glass px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-tint"
-            autoFocus
-            required
-          />
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl bg-tint px-4 py-3 text-sm text-white font-medium disabled:opacity-50"
-          >
+    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8 shadow-sm">
+        <div className="mb-6 flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+            C
+          </div>
+          <div className="text-base font-semibold tracking-tight">Construct</div>
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight">Вход</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Введите пароль для доступа к приложению.
+        </p>
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <FormField label="Пароль" htmlFor="password" error={error ?? undefined}>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+              required
+            />
+          </FormField>
+          <Button type="submit" disabled={loading || !password} className="w-full">
             {loading ? 'Вход…' : 'Войти'}
-          </button>
+          </Button>
         </form>
       </div>
     </main>

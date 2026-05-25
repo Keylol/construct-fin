@@ -1,9 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
+import { Upload, History, RotateCcw } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useImportBatches, useRollbackImport } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
@@ -16,109 +21,186 @@ const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
   GENERIC_XLSX: 'Excel',
 };
 
+const DT_FMT = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 export default function ImportBatchesPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const batches = useImportBatches(wsId);
   const rollback = useRollbackImport(wsId ?? '');
+  const [rollbackTarget, setRollbackTarget] = useState<ImportBatch | null>(null);
 
-  if (!wsId) return <EmptyState title="Workspace не выбран" />;
+  if (!wsId) {
+    return (
+      <>
+        <PageHeader title="История импортов" />
+        <div className="p-6">
+          <EmptyState
+            icon={History}
+            title="Нет активного пространства"
+            hint="Выберите или создайте пространство."
+          />
+        </div>
+      </>
+    );
+  }
+
+  const columns: Column<ImportBatch>[] = [
+    {
+      key: 'createdAt',
+      header: 'Дата',
+      sortable: true,
+      cell: (b) => (
+        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+          {DT_FMT.format(new Date(b.createdAt))}
+        </span>
+      ),
+      className: 'w-[160px]',
+    },
+    {
+      key: 'source',
+      header: 'Источник',
+      cell: (b) => SOURCE_LABEL[b.source],
+      className: 'w-[120px]',
+    },
+    {
+      key: 'filename',
+      header: 'Файл',
+      cell: (b) => (
+        <span className="block max-w-[300px] truncate" title={b.filename}>
+          {b.filename}
+        </span>
+      ),
+    },
+    {
+      key: 'imported',
+      header: 'Импорт.',
+      align: 'right',
+      cell: (b) => b.rowsImported,
+      className: 'w-[90px]',
+    },
+    {
+      key: 'skipped',
+      header: 'Пропущ.',
+      align: 'right',
+      cell: (b) => <span className="text-muted-foreground">{b.rowsSkipped}</span>,
+      className: 'w-[90px]',
+    },
+    {
+      key: 'user',
+      header: 'Кто',
+      cell: (b) => b.user?.firstName ?? b.user?.username ?? 'Пользователь',
+      className: 'w-[140px]',
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      cell: (b) =>
+        b.deletedAt ? (
+          <Badge variant="muted">Откатан</Badge>
+        ) : (
+          <Badge variant="outline">Активен</Badge>
+        ),
+      className: 'w-[110px]',
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (b) =>
+        !b.deletedAt ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRollbackTarget(b);
+            }}
+            disabled={rollback.isPending}
+            className="text-destructive hover:text-destructive"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Откатить
+          </Button>
+        ) : null,
+      className: 'w-[120px]',
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">История импортов</h1>
-        <Link href="/import">
-          <Button variant="secondary">Новый импорт</Button>
-        </Link>
-      </header>
-
-      {batches.isLoading && <p className="text-muted text-sm">Загрузка…</p>}
-
-      {batches.data && batches.data.length === 0 && (
-        <EmptyState
-          title="Пока ничего не импортировано"
-          hint="Загрузите выписку, чтобы быстро добавить транзакции"
-          action={
+    <>
+      <PageHeader
+        title="История импортов"
+        breadcrumbs={[
+          { label: 'Учёт' },
+          { label: 'Импорт', href: '/import' },
+          { label: 'История' },
+        ]}
+        actions={
+          <Button asChild>
             <Link href="/import">
-              <Button>Импортировать</Button>
+              <Upload className="h-4 w-4" /> Новый импорт
             </Link>
+          </Button>
+        }
+      />
+
+      <div className="bg-card border-t border-border">
+        <DataTable
+          data={batches.data ?? []}
+          columns={columns}
+          rowKey={(b) => b.id}
+          loading={batches.isLoading}
+          empty={
+            <EmptyState
+              icon={History}
+              title="Пока ничего не импортировано"
+              hint="Загрузите выписку из банка, чтобы быстро добавить много операций."
+              action={
+                <Button asChild>
+                  <Link href="/import">Импортировать</Link>
+                </Button>
+              }
+            />
           }
+          mobileCards={(b) => (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-medium">{b.filename}</span>
+                {b.deletedAt ? (
+                  <Badge variant="muted">Откатан</Badge>
+                ) : (
+                  <Badge variant="outline">Активен</Badge>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {DT_FMT.format(new Date(b.createdAt))} · {SOURCE_LABEL[b.source]} ·
+                {' '}
+                {b.rowsImported} операций
+              </div>
+            </div>
+          )}
         />
-      )}
+      </div>
 
-      {batches.data && batches.data.length > 0 && (
-        <Card className="p-0 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted border-b border-white/10">
-                <th className="py-2 px-3">Дата</th>
-                <th className="py-2 px-3">Источник</th>
-                <th className="py-2 px-3">Файл</th>
-                <th className="py-2 px-3 text-right">Импорт.</th>
-                <th className="py-2 px-3 text-right">Пропущ.</th>
-                <th className="py-2 px-3">Кто</th>
-                <th className="py-2 px-3">Статус</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {batches.data.map((b) => {
-                const isRolledBack = !!b.deletedAt;
-                const userName =
-                  b.user?.firstName ?? b.user?.username ?? 'Пользователь';
-                return (
-                  <tr key={b.id} className="border-b border-white/5">
-                    <td className="py-2 px-3 whitespace-nowrap text-muted">
-                      {new Date(b.createdAt).toLocaleString('ru-RU')}
-                    </td>
-                    <td className="py-2 px-3">{SOURCE_LABEL[b.source]}</td>
-                    <td className="py-2 px-3 max-w-[240px] truncate" title={b.filename}>
-                      {b.filename}
-                    </td>
-                    <td className="py-2 px-3 text-right">{b.rowsImported}</td>
-                    <td className="py-2 px-3 text-right text-muted">
-                      {b.rowsSkipped}
-                    </td>
-                    <td className="py-2 px-3">{userName}</td>
-                    <td className="py-2 px-3">
-                      {isRolledBack ? (
-                        <span className="text-xs text-muted">откатан</span>
-                      ) : (
-                        <span className="text-xs text-success">активен</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      {!isRolledBack && (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Откатить импорт «${b.filename}»? ${b.rowsImported} транзакций будут удалены.`,
-                              )
-                            ) {
-                              rollback.mutate(b.id);
-                            }
-                          }}
-                          disabled={rollback.isPending}
-                        >
-                          Откатить
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {rollback.error && (
-        <p className="text-sm text-danger">{(rollback.error as Error).message}</p>
-      )}
-    </div>
+      <ConfirmDialog
+        open={!!rollbackTarget}
+        onOpenChange={(o) => !o && setRollbackTarget(null)}
+        title={`Откатить импорт «${rollbackTarget?.filename ?? ''}»?`}
+        description={`${rollbackTarget?.rowsImported ?? 0} операций будут удалены (soft-delete).`}
+        confirmText="Откатить"
+        onConfirm={async () => {
+          if (rollbackTarget) await rollback.mutateAsync(rollbackTarget.id);
+          setRollbackTarget(null);
+        }}
+        loading={rollback.isPending}
+      />
+    </>
   );
 }

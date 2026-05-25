@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Plus, Wallet, X, Trash2 } from 'lucide-react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useAccounts,
@@ -10,13 +11,23 @@ import {
   type CreateAccountInput,
 } from '@/hooks/useAccounts';
 import type { Account, AccountType } from '@/lib/types';
-import { Card } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Label } from '@/components/ui/Label';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { FormField } from '@/components/ui/FormField';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/Sheet';
 import { formatRub } from '@construct/shared';
 
 const TYPE_LABELS: Record<AccountType, string> = {
@@ -34,47 +45,111 @@ export default function AccountsPage() {
   const [creating, setCreating] = useState(false);
 
   if (!current) {
-    return <EmptyState title="Нет активного пространства" hint="Выберите или создайте пространство." />;
+    return (
+      <>
+        <PageHeader title="Счета" />
+        <div className="p-6">
+          <EmptyState
+            icon={Wallet}
+            title="Нет активного пространства"
+            hint="Выберите или создайте пространство."
+          />
+        </div>
+      </>
+    );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Счета</h1>
-        <Button size="sm" onClick={() => setCreating(true)}>+ Добавить</Button>
-      </div>
-
-      {accounts.isLoading && <Card>Загрузка…</Card>}
-      {accounts.error && <Card className="text-danger">Ошибка: {String(accounts.error)}</Card>}
-
-      {accounts.data && accounts.data.length === 0 && (
-        <EmptyState
-          title="Пока нет счетов"
-          hint="Добавьте первый счёт — это может быть наличка, карта или счёт в банке."
-          action={<Button onClick={() => setCreating(true)}>+ Добавить счёт</Button>}
-        />
-      )}
-
-      {accounts.data && accounts.data.length > 0 && (
-        <div className="grid gap-3">
-          {accounts.data.map((a) => (
-            <Card
-              key={a.id}
-              className="flex items-center justify-between cursor-pointer hover:bg-glass/80"
-              onClick={() => setEditing(a)}
-            >
-              <div>
-                <div className="font-medium">{a.name}</div>
-                <div className="text-xs text-muted">{TYPE_LABELS[a.type]}{a.isArchived ? ' · в архиве' : ''}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-muted">Начальный остаток</div>
-                <div className="font-medium">{formatRub(a.openingBalance)}</div>
-              </div>
-            </Card>
-          ))}
+  const columns: Column<Account>[] = [
+    {
+      key: 'name',
+      header: 'Название',
+      sortable: true,
+      cell: (a) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-foreground">{a.name}</div>
+          {a.note && (
+            <div className="truncate text-xs text-muted-foreground">{a.note}</div>
+          )}
         </div>
-      )}
+      ),
+    },
+    {
+      key: 'type',
+      header: 'Тип',
+      cell: (a) => <span className="text-muted-foreground">{TYPE_LABELS[a.type]}</span>,
+      className: 'w-[140px]',
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      cell: (a) =>
+        a.isArchived ? (
+          <Badge variant="muted">В архиве</Badge>
+        ) : (
+          <Badge variant="outline">Активен</Badge>
+        ),
+      className: 'w-[120px]',
+    },
+    {
+      key: 'opening',
+      header: 'Начальный остаток',
+      align: 'right',
+      sortable: true,
+      cell: (a) => formatRub(a.openingBalance),
+      className: 'w-[180px]',
+    },
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title="Счета"
+        breadcrumbs={[{ label: 'Справочники' }, { label: 'Счета' }]}
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            Добавить
+          </Button>
+        }
+      />
+      <div className="bg-card border-t border-border">
+        <DataTable
+          data={accounts.data ?? []}
+          columns={columns}
+          rowKey={(a) => a.id}
+          onRowClick={(a) => setEditing(a)}
+          loading={accounts.isLoading}
+          empty={
+            <EmptyState
+              icon={Wallet}
+              title="Пока нет счетов"
+              hint="Добавьте первый счёт — наличку, карту или счёт в банке."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" /> Добавить счёт
+                </Button>
+              }
+            />
+          }
+          mobileCards={(a) => (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{a.name}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {TYPE_LABELS[a.type]}
+                  {a.isArchived && ' · в архиве'}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[10px] uppercase text-muted-foreground">Остаток</div>
+                <div className="text-sm font-medium tabular-nums">
+                  {formatRub(a.openingBalance)}
+                </div>
+              </div>
+            </div>
+          )}
+        />
+      </div>
 
       <AccountForm
         wsId={current.id}
@@ -85,7 +160,7 @@ export default function AccountsPage() {
           setEditing(null);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -104,6 +179,7 @@ function AccountForm({
   const update = useUpdateAccount(wsId);
   const del = useDeleteAccount(wsId);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const [name, setName] = useState(initial?.name ?? '');
   const [type, setType] = useState<AccountType>(initial?.type ?? 'BANK');
@@ -111,7 +187,6 @@ function AccountForm({
   const [note, setNote] = useState(initial?.note ?? '');
   const [isArchived, setIsArchived] = useState(initial?.isArchived ?? false);
 
-  // sync when initial changes (открыли другую запись)
   useEffect(() => {
     if (initial) {
       setName(initial.name);
@@ -126,7 +201,8 @@ function AccountForm({
       setNote('');
       setIsArchived(false);
     }
-  }, [initial]);
+    setError(null);
+  }, [initial, open]);
 
   const onSave = async () => {
     setError(null);
@@ -150,62 +226,104 @@ function AccountForm({
 
   const onDelete = async () => {
     if (!initial) return;
-    if (!confirm(`Удалить счёт «${initial.name}»? Это soft-delete, можно восстановить из БД.`)) return;
-    try {
-      await del.mutateAsync(initial.id);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка');
-    }
+    await del.mutateAsync(initial.id);
+    onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={initial ? 'Редактировать счёт' : 'Новый счёт'}>
-      <div className="space-y-3">
-        <div>
-          <Label htmlFor="acc-name">Название</Label>
-          <Input id="acc-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Альфа-Банк ИП" autoFocus />
-        </div>
-        <div>
-          <Label htmlFor="acc-type">Тип</Label>
-          <Select id="acc-type" value={type} onChange={(e) => setType(e.target.value as AccountType)}>
-            <option value="CASH">Наличные</option>
-            <option value="BANK">Банк</option>
-            <option value="CARD">Карта</option>
-            <option value="OTHER">Другое</option>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="acc-opening">Начальный остаток</Label>
-          <Input
-            id="acc-opening"
-            inputMode="decimal"
-            value={openingBalance}
-            onChange={(e) => setOpeningBalance(e.target.value)}
-            placeholder="0.00"
-          />
-        </div>
-        <div>
-          <Label htmlFor="acc-note">Заметка</Label>
-          <Input id="acc-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="опционально" />
-        </div>
-        {initial && (
-          <label className="flex items-center gap-2 text-sm text-fg/80">
-            <input type="checkbox" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
-            В архиве
-          </label>
-        )}
-        {error && <p className="text-danger text-sm">{error}</p>}
-        <div className="flex gap-2 pt-2">
-          {initial && (
-            <Button variant="danger" onClick={onDelete} className="flex-1">Удалить</Button>
-          )}
-          <Button variant="secondary" onClick={onClose} className="flex-1">Отмена</Button>
-          <Button onClick={onSave} disabled={!name.trim() || create.isPending || update.isPending} className="flex-1">
-            Сохранить
-          </Button>
-        </div>
-      </div>
-    </Modal>
+    <>
+      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+        <SheetContent side="right" hideClose className="sm:max-w-md">
+          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <SheetTitle>{initial ? 'Редактировать счёт' : 'Новый счёт'}</SheetTitle>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetHeader>
+          <SheetBody className="space-y-4">
+            <FormField label="Название" htmlFor="acc-name" required>
+              <Input
+                id="acc-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Альфа-Банк ИП"
+                autoFocus
+              />
+            </FormField>
+            <FormField label="Тип" htmlFor="acc-type">
+              <Select
+                id="acc-type"
+                value={type}
+                onChange={(e) => setType(e.target.value as AccountType)}
+              >
+                <option value="CASH">Наличные</option>
+                <option value="BANK">Банк</option>
+                <option value="CARD">Карта</option>
+                <option value="OTHER">Другое</option>
+              </Select>
+            </FormField>
+            <FormField label="Начальный остаток" htmlFor="acc-opening">
+              <Input
+                id="acc-opening"
+                inputMode="decimal"
+                value={openingBalance}
+                onChange={(e) => setOpeningBalance(e.target.value)}
+                placeholder="0.00"
+              />
+            </FormField>
+            <FormField label="Заметка" htmlFor="acc-note">
+              <Input
+                id="acc-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="опционально"
+              />
+            </FormField>
+            {initial && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isArchived}
+                  onChange={(e) => setIsArchived(e.target.checked)}
+                  className="h-4 w-4 rounded border-input accent-primary"
+                />
+                В архиве
+              </label>
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </SheetBody>
+          <SheetFooter>
+            {initial && (
+              <Button
+                variant="destructive"
+                onClick={() => setConfirmDel(true)}
+                className="sm:mr-auto"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Удалить
+              </Button>
+            )}
+            <Button variant="secondary" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button
+              onClick={onSave}
+              disabled={!name.trim() || create.isPending || update.isPending}
+            >
+              {(create.isPending || update.isPending) ? 'Сохраняю…' : 'Сохранить'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+      <ConfirmDialog
+        open={confirmDel}
+        onOpenChange={setConfirmDel}
+        title={`Удалить «${initial?.name ?? ''}»?`}
+        description="Счёт переместится в архив, операции по нему останутся."
+        confirmText="Удалить"
+        onConfirm={onDelete}
+        loading={del.isPending}
+      />
+    </>
   );
 }

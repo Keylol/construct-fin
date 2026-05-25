@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Plus, Users, Search, X, Trash2 } from 'lucide-react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useCounterparties,
@@ -9,12 +10,24 @@ import {
   useDeleteCounterparty,
 } from '@/hooks/useCounterparties';
 import type { Counterparty } from '@/lib/types';
-import { Card } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
+import { Textarea } from '@/components/ui/Textarea';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { FormField } from '@/components/ui/FormField';
+import { FilterBar } from '@/components/ui/FilterBar';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/Sheet';
 
 export default function CounterpartiesPage() {
   const { current } = useCurrentWorkspace();
@@ -25,50 +38,110 @@ export default function CounterpartiesPage() {
   const [creating, setCreating] = useState(false);
 
   if (!current) {
-    return <EmptyState title="Нет активного пространства" hint="Выберите или создайте пространство." />;
+    return (
+      <>
+        <PageHeader title="Контрагенты" />
+        <div className="p-6">
+          <EmptyState
+            icon={Users}
+            title="Нет активного пространства"
+            hint="Выберите или создайте пространство."
+          />
+        </div>
+      </>
+    );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Контрагенты</h1>
-        <Button size="sm" onClick={() => setCreating(true)}>+ Добавить</Button>
-      </div>
+  const columns: Column<Counterparty>[] = [
+    {
+      key: 'name',
+      header: 'Имя / название',
+      sortable: true,
+      cell: (c) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium">{c.name}</div>
+          {c.contact && (
+            <div className="truncate text-xs text-muted-foreground">{c.contact}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'note',
+      header: 'Заметка',
+      cell: (c) => (
+        <span className="line-clamp-1 text-muted-foreground">{c.note ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      cell: (c) =>
+        c.isArchived ? <Badge variant="muted">В архиве</Badge> : <Badge variant="outline">Активен</Badge>,
+      className: 'w-[120px]',
+    },
+  ];
 
-      <Input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Поиск по имени или контакту"
+  return (
+    <>
+      <PageHeader
+        title="Контрагенты"
+        breadcrumbs={[{ label: 'Справочники' }, { label: 'Контрагенты' }]}
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            Добавить
+          </Button>
+        }
       />
 
-      {list.isLoading && <Card>Загрузка…</Card>}
-      {list.error && <Card className="text-danger">Ошибка: {String(list.error)}</Card>}
-
-      {list.data && list.data.length === 0 && (
-        <EmptyState
-          title="Пока нет контрагентов"
-          hint="Добавьте клиента или поставщика, чтобы потом привязывать к ним операции."
-          action={<Button onClick={() => setCreating(true)}>+ Добавить</Button>}
-        />
-      )}
-
-      {list.data && list.data.length > 0 && (
-        <div className="grid gap-3">
-          {list.data.map((c) => (
-            <Card
-              key={c.id}
-              className="cursor-pointer hover:bg-glass/80"
-              onClick={() => setEditing(c)}
-            >
-              <div className="font-medium">{c.name}</div>
-              {c.contact && <div className="text-sm text-muted">{c.contact}</div>}
-              {c.note && <div className="text-xs text-muted mt-1 line-clamp-2">{c.note}</div>}
-              {c.isArchived && <div className="text-xs text-muted mt-1">в архиве</div>}
-            </Card>
-          ))}
+      <FilterBar>
+        <div className="min-w-[240px] max-w-md flex-1">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по имени или контакту"
+              className="h-9 pl-8"
+            />
+          </div>
         </div>
-      )}
+      </FilterBar>
+
+      <div className="bg-card">
+        <DataTable
+          data={list.data ?? []}
+          columns={columns}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => setEditing(c)}
+          loading={list.isLoading}
+          empty={
+            <EmptyState
+              icon={Users}
+              title="Пока нет контрагентов"
+              hint="Добавьте клиента или поставщика, чтобы привязывать к ним операции."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" /> Добавить
+                </Button>
+              }
+            />
+          }
+          mobileCards={(c) => (
+            <div className="flex flex-col gap-0.5">
+              <div className="font-medium">{c.name}</div>
+              {c.contact && (
+                <div className="text-xs text-muted-foreground">{c.contact}</div>
+              )}
+              {c.note && (
+                <div className="line-clamp-2 text-xs text-muted-foreground">{c.note}</div>
+              )}
+            </div>
+          )}
+        />
+      </div>
 
       <CounterpartyForm
         wsId={current.id}
@@ -79,7 +152,7 @@ export default function CounterpartiesPage() {
           setEditing(null);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -102,6 +175,7 @@ function CounterpartyForm({
   const [note, setNote] = useState('');
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   useEffect(() => {
     if (initial) {
@@ -145,49 +219,88 @@ function CounterpartyForm({
 
   const onDelete = async () => {
     if (!initial) return;
-    if (!confirm(`Удалить контрагента «${initial.name}»?`)) return;
-    try {
-      await del.mutateAsync(initial.id);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка');
-    }
+    await del.mutateAsync(initial.id);
+    onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={initial ? 'Редактировать контрагента' : 'Новый контрагент'}>
-      <div className="space-y-3">
-        <div>
-          <Label htmlFor="cp-name">Имя / название</Label>
-          <Input id="cp-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </div>
-        <div>
-          <Label htmlFor="cp-contact">Контакт</Label>
-          <Input id="cp-contact" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="телефон, email, @username" />
-        </div>
-        <div>
-          <Label htmlFor="cp-note">Заметка</Label>
-          <textarea
-            id="cp-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 rounded-xl bg-surface text-fg border border-white/10 outline-none focus:border-tint focus:ring-2 focus:ring-tint/30 transition"
-          />
-        </div>
-        {initial && (
-          <label className="flex items-center gap-2 text-sm text-fg/80">
-            <input type="checkbox" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
-            В архиве
-          </label>
-        )}
-        {error && <p className="text-danger text-sm">{error}</p>}
-        <div className="flex gap-2 pt-2">
-          {initial && <Button variant="danger" onClick={onDelete} className="flex-1">Удалить</Button>}
-          <Button variant="secondary" onClick={onClose} className="flex-1">Отмена</Button>
-          <Button onClick={onSave} disabled={!name.trim()} className="flex-1">Сохранить</Button>
-        </div>
-      </div>
-    </Modal>
+    <>
+      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+        <SheetContent side="right" hideClose className="sm:max-w-md">
+          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <SheetTitle>
+              {initial ? 'Редактировать контрагента' : 'Новый контрагент'}
+            </SheetTitle>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetHeader>
+          <SheetBody className="space-y-4">
+            <FormField label="Имя / название" htmlFor="cp-name" required>
+              <Input
+                id="cp-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+              />
+            </FormField>
+            <FormField label="Контакт" htmlFor="cp-contact">
+              <Input
+                id="cp-contact"
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="телефон, email, @username"
+              />
+            </FormField>
+            <FormField label="Заметка" htmlFor="cp-note">
+              <Textarea
+                id="cp-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={3}
+              />
+            </FormField>
+            {initial && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isArchived}
+                  onChange={(e) => setIsArchived(e.target.checked)}
+                  className="h-4 w-4 rounded border-input accent-primary"
+                />
+                В архиве
+              </label>
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </SheetBody>
+          <SheetFooter>
+            {initial && (
+              <Button
+                variant="destructive"
+                onClick={() => setConfirmDel(true)}
+                className="sm:mr-auto"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Удалить
+              </Button>
+            )}
+            <Button variant="secondary" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button onClick={onSave} disabled={!name.trim()}>
+              Сохранить
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+      <ConfirmDialog
+        open={confirmDel}
+        onOpenChange={setConfirmDel}
+        title={`Удалить «${initial?.name ?? ''}»?`}
+        description="Контрагент переместится в архив, привязки в операциях сохранятся."
+        confirmText="Удалить"
+        onConfirm={onDelete}
+        loading={del.isPending}
+      />
+    </>
   );
 }

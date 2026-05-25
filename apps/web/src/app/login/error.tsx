@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
 
 export default function LoginError({
   error,
@@ -9,29 +9,16 @@ export default function LoginError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error('LoginError boundary caught:', error);
-  }, [error]);
-
   return (
-    <main className="min-h-dvh flex items-center justify-center p-6">
-      <div className="glass rounded-3xl p-6 max-w-md w-full">
-        <h1 className="text-xl font-semibold mb-3">Ошибка авторизации</h1>
-        <p className="text-sm text-danger mb-2">{error.message || 'Unknown error'}</p>
-        {error.digest && (
-          <p className="text-xs text-muted mb-3">digest: {error.digest}</p>
-        )}
-        {error.stack && (
-          <pre className="text-[10px] text-muted whitespace-pre-wrap break-all max-h-64 overflow-auto bg-glass/40 p-2 rounded">
-            {error.stack}
-          </pre>
-        )}
-        <button
-          onClick={reset}
-          className="mt-4 rounded-xl bg-tint px-4 py-2 text-sm text-white"
-        >
-          Перезапустить
-        </button>
+    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8 shadow-sm">
+        <h1 className="text-xl font-semibold tracking-tight">Ошибка авторизации</h1>
+        <p className="mt-2 text-sm text-destructive">
+          {error.message || 'Не удалось войти. Попробуйте ещё раз.'}
+        </p>
+        <Button onClick={reset} className="mt-6 w-full">
+          Попробовать снова
+        </Button>
       </div>
     </main>
   );

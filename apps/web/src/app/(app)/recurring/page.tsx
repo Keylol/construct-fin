@@ -1,10 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { Plus, Repeat, Play, Pencil, Trash2 } from 'lucide-react';
 import { formatRub } from '@construct/shared';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { RecurringFormDialog } from '@/components/recurring/RecurringFormDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
@@ -17,6 +21,8 @@ import {
   type UpdateRecurringInput,
 } from '@/hooks/useRecurring';
 import type { RecurringFrequency, RecurringRule } from '@/lib/types';
+import { cn } from '@/lib/cn';
+import { toast } from '@/components/ui/Toaster';
 
 const FREQ_LABEL: Record<RecurringFrequency, string> = {
   DAILY: 'день',
@@ -36,6 +42,12 @@ function describeRule(r: RecurringRule): string {
   return every;
 }
 
+const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+
 export default function RecurringPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
@@ -47,8 +59,22 @@ export default function RecurringPage() {
 
   const [editing, setEditing] = useState<RecurringRule | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [delTarget, setDelTarget] = useState<RecurringRule | null>(null);
 
-  if (!wsId) return <EmptyState title="Workspace не выбран" />;
+  if (!wsId) {
+    return (
+      <>
+        <PageHeader title="Регулярные операции" />
+        <div className="p-6">
+          <EmptyState
+            icon={Repeat}
+            title="Нет активного пространства"
+            hint="Выберите или создайте пространство."
+          />
+        </div>
+      </>
+    );
+  }
 
   async function handleSubmit(input: CreateRecurringInput | UpdateRecurringInput) {
     if (editing) {
@@ -58,114 +84,191 @@ export default function RecurringPage() {
     }
   }
 
-  function openCreate() {
-    setEditing(null);
-    setDialogOpen(true);
-  }
+  const runNow = async (id: string) => {
+    const result = await runNowMut.mutateAsync(id);
+    toast.success('Запуск завершён', {
+      description: `Создано: ${result.created}, пропущено дублей: ${result.skipped}`,
+    });
+  };
 
-  function openEdit(r: RecurringRule) {
-    setEditing(r);
-    setDialogOpen(true);
-  }
+  const columns: Column<RecurringRule>[] = [
+    {
+      key: 'name',
+      header: 'Название',
+      sortable: true,
+      cell: (r) => <span className="font-medium">{r.name}</span>,
+    },
+    {
+      key: 'amount',
+      header: 'Сумма',
+      align: 'right',
+      cell: (r) => (
+        <span
+          className={cn(
+            'font-semibold tabular-nums',
+            r.templateJson.type === 'INCOME' ? 'text-success' : 'text-destructive',
+          )}
+        >
+          {r.templateJson.type === 'INCOME' ? '+' : '−'}
+          {formatRub(r.templateJson.amount)}
+        </span>
+      ),
+      className: 'w-[140px]',
+    },
+    {
+      key: 'schedule',
+      header: 'Расписание',
+      cell: (r) => <span className="text-muted-foreground">{describeRule(r)}</span>,
+    },
+    {
+      key: 'next',
+      header: 'След. запуск',
+      cell: (r) => (
+        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+          {DATE_FMT.format(new Date(r.nextRunAt))}
+        </span>
+      ),
+      className: 'w-[140px]',
+    },
+    {
+      key: 'last',
+      header: 'Посл. запуск',
+      cell: (r) => (
+        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+          {r.lastRunAt ? DATE_FMT.format(new Date(r.lastRunAt)) : '—'}
+        </span>
+      ),
+      className: 'w-[140px]',
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      cell: (r) =>
+        r.active ? <Badge variant="outline">Активно</Badge> : <Badge variant="muted">Пауза</Badge>,
+      className: 'w-[100px]',
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (r) => (
+        <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => runNow(r.id)}
+            disabled={runNowMut.isPending || !r.active}
+            title="Выполнить сейчас"
+            aria-label="Выполнить"
+          >
+            <Play className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setEditing(r);
+              setDialogOpen(true);
+            }}
+            aria-label="Редактировать"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setDelTarget(r)}
+            aria-label="Удалить"
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+      className: 'w-[140px]',
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Повторяющиеся транзакции</h1>
-        <Button onClick={openCreate}>Новое правило</Button>
-      </header>
+    <>
+      <PageHeader
+        title="Регулярные операции"
+        breadcrumbs={[{ label: 'Учёт' }, { label: 'Регулярные' }]}
+        description="Зарплата, аренда, подписки — будут создаваться автоматически."
+        actions={
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Новое правило
+          </Button>
+        }
+      />
 
-      {rules.isLoading && <p className="text-muted text-sm">Загрузка…</p>}
-
-      {rules.data && rules.data.length === 0 && (
-        <EmptyState
-          title="Пока нет повторяющихся правил"
-          hint="Создайте правило для зарплаты, аренды или подписок — Construct будет создавать транзакции автоматически"
-          action={<Button onClick={openCreate}>Создать правило</Button>}
+      <div className="bg-card border-t border-border">
+        <DataTable
+          data={rules.data ?? []}
+          columns={columns}
+          rowKey={(r) => r.id}
+          loading={rules.isLoading}
+          empty={
+            <EmptyState
+              icon={Repeat}
+              title="Пока нет правил"
+              hint="Создайте правило для зарплаты, аренды или подписок — Construct будет создавать операции автоматически."
+              action={
+                <Button
+                  onClick={() => {
+                    setEditing(null);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" /> Создать правило
+                </Button>
+              }
+            />
+          }
+          mobileCards={(r) => (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-medium">{r.name}</span>
+                <span
+                  className={cn(
+                    'shrink-0 text-sm font-semibold tabular-nums',
+                    r.templateJson.type === 'INCOME' ? 'text-success' : 'text-destructive',
+                  )}
+                >
+                  {r.templateJson.type === 'INCOME' ? '+' : '−'}
+                  {formatRub(r.templateJson.amount)}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">{describeRule(r)}</div>
+              <div className="text-xs text-muted-foreground">
+                След. {DATE_FMT.format(new Date(r.nextRunAt))}
+                {!r.active && ' · пауза'}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => runNow(r.id)}>
+                  <Play className="h-3 w-3" /> Запустить
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setEditing(r);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <Pencil className="h-3 w-3" /> Изменить
+                </Button>
+              </div>
+            </div>
+          )}
         />
-      )}
-
-      {rules.data && rules.data.length > 0 && (
-        <Card className="p-0 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted border-b border-white/10">
-                <th className="py-2 px-3">Название</th>
-                <th className="py-2 px-3 text-right">Сумма</th>
-                <th className="py-2 px-3">Расписание</th>
-                <th className="py-2 px-3">След. запуск</th>
-                <th className="py-2 px-3">Посл. запуск</th>
-                <th className="py-2 px-3">Статус</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.data.map((r) => (
-                <tr key={r.id} className="border-b border-white/5">
-                  <td className="py-2 px-3 font-medium">{r.name}</td>
-                  <td
-                    className={`py-2 px-3 text-right whitespace-nowrap ${
-                      r.templateJson.type === 'INCOME' ? 'text-success' : 'text-danger'
-                    }`}
-                  >
-                    {r.templateJson.type === 'INCOME' ? '+' : '−'}{' '}
-                    {formatRub(r.templateJson.amount)}
-                  </td>
-                  <td className="py-2 px-3 text-muted">{describeRule(r)}</td>
-                  <td className="py-2 px-3 whitespace-nowrap text-muted">
-                    {new Date(r.nextRunAt).toLocaleDateString('ru-RU')}
-                  </td>
-                  <td className="py-2 px-3 whitespace-nowrap text-muted">
-                    {r.lastRunAt
-                      ? new Date(r.lastRunAt).toLocaleDateString('ru-RU')
-                      : '—'}
-                  </td>
-                  <td className="py-2 px-3">
-                    {r.active ? (
-                      <span className="text-xs text-success">активно</span>
-                    ) : (
-                      <span className="text-xs text-muted">пауза</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-right whitespace-nowrap">
-                    <div className="inline-flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => runNowMut.mutate(r.id)}
-                        disabled={runNowMut.isPending || !r.active}
-                        title="Выполнить сейчас (создаст пропущенные за период до 30 дней)"
-                      >
-                        ▶
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(r)}>
-                        ✎
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => {
-                          if (confirm(`Удалить правило «${r.name}»?`)) {
-                            deleteMut.mutate(r.id);
-                          }
-                        }}
-                      >
-                        ×
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {runNowMut.data && (
-        <p className="text-sm text-success">
-          Создано: {runNowMut.data.created}, пропущено дублей: {runNowMut.data.skipped}
-        </p>
-      )}
+      </div>
 
       <RecurringFormDialog
         wsId={wsId}
@@ -174,6 +277,19 @@ export default function RecurringPage() {
         onClose={() => setDialogOpen(false)}
         onSubmit={handleSubmit}
       />
-    </div>
+
+      <ConfirmDialog
+        open={!!delTarget}
+        onOpenChange={(o) => !o && setDelTarget(null)}
+        title={`Удалить правило «${delTarget?.name ?? ''}»?`}
+        description="Уже созданные операции останутся."
+        confirmText="Удалить"
+        onConfirm={async () => {
+          if (delTarget) await deleteMut.mutateAsync(delTarget.id);
+          setDelTarget(null);
+        }}
+        loading={deleteMut.isPending}
+      />
+    </>
   );
 }

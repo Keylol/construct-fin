@@ -1,17 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { parseAmountInput } from '@construct/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { FormField } from '@/components/ui/FormField';
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/Sheet';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import type { CreateRecurringInput, UpdateRecurringInput } from '@/hooks/useRecurring';
 import type { RecurringFrequency, RecurringRule, TxType } from '@/lib/types';
+import { cn } from '@/lib/cn';
 
 const FREQ_LABEL: Record<RecurringFrequency, string> = {
   DAILY: 'Каждый день',
@@ -134,187 +143,195 @@ export function RecurringFormDialog({ wsId, open, rule, onClose, onSubmit }: Pro
   );
 
   return (
-    <Modal open={open} onClose={onClose} title={rule ? 'Редактировать правило' : 'Новое правило'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label>Название</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Зарплата / Аренда / ..."
-            required
-          />
-        </div>
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" hideClose className="sm:max-w-lg">
+        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <SheetTitle>{rule ? 'Редактировать правило' : 'Новое правило'}</SheetTitle>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
+            <X className="h-4 w-4" />
+          </Button>
+        </SheetHeader>
+        <form id="recurring-form" onSubmit={handleSubmit}>
+          <SheetBody className="space-y-4">
+            <FormField label="Название" required>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Зарплата / Аренда / …"
+                required
+              />
+            </FormField>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Сумма (₽)</Label>
-            <Input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0,00"
-              inputMode="decimal"
-              required
-            />
-          </div>
-          <div>
-            <Label>Тип</Label>
-            <Select value={type} onChange={(e) => setType(e.target.value as TxType)}>
-              <option value="EXPENSE">Расход</option>
-              <option value="INCOME">Доход</option>
-            </Select>
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Сумма (₽)" required>
+                <Input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0,00"
+                  inputMode="decimal"
+                  required
+                />
+              </FormField>
+              <FormField label="Тип">
+                <Select value={type} onChange={(e) => setType(e.target.value as TxType)}>
+                  <option value="EXPENSE">Расход</option>
+                  <option value="INCOME">Доход</option>
+                </Select>
+              </FormField>
+            </div>
 
-        <div>
-          <Label>Счёт</Label>
-          <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} required>
-            <option value="">— выберите —</option>
-            {accountOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.type})
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Категория</Label>
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— без категории —</option>
-              {filteredCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <Label>Контрагент</Label>
-            <Select
-              value={counterpartyId}
-              onChange={(e) => setCounterpartyId(e.target.value)}
-            >
-              <option value="">— нет —</option>
-              {(counterparties.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-
-        <div>
-          <Label>Описание</Label>
-          <Input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Опционально"
-          />
-        </div>
-
-        <div className="border-t border-white/10 pt-4">
-          <Label>Частота</Label>
-          <div className="grid grid-cols-2 gap-2 mt-1">
-            {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFrequency(f)}
-                className={`h-10 rounded-xl text-sm border ${
-                  frequency === f
-                    ? 'bg-tint text-white border-tint'
-                    : 'bg-surface border-white/10 hover:bg-glass'
-                }`}
-              >
-                {FREQ_LABEL[f]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Каждые N</Label>
-            <Input
-              type="number"
-              min={1}
-              max={365}
-              value={interval}
-              onChange={(e) => setInterval(Number(e.target.value) || 1)}
-            />
-          </div>
-          {frequency === 'WEEKLY' && (
-            <div>
-              <Label>День недели</Label>
+            <FormField label="Счёт" required>
               <Select
-                value={dayOfWeek}
-                onChange={(e) => setDayOfWeek(Number(e.target.value))}
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                required
               >
-                {WEEKDAY_LABEL.map((d, i) => (
-                  <option key={i} value={i}>
-                    {d}
+                <option value="">— выберите —</option>
+                {accountOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type})
                   </option>
                 ))}
               </Select>
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Категория">
+                <Select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                >
+                  <option value="">— без категории —</option>
+                  {filteredCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label="Контрагент">
+                <Select
+                  value={counterpartyId}
+                  onChange={(e) => setCounterpartyId(e.target.value)}
+                >
+                  <option value="">— нет —</option>
+                  {(counterparties.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
             </div>
-          )}
-          {(frequency === 'MONTHLY' || frequency === 'YEARLY') && (
-            <div>
-              <Label>День месяца</Label>
+
+            <FormField label="Описание">
               <Input
-                type="number"
-                min={1}
-                max={31}
-                value={dayOfMonth}
-                onChange={(e) => setDayOfMonth(Number(e.target.value) || 1)}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Опционально"
               />
+            </FormField>
+
+            <div className="space-y-1.5 border-t border-border pt-4">
+              <span className="block text-sm font-medium text-foreground">Частота</span>
+              <div className="grid grid-cols-2 gap-2">
+                {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(
+                  (f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFrequency(f)}
+                      className={cn(
+                        'flex h-9 items-center justify-center rounded-md border text-sm transition-colors',
+                        frequency === f
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input bg-background hover:bg-secondary',
+                      )}
+                    >
+                      {FREQ_LABEL[f]}
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Старт</Label>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label>Окончание (опц.)</Label>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Каждые N">
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={interval}
+                  onChange={(e) => setInterval(Number(e.target.value) || 1)}
+                />
+              </FormField>
+              {frequency === 'WEEKLY' && (
+                <FormField label="День недели">
+                  <Select
+                    value={dayOfWeek}
+                    onChange={(e) => setDayOfWeek(Number(e.target.value))}
+                  >
+                    {WEEKDAY_LABEL.map((d, i) => (
+                      <option key={i} value={i}>
+                        {d}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
+              )}
+              {(frequency === 'MONTHLY' || frequency === 'YEARLY') && (
+                <FormField label="День месяца">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={dayOfMonth}
+                    onChange={(e) => setDayOfMonth(Number(e.target.value) || 1)}
+                  />
+                </FormField>
+              )}
+            </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => setActive(e.target.checked)}
-          />
-          Правило активно
-        </label>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Старт" required>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </FormField>
+              <FormField label="Окончание (опц.)">
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </FormField>
+            </div>
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) => setActive(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Правило активно
+            </label>
 
-        <div className="flex gap-3 pt-2">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? 'Сохраняем…' : rule ? 'Сохранить' : 'Создать'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
-            Отмена
-          </Button>
-        </div>
-      </form>
-    </Modal>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </SheetBody>
+          <SheetFooter>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Сохраняю…' : rule ? 'Сохранить' : 'Создать'}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }
