@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { ReactNode } from 'react';
 
@@ -8,11 +9,16 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  description?: string;
   children: ReactNode;
   className?: string;
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+/**
+ * Legacy modal — drop-in for pages that haven't been migrated to the new
+ * Dialog/Sheet primitives yet. New code should prefer Dialog or Sheet.
+ */
+export function Modal({ open, onClose, title, description, children, className }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -30,17 +36,37 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
       onClick={onClose}
     >
       <div
         className={cn(
-          'glass w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 max-h-[90vh] overflow-y-auto',
+          'w-full overflow-y-auto rounded-t-lg border border-border bg-card p-5 shadow-lg',
+          'max-h-[90vh] sm:max-w-md sm:rounded-lg',
           className,
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        {title && <h2 className="text-xl font-semibold mb-4">{title}</h2>}
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            {title && (
+              <h2 className="text-base font-semibold leading-none tracking-tight">{title}</h2>
+            )}
+            {description && (
+              <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label="Закрыть"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
         {children}
       </div>
     </div>
