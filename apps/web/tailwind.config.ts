@@ -50,15 +50,6 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-
-        // Legacy aliases (v5-era class names). Mapped to the new palette
-        // so pages still compile during the migration. Removed in Phase 5.
-        bg: 'rgb(var(--bg) / <alpha-value>)',
-        surface: 'rgb(var(--surface) / <alpha-value>)',
-        glass: 'rgb(var(--glass) / <alpha-value>)',
-        fg: 'rgb(var(--fg) / <alpha-value>)',
-        tint: 'rgb(var(--tint) / <alpha-value>)',
-        danger: 'rgb(var(--danger) / <alpha-value>)',
       },
       borderRadius: {
         lg: 'var(--radius)',
