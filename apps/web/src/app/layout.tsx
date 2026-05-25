@@ -2,6 +2,13 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import Script from 'next/script';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin', 'cyrillic'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Construct — финансовый учёт',
@@ -12,35 +19,13 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f4f4f8' },
-    { media: '(prefers-color-scheme: dark)', color: '#0f0f12' },
-  ],
+  themeColor: '#ffffff',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
-      <head>
-        <script
-          // Применяет тему до гидратации, чтобы не было вспышки
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var saved = localStorage.getItem('theme');
-                  var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-                  document.documentElement.dataset.theme = theme;
-                } catch(_) {}
-              })();
-            `,
-          }}
-        />
-      </head>
-      <body>
-        {/* Telegram Mini App SDK — beforeInteractive гарантирует, что
-            window.Telegram.WebApp есть до запуска нашего JS */}
+    <html lang="ru" className={inter.variable}>
+      <body className="font-sans antialiased bg-background text-foreground">
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"
