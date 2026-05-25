@@ -7,9 +7,8 @@
    modifiers work natively (e.g. `bg-primary/50`). */
 
 :root {
-  /* Base surface / text */
-  --background: 0 0% 100%;            /* #FFFFFF */
-  --foreground: 222 47% 11%;          /* slate-900 */
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
 
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
@@ -17,41 +16,29 @@
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
 
-  /* Brand: navy #1B3A57 ≈ hsl(208 53% 23%) */
   --primary: 208 53% 23%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary surfaces / hover */
-  --secondary: 210 40% 96%;           /* slate-50 */
+  --secondary: 210 40% 96%;
   --secondary-foreground: 222 47% 11%;
 
-  --muted: 210 40% 96%;               /* slate-50 */
-  --muted-foreground: 215 16% 47%;    /* slate-500 */
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
 
   --accent: 210 40% 96%;
   --accent-foreground: 222 47% 11%;
 
-  --destructive: 0 65% 45%;           /* red */
+  --destructive: 0 65% 45%;
   --destructive-foreground: 0 0% 100%;
 
-  --success: 152 67% 28%;             /* #157347 */
+  --success: 152 67% 28%;
   --success-foreground: 0 0% 100%;
 
-  --border: 214 32% 91%;              /* slate-200 */
+  --border: 214 32% 91%;
   --input: 214 32% 91%;
-  --ring: 208 53% 23%;                /* navy focus ring */
+  --ring: 208 53% 23%;
 
   --radius: 4px;
-
-  /* Legacy aliases kept temporarily so v5-era class names
-     (`bg-tint`, `text-fg`, `text-muted`, `text-danger`, `bg-glass`)
-     keep working until each page is migrated. */
-  --bg: 255 255 255;
-  --surface: 255 255 255;
-  --glass: 255 255 255;
-  --fg: 15 23 42;
-  --tint: 27 58 87;
-  --danger: 191 39 39;
 }
 
 * {
@@ -66,17 +53,6 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Backwards-compat shim: pages still using `.glass` get a plain
-   white card with subtle border instead of a blurred translucent one.
-   This class will be removed entirely once Phase 4 finishes. */
-.glass {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-/* Tabular numerals everywhere money is shown. */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
