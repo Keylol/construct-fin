@@ -1,42 +1,58 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/cn';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'sm' | 'md' | 'lg';
+const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
+    'focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 ' +
+    'select-none [&_svg]:size-4 [&_svg]:shrink-0',
+  {
+    variants: {
+      variant: {
+        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        secondary:
+          'bg-background text-foreground border border-input hover:bg-secondary',
+        ghost: 'text-foreground hover:bg-secondary',
+        destructive:
+          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        link: 'text-primary underline-offset-4 hover:underline h-auto p-0',
+      },
+      size: {
+        sm: 'h-8 px-3 text-sm',
+        md: 'h-9 px-4 text-sm',
+        lg: 'h-10 px-6 text-sm',
+        icon: 'h-9 w-9 p-0',
+      },
+    },
+    defaultVariants: { variant: 'primary', size: 'md' },
+  },
+);
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: Size;
+export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>['variant']> | 'danger';
+
+export interface ButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size'>,
+    Omit<VariantProps<typeof buttonVariants>, 'variant'> {
+  variant?: ButtonVariant;
+  asChild?: boolean;
 }
 
-const VARIANT: Record<Variant, string> = {
-  primary: 'bg-tint text-white hover:opacity-90 active:opacity-80',
-  secondary:
-    'bg-surface text-fg border border-white/10 hover:bg-glass active:opacity-90 backdrop-blur',
-  ghost: 'text-fg hover:bg-glass/40',
-  danger: 'bg-danger text-white hover:opacity-90 active:opacity-80',
-};
-
-const SIZE: Record<Size, string> = {
-  sm: 'h-9 px-3 text-sm rounded-xl',
-  md: 'h-11 px-4 text-base rounded-2xl',
-  lg: 'h-12 px-6 text-base rounded-2xl',
-};
-
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'primary', size = 'md', className, ...props },
+  { className, variant = 'primary', size, asChild, ...props },
   ref,
 ) {
+  // Backwards-compat: pre-Redwood code used variant="danger" — alias to destructive.
+  const v = variant === 'danger' ? 'destructive' : variant;
+  const Comp = asChild ? Slot : 'button';
   return (
-    <button
+    <Comp
       ref={ref}
-      className={cn(
-        'inline-flex items-center justify-center font-medium transition select-none disabled:opacity-50 disabled:cursor-not-allowed',
-        VARIANT[variant],
-        SIZE[size],
-        className,
-      )}
+      className={cn(buttonVariants({ variant: v, size }), className)}
       {...props}
     />
   );
 });
+
+export { buttonVariants };
