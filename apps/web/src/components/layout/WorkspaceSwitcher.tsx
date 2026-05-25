@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCreateWorkspace } from '@/hooks/useWorkspaces';
-import { Modal } from '@/components/ui/Modal';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Label } from '@/components/ui/Label';
+import { Select } from '@/components/ui/Select';
+import { FormField } from '@/components/ui/FormField';
 
 export function WorkspaceSwitcher() {
   const { current, currentId, workspaces, select } = useCurrentWorkspace();
@@ -29,58 +30,65 @@ export function WorkspaceSwitcher() {
 
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <Label className="!mb-0 !text-xs uppercase tracking-wide">Пространство</Label>
+      <div className="space-y-1">
+        <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Пространство
+        </div>
         {workspaces.data && workspaces.data.length > 0 ? (
-          <select
-            className="h-10 px-3 rounded-xl bg-surface text-fg border border-white/10 outline-none focus:border-tint focus:ring-2 focus:ring-tint/30"
+          <Select
             value={currentId ?? ''}
             onChange={(e) => select(e.target.value)}
+            className="h-8 text-sm"
           >
             {workspaces.data.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
               </option>
             ))}
-          </select>
+          </Select>
         ) : (
-          <div className="text-muted text-sm">Нет пространств</div>
+          <div className="px-1 text-sm text-muted-foreground">Нет пространств</div>
         )}
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-tint text-sm text-left mt-1 hover:underline"
+          className="ml-1 text-xs text-primary transition-colors hover:underline"
         >
-          + Создать пространство
+          + Создать
         </button>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Новое пространство">
-        <Label htmlFor="ws-name">Название</Label>
-        <Input
-          id="ws-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Напр. «ИП Каменский»"
-          autoFocus
-        />
-        {error && <p className="text-danger text-sm mt-2">{error}</p>}
-        <div className="flex gap-2 mt-5">
-          <Button variant="secondary" onClick={() => setOpen(false)} className="flex-1">
-            Отмена
-          </Button>
-          <Button
-            onClick={onCreate}
-            disabled={!name.trim() || create.isPending}
-            className="flex-1"
-          >
-            {create.isPending ? 'Создаю…' : 'Создать'}
-          </Button>
-        </div>
-      </Modal>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Новое пространство</DialogTitle>
+          </DialogHeader>
+          <FormField label="Название" htmlFor="ws-name" required>
+            <Input
+              id="ws-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Напр. «ИП Каменский»"
+              autoFocus
+            />
+          </FormField>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={onCreate}
+              disabled={!name.trim() || create.isPending}
+            >
+              {create.isPending ? 'Создаю…' : 'Создать'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!current && workspaces.isSuccess && (workspaces.data?.length ?? 0) === 0 && (
-        <p className="text-xs text-muted mt-2">
+        <p className="mt-2 px-1 text-xs text-muted-foreground">
           Создайте первое пространство, чтобы начать.
         </p>
       )}

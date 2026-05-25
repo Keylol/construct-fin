@@ -3,37 +3,85 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
-import { NAV_ITEMS } from './nav-items';
+import { NAV_GROUPS } from './nav-items';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
-import { ThemeToggle } from './ThemeToggle';
 
-export function Sidebar() {
+interface SidebarProps {
+  /** Called after a nav link is clicked — mobile drawer uses this to close. */
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
+
   return (
-    <aside className="hidden md:flex flex-col w-60 shrink-0 h-dvh sticky top-0 p-4 gap-2 border-r border-white/5">
-      <div className="font-semibold text-lg mb-2">Construct</div>
-      <div className="glass rounded-2xl p-3 mb-2">
+    <aside
+      className={cn(
+        'flex h-full w-60 shrink-0 flex-col border-r border-border bg-card',
+      )}
+    >
+      {/* Brand */}
+      <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-semibold">
+          C
+        </div>
+        <div className="text-sm font-semibold tracking-tight">Construct</div>
+      </div>
+
+      {/* Workspace switcher */}
+      <div className="border-b border-border px-3 py-3">
         <WorkspaceSwitcher />
       </div>
-      <nav className="flex flex-col gap-1 flex-1">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname?.startsWith(item.href);
+
+      {/* Nav groups */}
+      <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {NAV_GROUPS.map((group, gi) => {
+          const isFirst = gi === 0;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 h-10 px-3 rounded-xl transition',
-                active ? 'bg-glass text-fg' : 'text-fg/70 hover:bg-glass/50',
+            <div key={`${group.label ?? 'main'}-${gi}`} className={cn(!isFirst && 'mt-5')}>
+              {group.label && (
+                <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.label}
+                </div>
               )}
-            >
-              <span className="w-5 text-center">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
+              <ul className="space-y-0.5">
+                {group.items.map((item) => {
+                  // Active rule: exact match OR child route (with trailing slash boundary)
+                  // — except /reports must not light up for /reports/rules.
+                  const exact = pathname === item.href;
+                  const child =
+                    pathname?.startsWith(item.href + '/') && item.href !== '/reports';
+                  const active = exact || child;
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href as Parameters<typeof Link>[0]['href']}
+                        onClick={onNavigate}
+                        className={cn(
+                          'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm transition-colors',
+                          active
+                            ? 'bg-secondary font-medium text-primary'
+                            : 'text-foreground/80 hover:bg-secondary hover:text-foreground',
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            active ? 'text-primary' : 'text-muted-foreground',
+                          )}
+                          aria-hidden
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           );
         })}
       </nav>
-      <ThemeToggle />
     </aside>
   );
 }
