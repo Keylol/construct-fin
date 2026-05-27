@@ -9,6 +9,7 @@ export interface OrderItemInput {
   name: string;
   qty: string;
   unitPrice: string;
+  unitCost?: string | null;
 }
 
 export interface CreateOrderInput {
@@ -134,5 +135,37 @@ export function useDeleteOrder(wsId: string) {
   return useMutation({
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/orders/${id}`),
     onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
+// ─────────── Вложения заказа (чеки) ───────────
+
+export function useUploadOrderAttachment(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ orderId, file }: { orderId: string; file: File }) => {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/workspaces/${wsId}/orders/${orderId}/attachments`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['order', wsId] }),
+  });
+}
+
+export function useDeleteOrderAttachment(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      api.del(`/workspaces/${wsId}/attachments/${attachmentId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['order', wsId] }),
   });
 }

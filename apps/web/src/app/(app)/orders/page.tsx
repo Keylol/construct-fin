@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, ClipboardList, X, Trash2 } from 'lucide-react';
+import { Plus, ClipboardList, X, Trash2, Paperclip } from 'lucide-react';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
@@ -14,6 +14,8 @@ import {
   useAddOrderPayment,
   useFinalizeOrder,
   useCancelOrder,
+  useUploadOrderAttachment,
+  useDeleteOrderAttachment,
   type OrderItemInput,
 } from '@/hooks/useOrders';
 import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
@@ -265,7 +267,7 @@ function CreateOrderSheet({
   const [title, setTitle] = useState('');
   const [discount, setDiscount] = useState('');
   const [items, setItems] = useState<OrderItemInput[]>([
-    { name: '', qty: '1', unitPrice: '' },
+    { name: '', qty: '1', unitPrice: '', unitCost: '' },
   ]);
   const [error, setError] = useState<string | null>(null);
 
@@ -278,25 +280,42 @@ function CreateOrderSheet({
       }, 0),
     [items],
   );
+  const costTotal = useMemo(
+    () =>
+      items.reduce((acc, it) => {
+        const q = Number(it.qty) || 0;
+        const c = Number(it.unitCost) || 0;
+        return acc + q * c;
+      }, 0),
+    [items],
+  );
   const total = Math.max(0, subtotal - (Number(discount) || 0));
+  const estEarnings = total - costTotal;
 
   const reset = () => {
     setClientId('');
     setTitle('');
     setDiscount('');
-    setItems([{ name: '', qty: '1', unitPrice: '' }]);
+    setItems([{ name: '', qty: '1', unitPrice: '', unitCost: '' }]);
     setError(null);
   };
 
   const submit = async (asOpen: boolean) => {
     setError(null);
-    const cleaned = items
-      .filter((it) => it.name.trim() && it.unitPrice)
-      .map((it) => {
-        const price = parseAmountInput(it.unitPrice);
-        return price ? { ...it, name: it.name.trim(), unitPrice: price } : null;
-      })
-      .filter((x): x is OrderItemInput => x !== null);
+    const cleaned: OrderItemInput[] = [];
+    for (const it of items) {
+      if (!it.name.trim() || !it.unitPrice) continue;
+      const price = parseAmountInput(it.unitPrice);
+      if (!price) continue;
+      const cost = it.unitCost ? parseAmountInput(it.unitCost) : null;
+      cleaned.push({
+        warehouseItemId: it.warehouseItemId ?? null,
+        name: it.name.trim(),
+        qty: it.qty,
+        unitPrice: price,
+        unitCost: cost,
+      });
+    }
     if (cleaned.length === 0) {
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
@@ -403,7 +422,7 @@ function CreateOrderSheet({
                         placeholder="Наименование"
                       />
                     </div>
-                    <div className="w-16">
+                    <div className="w-14">
                       <Input
                         inputMode="decimal"
                         value={it.qty}
@@ -412,10 +431,10 @@ function CreateOrderSheet({
                             arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)),
                           )
                         }
-                        placeholder="Кол-во"
+                        placeholder="Кол."
                       />
                     </div>
-                    <div className="w-28">
+                    <div className="w-24">
                       <Input
                         inputMode="decimal"
                         value={it.unitPrice}
@@ -424,13 +443,25 @@ function CreateOrderSheet({
                             arr.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)),
                           )
                         }
-                        placeholder="Цена"
+                        placeholder="Цена прод."
+                      />
+                    </div>
+                    <div className="w-24">
+                      <Input
+                        inputMode="decimal"
+                        value={it.unitCost ?? ''}
+                        onChange={(e) =>
+                          setItems((arr) =>
+                            arr.map((x, j) => (j === i ? { ...x, unitCost: e.target.value } : x)),
+                          )
+                        }
+                        placeholder="Закупка"
                       />
                     </div>
                   </div>
-                  {wh && (
+                  {wh && !it.unitCost && (
                     <p className="text-xs text-muted-foreground">
-                      Себест. {formatRub(wh.avgCost)} · спишется со склада при закрытии заказа
+                      Себест. со склада {formatRub(wh.avgCost)} · спишется при закрытии. Или впиши закупку вручную.
                     </p>
                   )}
                 </div>
@@ -440,7 +471,10 @@ function CreateOrderSheet({
               variant="ghost"
               size="sm"
               onClick={() =>
-                setItems((arr) => [...arr, { warehouseItemId: null, name: '', qty: '1', unitPrice: '' }])
+                setItems((arr) => [
+                  ...arr,
+                  { warehouseItemId: null, name: '', qty: '1', unitPrice: '', unitCost: '' },
+                ])
               }
             >
               <Plus className="h-3.5 w-3.5" /> Позиция
@@ -457,15 +491,27 @@ function CreateOrderSheet({
             />
           </FormField>
 
-          <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
+          <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Сумма позиций</span>
               <span className="tabular-nums">{formatRub(subtotal)}</span>
             </div>
-            <div className="mt-1 flex justify-between font-semibold">
-              <span>Итого</span>
+            {costTotal > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Себестоимость</span>
+                <span className="tabular-nums">{formatRub(costTotal)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold">
+              <span>Итого к оплате</span>
               <span className="tabular-nums">{formatRub(total)}</span>
             </div>
+            {costTotal > 0 && (
+              <div className="flex justify-between font-semibold text-success">
+                <span>Заработок (план)</span>
+                <span className="tabular-nums">{formatRub(estEarnings)}</span>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -499,6 +545,8 @@ function OrderDetailSheet({
   const addPayment = useAddOrderPayment(wsId);
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
+  const uploadAtt = useUploadOrderAttachment(wsId);
+  const deleteAtt = useDeleteOrderAttachment(wsId);
 
   const [payAmount, setPayAmount] = useState('');
   const [payAccount, setPayAccount] = useState('');
@@ -602,30 +650,78 @@ function OrderDetailSheet({
                   />
                 </div>
 
-                {/* COGS / маржа — после закрытия заказа */}
+                {/* Себестоимость и заработок: cost = unitCost (ручной) ?? WAVG-снапшот */}
                 {(() => {
-                  const cogs = (order.items ?? []).reduce(
-                    (acc, it) =>
-                      acc + (it.unitCostAtSale ? Number(it.qty) * Number(it.unitCostAtSale) : 0),
-                    0,
-                  );
-                  if (order.status !== 'DONE' || cogs <= 0) return null;
-                  const margin = Number(order.totalAmount) - cogs;
-                  const marginPct = Number(order.totalAmount) > 0
-                    ? (margin / Number(order.totalAmount)) * 100
-                    : 0;
+                  const cost = (order.items ?? []).reduce((acc, it) => {
+                    const c = it.unitCost ?? it.unitCostAtSale;
+                    return acc + (c ? Number(it.qty) * Number(c) : 0);
+                  }, 0);
+                  if (cost <= 0) return null;
+                  const paid = Number(order.paidAmount);
+                  const earnings = paid - cost; // по факту денег
+                  const earnPct = paid > 0 ? (earnings / paid) * 100 : 0;
+                  const planMargin = Number(order.totalAmount) - cost;
                   return (
                     <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
-                      <Row label="Себестоимость (COGS)" value={formatRub(cogs)} />
+                      <Row label="Себестоимость" value={formatRub(cost)} />
+                      <Row label="Маржа (план, по сумме заказа)" value={formatRub(planMargin)} />
                       <Row
-                        label="Валовая прибыль"
-                        value={`${formatRub(margin)} · ${marginPct.toFixed(0)}%`}
+                        label="Заработок (оплачено − себест.)"
+                        value={`${formatRub(earnings)}${paid > 0 ? ` · ${earnPct.toFixed(0)}%` : ''}`}
                         strong
-                        tone={margin >= 0 ? 'pos' : undefined}
+                        tone={earnings >= 0 ? 'pos' : undefined}
                       />
                     </div>
                   );
                 })()}
+
+                {/* Чеки / документы */}
+                <div>
+                  <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                    Чеки и документы
+                  </div>
+                  <div className="space-y-1.5">
+                    {(order.attachments ?? []).map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <a
+                          href={`/api/v1/workspaces/${wsId}/attachments/${a.id}/download`}
+                          className="flex-1 truncate text-primary hover:underline"
+                        >
+                          {a.filename}
+                        </a>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {(a.size / 1024).toFixed(0)} KB
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => deleteAtt.mutate(a.id)}
+                          aria-label="Удалить чек"
+                          className="text-destructive transition-colors hover:opacity-80"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {uploadAtt.isPending ? 'Загружаю…' : 'Прикрепить чек'}
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={uploadAtt.isPending}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f && order) uploadAtt.mutate({ orderId: order.id, file: f });
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
 
                 {/* Payments log */}
                 {order.transactions && order.transactions.length > 0 && (

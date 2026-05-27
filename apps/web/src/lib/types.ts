@@ -102,6 +102,7 @@ export interface OrderItem {
   name: string;
   qty: string;
   unitPrice: string;
+  unitCost: string | null;
   unitCostAtSale: string | null;
   returnedQty: string;
   lineTotal: string;
@@ -126,6 +127,7 @@ export interface Order {
   updatedAt: string;
   items?: OrderItem[];
   transactions?: Transaction[];
+  attachments?: AttachmentSummary[];
   _count?: { items: number };
 }
 
