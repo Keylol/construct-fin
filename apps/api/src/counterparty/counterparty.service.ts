@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   CreateCounterpartyDto,
@@ -16,6 +17,7 @@ export class CounterpartyService {
         workspaceId,
         deletedAt: null,
         ...(query.includeArchived ? {} : { isArchived: false }),
+        ...(query.role ? { role: query.role } : {}),
         ...(query.search
           ? {
               OR: [
@@ -35,8 +37,13 @@ export class CounterpartyService {
       data: {
         workspaceId,
         name: input.name,
+        role: input.role ?? 'OTHER',
         contact: input.contact ?? null,
         note: input.note ?? null,
+        inn: input.inn ?? null,
+        source: input.source ?? null,
+        position: input.position ?? null,
+        payRate: input.payRate != null ? new Prisma.Decimal(input.payRate) : null,
       },
     });
   }
@@ -50,8 +57,18 @@ export class CounterpartyService {
       where: { id },
       data: {
         name: input.name ?? undefined,
+        role: input.role ?? undefined,
         contact: input.contact === undefined ? undefined : input.contact,
         note: input.note === undefined ? undefined : input.note,
+        inn: input.inn === undefined ? undefined : input.inn,
+        source: input.source === undefined ? undefined : input.source,
+        position: input.position === undefined ? undefined : input.position,
+        payRate:
+          input.payRate === undefined
+            ? undefined
+            : input.payRate === null
+              ? null
+              : new Prisma.Decimal(input.payRate),
         isArchived: input.isArchived ?? undefined,
       },
     });

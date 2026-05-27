@@ -38,24 +38,87 @@ export interface CategoryTreeNode extends Category {
   children: CategoryTreeNode[];
 }
 
+export type CounterpartyRole = 'CLIENT' | 'SUPPLIER' | 'EMPLOYEE' | 'OTHER';
+
 export interface Counterparty {
   id: string;
   name: string;
+  role: CounterpartyRole;
   contact: string | null;
   note: string | null;
+  inn: string | null;
+  source: string | null;
+  position: string | null;
+  payRate: string | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export type OrderStatus = 'DRAFT' | 'OPEN' | 'DONE' | 'CANCELLED';
+export type OrderPaymentState =
+  | 'UNPAID'
+  | 'PARTIAL'
+  | 'PAID'
+  | 'OVERPAID'
+  | 'REFUNDED';
+
+export interface OrderItem {
+  id: string;
+  warehouseItemId: string | null;
+  name: string;
+  qty: string;
+  unitPrice: string;
+  unitCostAtSale: string | null;
+  returnedQty: string;
+  lineTotal: string;
+}
+
+export interface Order {
+  id: string;
+  number: string;
+  clientId: string | null;
+  client?: { id: string; name: string } | null;
+  title: string | null;
+  description: string | null;
+  status: OrderStatus;
+  paymentStatus: OrderPaymentState;
+  subtotal: string;
+  discountAmount: string;
+  totalAmount: string;
+  paidAmount: string;
+  expectedDate: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: OrderItem[];
+  transactions?: Transaction[];
+  _count?: { items: number };
+}
+
+export type TransactionKind =
+  | 'ORDER_PAYMENT'
+  | 'CAPITAL_IN'
+  | 'ORDER_REFUND'
+  | 'PURCHASE'
+  | 'SALARY'
+  | 'TAX'
+  | 'FIXED_COST'
+  | 'VARIABLE_COST'
+  | 'NON_OP'
+  | 'CAPITAL_OUT'
+  | 'OTHER';
 
 export interface Transaction {
   id: string;
   date: string;          // ISO
   amount: string;        // "1234.56"
   type: TxType;
+  kind: TransactionKind;
   accountId: string;
   categoryId: string | null;
   counterpartyId: string | null;
+  orderId: string | null;
   description: string | null;
   createdAt: string;
   updatedAt: string;

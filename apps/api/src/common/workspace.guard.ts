@@ -6,6 +6,7 @@ import type { Role } from '@prisma/client';
 
 export interface WorkspaceContext {
   workspaceId: string;
+  userId: string;
   role: Role;
 }
 
@@ -37,7 +38,7 @@ export class WorkspaceGuard implements CanActivate {
     });
     if (!membership) throw new ForbiddenException('Not a member of this workspace');
 
-    req.workspace = { workspaceId: wsId, role: membership.role };
+    req.workspace = { workspaceId: wsId, userId: user.sub, role: membership.role };
     return true;
   }
 }

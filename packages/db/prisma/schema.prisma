@@ -1,5 +1,9 @@
-// Construct v6 — финансовый учёт для малого бизнеса / самозанятых
+// Construct v6 — финансовый учёт для малого бизнеса / самозанятых.
 // Single-currency (RUB), workspace-scoped, soft-delete pattern, audit log.
+//
+// Этот файл описывает только хранилище. Доменная логика (правила сторно,
+// WAVG, finalize заказа) живёт в apps/api/src/domain — здесь только структура,
+// чтобы её можно было читать любым ORM-инструментом.
 
 generator client {
   provider = "prisma-client-js"
@@ -22,9 +26,10 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
+  ownedWorkspaces      Workspace[]        @relation("WorkspaceOwner")
   workspaceMemberships WorkspaceMember[]
-  createdTransactions  Transaction[]     @relation("TransactionCreatedBy")
+  createdTransactions  Transaction[]      @relation("TransactionCreatedBy")
+  closedPeriods        AccountingPeriod[]
   auditLogs            AuditLog[]
   importBatches        ImportBatch[]
 }
@@ -33,20 +38,26 @@ model Workspace {
   id        String    @id @default(cuid())
   name      String
   ownerId   String
+  /// ₽ единственная валюта пока — поле опционально на будущее.
+  currency  String    @default("RUB")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner          User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  members        WorkspaceMember[]
-  accounts       Account[]
-  categories     Category[]
-  counterparties Counterparty[]
-  transactions   Transaction[]
-  recurringRules RecurringRule[]
-  importBatches  ImportBatch[]
-  categoryRules  CategoryRule[]
-  auditLogs      AuditLog[]
+  owner             User               @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members           WorkspaceMember[]
+  accounts          Account[]
+  categories        Category[]
+  counterparties    Counterparty[]
+  transactions      Transaction[]
+  recurringRules    RecurringRule[]
+  importBatches     ImportBatch[]
+  categoryRules     CategoryRule[]
+  auditLogs         AuditLog[]
+  orders            Order[]
+  warehouseItems    WarehouseItem[]
+  purchases         Purchase[]
+  accountingPeriods AccountingPeriod[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -100,18 +111,24 @@ enum AccountType {
   OTHER
 }
 
-// ───────────────────────────── Categories (2 уровня) ─────────────────────────
+// ───────────────────────────── Categories ─────────────────────────────
+//
+// Иерархия категорий (до 2 уровней) — это UX-удобство.
+// `bucket` — бухгалтерская группа, по которой строятся отчёты P&L.
+// Иерархия и бакет независимы: подкатегория «Реклама» (родитель «Продвижение»)
+// может иметь bucket=VARIABLE, а её сестра «Аренда офиса» — bucket=FIXED.
 
 model Category {
-  id          String       @id @default(cuid())
+  id          String         @id @default(cuid())
   workspaceId String
   name        String
   kind        CategoryKind
+  bucket      CategoryBucket @default(OTHER)
   parentId    String?
-  isFixedCost Boolean      @default(false) // задел под точку безубыточности
-  isArchived  Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  isFixedCost Boolean        @default(false) // legacy флаг под break-even
+  isArchived  Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
 
   workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -121,6 +138,7 @@ model Category {
   rules        CategoryRule[]
 
   @@index([workspaceId, kind, parentId])
+  @@index([workspaceId, bucket])
   @@index([workspaceId, deletedAt])
 }
 
@@ -129,38 +147,289 @@ enum CategoryKind {
   EXPENSE
 }
 
+enum CategoryBucket {
+  REVENUE // выручка от продаж (учитывается в P&L "доход")
+  COGS // себестоимость проданных (учитывается в P&L "себестоимость")
+  FIXED // постоянные издержки (аренда, подписки, лицензии)
+  VARIABLE // переменные коммерческие (реклама, доставка, комиссии)
+  NON_OP // внереализационные расходы / прочие
+  TAX // налоги, страховые
+  CAPITAL // вложения / изъятия собственника — НЕ в P&L, только в Cash flow
+  OTHER
+}
+
 // ───────────────────────────── Counterparties ─────────────────────────────
+//
+// Единая таблица контрагентов с дискриминатором `role`.
+// Клиент, поставщик и сотрудник — это **роли** одного и того же лица.
+// Опциональные поля заполняются в зависимости от роли:
+//   CLIENT   → source, leadStatus
+//   SUPPLIER → inn
+//   EMPLOYEE → position, payRate
+//
+// Один Counterparty может иметь несколько ролей одновременно (например,
+// сотрудник, который заодно покупает у компании) — но MVP считает role
+// атомарной. Можно расширить полем `roles String[]` позже без миграции данных.
 
 model Counterparty {
-  id          String    @id @default(cuid())
+  id          String           @id @default(cuid())
   workspaceId String
+  role        CounterpartyRole @default(OTHER)
   name        String
   contact     String?
   note        String?
-  isArchived  Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  isArchived  Boolean          @default(false)
+
+  // Поля, релевантные только для определённых ролей.
+  inn      String? // SUPPLIER / юр.лицо: 10 или 12 цифр
+  source   String? // CLIENT: «Avito», «сарафан», «Telegram»
+  position String? // EMPLOYEE: должность
+  payRate  Decimal? @db.Decimal(14, 2) // EMPLOYEE: ставка/оклад (для seed расчётов)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  ordersAsClient    Order[]         @relation("OrderClient")
+  warehouseDefaults WarehouseItem[] @relation("WarehouseDefaultSupplier")
+  purchases         Purchase[]      @relation("PurchaseSupplier")
+
+  @@index([workspaceId, role, isArchived])
+  @@index([workspaceId, deletedAt])
+}
+
+enum CounterpartyRole {
+  CLIENT
+  SUPPLIER
+  EMPLOYEE
+  OTHER
+}
+
+// ───────────────────────────── Orders ─────────────────────────────
+//
+// Заказ — единица продажи (сборка / услуга / товар / смешанный).
+// Финализация (DONE) атомарно: списывает позиции со склада по unitCostAtSale,
+// фиксирует COGS, проверяет полноту оплаты.
+//
+// Платежи — отдельные Transaction(kind=ORDER_PAYMENT, orderId=...).
+// Возвраты — Transaction(kind=ORDER_REFUND, orderId=..., originalTxId=ссылка).
+
+model Order {
+  id          String  @id @default(cuid())
+  workspaceId String
+  clientId    String? // null для разовых продаж без клиента
+  /// Уникальный читаемый номер: «ORD-2026-0042»
+  number      String
+  title       String?
+  description String?
+
+  status        OrderStatus       @default(DRAFT)
+  paymentStatus OrderPaymentState @default(UNPAID)
+
+  /// Итог = sum(items) - discountAmount; кэшируется триггером сервиса.
+  subtotal       Decimal @default(0) @db.Decimal(14, 2)
+  discountAmount Decimal @default(0) @db.Decimal(14, 2)
+  totalAmount    Decimal @default(0) @db.Decimal(14, 2)
+  /// sum(ORDER_PAYMENT) - sum(ORDER_REFUND), кэшируется триггером.
+  paidAmount     Decimal @default(0) @db.Decimal(14, 2)
+
+  expectedDate DateTime? // планируемая дата выполнения
+  closedAt     DateTime? // дата перехода в DONE
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  client       Counterparty? @relation("OrderClient", fields: [clientId], references: [id])
+  items        OrderItem[]
+  transactions Transaction[] @relation("OrderTransactions")
 
+  @@unique([workspaceId, number])
+  @@index([workspaceId, status, expectedDate])
+  @@index([workspaceId, clientId])
+  @@index([workspaceId, deletedAt])
+}
+
+enum OrderStatus {
+  DRAFT // черновик, не учитывается в отчётах
+  OPEN // принят в работу, можно принимать оплату; склад ещё не тронут
+  DONE // выполнен: склад списан по WAVG, COGS зафиксирован
+  CANCELLED // отменён до DONE; деньги по нему возвращены (если были оплаты)
+}
+
+enum OrderPaymentState {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERPAID
+  REFUNDED
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  warehouseItemId String? // null = услуга / разовая позиция без склада
+  name            String // снапшот имени (даже если warehouseItem удалят)
+  /// Кол-во в штуках / кг / часах. Decimal(14,3) — поддержка дробных.
+  qty             Decimal  @db.Decimal(14, 3)
+  unitPrice       Decimal  @db.Decimal(14, 2)
+  /// Себестоимость единицы на момент перехода Order в DONE (снапшот WAVG).
+  /// null пока заказ не финализирован.
+  unitCostAtSale  Decimal? @db.Decimal(14, 4)
+  /// Возвращённое количество (для частичных возвратов).
+  returnedQty     Decimal  @default(0) @db.Decimal(14, 3)
+
+  /// Кэш итога: qty * unitPrice.
+  lineTotal Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  warehouseItem WarehouseItem? @relation(fields: [warehouseItemId], references: [id])
+
+  @@index([orderId])
+  @@index([warehouseItemId])
+}
+
+// ───────────────────────────── Warehouse ─────────────────────────────
+//
+// Простая модель склада: одна строка на SKU, в ней текущее количество
+// и средневзвешенная цена (WAVG). Ни журнала движений, ни резервов —
+// история восстанавливается из PurchaseLine (приход) + OrderItem.returnedQty
+// (возвраты) + AuditLog (ручные корректировки).
+//
+// Резервирование под OPEN-заказы НЕ ведётся: списание со склада происходит
+// только при переходе заказа в DONE. Если на DONE не хватает qty — сервис
+// возвращает ошибку.
+//
+// avgCost пересчитывается **только** в двух местах:
+//   1. PURCHASE: newAvg = (oldQty*oldAvg + lineQty*linePrice) / (oldQty + lineQty)
+//   2. SUPPLIER_RETURN: newAvg = (oldTotalCost - refundAmount) / (oldQty - returnQty)
+// При продаже (списании при DONE) и возврате от клиента avgCost НЕ меняется.
+
+model WarehouseItem {
+  id                String  @id @default(cuid())
+  workspaceId       String
+  /// SKU / артикул, человекочитаемый. Опционально.
+  sku               String?
+  name              String
+  /// Единица измерения: «шт», «кг», «ч», «м».
+  unit              String  @default("шт")
+  /// Текущий остаток на складе.
+  qty               Decimal @default(0) @db.Decimal(14, 3)
+  /// Средневзвешенная себестоимость единицы.
+  avgCost           Decimal @default(0) @db.Decimal(14, 4)
+  /// Поставщик по умолчанию (для подсказок при закупке).
+  defaultSupplierId String?
+  note              String?
+  isArchived        Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  defaultSupplier Counterparty?  @relation("WarehouseDefaultSupplier", fields: [defaultSupplierId], references: [id])
+  orderItems      OrderItem[]
+  purchaseLines   PurchaseLine[]
+
+  @@unique([workspaceId, sku])
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
 }
 
+// ───────────────────────────── Purchases ─────────────────────────────
+//
+// Закупка на склад. Одна Purchase = одна Transaction(kind=PURCHASE) (1:1):
+// транзакция отражает движение денег (списание со счёта), Purchase —
+// что именно куплено (строки PurchaseLine). В одной закупке может быть
+// несколько SKU.
+//
+// Создаётся атомарно use-case'ом RegisterPurchase:
+//   1. Transaction(kind=PURCHASE, amount=sum(lines.lineTotal))
+//   2. Purchase + PurchaseLine[]
+//   3. на каждую строку: WarehouseItem.qty += qty, пересчёт avgCost (WAVG)
+
+model Purchase {
+  id            String  @id @default(cuid())
+  workspaceId   String
+  transactionId String  @unique // 1:1 — деньги этой закупки
+  supplierId    String?
+  note          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transaction Transaction    @relation("PurchaseTransaction", fields: [transactionId], references: [id], onDelete: Cascade)
+  supplier    Counterparty?  @relation("PurchaseSupplier", fields: [supplierId], references: [id])
+  lines       PurchaseLine[]
+
+  @@index([workspaceId, createdAt])
+  @@index([supplierId])
+  @@index([workspaceId, deletedAt])
+}
+
+model PurchaseLine {
+  id              String  @id @default(cuid())
+  purchaseId      String
+  warehouseItemId String
+  /// Кол-во в единицах измерения SKU.
+  qty             Decimal @db.Decimal(14, 3)
+  /// Цена закупки за единицу (без НДС — суммы итоговые).
+  unitPrice       Decimal @db.Decimal(14, 4)
+  /// Кэш: qty * unitPrice.
+  lineTotal       Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+
+  purchase      Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  warehouseItem WarehouseItem @relation(fields: [warehouseItemId], references: [id])
+
+  @@index([purchaseId])
+  @@index([warehouseItemId])
+}
+
 // ───────────────────────────── Transactions ─────────────────────────────
+//
+// Единая таблица всех движений денег. type (INCOME/EXPENSE) — для быстрых
+// агрегатов; kind — для бухгалтерской классификации.
+// Правила соответствия (валидируются на сервисе, не в БД):
+//   INCOME:  ORDER_PAYMENT, CAPITAL_IN, OTHER (если category.kind=INCOME)
+//   EXPENSE: PURCHASE, SALARY, TAX, FIXED_COST, VARIABLE_COST, NON_OP, CAPITAL_OUT, ORDER_REFUND, OTHER
+//
+// Сторно: originalTxId ссылается на оригинальную операцию.
+// Сумма сторно = -original.amount, type/kind тот же.
 
 model Transaction {
-  id                      String    @id @default(cuid())
-  workspaceId             String
-  date                    DateTime
-  amount                  Decimal   @db.Decimal(14, 2)
-  type                    TxType
-  accountId               String
-  categoryId              String?
-  counterpartyId          String?
-  description             String?
+  id          String          @id @default(cuid())
+  workspaceId String
+  date        DateTime
+  amount      Decimal         @db.Decimal(14, 2)
+  type        TxType
+  kind        TransactionKind @default(OTHER)
+
+  accountId      String
+  categoryId     String?
+  counterpartyId String?
+  description    String?
+
+  // Доменные привязки (опциональные).
+  orderId String? // ORDER_PAYMENT, ORDER_REFUND
+  // PURCHASE-детали (что куплено, в какой склад) живут в Purchase/PurchaseLine,
+  // связанных 1:1 через Transaction.purchase.
+
+  // Сторно / правки в закрытом периоде.
+  originalTxId   String?
+  reversalReason String?
+
+  // Метаданные.
   recurringRuleId         String?
   recurringOccurrenceDate DateTime?
   importBatchId           String?
@@ -174,6 +443,10 @@ model Transaction {
   account       Account        @relation(fields: [accountId], references: [id])
   category      Category?      @relation(fields: [categoryId], references: [id])
   counterparty  Counterparty?  @relation(fields: [counterpartyId], references: [id])
+  order         Order?         @relation("OrderTransactions", fields: [orderId], references: [id])
+  purchase      Purchase?      @relation("PurchaseTransaction")
+  originalTx    Transaction?   @relation("Reversals", fields: [originalTxId], references: [id])
+  reversals     Transaction[]  @relation("Reversals")
   recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id])
   importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
   createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
@@ -181,18 +454,70 @@ model Transaction {
 
   @@unique([recurringRuleId, recurringOccurrenceDate])
   @@index([workspaceId, date])
+  @@index([workspaceId, kind, date])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, categoryId, date])
   @@index([workspaceId, counterpartyId, date])
   @@index([workspaceId, type, date])
+  @@index([workspaceId, orderId])
   @@index([workspaceId, deletedAt])
   @@index([workspaceId, importHash])
   @@index([importBatchId])
+  @@index([originalTxId])
 }
 
 enum TxType {
   INCOME
   EXPENSE
+}
+
+enum TransactionKind {
+  // INCOME
+  ORDER_PAYMENT // оплата по заказу от клиента
+  CAPITAL_IN // вложение собственника
+
+  // EXPENSE
+  ORDER_REFUND // возврат клиенту (минус выручка)
+  PURCHASE // закупка на склад — атомарно списывает деньги + увеличивает qty
+  SALARY // зарплата сотруднику
+  TAX // налоги, страховые
+  FIXED_COST // постоянные издержки
+  VARIABLE_COST // переменные коммерческие
+  NON_OP // внереализационные
+  CAPITAL_OUT // изъятие собственника
+
+  // Универсальный — для случаев, не покрытых явными kind'ами.
+  OTHER
+}
+
+// ───────────────────────────── Accounting periods ─────────────────────────
+//
+// Месячное закрытие. Если в периоде status=CLOSED — все операции в его
+// диапазоне дат становятся "только-чтение" через сервисный гард.
+// Редактирование закрытой операции = создание сторно + новой записи.
+
+model AccountingPeriod {
+  id          String       @id @default(cuid())
+  workspaceId String
+  year        Int
+  month       Int // 1-12
+  status      PeriodStatus @default(OPEN)
+  closedAt    DateTime?
+  closedById  String?
+  note        String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  closedBy  User?     @relation(fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, year, month])
+  @@index([workspaceId, status])
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
 }
 
 // ───────────────────────────── Recurring rules ─────────────────────────────
@@ -201,13 +526,13 @@ model RecurringRule {
   id           String             @id @default(cuid())
   workspaceId  String
   name         String
-  templateJson Json // {amount, type, accountId, categoryId?, counterpartyId?, description?}
+  templateJson Json
   frequency    RecurringFrequency
-  interval     Int                @default(1) // каждые N единиц частоты (every 2 weeks → interval=2 + WEEKLY)
+  interval     Int                @default(1)
   startDate    DateTime
   endDate      DateTime?
-  dayOfMonth   Int? // для MONTHLY/YEARLY: 1-31
-  dayOfWeek    Int? // для WEEKLY: 0=пн, 6=вс
+  dayOfMonth   Int?
+  dayOfWeek    Int?
   nextRunAt    DateTime
   lastRunAt    DateTime?
   active       Boolean            @default(true)
@@ -265,9 +590,9 @@ enum ImportSource {
 model CategoryRule {
   id          String    @id @default(cuid())
   workspaceId String
-  keyword     String // substring, case-insensitive
+  keyword     String
   categoryId  String
-  priority    Int       @default(0) // higher wins; ties broken by longer keyword
+  priority    Int       @default(0)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -299,6 +624,13 @@ model Attachment {
 }
 
 // ───────────────────────────── Audit & Idempotency ─────────────────────────
+//
+// AuditLog пишется декоратором на репозиториях для критичных доменных
+// действий (Order.cancel/finalize, AccountingPeriod.close, Transaction.delete
+// в закрытом периоде, WarehouseItem.adjustment).
+//
+// IdempotencyKey используется middleware'ом для всех mutating-эндпойнтов:
+// клиент шлёт заголовок Idempotency-Key, сервер хранит ответ TTL=24ч.
 
 model AuditLog {
   id          String   @id @default(cuid())

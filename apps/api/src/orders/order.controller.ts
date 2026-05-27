@@ -1,0 +1,104 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt.guard';
+import { WorkspaceGuard } from '../common/workspace.guard';
+import { CurrentWorkspace } from '../common/current-workspace.decorator';
+import { ZodPipe } from '../common/zod-pipe';
+import { OrderService } from './order.service';
+import {
+  CreateOrderSchema,
+  UpdateOrderSchema,
+  ListOrdersQuerySchema,
+  AddPaymentSchema,
+  RefundSchema,
+  type CreateOrderDto,
+  type UpdateOrderDto,
+  type ListOrdersQuery,
+  type AddPaymentDto,
+  type RefundDto,
+} from './order.dto';
+import type { WorkspaceContext } from '../common/workspace.guard';
+
+@Controller('workspaces/:wsId/orders')
+@UseGuards(JwtAuthGuard, WorkspaceGuard)
+export class OrderController {
+  constructor(private readonly service: OrderService) {}
+
+  @Get()
+  list(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(ListOrdersQuerySchema)) query: ListOrdersQuery,
+  ) {
+    return this.service.list(ws.workspaceId, query);
+  }
+
+  @Get(':id')
+  get(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.get(ws.workspaceId, id);
+  }
+
+  @Post()
+  create(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(CreateOrderSchema)) body: CreateOrderDto,
+  ) {
+    return this.service.create(ws.workspaceId, body);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(UpdateOrderSchema)) body: UpdateOrderDto,
+  ) {
+    return this.service.update(ws.workspaceId, id, body);
+  }
+
+  @Post(':id/payments')
+  @HttpCode(200)
+  addPayment(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(AddPaymentSchema)) body: AddPaymentDto,
+  ) {
+    return this.service.addPayment(ws.workspaceId, id, ws.userId, body);
+  }
+
+  @Post(':id/refund')
+  @HttpCode(200)
+  refund(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(RefundSchema)) body: RefundDto,
+  ) {
+    return this.service.refund(ws.workspaceId, id, ws.userId, body);
+  }
+
+  @Post(':id/finalize')
+  @HttpCode(200)
+  finalize(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.finalize(ws.workspaceId, id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.cancel(ws.workspaceId, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  remove(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.remove(ws.workspaceId, id);
+  }
+}
