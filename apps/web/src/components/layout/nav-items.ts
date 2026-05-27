@@ -10,6 +10,8 @@ import {
   Filter,
   ClipboardList,
   UserRound,
+  Package,
+  Truck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +43,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Справочники',
     items: [
       { href: '/clients', label: 'Клиенты', icon: UserRound },
+      { href: '/suppliers', label: 'Поставщики', icon: Truck },
+      { href: '/warehouse', label: 'Склад', icon: Package },
       { href: '/accounts', label: 'Счета', icon: Wallet },
       { href: '/categories', label: 'Категории', icon: Tag },
       { href: '/counterparties', label: 'Контрагенты', icon: Users },

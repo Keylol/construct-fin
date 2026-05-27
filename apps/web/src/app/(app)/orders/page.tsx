@@ -6,6 +6,7 @@ import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useWarehouse } from '@/hooks/useWarehouse';
 import {
   useOrders,
   useOrder,
@@ -257,6 +258,7 @@ function CreateOrderSheet({
   onClose: () => void;
 }) {
   const clients = useCounterparties(wsId, undefined, false, 'CLIENT');
+  const warehouse = useWarehouse(wsId);
   const create = useCreateOrder(wsId);
 
   const [clientId, setClientId] = useState('');
@@ -344,60 +346,102 @@ function CreateOrderSheet({
             />
           </FormField>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="text-sm font-medium">Позиции</div>
-            {items.map((it, i) => (
-              <div key={i} className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Input
-                    value={it.name}
-                    onChange={(e) =>
-                      setItems((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
-                      )
-                    }
-                    placeholder="Наименование"
-                  />
+            {items.map((it, i) => {
+              const wh = warehouse.data?.find((w) => w.id === it.warehouseItemId);
+              return (
+                <div key={i} className="space-y-1.5 rounded-md border border-border p-2.5">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={it.warehouseItemId ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const item = warehouse.data?.find((w) => w.id === id);
+                        setItems((arr) =>
+                          arr.map((x, j) =>
+                            j === i
+                              ? {
+                                  ...x,
+                                  warehouseItemId: id || null,
+                                  name: item ? item.name : x.name,
+                                }
+                              : x,
+                          ),
+                        );
+                      }}
+                      className="h-8 text-xs"
+                    >
+                      <option value="">Услуга / без склада</option>
+                      {(warehouse.data ?? [])
+                        .filter((w) => !w.isArchived)
+                        .map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} (ост. {Number(w.qty)} {w.unit})
+                          </option>
+                        ))}
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setItems((arr) => arr.filter((_, j) => j !== i))}
+                      aria-label="Удалить позицию"
+                      disabled={items.length === 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Input
+                        value={it.name}
+                        onChange={(e) =>
+                          setItems((arr) =>
+                            arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
+                          )
+                        }
+                        placeholder="Наименование"
+                      />
+                    </div>
+                    <div className="w-16">
+                      <Input
+                        inputMode="decimal"
+                        value={it.qty}
+                        onChange={(e) =>
+                          setItems((arr) =>
+                            arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)),
+                          )
+                        }
+                        placeholder="Кол-во"
+                      />
+                    </div>
+                    <div className="w-28">
+                      <Input
+                        inputMode="decimal"
+                        value={it.unitPrice}
+                        onChange={(e) =>
+                          setItems((arr) =>
+                            arr.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)),
+                          )
+                        }
+                        placeholder="Цена"
+                      />
+                    </div>
+                  </div>
+                  {wh && (
+                    <p className="text-xs text-muted-foreground">
+                      Себест. {formatRub(wh.avgCost)} · спишется со склада при закрытии заказа
+                    </p>
+                  )}
                 </div>
-                <div className="w-16">
-                  <Input
-                    inputMode="decimal"
-                    value={it.qty}
-                    onChange={(e) =>
-                      setItems((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)),
-                      )
-                    }
-                    placeholder="Кол-во"
-                  />
-                </div>
-                <div className="w-28">
-                  <Input
-                    inputMode="decimal"
-                    value={it.unitPrice}
-                    onChange={(e) =>
-                      setItems((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)),
-                      )
-                    }
-                    placeholder="Цена"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setItems((arr) => arr.filter((_, j) => j !== i))}
-                  aria-label="Удалить позицию"
-                  disabled={items.length === 1}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setItems((arr) => [...arr, { name: '', qty: '1', unitPrice: '' }])}
+              onClick={() =>
+                setItems((arr) => [...arr, { warehouseItemId: null, name: '', qty: '1', unitPrice: '' }])
+              }
             >
               <Plus className="h-3.5 w-3.5" /> Позиция
             </Button>
@@ -557,6 +601,31 @@ function OrderDetailSheet({
                     value={formatRub(Math.max(0, Number(order.totalAmount) - Number(order.paidAmount)))}
                   />
                 </div>
+
+                {/* COGS / маржа — после закрытия заказа */}
+                {(() => {
+                  const cogs = (order.items ?? []).reduce(
+                    (acc, it) =>
+                      acc + (it.unitCostAtSale ? Number(it.qty) * Number(it.unitCostAtSale) : 0),
+                    0,
+                  );
+                  if (order.status !== 'DONE' || cogs <= 0) return null;
+                  const margin = Number(order.totalAmount) - cogs;
+                  const marginPct = Number(order.totalAmount) > 0
+                    ? (margin / Number(order.totalAmount)) * 100
+                    : 0;
+                  return (
+                    <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
+                      <Row label="Себестоимость (COGS)" value={formatRub(cogs)} />
+                      <Row
+                        label="Валовая прибыль"
+                        value={`${formatRub(margin)} · ${marginPct.toFixed(0)}%`}
+                        strong
+                        tone={margin >= 0 ? 'pos' : undefined}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Payments log */}
                 {order.transactions && order.transactions.length > 0 && (
