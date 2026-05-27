@@ -121,16 +121,28 @@ export default function PnlReportPage() {
           </div>
         ) : query.isError ? (
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
-        ) : totals ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard label="Доход" value={formatRub(totals.income)} tone="positive" />
-            <KpiCard label="Расход" value={formatRub(totals.expense)} tone="negative" />
-            <KpiCard
-              label="Чистая прибыль"
-              value={formatRub(totals.net)}
-              tone={Number(totals.net) >= 0 ? 'positive' : 'negative'}
-            />
-          </div>
+        ) : query.isError ? null : totals ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <KpiCard label="Доход" value={formatRub(totals.income)} tone="positive" />
+              <KpiCard label="Расход" value={formatRub(totals.expense)} tone="negative" />
+              <KpiCard
+                label="Чистая прибыль"
+                value={formatRub(totals.net)}
+                tone={Number(totals.net) >= 0 ? 'positive' : 'negative'}
+              />
+            </div>
+            {Number(totals.cogs) > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <KpiCard label="Себестоимость заказов" value={formatRub(totals.cogs)} tone="negative" />
+                <KpiCard
+                  label="Валовая прибыль (Доход − Себестоимость)"
+                  value={formatRub(totals.grossProfit)}
+                  tone={Number(totals.grossProfit) >= 0 ? 'positive' : 'negative'}
+                />
+              </div>
+            )}
+          </>
         ) : null}
 
         {data.length > 0 && (

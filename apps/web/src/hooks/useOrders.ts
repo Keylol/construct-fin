@@ -130,6 +130,15 @@ export function useCancelOrder(wsId: string) {
   });
 }
 
+export function useReopenOrder(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/reopen`),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
 export function useDeleteOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({

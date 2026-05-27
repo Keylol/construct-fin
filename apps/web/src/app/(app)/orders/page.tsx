@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from 'lucide-react';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -11,9 +11,11 @@ import {
   useOrders,
   useOrder,
   useCreateOrder,
+  useUpdateOrder,
   useAddOrderPayment,
   useFinalizeOrder,
   useCancelOrder,
+  useReopenOrder,
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
@@ -85,6 +87,7 @@ export default function OrdersPage() {
 
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Order | null>(null);
 
   if (!current) {
     return (
@@ -234,34 +237,46 @@ export default function OrdersPage() {
         />
       </div>
 
-      <CreateOrderSheet
+      <OrderFormSheet
         wsId={current.id}
-        open={creating}
-        onClose={() => setCreating(false)}
+        open={creating || !!editing}
+        editing={editing}
+        onClose={() => {
+          setCreating(false);
+          setEditing(null);
+        }}
       />
       <OrderDetailSheet
         wsId={current.id}
         orderId={openId}
         onClose={() => setOpenId(null)}
+        onEdit={(o) => {
+          setOpenId(null);
+          setEditing(o);
+        }}
       />
     </>
   );
 }
 
-// ─────────────────────────── Create order ───────────────────────────
+// ─────────────────────────── Create / edit order ───────────────────────────
 
-function CreateOrderSheet({
+function OrderFormSheet({
   wsId,
   open,
+  editing,
   onClose,
 }: {
   wsId: string;
   open: boolean;
+  editing: Order | null;
   onClose: () => void;
 }) {
+  const isEdit = !!editing;
   const clients = useCounterparties(wsId, undefined, false, 'CLIENT');
   const warehouse = useWarehouse(wsId);
   const create = useCreateOrder(wsId);
+  const update = useUpdateOrder(wsId);
 
   const [clientId, setClientId] = useState('');
   const [title, setTitle] = useState('');
@@ -270,6 +285,31 @@ function CreateOrderSheet({
     { name: '', qty: '1', unitPrice: '', unitCost: '' },
   ]);
   const [error, setError] = useState<string | null>(null);
+
+  // Префилл при открытии на редактирование.
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setClientId(editing.clientId ?? '');
+      setTitle(editing.title ?? '');
+      setDiscount(Number(editing.discountAmount) > 0 ? String(Number(editing.discountAmount)) : '');
+      setItems(
+        (editing.items ?? []).map((it) => ({
+          warehouseItemId: it.warehouseItemId,
+          name: it.name,
+          qty: String(Number(it.qty)),
+          unitPrice: String(Number(it.unitPrice)),
+          unitCost: it.unitCost ? String(Number(it.unitCost)) : '',
+        })),
+      );
+    } else {
+      setClientId('');
+      setTitle('');
+      setDiscount('');
+      setItems([{ name: '', qty: '1', unitPrice: '', unitCost: '' }]);
+    }
+    setError(null);
+  }, [open, editing]);
 
   const subtotal = useMemo(
     () =>
@@ -292,16 +332,7 @@ function CreateOrderSheet({
   const total = Math.max(0, subtotal - (Number(discount) || 0));
   const estEarnings = total - costTotal;
 
-  const reset = () => {
-    setClientId('');
-    setTitle('');
-    setDiscount('');
-    setItems([{ name: '', qty: '1', unitPrice: '', unitCost: '' }]);
-    setError(null);
-  };
-
-  const submit = async (asOpen: boolean) => {
-    setError(null);
+  const collectItems = (): OrderItemInput[] | null => {
     const cleaned: OrderItemInput[] = [];
     for (const it of items) {
       if (!it.name.trim() || !it.unitPrice) continue;
@@ -316,7 +347,13 @@ function CreateOrderSheet({
         unitCost: cost,
       });
     }
-    if (cleaned.length === 0) {
+    return cleaned.length ? cleaned : null;
+  };
+
+  const submitCreate = async (asOpen: boolean) => {
+    setError(null);
+    const cleaned = collectItems();
+    if (!cleaned) {
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
     }
@@ -329,7 +366,29 @@ function CreateOrderSheet({
         items: cleaned,
       });
       toast.success(asOpen ? 'Заказ создан и в работе' : 'Черновик заказа создан');
-      reset();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  const submitEdit = async () => {
+    if (!editing) return;
+    setError(null);
+    const cleaned = collectItems();
+    if (!cleaned) {
+      setError('Добавьте хотя бы одну позицию с названием и ценой');
+      return;
+    }
+    try {
+      await update.mutateAsync({
+        id: editing.id,
+        clientId: clientId || null,
+        title: title.trim() || null,
+        discountAmount: discount ? parseAmountInput(discount) ?? undefined : '0',
+        items: cleaned,
+      });
+      toast.success('Заказ обновлён');
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -340,7 +399,7 @@ function CreateOrderSheet({
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" hideClose className="sm:max-w-lg">
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Новый заказ</SheetTitle>
+          <SheetTitle>{isEdit ? `Изменить ${editing?.number ?? 'заказ'}` : 'Новый заказ'}</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
@@ -517,12 +576,25 @@ function CreateOrderSheet({
           {error && <p className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
-          <Button variant="secondary" onClick={() => submit(false)} disabled={create.isPending}>
-            В черновик
-          </Button>
-          <Button onClick={() => submit(true)} disabled={create.isPending}>
-            {create.isPending ? 'Создаю…' : 'Создать и в работу'}
-          </Button>
+          {isEdit ? (
+            <>
+              <Button variant="secondary" onClick={onClose} disabled={update.isPending}>
+                Отмена
+              </Button>
+              <Button onClick={submitEdit} disabled={update.isPending}>
+                {update.isPending ? 'Сохраняю…' : 'Сохранить'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={() => submitCreate(false)} disabled={create.isPending}>
+                В черновик
+              </Button>
+              <Button onClick={() => submitCreate(true)} disabled={create.isPending}>
+                {create.isPending ? 'Создаю…' : 'Создать и в работу'}
+              </Button>
+            </>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
@@ -535,16 +607,19 @@ function OrderDetailSheet({
   wsId,
   orderId,
   onClose,
+  onEdit,
 }: {
   wsId: string;
   orderId: string | null;
   onClose: () => void;
+  onEdit: (order: Order) => void;
 }) {
   const { data: order, isLoading } = useOrder(wsId, orderId);
   const accounts = useAccounts(wsId);
   const addPayment = useAddOrderPayment(wsId);
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
+  const reopen = useReopenOrder(wsId);
   const uploadAtt = useUploadOrderAttachment(wsId);
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
@@ -650,26 +725,26 @@ function OrderDetailSheet({
                   />
                 </div>
 
-                {/* Себестоимость и заработок: cost = unitCost (ручной) ?? WAVG-снапшот */}
+                {/* Доход / Расход / Прибыль. Расход (себестоимость) = unitCost
+                    (ручной) ?? WAVG-снапшот. Доход = фактически оплачено. */}
                 {(() => {
                   const cost = (order.items ?? []).reduce((acc, it) => {
                     const c = it.unitCost ?? it.unitCostAtSale;
                     return acc + (c ? Number(it.qty) * Number(c) : 0);
                   }, 0);
-                  if (cost <= 0) return null;
-                  const paid = Number(order.paidAmount);
-                  const earnings = paid - cost; // по факту денег
-                  const earnPct = paid > 0 ? (earnings / paid) * 100 : 0;
-                  const planMargin = Number(order.totalAmount) - cost;
+                  const income = Number(order.paidAmount);
+                  if (cost <= 0 && income <= 0) return null;
+                  const profit = income - cost;
+                  const profitPct = income > 0 ? (profit / income) * 100 : 0;
                   return (
                     <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
-                      <Row label="Себестоимость" value={formatRub(cost)} />
-                      <Row label="Маржа (план, по сумме заказа)" value={formatRub(planMargin)} />
+                      <Row label="Доход (оплачено)" value={formatRub(income)} tone="pos" />
+                      <Row label="Расход (себестоимость)" value={formatRub(cost)} />
                       <Row
-                        label="Заработок (оплачено − себест.)"
-                        value={`${formatRub(earnings)}${paid > 0 ? ` · ${earnPct.toFixed(0)}%` : ''}`}
+                        label="Прибыль"
+                        value={`${formatRub(profit)}${income > 0 ? ` · ${profitPct.toFixed(0)}%` : ''}`}
                         strong
-                        tone={earnings >= 0 ? 'pos' : undefined}
+                        tone={profit >= 0 ? 'pos' : undefined}
                       />
                     </div>
                   );
@@ -792,18 +867,31 @@ function OrderDetailSheet({
           </SheetBody>
 
           {order && order.status !== 'CANCELLED' && (
-            <SheetFooter>
+            <SheetFooter className="flex-wrap">
               <Button
                 variant="destructive"
                 onClick={() => setConfirmCancel(true)}
                 className="sm:mr-auto"
               >
-                Отменить заказ
+                Отменить
               </Button>
-              {order.status !== 'DONE' && (
-                <Button onClick={() => finalize.mutate(order.id)} disabled={finalize.isPending}>
-                  {finalize.isPending ? 'Закрываю…' : 'Закрыть заказ'}
+              {order.status === 'DONE' ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => reopen.mutate(order.id)}
+                  disabled={reopen.isPending}
+                >
+                  {reopen.isPending ? 'Возвращаю…' : 'Вернуть в работу'}
                 </Button>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={() => onEdit(order)}>
+                    Изменить
+                  </Button>
+                  <Button onClick={() => finalize.mutate(order.id)} disabled={finalize.isPending}>
+                    {finalize.isPending ? 'Закрываю…' : 'Закрыть заказ'}
+                  </Button>
+                </>
               )}
             </SheetFooter>
           )}

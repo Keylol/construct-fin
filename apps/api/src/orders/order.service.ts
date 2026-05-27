@@ -210,12 +210,14 @@ export class OrderService {
 
   /**
    * Закрыть заказ (DONE) АТОМАРНО:
-   *   • для каждой позиции со складским SKU — списать по WAVG, снапшотить
-   *     unitCostAtSale (себестоимость на момент продажи);
-   *   • позиции-услуги (warehouseItemId=null) пропускаются;
-   *   • при нехватке остатка — ошибка, ничего не списывается (rollback).
+   *   • позиции со складским SKU — списать по WAVG, снапшотить unitCostAtSale
+   *     (себестоимость уже была учтена при закупке — новый расход НЕ создаём);
+   *   • позиции с ручной закупочной ценой (unitCost, без склада) — суммарная
+   *     себестоимость создаётся одной расходной операцией Transaction(kind=COGS)
+   *     со счёта последней оплаты → попадает в P&L;
+   *   • при нехватке остатка по складу — ошибка, ничего не списывается (rollback).
    */
-  async finalize(workspaceId: string, orderId: string) {
+  async finalize(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === 'CANCELLED') {
@@ -224,19 +226,48 @@ export class OrderService {
     if (order.status === 'DONE') return order;
 
     return this.uow.run(async (tx) => {
+      let manualCogs = D(0);
       for (const item of order.items ?? []) {
-        if (!item.warehouseItemId) continue;
-        const unitCost = await this.warehouse.decrementForSale(
-          tx,
-          workspaceId,
-          item.warehouseItemId,
-          item.qty,
-        );
-        await tx.orderItem.update({
-          where: { id: item.id },
-          data: { unitCostAtSale: unitCost },
+        if (item.warehouseItemId) {
+          const unitCost = await this.warehouse.decrementForSale(
+            tx,
+            workspaceId,
+            item.warehouseItemId,
+            item.qty,
+          );
+          await tx.orderItem.update({
+            where: { id: item.id },
+            data: { unitCostAtSale: unitCost },
+          });
+        } else if (item.unitCost !== null) {
+          manualCogs = add(manualCogs, mul(item.qty, item.unitCost));
+        }
+      }
+
+      // Расход себестоимости по ручным позициям → в P&L.
+      if (gt(manualCogs, '0')) {
+        const accountId = await this.resolveCostAccount(tx, workspaceId, order);
+        if (!accountId) {
+          throw new BadRequestException(
+            'Нет счёта для списания себестоимости — добавьте счёт или примите оплату',
+          );
+        }
+        await tx.transaction.create({
+          data: {
+            workspaceId,
+            date: new Date(),
+            amount: money(manualCogs),
+            type: 'EXPENSE',
+            kind: 'COGS',
+            accountId,
+            orderId,
+            counterpartyId: order.clientId ?? null,
+            description: `Себестоимость заказа ${order.number}`,
+            createdById: userId,
+          },
         });
       }
+
       await tx.order.update({
         where: { id: orderId },
         data: { status: 'DONE', closedAt: new Date() },
@@ -246,9 +277,9 @@ export class OrderService {
   }
 
   /**
-   * Отмена заказа. Если заказ был DONE — возвращаем списанный товар на склад
-   * (restock по unitCostAtSale, avgCost не меняется). Деньги (платежи) остаются:
-   * при необходимости оформляется отдельный возврат.
+   * Отмена заказа. Если заказ был DONE — откатываем финализацию: возвращаем
+   * товар на склад и сторнируем COGS-расход. Платежи остаются (при необходимости
+   * оформляется отдельный возврат).
    */
   async cancel(workspaceId: string, orderId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
@@ -257,14 +288,70 @@ export class OrderService {
 
     return this.uow.run(async (tx) => {
       if (order.status === 'DONE') {
-        for (const item of order.items ?? []) {
-          if (!item.warehouseItemId || item.unitCostAtSale === null) continue;
-          await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty);
-        }
+        await this.reverseFinalization(tx, workspaceId, order);
       }
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
       return this.orders.findById(workspaceId, orderId, tx);
     });
+  }
+
+  /**
+   * Вернуть закрытый заказ в работу (OPEN), чтобы отредактировать. Откатывает
+   * склад и COGS-расход. Доступно только для DONE.
+   */
+  async reopen(workspaceId: string, orderId: string) {
+    const order = await this.orders.findById(workspaceId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'DONE') {
+      throw new BadRequestException('Вернуть в работу можно только закрытый заказ');
+    }
+    return this.uow.run(async (tx) => {
+      await this.reverseFinalization(tx, workspaceId, order);
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: 'OPEN', closedAt: null },
+      });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
+  }
+
+  /** Откат финализации: restock склада + сторно COGS-расхода. Внутри UoW. */
+  private async reverseFinalization(
+    tx: TxClient,
+    workspaceId: string,
+    order: NonNullable<Awaited<ReturnType<OrderRepository['findById']>>>,
+  ) {
+    for (const item of order.items ?? []) {
+      if (item.warehouseItemId && item.unitCostAtSale !== null) {
+        await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty);
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: { unitCostAtSale: null },
+        });
+      }
+    }
+    await tx.transaction.updateMany({
+      where: { workspaceId, orderId: order.id, kind: 'COGS', deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  /** Счёт для списания себестоимости: счёт последней оплаты, иначе первый активный. */
+  private async resolveCostAccount(
+    tx: TxClient,
+    workspaceId: string,
+    order: NonNullable<Awaited<ReturnType<OrderRepository['findById']>>>,
+  ): Promise<string | null> {
+    const lastPayment = (order.transactions ?? []).find(
+      (t) => t.kind === 'ORDER_PAYMENT',
+    );
+    if (lastPayment) return lastPayment.accountId;
+    const acc = await tx.account.findFirst({
+      where: { workspaceId, deletedAt: null, isArchived: false },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    return acc?.id ?? null;
   }
 
   async remove(workspaceId: string, orderId: string) {
