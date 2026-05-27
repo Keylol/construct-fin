@@ -357,8 +357,19 @@ export class OrderService {
   async remove(workspaceId: string, orderId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
-    await this.orders.softDelete(orderId);
-    return { ok: true };
+    return this.uow.run(async (tx) => {
+      // Если заказ был закрыт — вернуть склад и сторнировать COGS.
+      if (order.status === 'DONE') {
+        await this.reverseFinalization(tx, workspaceId, order);
+      }
+      // Сторнируем все связанные операции (оплаты/возвраты), чтобы не висели в P&L.
+      await tx.transaction.updateMany({
+        where: { workspaceId, orderId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      await tx.order.update({ where: { id: orderId }, data: { deletedAt: new Date() } });
+      return { ok: true };
+    });
   }
 
   /**
