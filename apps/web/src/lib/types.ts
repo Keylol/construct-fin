@@ -55,6 +55,39 @@ export interface Counterparty {
   updatedAt: string;
 }
 
+export interface WarehouseItem {
+  id: string;
+  sku: string | null;
+  name: string;
+  unit: string;
+  qty: string;
+  avgCost: string;
+  defaultSupplierId: string | null;
+  note: string | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseLine {
+  id: string;
+  warehouseItemId: string;
+  qty: string;
+  unitPrice: string;
+  lineTotal: string;
+  warehouseItem?: { id: string; name: string; unit?: string };
+}
+
+export interface Purchase {
+  id: string;
+  supplierId: string | null;
+  supplier?: { id: string; name: string } | null;
+  note: string | null;
+  createdAt: string;
+  transaction?: { id: string; date: string; amount: string; accountId: string };
+  lines: PurchaseLine[];
+}
+
 export type OrderStatus = 'DRAFT' | 'OPEN' | 'DONE' | 'CANCELLED';
 export type OrderPaymentState =
   | 'UNPAID'

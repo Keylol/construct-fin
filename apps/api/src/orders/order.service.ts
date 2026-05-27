@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork, type TxClient } from '../common/unit-of-work';
+import { WarehouseService } from '../warehouse/warehouse.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
 import type {
@@ -27,6 +28,7 @@ export class OrderService {
     private readonly prisma: PrismaService,
     private readonly orders: OrderRepository,
     private readonly uow: UnitOfWork,
+    private readonly warehouse: WarehouseService,
   ) {}
 
   list(workspaceId: string, query: ListOrdersQuery) {
@@ -204,7 +206,13 @@ export class OrderService {
     });
   }
 
-  /** Закрыть заказ (DONE). Списание склада/COGS добавим на этапе warehouse. */
+  /**
+   * Закрыть заказ (DONE) АТОМАРНО:
+   *   • для каждой позиции со складским SKU — списать по WAVG, снапшотить
+   *     unitCostAtSale (себестоимость на момент продажи);
+   *   • позиции-услуги (warehouseItemId=null) пропускаются;
+   *   • при нехватке остатка — ошибка, ничего не списывается (rollback).
+   */
   async finalize(workspaceId: string, orderId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
@@ -212,13 +220,49 @@ export class OrderService {
       throw new BadRequestException('Заказ отменён');
     }
     if (order.status === 'DONE') return order;
-    return this.orders.update(orderId, { status: 'DONE', closedAt: new Date() });
+
+    return this.uow.run(async (tx) => {
+      for (const item of order.items ?? []) {
+        if (!item.warehouseItemId) continue;
+        const unitCost = await this.warehouse.decrementForSale(
+          tx,
+          workspaceId,
+          item.warehouseItemId,
+          item.qty,
+        );
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: { unitCostAtSale: unitCost },
+        });
+      }
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: 'DONE', closedAt: new Date() },
+      });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
   }
 
+  /**
+   * Отмена заказа. Если заказ был DONE — возвращаем списанный товар на склад
+   * (restock по unitCostAtSale, avgCost не меняется). Деньги (платежи) остаются:
+   * при необходимости оформляется отдельный возврат.
+   */
   async cancel(workspaceId: string, orderId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
-    return this.orders.update(orderId, { status: 'CANCELLED' });
+    if (order.status === 'CANCELLED') return order;
+
+    return this.uow.run(async (tx) => {
+      if (order.status === 'DONE') {
+        for (const item of order.items ?? []) {
+          if (!item.warehouseItemId || item.unitCostAtSale === null) continue;
+          await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty);
+        }
+      }
+      await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
   }
 
   async remove(workspaceId: string, orderId: string) {

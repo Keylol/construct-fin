@@ -111,6 +111,8 @@ const LABELS: Record<string, string> = {
   dashboard: 'Главная',
   orders: 'Заказы',
   clients: 'Клиенты',
+  suppliers: 'Поставщики',
+  warehouse: 'Склад',
   transactions: 'Операции',
   accounts: 'Счета',
   categories: 'Категории',

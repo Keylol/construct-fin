@@ -14,6 +14,8 @@ import {
   Filter,
   ClipboardList,
   UserRound,
+  Package,
+  Truck,
 } from 'lucide-react';
 import {
   CommandPalette,
@@ -40,6 +42,8 @@ const QUICK_NAV: QuickNav[] = [
   { href: '/recurring', label: 'Регулярные операции', icon: Repeat },
   { href: '/import', label: 'Импорт выписки', icon: Upload },
   { href: '/clients', label: 'Клиенты', icon: UserRound },
+  { href: '/suppliers', label: 'Поставщики', icon: Truck },
+  { href: '/warehouse', label: 'Склад', icon: Package, hint: 'Остатки, закупки' },
   { href: '/accounts', label: 'Счета', icon: Wallet },
   { href: '/categories', label: 'Категории', icon: Tag },
   { href: '/counterparties', label: 'Контрагенты', icon: Users },
