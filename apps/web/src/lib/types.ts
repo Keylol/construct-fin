@@ -307,6 +307,8 @@ export interface PnlBucket {
   to: string;
   income: string;
   expense: string;
+  cogs: string;
+  grossProfit: string;
   net: string;
   byCategory: CategoryBreakdown[];
 }

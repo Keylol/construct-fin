@@ -87,7 +87,13 @@ export class OrderController {
   @Post(':id/finalize')
   @HttpCode(200)
   finalize(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.finalize(ws.workspaceId, id);
+    return this.service.finalize(ws.workspaceId, id, ws.userId);
+  }
+
+  @Post(':id/reopen')
+  @HttpCode(200)
+  reopen(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.reopen(ws.workspaceId, id);
   }
 
   @Post(':id/cancel')

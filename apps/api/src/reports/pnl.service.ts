@@ -22,6 +22,10 @@ export interface PnlBucket {
   to: string;
   income: string;
   expense: string;
+  /// Себестоимость заказов (Transaction.kind=COGS), часть expense.
+  cogs: string;
+  /// Валовая прибыль = income − cogs.
+  grossProfit: string;
   net: string;
   byCategory: CategoryBreakdown[];
 }
@@ -61,6 +65,7 @@ export class PnlService {
     const buckets: PnlBucket[] = [];
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
+    let totalCogs = new Prisma.Decimal(0);
     const totalsByCat = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
 
     for (const slice of slices) {
@@ -73,6 +78,19 @@ export class PnlService {
         },
         _sum: { amount: true },
       });
+
+      // Себестоимость заказов за этот период (часть expense).
+      const cogsAgg = await this.prisma.transaction.aggregate({
+        where: {
+          workspaceId,
+          deletedAt: null,
+          kind: 'COGS',
+          date: { gte: slice.from, lte: slice.to },
+        },
+        _sum: { amount: true },
+      });
+      const cogs = cogsAgg._sum.amount ?? new Prisma.Decimal(0);
+      totalCogs = totalCogs.plus(cogs);
 
       let income = new Prisma.Decimal(0);
       let expense = new Prisma.Decimal(0);
@@ -112,6 +130,8 @@ export class PnlService {
         to: slice.to.toISOString(),
         income: income.toFixed(2),
         expense: expense.toFixed(2),
+        cogs: cogs.toFixed(2),
+        grossProfit: income.minus(cogs).toFixed(2),
         net: income.minus(expense).toFixed(2),
         byCategory: buildBreakdown(catMap, nameById),
       });
@@ -126,6 +146,8 @@ export class PnlService {
         to: period.to.toISOString(),
         income: totalIncome.toFixed(2),
         expense: totalExpense.toFixed(2),
+        cogs: totalCogs.toFixed(2),
+        grossProfit: totalIncome.minus(totalCogs).toFixed(2),
         net: totalIncome.minus(totalExpense).toFixed(2),
         byCategory: buildBreakdown(totalsByCat, nameById),
       },
