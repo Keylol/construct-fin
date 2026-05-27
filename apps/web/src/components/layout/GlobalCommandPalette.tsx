@@ -12,6 +12,8 @@ import {
   Upload,
   BarChart3,
   Filter,
+  ClipboardList,
+  UserRound,
 } from 'lucide-react';
 import {
   CommandPalette,
@@ -33,9 +35,11 @@ interface QuickNav {
 
 const QUICK_NAV: QuickNav[] = [
   { href: '/dashboard', label: 'Главная', icon: Home, hint: 'Сводка месяца' },
+  { href: '/orders', label: 'Заказы', icon: ClipboardList, hint: 'Продажи клиентам' },
   { href: '/transactions', label: 'Операции', icon: Receipt, hint: 'Список доходов/расходов' },
   { href: '/recurring', label: 'Регулярные операции', icon: Repeat },
   { href: '/import', label: 'Импорт выписки', icon: Upload },
+  { href: '/clients', label: 'Клиенты', icon: UserRound },
   { href: '/accounts', label: 'Счета', icon: Wallet },
   { href: '/categories', label: 'Категории', icon: Tag },
   { href: '/counterparties', label: 'Контрагенты', icon: Users },

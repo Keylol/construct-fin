@@ -8,6 +8,8 @@ import {
   Users,
   BarChart3,
   Filter,
+  ClipboardList,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Учёт',
     items: [
+      { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
       { href: '/recurring', label: 'Регулярные', icon: Repeat },
       { href: '/import', label: 'Импорт', icon: Upload },
@@ -37,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Справочники',
     items: [
+      { href: '/clients', label: 'Клиенты', icon: UserRound },
       { href: '/accounts', label: 'Счета', icon: Wallet },
       { href: '/categories', label: 'Категории', icon: Tag },
       { href: '/counterparties', label: 'Контрагенты', icon: Users },

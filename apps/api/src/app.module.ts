@@ -15,6 +15,7 @@ import { ImportModule } from './import/import.module';
 import { RecurringModule } from './recurring/recurring.module';
 import { CategoryRuleModule } from './category-rule/category-rule.module';
 import { ReportsModule } from './reports/reports.module';
+import { OrderModule } from './orders/order.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ReportsModule } from './reports/reports.module';
     RecurringModule,
     CategoryRuleModule,
     ReportsModule,
+    OrderModule,
   ],
   controllers: [HealthController],
 })

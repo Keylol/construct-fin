@@ -109,6 +109,8 @@ interface CrumbItem {
 
 const LABELS: Record<string, string> = {
   dashboard: 'Главная',
+  orders: 'Заказы',
+  clients: 'Клиенты',
   transactions: 'Операции',
   accounts: 'Счета',
   categories: 'Категории',
