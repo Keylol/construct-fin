@@ -54,6 +54,10 @@ export class OrderRepository {
           where: { deletedAt: null },
           orderBy: { date: 'desc' },
         },
+        attachments: {
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, filename: true, mimeType: true, size: true, createdAt: true },
+        },
       },
     });
   }

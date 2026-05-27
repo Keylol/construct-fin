@@ -58,6 +58,7 @@ model Workspace {
   warehouseItems    WarehouseItem[]
   purchases         Purchase[]
   accountingPeriods AccountingPeriod[]
+  attachments       Attachment[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -246,6 +247,7 @@ model Order {
   client       Counterparty? @relation("OrderClient", fields: [clientId], references: [id])
   items        OrderItem[]
   transactions Transaction[] @relation("OrderTransactions")
+  attachments  Attachment[]
 
   @@unique([workspaceId, number])
   @@index([workspaceId, status, expectedDate])
@@ -276,6 +278,9 @@ model OrderItem {
   /// Кол-во в штуках / кг / часах. Decimal(14,3) — поддержка дробных.
   qty             Decimal  @db.Decimal(14, 3)
   unitPrice       Decimal  @db.Decimal(14, 2)
+  /// Закупочная себестоимость единицы, введённая вручную (для маржи).
+  /// Имеет приоритет над WAVG-снапшотом при расчёте заработка.
+  unitCost        Decimal? @db.Decimal(14, 4)
   /// Себестоимость единицы на момент перехода Order в DONE (снапшот WAVG).
   /// null пока заказ не финализирован.
   unitCostAtSale  Decimal? @db.Decimal(14, 4)
@@ -607,9 +612,14 @@ model CategoryRule {
 
 // ───────────────────────────── Attachments ─────────────────────────────
 
+// Вложение может принадлежать транзакции ИЛИ заказу (полиморфно через
+// nullable FK). workspaceId хранится напрямую — для простого scoping и
+// дедупликации файлов в пределах пространства.
 model Attachment {
   id            String   @id @default(cuid())
-  transactionId String
+  workspaceId   String
+  transactionId String?
+  orderId       String?
   filename      String
   mimeType      String
   size          Int
@@ -617,9 +627,13 @@ model Attachment {
   hash          String
   createdAt     DateTime @default(now())
 
-  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  order       Order?       @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId])
   @@index([transactionId])
+  @@index([orderId])
   @@index([hash])
 }
 

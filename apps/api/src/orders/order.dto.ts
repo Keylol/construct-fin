@@ -7,11 +7,17 @@ const QtyString = z
   .string()
   .regex(/^\d+(\.\d{1,3})?$/, 'Количество должно быть числом с ≤3 знаками');
 
+const CostString = z
+  .string()
+  .regex(/^\d+(\.\d{1,4})?$/, 'Себестоимость — число с ≤4 знаками');
+
 export const OrderItemInputSchema = z.object({
   warehouseItemId: z.string().cuid().nullable().optional(),
   name: z.string().min(1).max(200),
   qty: QtyString,
   unitPrice: MoneyString,
+  /// Закупочная себестоимость единицы (ручной ввод, для маржи).
+  unitCost: CostString.nullable().optional(),
 });
 export type OrderItemInput = z.infer<typeof OrderItemInputSchema>;
 
