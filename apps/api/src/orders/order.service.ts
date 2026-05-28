@@ -373,6 +373,37 @@ export class OrderService {
   }
 
   /**
+   * Восстановить отменённый заказ в работу (CANCELLED → OPEN). При отмене
+   * финализация уже была откатана (склад возвращён, COGS сторнирован), поэтому
+   * здесь только меняем статус и пересчитываем оплату. Платежи никуда не девались,
+   * так что заказ сразу подхватит свой paidAmount/paymentStatus.
+   * Доступно только для CANCELLED.
+   */
+  async restore(workspaceId: string, orderId: string, userId: string) {
+    const order = await this.orders.findById(workspaceId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'CANCELLED') {
+      throw new BadRequestException('Восстановить можно только отменённый заказ');
+    }
+    return this.uow.run(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: 'OPEN', closedAt: null },
+      });
+      await this.syncPaymentState(workspaceId, orderId, tx);
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.restore',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: { number: order.number },
+      });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
+  }
+
+  /**
    * Все связанные транзакции заказа (платежи/возвраты/COGS) должны быть в
    * открытых периодах. Иначе отмена/удаление сломает закрытую отчётность.
    */
