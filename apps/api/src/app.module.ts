@@ -18,6 +18,9 @@ import { ReportsModule } from './reports/reports.module';
 import { OrderModule } from './orders/order.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { PurchaseModule } from './purchase/purchase.module';
+import { PeriodModule } from './period/period.module';
+import { AuditModule } from './audit/audit.module';
+import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
 @Module({
   imports: [
@@ -42,8 +45,11 @@ import { PurchaseModule } from './purchase/purchase.module';
     OrderModule,
     WarehouseModule,
     PurchaseModule,
+    PeriodModule,
+    AuditModule,
   ],
   controllers: [HealthController],
+  providers: [IdempotencyInterceptor],
 })
 export class AppModule {}
 

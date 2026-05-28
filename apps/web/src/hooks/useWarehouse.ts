@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type { WarehouseItem } from '@/lib/types';
 
 export interface CreateWarehouseItemInput {
@@ -81,5 +81,31 @@ export function useDeleteWarehouseItem(wsId: string) {
   return useMutation({
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/warehouse/${id}`),
     onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
+export interface SupplierReturnInput {
+  id: string;
+  qty: string;
+  refundAmount: string;
+  accountId: string;
+  supplierId?: string | null;
+  date?: string;
+  note?: string;
+}
+
+export function useSupplierReturn(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: SupplierReturnInput) =>
+      api.post<{ item: WarehouseItem; transactionId: string }>(
+        `/workspaces/${wsId}/warehouse/${id}/supplier-return`,
+        input,
+        { idempotencyKey: newIdempotencyKey() },
+      ),
+    onSuccess: () => {
+      invalidate(qc, wsId);
+      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+    },
   });
 }

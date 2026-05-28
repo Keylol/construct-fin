@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type { Purchase } from '@/lib/types';
 
 export interface PurchaseLineInput {
@@ -34,7 +34,9 @@ export function useCreatePurchase(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreatePurchaseInput) =>
-      api.post<Purchase>(`/workspaces/${wsId}/purchases`, input),
+      api.post<Purchase>(`/workspaces/${wsId}/purchases`, input, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchases', wsId] });
       qc.invalidateQueries({ queryKey: ['warehouse', wsId] });

@@ -7,6 +7,7 @@ const fastifyCookie = require('@fastify/cookie');
 const fastifyMultipart = require('@fastify/multipart');
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
+import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: false }), {
@@ -20,6 +21,8 @@ async function bootstrap() {
       files: 1,
     },
   });
+
+  app.useGlobalInterceptors(app.get(IdempotencyInterceptor));
 
   const port = Number(process.env.API_PORT ?? 4000);
   const host = process.env.API_HOST ?? '0.0.0.0';

@@ -27,8 +27,19 @@ import {
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePnlReport } from '@/hooks/useReports';
-import type { CompareMode } from '@/lib/types';
+import type { CompareMode, ReportBucket } from '@/lib/types';
 import { cn } from '@/lib/cn';
+
+const BUCKET_LABEL: Record<ReportBucket, string> = {
+  REVENUE: 'Выручка',
+  COGS: 'Себестоимость',
+  FIXED: 'Постоянные',
+  VARIABLE: 'Переменные',
+  NON_OP: 'Прочие операционные',
+  TAX: 'Налоги',
+  CAPITAL: 'Капитал собственника',
+  OTHER: 'Прочее',
+};
 
 const CHART_COLORS = {
   income: '#157347',
@@ -194,6 +205,59 @@ export default function PnlReportPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </Card>
+        )}
+
+        {totals && totals.byBucket.length > 0 && (
+          <Card className="overflow-x-auto !p-0">
+            <div className="border-b border-border px-4 py-2 text-sm font-medium">
+              По группам
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Группа</th>
+                  <th className="px-4 py-2 text-right font-medium">Доход</th>
+                  <th className="px-4 py-2 text-right font-medium">Расход</th>
+                  <th className="px-4 py-2 text-right font-medium">Сальдо</th>
+                </tr>
+              </thead>
+              <tbody>
+                {totals.byBucket
+                  .filter(
+                    (b) => Number(b.income) !== 0 || Number(b.expense) !== 0,
+                  )
+                  .map((b) => {
+                    const sub = Number(b.income) - Number(b.expense);
+                    return (
+                      <tr key={b.bucket} className="border-t border-border">
+                        <td className="px-4 py-2">
+                          {BUCKET_LABEL[b.bucket]}
+                          {b.bucket === 'CAPITAL' && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (не входит в чистую прибыль)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums text-success">
+                          {Number(b.income) ? formatRub(b.income) : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums text-destructive">
+                          {Number(b.expense) ? formatRub(b.expense) : '—'}
+                        </td>
+                        <td
+                          className={cn(
+                            'px-4 py-2 text-right font-medium tabular-nums',
+                            sub >= 0 ? 'text-success' : 'text-destructive',
+                          )}
+                        >
+                          {formatRub(sub.toFixed(2))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </Card>
         )}
 

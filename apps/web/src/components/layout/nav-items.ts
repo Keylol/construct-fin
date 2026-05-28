@@ -12,6 +12,8 @@ import {
   UserRound,
   Package,
   Truck,
+  Lock,
+  ScrollText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -55,6 +57,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/reports', label: 'Отчёты', icon: BarChart3 },
       { href: '/reports/rules', label: 'Правила', icon: Filter },
+      { href: '/periods', label: 'Закрытие месяца', icon: Lock },
+      { href: '/audit', label: 'Журнал действий', icon: ScrollText },
     ],
   },
 ];

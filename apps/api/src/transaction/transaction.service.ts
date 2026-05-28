@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PeriodService } from '../period/period.service';
+import { AuditService } from '../audit/audit.service';
 import type {
   CreateTransactionDto,
   UpdateTransactionDto,
@@ -23,7 +25,11 @@ interface TransactionRow {
 
 @Injectable()
 export class TransactionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly periods: PeriodService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(workspaceId: string, query: ListTransactionsQuery) {
     const where: Prisma.TransactionWhereInput = {
@@ -91,6 +97,7 @@ export class TransactionService {
 
   async create(workspaceId: string, createdById: string, input: CreateTransactionDto) {
     await this.validateRefs(workspaceId, input);
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, input.date);
     const created = await this.prisma.transaction.create({
       data: {
         workspaceId,
@@ -122,6 +129,12 @@ export class TransactionService {
       });
     }
 
+    // Защита закрытого периода: и старая дата (откуда уходим), и новая (куда идём).
+    await this.periods.assertOpenForDates(this.prisma, workspaceId, [
+      existing.date,
+      input.date,
+    ]);
+
     const updated = await this.prisma.transaction.update({
       where: { id },
       data: {
@@ -137,12 +150,26 @@ export class TransactionService {
     return this.serialize(updated);
   }
 
-  async softDelete(workspaceId: string, id: string) {
+  async softDelete(workspaceId: string, id: string, actorId: string | null = null) {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Transaction not found');
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, existing.date);
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId,
+      action: 'transaction.delete',
+      entityType: 'Transaction',
+      entityId: id,
+      diff: {
+        date: existing.date.toISOString(),
+        amount: existing.amount.toFixed(2),
+        type: existing.type,
+        kind: existing.kind,
+      },
+    });
   }
 
   /**

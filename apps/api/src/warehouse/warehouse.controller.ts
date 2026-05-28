@@ -20,10 +20,12 @@ import {
   UpdateWarehouseItemSchema,
   ListWarehouseQuerySchema,
   AdjustStockSchema,
+  SupplierReturnSchema,
   type CreateWarehouseItemDto,
   type UpdateWarehouseItemDto,
   type ListWarehouseQuery,
   type AdjustStockDto,
+  type SupplierReturnDto,
 } from './warehouse.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -75,6 +77,16 @@ export class WarehouseController {
     @Body(new ZodPipe(AdjustStockSchema)) body: AdjustStockDto,
   ) {
     return this.service.adjust(ws.workspaceId, id, body);
+  }
+
+  @Post(':id/supplier-return')
+  @HttpCode(200)
+  supplierReturn(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(SupplierReturnSchema)) body: SupplierReturnDto,
+  ) {
+    return this.service.supplierReturn(ws.workspaceId, id, ws.userId, body);
   }
 
   @Delete(':id')
