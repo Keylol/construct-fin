@@ -16,6 +16,7 @@ import {
   useFinalizeOrder,
   useCancelOrder,
   useReopenOrder,
+  useRestoreOrder,
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
@@ -620,6 +621,7 @@ function OrderDetailSheet({
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
+  const restore = useRestoreOrder(wsId);
   const uploadAtt = useUploadOrderAttachment(wsId);
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
@@ -893,6 +895,21 @@ function OrderDetailSheet({
                   </Button>
                 </>
               )}
+            </SheetFooter>
+          )}
+
+          {order && order.status === 'CANCELLED' && (
+            <SheetFooter className="flex-wrap">
+              <p className="mr-auto text-xs text-muted-foreground">
+                Заказ отменён. Верните в работу, чтобы отредактировать позиции и закрыть заново.
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => restore.mutate(order.id)}
+                disabled={restore.isPending}
+              >
+                {restore.isPending ? 'Восстанавливаю…' : 'Восстановить'}
+              </Button>
             </SheetFooter>
           )}
         </SheetContent>

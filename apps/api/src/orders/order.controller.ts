@@ -102,6 +102,12 @@ export class OrderController {
     return this.service.cancel(ws.workspaceId, id, ws.userId);
   }
 
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.restore(ws.workspaceId, id, ws.userId);
+  }
+
   @Delete(':id')
   @HttpCode(200)
   remove(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {

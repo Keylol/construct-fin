@@ -145,6 +145,15 @@ export function useReopenOrder(wsId: string) {
   });
 }
 
+export function useRestoreOrder(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/restore`),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
 export function useDeleteOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
