@@ -16,15 +16,25 @@ export class ApiError extends Error {
 
 const BASE = '/api/v1';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export interface RequestOptions {
+  /** Опциональный заголовок Idempotency-Key: повтор запроса вернёт тот же ответ. */
+  idempotencyKey?: string;
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit & RequestOptions,
+): Promise<T> {
   const hasBody = init?.body !== undefined && init?.body !== null;
+  const { idempotencyKey, headers, ...rest } = init ?? {};
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
     headers: {
       ...(hasBody ? { 'content-type': 'application/json' } : {}),
-      ...(init?.headers ?? {}),
+      ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+      ...(headers ?? {}),
     },
-    ...init,
+    ...rest,
   });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -49,9 +59,37 @@ function safeJson(text: string): unknown {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
-  patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
-  del: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>(path, {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+      ...opts,
+    }),
+  patch: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>(path, {
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+      ...opts,
+    }),
+  del: <T = void>(path: string, opts?: RequestOptions) =>
+    request<T>(path, { method: 'DELETE', ...opts }),
 };
+
+/**
+ * Сгенерировать одноразовый Idempotency-Key. Используй в useMutation, чтобы
+ * retry не задвоил операцию (платёж, закупка, finalize).
+ *
+ * crypto.randomUUID() есть везде в современных браузерах + Node 16+.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback на простой random.
+  return (
+    Date.now().toString(36) +
+    '-' +
+    Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2)
+  );
+}

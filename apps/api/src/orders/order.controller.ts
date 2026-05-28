@@ -93,18 +93,18 @@ export class OrderController {
   @Post(':id/reopen')
   @HttpCode(200)
   reopen(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.reopen(ws.workspaceId, id);
+    return this.service.reopen(ws.workspaceId, id, ws.userId);
   }
 
   @Post(':id/cancel')
   @HttpCode(200)
   cancel(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.cancel(ws.workspaceId, id);
+    return this.service.cancel(ws.workspaceId, id, ws.userId);
   }
 
   @Delete(':id')
   @HttpCode(200)
   remove(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.remove(ws.workspaceId, id);
+    return this.service.remove(ws.workspaceId, id, ws.userId);
   }
 }

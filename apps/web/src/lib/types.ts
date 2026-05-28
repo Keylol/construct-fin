@@ -301,6 +301,22 @@ export interface CategoryBreakdown {
   expense: string;
 }
 
+export type ReportBucket =
+  | 'REVENUE'
+  | 'COGS'
+  | 'FIXED'
+  | 'VARIABLE'
+  | 'NON_OP'
+  | 'TAX'
+  | 'CAPITAL'
+  | 'OTHER';
+
+export interface BucketBreakdown {
+  bucket: ReportBucket;
+  income: string;
+  expense: string;
+}
+
 export interface PnlBucket {
   label: string;
   from: string;
@@ -311,6 +327,7 @@ export interface PnlBucket {
   grossProfit: string;
   net: string;
   byCategory: CategoryBreakdown[];
+  byBucket: BucketBreakdown[];
 }
 
 export interface PnlSeries {

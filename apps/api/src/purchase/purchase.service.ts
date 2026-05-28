@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
+import { PeriodService } from '../period/period.service';
+import { AuditService } from '../audit/audit.service';
 import { add, mul, money } from '../common/money';
 import type { CreatePurchaseDto, ListPurchasesQuery } from './purchase.dto';
 
@@ -12,6 +14,8 @@ export class PurchaseService {
     private readonly prisma: PrismaService,
     private readonly uow: UnitOfWork,
     private readonly warehouse: WarehouseService,
+    private readonly periods: PeriodService,
+    private readonly audit: AuditService,
   ) {}
 
   list(workspaceId: string, query: ListPurchasesQuery) {
@@ -62,12 +66,15 @@ export class PurchaseService {
       lines.reduce((acc, l) => add(acc, l.lineTotal), new Prisma.Decimal(0)),
     );
 
+    const purchaseDate = dto.date ? new Date(dto.date) : new Date();
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, purchaseDate);
+
     return this.uow.run(async (tx) => {
       // 1. Деньги: списание со счёта.
       const transaction = await tx.transaction.create({
         data: {
           workspaceId,
-          date: dto.date ? new Date(dto.date) : new Date(),
+          date: purchaseDate,
           amount: totalAmount,
           type: 'EXPENSE',
           kind: 'PURCHASE',
@@ -106,6 +113,19 @@ export class PurchaseService {
           l.unitPrice,
         );
       }
+
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'purchase.register',
+        entityType: 'Purchase',
+        entityId: purchase.id,
+        diff: {
+          totalAmount: totalAmount.toFixed(2),
+          supplierId: dto.supplierId ?? null,
+          linesCount: lines.length,
+        },
+      });
 
       return tx.purchase.findUniqueOrThrow({
         where: { id: purchase.id },

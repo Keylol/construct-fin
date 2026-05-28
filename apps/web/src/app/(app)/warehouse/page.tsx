@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Package, Search, X, Trash2, ShoppingCart } from 'lucide-react';
+import { Plus, Package, Search, X, Trash2, ShoppingCart, Undo2 } from 'lucide-react';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
@@ -11,6 +11,7 @@ import {
   useUpdateWarehouseItem,
   useAdjustStock,
   useDeleteWarehouseItem,
+  useSupplierReturn,
 } from '@/hooks/useWarehouse';
 import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
 import { useCounterparties } from '@/hooks/useCounterparties';
@@ -218,6 +219,7 @@ function WarehouseItemForm({
   const update = useUpdateWarehouseItem(wsId);
   const adjust = useAdjustStock(wsId);
   const del = useDeleteWarehouseItem(wsId);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [unit, setUnit] = useState('шт');
@@ -353,6 +355,11 @@ function WarehouseItemForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
+            {initial && Number(initial.qty) > 0 && (
+              <Button variant="secondary" onClick={() => setReturnOpen(true)}>
+                <Undo2 className="h-3.5 w-3.5" /> Возврат поставщику
+              </Button>
+            )}
             <Button variant="secondary" onClick={onClose}>
               Отмена
             </Button>
@@ -371,7 +378,172 @@ function WarehouseItemForm({
         onConfirm={onDelete}
         loading={del.isPending}
       />
+      {initial && (
+        <SupplierReturnSheet
+          wsId={wsId}
+          item={initial}
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+          onDone={onClose}
+        />
+      )}
     </>
+  );
+}
+
+function SupplierReturnSheet({
+  wsId,
+  item,
+  open,
+  onClose,
+  onDone,
+}: {
+  wsId: string;
+  item: WarehouseItem;
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const accounts = useAccounts(wsId);
+  const suppliers = useCounterparties(wsId, undefined, false, 'SUPPLIER');
+  const mut = useSupplierReturn(wsId);
+
+  const [qty, setQty] = useState('1');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [supplierId, setSupplierId] = useState(item.defaultSupplierId ?? '');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setQty('1');
+      // Подсказка: refund = qty * avgCost.
+      const guess = Number(item.avgCost);
+      setRefundAmount(guess > 0 ? guess.toFixed(2) : '');
+      setAccountId('');
+      setSupplierId(item.defaultSupplierId ?? '');
+      setNote('');
+      setError(null);
+    }
+  }, [open, item.avgCost, item.defaultSupplierId]);
+
+  const submit = async () => {
+    setError(null);
+    const q = parseQty(qty);
+    const amount = parseAmountInput(refundAmount);
+    if (!q) {
+      setError('Введите корректное количество');
+      return;
+    }
+    if (Number(q) > Number(item.qty)) {
+      setError(`Максимум ${item.qty} ${item.unit}`);
+      return;
+    }
+    if (!amount) {
+      setError('Введите сумму возврата');
+      return;
+    }
+    if (!accountId) {
+      setError('Выберите счёт зачисления');
+      return;
+    }
+    try {
+      await mut.mutateAsync({
+        id: item.id,
+        qty: q,
+        refundAmount: amount,
+        accountId,
+        supplierId: supplierId || null,
+        note: note.trim() || undefined,
+      });
+      toast.success('Возврат проведён', {
+        description: 'Склад уменьшен, средняя себестоимость пересчитана',
+      });
+      onClose();
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <SheetTitle>Возврат поставщику</SheetTitle>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
+            <X className="h-4 w-4" />
+          </Button>
+        </SheetHeader>
+        <SheetBody className="space-y-4">
+          <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
+            <div className="font-medium">{item.name}</div>
+            <div className="mt-1 text-muted-foreground">
+              Остаток: {Number(item.qty)} {item.unit} · ср. {formatRub(item.avgCost)}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Количество" htmlFor="sr-qty" required>
+              <Input
+                id="sr-qty"
+                inputMode="decimal"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                autoFocus
+              />
+            </FormField>
+            <FormField label="Сумма возврата" htmlFor="sr-refund" required>
+              <Input
+                id="sr-refund"
+                inputMode="decimal"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+              />
+            </FormField>
+          </div>
+          <FormField label="Зачислить на счёт" htmlFor="sr-account" required>
+            <Select id="sr-account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              <option value="">— Счёт —</option>
+              {(accounts.data ?? [])
+                .filter((a) => !a.isArchived)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+            </Select>
+          </FormField>
+          <FormField label="Поставщик" htmlFor="sr-supplier">
+            <Select id="sr-supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— Не указан —</option>
+              {(suppliers.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Комментарий" htmlFor="sr-note">
+            <Input
+              id="sr-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Причина возврата, № акта…"
+            />
+          </FormField>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </SheetBody>
+        <SheetFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button onClick={submit} disabled={mut.isPending}>
+            {mut.isPending ? 'Провожу…' : 'Провести возврат'}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 

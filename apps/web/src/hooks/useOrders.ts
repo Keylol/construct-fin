@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type { Order, OrderStatus } from '@/lib/types';
 
 export interface OrderItemInput {
@@ -98,7 +98,9 @@ export function useAddOrderPayment(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: AddPaymentInput & { id: string }) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/payments`, input),
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/payments`, input, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: () => invalidate(qc, wsId),
   });
 }
@@ -107,7 +109,9 @@ export function useRefundOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: RefundInput & { id: string }) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/refund`, input),
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/refund`, input, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: () => invalidate(qc, wsId),
   });
 }
@@ -116,7 +120,9 @@ export function useFinalizeOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/finalize`),
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/finalize`, undefined, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
     onSuccess: () => invalidate(qc, wsId),
   });
 }

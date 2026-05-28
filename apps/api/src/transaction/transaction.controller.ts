@@ -76,6 +76,6 @@ export class TransactionController {
   @Delete(':id')
   @HttpCode(204)
   async delete(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    await this.service.softDelete(ws.workspaceId, id);
+    await this.service.softDelete(ws.workspaceId, id, ws.userId);
   }
 }

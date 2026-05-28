@@ -11,6 +11,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork, type TxClient } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
+import { PeriodService } from '../period/period.service';
+import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
 import type {
@@ -29,6 +31,8 @@ export class OrderService {
     private readonly orders: OrderRepository,
     private readonly uow: UnitOfWork,
     private readonly warehouse: WarehouseService,
+    private readonly periods: PeriodService,
+    private readonly audit: AuditService,
   ) {}
 
   list(workspaceId: string, query: ListOrdersQuery) {
@@ -154,11 +158,14 @@ export class OrderService {
       throw new BadRequestException('Заказ отменён');
     }
 
+    const paymentDate = dto.date ? new Date(dto.date) : new Date();
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, paymentDate);
+
     return this.uow.run(async (tx) => {
       await tx.transaction.create({
         data: {
           workspaceId,
-          date: dto.date ? new Date(dto.date) : new Date(),
+          date: paymentDate,
           amount: money(dto.amount),
           type: 'INCOME',
           kind: 'ORDER_PAYMENT',
@@ -188,11 +195,14 @@ export class OrderService {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
 
+    const refundDate = dto.date ? new Date(dto.date) : new Date();
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, refundDate);
+
     return this.uow.run(async (tx) => {
       await tx.transaction.create({
         data: {
           workspaceId,
-          date: dto.date ? new Date(dto.date) : new Date(),
+          date: refundDate,
           amount: money(dto.amount),
           type: 'EXPENSE',
           kind: 'ORDER_REFUND',
@@ -204,6 +214,18 @@ export class OrderService {
         },
       });
       await this.syncPaymentState(workspaceId, orderId, tx);
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.refund',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          amount: money(dto.amount).toFixed(2),
+          reason: dto.reason ?? null,
+        },
+      });
       return this.orders.findById(workspaceId, orderId, tx);
     });
   }
@@ -224,6 +246,9 @@ export class OrderService {
       throw new BadRequestException('Заказ отменён');
     }
     if (order.status === 'DONE') return order;
+
+    // Финализация создаёт COGS-расход сегодня — если текущий месяц закрыт, отказ.
+    await this.periods.assertOpenForDate(this.prisma, workspaceId, new Date());
 
     return this.uow.run(async (tx) => {
       let manualCogs = D(0);
@@ -272,6 +297,19 @@ export class OrderService {
         where: { id: orderId },
         data: { status: 'DONE', closedAt: new Date() },
       });
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.finalize',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          previousStatus: order.status,
+          totalAmount: order.totalAmount.toFixed(2),
+          manualCogs: manualCogs.toFixed(2),
+        },
+      });
       return this.orders.findById(workspaceId, orderId, tx);
     });
   }
@@ -281,16 +319,26 @@ export class OrderService {
    * товар на склад и сторнируем COGS-расход. Платежи остаются (при необходимости
    * оформляется отдельный возврат).
    */
-  async cancel(workspaceId: string, orderId: string) {
+  async cancel(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === 'CANCELLED') return order;
+
+    await this.assertOrderEditableByPeriod(workspaceId, orderId);
 
     return this.uow.run(async (tx) => {
       if (order.status === 'DONE') {
         await this.reverseFinalization(tx, workspaceId, order);
       }
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.cancel',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: { number: order.number, previousStatus: order.status },
+      });
       return this.orders.findById(workspaceId, orderId, tx);
     });
   }
@@ -299,20 +347,41 @@ export class OrderService {
    * Вернуть закрытый заказ в работу (OPEN), чтобы отредактировать. Откатывает
    * склад и COGS-расход. Доступно только для DONE.
    */
-  async reopen(workspaceId: string, orderId: string) {
+  async reopen(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     if (order.status !== 'DONE') {
       throw new BadRequestException('Вернуть в работу можно только закрытый заказ');
     }
+    await this.assertOrderEditableByPeriod(workspaceId, orderId);
     return this.uow.run(async (tx) => {
       await this.reverseFinalization(tx, workspaceId, order);
       await tx.order.update({
         where: { id: orderId },
         data: { status: 'OPEN', closedAt: null },
       });
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.reopen',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: { number: order.number },
+      });
       return this.orders.findById(workspaceId, orderId, tx);
     });
+  }
+
+  /**
+   * Все связанные транзакции заказа (платежи/возвраты/COGS) должны быть в
+   * открытых периодах. Иначе отмена/удаление сломает закрытую отчётность.
+   */
+  private async assertOrderEditableByPeriod(workspaceId: string, orderId: string) {
+    const txs = await this.prisma.transaction.findMany({
+      where: { workspaceId, orderId, deletedAt: null },
+      select: { date: true },
+    });
+    await this.periods.assertOpenForDates(this.prisma, workspaceId, txs.map((t) => t.date));
   }
 
   /** Откат финализации: restock склада + сторно COGS-расхода. Внутри UoW. */
@@ -354,9 +423,10 @@ export class OrderService {
     return acc?.id ?? null;
   }
 
-  async remove(workspaceId: string, orderId: string) {
+  async remove(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
+    await this.assertOrderEditableByPeriod(workspaceId, orderId);
     return this.uow.run(async (tx) => {
       // Если заказ был закрыт — вернуть склад и сторнировать COGS.
       if (order.status === 'DONE') {
@@ -368,6 +438,19 @@ export class OrderService {
         data: { deletedAt: new Date() },
       });
       await tx.order.update({ where: { id: orderId }, data: { deletedAt: new Date() } });
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.delete',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          status: order.status,
+          totalAmount: order.totalAmount.toFixed(2),
+          paidAmount: order.paidAmount.toFixed(2),
+        },
+      });
       return { ok: true };
     });
   }
