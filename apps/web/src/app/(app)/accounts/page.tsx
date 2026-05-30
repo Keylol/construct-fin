@@ -33,7 +33,6 @@ import { formatRub } from '@construct/shared';
 const TYPE_LABELS: Record<AccountType, string> = {
   CASH: 'Наличные',
   BANK: 'Банк',
-  CARD: 'Карта',
   OTHER: 'Другое',
 };
 
@@ -258,7 +257,6 @@ function AccountForm({
               >
                 <option value="CASH">Наличные</option>
                 <option value="BANK">Банк</option>
-                <option value="CARD">Карта</option>
                 <option value="OTHER">Другое</option>
               </Select>
             </FormField>

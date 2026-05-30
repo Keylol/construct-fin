@@ -18,7 +18,6 @@ export interface CreateOrderInput {
   description?: string;
   discountAmount?: string;
   expectedDate?: string | null;
-  open?: boolean;
   items: OrderItemInput[];
 }
 
@@ -36,13 +35,6 @@ export interface AddPaymentInput {
   accountId: string;
   date?: string;
   description?: string;
-}
-
-export interface RefundInput {
-  amount: string;
-  accountId: string;
-  date?: string;
-  reason?: string;
 }
 
 export function useOrders(
@@ -105,17 +97,6 @@ export function useAddOrderPayment(wsId: string) {
   });
 }
 
-export function useRefundOrder(wsId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...input }: RefundInput & { id: string }) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/refund`, input, {
-        idempotencyKey: newIdempotencyKey(),
-      }),
-    onSuccess: () => invalidate(qc, wsId),
-  });
-}
-
 export function useFinalizeOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -141,15 +122,6 @@ export function useReopenOrder(wsId: string) {
   return useMutation({
     mutationFn: (id: string) =>
       api.post<Order>(`/workspaces/${wsId}/orders/${id}/reopen`),
-    onSuccess: () => invalidate(qc, wsId),
-  });
-}
-
-export function useRestoreOrder(wsId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/restore`),
     onSuccess: () => invalidate(qc, wsId),
   });
 }

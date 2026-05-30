@@ -1,16 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { Upload, History, RotateCcw } from 'lucide-react';
+import { Upload, History } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
-import { useImportBatches, useRollbackImport } from '@/hooks/useImport';
+import { useImportBatches } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
 
 const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
@@ -33,8 +31,6 @@ export default function ImportBatchesPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const batches = useImportBatches(wsId);
-  const rollback = useRollbackImport(wsId ?? '');
-  const [rollbackTarget, setRollbackTarget] = useState<ImportBatch | null>(null);
 
   if (!wsId) {
     return (
@@ -109,28 +105,6 @@ export default function ImportBatchesPage() {
         ),
       className: 'w-[110px]',
     },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      cell: (b) =>
-        !b.deletedAt ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              setRollbackTarget(b);
-            }}
-            disabled={rollback.isPending}
-            className="text-destructive hover:text-destructive"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Откатить
-          </Button>
-        ) : null,
-      className: 'w-[120px]',
-    },
   ];
 
   return (
@@ -188,19 +162,6 @@ export default function ImportBatchesPage() {
           )}
         />
       </div>
-
-      <ConfirmDialog
-        open={!!rollbackTarget}
-        onOpenChange={(o) => !o && setRollbackTarget(null)}
-        title={`Откатить импорт «${rollbackTarget?.filename ?? ''}»?`}
-        description={`${rollbackTarget?.rowsImported ?? 0} операций будут удалены (soft-delete).`}
-        confirmText="Откатить"
-        onConfirm={async () => {
-          if (rollbackTarget) await rollback.mutateAsync(rollbackTarget.id);
-          setRollbackTarget(null);
-        }}
-        loading={rollback.isPending}
-      />
     </>
   );
 }

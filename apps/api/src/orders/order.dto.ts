@@ -27,8 +27,6 @@ export const CreateOrderSchema = z.object({
   description: z.string().max(2000).optional(),
   discountAmount: MoneyString.optional(),
   expectedDate: z.string().datetime().nullable().optional(),
-  /// Сразу перевести в OPEN (иначе DRAFT).
-  open: z.boolean().optional(),
   items: z.array(OrderItemInputSchema).default([]),
 });
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>;
@@ -44,7 +42,7 @@ export const UpdateOrderSchema = z.object({
 export type UpdateOrderDto = z.infer<typeof UpdateOrderSchema>;
 
 export const ListOrdersQuerySchema = z.object({
-  status: z.enum(['DRAFT', 'OPEN', 'DONE', 'CANCELLED']).optional(),
+  status: z.enum(['OPEN', 'DONE', 'CANCELLED']).optional(),
   clientId: z.string().cuid().optional(),
   search: z.string().max(100).optional(),
 });
@@ -57,11 +55,3 @@ export const AddPaymentSchema = z.object({
   description: z.string().max(500).optional(),
 });
 export type AddPaymentDto = z.infer<typeof AddPaymentSchema>;
-
-export const RefundSchema = z.object({
-  amount: MoneyString,
-  accountId: z.string().cuid(),
-  date: z.string().datetime().optional(),
-  reason: z.string().max(500).optional(),
-});
-export type RefundDto = z.infer<typeof RefundSchema>;

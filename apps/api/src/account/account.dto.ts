@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const AccountTypeEnum = z.enum(['CASH', 'BANK', 'CARD', 'OTHER']);
+const AccountTypeEnum = z.enum(['CASH', 'BANK', 'OTHER']);
 
 // money: строка "1234.56" (две цифры после точки), либо без точки
 const moneyString = z

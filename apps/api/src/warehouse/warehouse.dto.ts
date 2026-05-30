@@ -37,14 +37,3 @@ export const AdjustStockSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 export type AdjustStockDto = z.infer<typeof AdjustStockSchema>;
-
-/** Возврат товара поставщику. Снимаем со склада, получаем деньги обратно. */
-export const SupplierReturnSchema = z.object({
-  qty: z.string().regex(/^\d+(\.\d{1,3})?$/),
-  refundAmount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  accountId: z.string().cuid(),
-  supplierId: z.string().cuid().nullable().optional(),
-  date: z.string().datetime({ offset: true }).optional(),
-  note: z.string().trim().max(500).optional(),
-});
-export type SupplierReturnDto = z.infer<typeof SupplierReturnSchema>;

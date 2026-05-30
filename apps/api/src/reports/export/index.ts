@@ -1,7 +1,6 @@
 import type { ExportFormat } from '../reports.dto';
 import { renderCsv } from './csv';
 import { renderXlsx } from './xlsx';
-import { renderPdf } from './pdf';
 import type { ReportTable } from './report-table';
 
 export interface ExportedFile {
@@ -26,12 +25,6 @@ export async function renderReport(
         buffer: await renderXlsx(table),
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         extension: 'xlsx',
-      };
-    case 'pdf':
-      return {
-        buffer: renderPdf(table),
-        mimeType: 'application/pdf',
-        extension: 'pdf',
       };
   }
 }

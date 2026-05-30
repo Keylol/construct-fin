@@ -20,12 +20,10 @@ import {
   UpdateOrderSchema,
   ListOrdersQuerySchema,
   AddPaymentSchema,
-  RefundSchema,
   type CreateOrderDto,
   type UpdateOrderDto,
   type ListOrdersQuery,
   type AddPaymentDto,
-  type RefundDto,
 } from './order.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -74,16 +72,6 @@ export class OrderController {
     return this.service.addPayment(ws.workspaceId, id, ws.userId, body);
   }
 
-  @Post(':id/refund')
-  @HttpCode(200)
-  refund(
-    @CurrentWorkspace() ws: WorkspaceContext,
-    @Param('id') id: string,
-    @Body(new ZodPipe(RefundSchema)) body: RefundDto,
-  ) {
-    return this.service.refund(ws.workspaceId, id, ws.userId, body);
-  }
-
   @Post(':id/finalize')
   @HttpCode(200)
   finalize(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
@@ -100,12 +88,6 @@ export class OrderController {
   @HttpCode(200)
   cancel(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
     return this.service.cancel(ws.workspaceId, id, ws.userId);
-  }
-
-  @Post(':id/restore')
-  @HttpCode(200)
-  restore(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.restore(ws.workspaceId, id, ws.userId);
   }
 
   @Delete(':id')

@@ -98,18 +98,3 @@ export function useImportBatches(wsId: string | null) {
     enabled: !!wsId,
   });
 }
-
-export function useRollbackImport(wsId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (batchId: string) =>
-      api.post<{ rolledBack: number }>(
-        `/workspaces/${wsId}/import/batches/${batchId}/rollback`,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
-      qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
-      qc.invalidateQueries({ queryKey: ['import-batches', wsId] });
-    },
-  });
-}

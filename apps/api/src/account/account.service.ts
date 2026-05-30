@@ -66,7 +66,7 @@ export class AccountService {
   private serialize(a: {
     id: string;
     name: string;
-    type: 'CASH' | 'BANK' | 'CARD' | 'OTHER';
+    type: 'CASH' | 'BANK' | 'OTHER';
     openingBalance: Prisma.Decimal;
     note: string | null;
     isArchived: boolean;

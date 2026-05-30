@@ -3,7 +3,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
-import { PeriodService } from '../period/period.service';
 import { AuditService } from '../audit/audit.service';
 import { add, mul, money } from '../common/money';
 import type { CreatePurchaseDto, ListPurchasesQuery } from './purchase.dto';
@@ -14,7 +13,6 @@ export class PurchaseService {
     private readonly prisma: PrismaService,
     private readonly uow: UnitOfWork,
     private readonly warehouse: WarehouseService,
-    private readonly periods: PeriodService,
     private readonly audit: AuditService,
   ) {}
 
@@ -67,7 +65,6 @@ export class PurchaseService {
     );
 
     const purchaseDate = dto.date ? new Date(dto.date) : new Date();
-    await this.periods.assertOpenForDate(this.prisma, workspaceId, purchaseDate);
 
     return this.uow.run(async (tx) => {
       // 1. Деньги: списание со счёта.

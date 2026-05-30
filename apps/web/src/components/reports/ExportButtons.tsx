@@ -14,7 +14,7 @@ export function ExportButtons({
 }) {
   return (
     <div className="inline-flex divide-x divide-input overflow-hidden rounded-md border border-input">
-      {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
+      {(['csv', 'xlsx'] as const).map((format) => (
         <a
           key={format}
           href={buildExportUrl(wsId, kind, format, params)}

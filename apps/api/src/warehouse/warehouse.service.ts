@@ -7,18 +7,15 @@ import {
   applyPurchase,
   applySale,
   applyReturn,
-  applySupplierReturn,
   InsufficientStockError,
 } from '../common/wavg';
-import { D, money } from '../common/money';
-import { PeriodService } from '../period/period.service';
+import { D } from '../common/money';
 import { AuditService } from '../audit/audit.service';
 import type {
   CreateWarehouseItemDto,
   UpdateWarehouseItemDto,
   ListWarehouseQuery,
   AdjustStockDto,
-  SupplierReturnDto,
 } from './warehouse.dto';
 
 @Injectable()
@@ -27,7 +24,6 @@ export class WarehouseService {
     private readonly prisma: PrismaService,
     private readonly repo: WarehouseRepository,
     private readonly uow: UnitOfWork,
-    private readonly periods: PeriodService,
     private readonly audit: AuditService,
   ) {}
 
@@ -137,77 +133,6 @@ export class WarehouseService {
     if (!item) return; // товар мог быть удалён — молча пропускаем
     const next = applyReturn(item.qty, item.avgCost, returnQty);
     await this.repo.update(itemId, { qty: next.qty }, tx);
-  }
-
-  /**
-   * Возврат поставщику АТОМАРНО:
-   *   1. Списываем qty со склада, пересчитываем avgCost по формуле
-   *      newAvg = (oldTotal − refund) / newQty.
-   *   2. Создаём Transaction(INCOME, kind=OTHER) — деньги вернулись на счёт.
-   *   3. Аудит-запись.
-   * Если qty > остатка — BadRequest, rollback.
-   */
-  async supplierReturn(
-    workspaceId: string,
-    itemId: string,
-    userId: string,
-    dto: SupplierReturnDto,
-  ) {
-    const item = await this.repo.findById(workspaceId, itemId);
-    if (!item) throw new NotFoundException('Warehouse item not found');
-
-    const returnQty = new Prisma.Decimal(dto.qty);
-    if (returnQty.lte(0)) {
-      throw new BadRequestException('Количество должно быть больше нуля');
-    }
-    if (returnQty.gt(item.qty)) {
-      throw new BadRequestException(
-        `«${item.name}»: доступно ${item.qty.toString()}, требуется ${dto.qty}`,
-      );
-    }
-
-    const refund = money(dto.refundAmount);
-    const returnDate = dto.date ? new Date(dto.date) : new Date();
-    await this.periods.assertOpenForDate(this.prisma, workspaceId, returnDate);
-
-    return this.uow.run(async (tx) => {
-      const next = applySupplierReturn(item.qty, item.avgCost, returnQty, refund);
-      await this.repo.update(itemId, { qty: next.qty, avgCost: next.avgCost }, tx);
-
-      const transaction = await tx.transaction.create({
-        data: {
-          workspaceId,
-          date: returnDate,
-          amount: refund,
-          type: 'INCOME',
-          kind: 'OTHER',
-          accountId: dto.accountId,
-          counterpartyId: dto.supplierId ?? item.defaultSupplierId ?? null,
-          description:
-            dto.note ?? `Возврат поставщику: ${item.name} (${dto.qty} ${item.unit})`,
-          createdById: userId,
-        },
-      });
-
-      await this.audit.record(tx, {
-        workspaceId,
-        actorId: userId,
-        action: 'warehouse.supplier-return',
-        entityType: 'WarehouseItem',
-        entityId: itemId,
-        diff: {
-          itemName: item.name,
-          qty: dto.qty,
-          refundAmount: refund.toFixed(2),
-          transactionId: transaction.id,
-        },
-      });
-
-      return {
-        item: await this.repo.findById(workspaceId, itemId, tx),
-        transactionId: transaction.id,
-      };
-    });
   }
 
   /** Helper для отчётов: стоимость остатков склада. */
