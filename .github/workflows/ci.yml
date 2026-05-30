@@ -48,6 +48,12 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @construct/db exec prisma generate
 
+      - name: Build workspace packages
+        # apps/api и apps/web резолвят @construct/shared и @construct/db через
+        # dist/ (CommonJS). Без сборки пакетов в dist typecheck падает с
+        # TS2307 "Cannot find module '@construct/shared'".
+        run: pnpm --filter @construct/shared --filter @construct/db run build
+
       - name: Apply migrations
         run: pnpm --filter @construct/db exec prisma migrate deploy
         continue-on-error: true # на момент первого CI миграций ещё нет
