@@ -82,7 +82,7 @@ export function useBreakdownReport(
 export function buildExportUrl(
   wsId: string,
   kind: 'pnl' | 'cashflow' | 'by-category' | 'by-counterparty',
-  format: 'csv' | 'xlsx' | 'pdf',
+  format: 'csv' | 'xlsx',
   params: Record<string, string | undefined>,
 ): string {
   const qs = buildQuery({ ...params, format });

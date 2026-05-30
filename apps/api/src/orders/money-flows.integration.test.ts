@@ -86,7 +86,6 @@ describe('Finalize складского заказа → списание + unit
     });
 
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
 
@@ -109,7 +108,6 @@ describe('Cancel закрытого заказа → сторно', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
@@ -127,7 +125,6 @@ describe('Cancel закрытого заказа → сторно', () => {
 describe('Синхронизация оплаты', () => {
   it('UNPAID → PARTIAL → PAID → OVERPAID по мере оплат', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     expect(order.paymentStatus).toBe('UNPAID');
@@ -158,7 +155,6 @@ describe('Синхронизация оплаты', () => {
 describe('Ручная себестоимость (позиция без склада)', () => {
   it('finalize создаёт COGS-транзакцию по ручному unitCost', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
     });
     // нужен платёж, чтобы был счёт для списания себестоимости
@@ -185,7 +181,6 @@ describe('Защита от продажи в минус', () => {
       lines: [{ warehouseItemId: itemId, qty: '3', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
 
@@ -214,7 +209,6 @@ describe('Защита от продажи в минус', () => {
       ],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      open: true,
       items: [
         { warehouseItemId: itemA, name: 'A', qty: '5', unitPrice: '500' },
         { warehouseItemId: itemB, name: 'B', qty: '5', unitPrice: '500' }, // только 1 в наличии

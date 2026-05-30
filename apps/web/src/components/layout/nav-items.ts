@@ -1,7 +1,6 @@
 import {
   Home,
   Receipt,
-  Repeat,
   Upload,
   Wallet,
   Tag,
@@ -12,8 +11,6 @@ import {
   UserRound,
   Package,
   Truck,
-  Lock,
-  ScrollText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,7 +34,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
-      { href: '/recurring', label: 'Регулярные', icon: Repeat },
       { href: '/import', label: 'Импорт', icon: Upload },
     ],
   },
@@ -57,8 +53,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/reports', label: 'Отчёты', icon: BarChart3 },
       { href: '/reports/rules', label: 'Правила', icon: Filter },
-      { href: '/periods', label: 'Закрытие месяца', icon: Lock },
-      { href: '/audit', label: 'Журнал действий', icon: ScrollText },
     ],
   },
 ];

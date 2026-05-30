@@ -12,7 +12,6 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork } from '../common/unit-of-work';
 import { AuditService } from '../audit/audit.service';
-import { PeriodService } from '../period/period.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { OrderRepository } from '../orders/order.repository';
@@ -40,12 +39,11 @@ export function buildHarness(): Harness {
 
   const uow = new UnitOfWork(prisma);
   const audit = new AuditService(prisma);
-  const periods = new PeriodService(prisma, audit);
   const whRepo = new WarehouseRepository(prisma);
-  const warehouse = new WarehouseService(prisma, whRepo, uow, periods, audit);
+  const warehouse = new WarehouseService(prisma, whRepo, uow, audit);
   const orderRepo = new OrderRepository(prisma);
-  const orders = new OrderService(prisma, orderRepo, uow, warehouse, periods, audit);
-  const purchases = new PurchaseService(prisma, uow, warehouse, periods, audit);
+  const orders = new OrderService(prisma, orderRepo, uow, warehouse, audit);
+  const purchases = new PurchaseService(prisma, uow, warehouse, audit);
 
   return { prisma, orders, purchases, warehouse, orderRepo };
 }
@@ -57,7 +55,7 @@ export async function resetDb(prisma: PrismaClient): Promise<void> {
     TRUNCATE TABLE
       "Attachment","AuditLog","PurchaseLine","Purchase","OrderItem","Order",
       "Transaction","WarehouseItem","Counterparty","Category","Account",
-      "AccountingPeriod","RecurringRule","CategoryRule","ImportBatch",
+      "CategoryRule","ImportBatch",
       "WorkspaceMember","Workspace","User"
     RESTART IDENTITY CASCADE
   `);

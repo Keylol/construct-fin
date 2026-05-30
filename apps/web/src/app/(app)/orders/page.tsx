@@ -16,7 +16,6 @@ import {
   useFinalizeOrder,
   useCancelOrder,
   useReopenOrder,
-  useRestoreOrder,
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
@@ -44,13 +43,11 @@ import { toast } from '@/components/ui/Toaster';
 import { cn } from '@/lib/cn';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: 'Черновик',
   OPEN: 'В работе',
   DONE: 'Выполнен',
   CANCELLED: 'Отменён',
 };
 const STATUS_VARIANT: Record<OrderStatus, BadgeProps['variant']> = {
-  DRAFT: 'muted',
   OPEN: 'default',
   DONE: 'success',
   CANCELLED: 'destructive',
@@ -195,7 +192,6 @@ export default function OrdersPage() {
             className="h-9 w-[150px]"
           >
             <option value="">Все</option>
-            <option value="DRAFT">Черновик</option>
             <option value="OPEN">В работе</option>
             <option value="DONE">Выполнен</option>
             <option value="CANCELLED">Отменён</option>
@@ -351,7 +347,7 @@ function OrderFormSheet({
     return cleaned.length ? cleaned : null;
   };
 
-  const submitCreate = async (asOpen: boolean) => {
+  const submitCreate = async () => {
     setError(null);
     const cleaned = collectItems();
     if (!cleaned) {
@@ -363,10 +359,9 @@ function OrderFormSheet({
         clientId: clientId || null,
         title: title.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
-        open: asOpen,
         items: cleaned,
       });
-      toast.success(asOpen ? 'Заказ создан и в работе' : 'Черновик заказа создан');
+      toast.success('Заказ создан');
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -587,14 +582,9 @@ function OrderFormSheet({
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="secondary" onClick={() => submitCreate(false)} disabled={create.isPending}>
-                В черновик
-              </Button>
-              <Button onClick={() => submitCreate(true)} disabled={create.isPending}>
-                {create.isPending ? 'Создаю…' : 'Создать и в работу'}
-              </Button>
-            </>
+            <Button onClick={submitCreate} disabled={create.isPending}>
+              {create.isPending ? 'Создаю…' : 'Создать заказ'}
+            </Button>
           )}
         </SheetFooter>
       </SheetContent>
@@ -621,7 +611,6 @@ function OrderDetailSheet({
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
-  const restore = useRestoreOrder(wsId);
   const uploadAtt = useUploadOrderAttachment(wsId);
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
@@ -905,10 +894,10 @@ function OrderDetailSheet({
               </p>
               <Button
                 variant="secondary"
-                onClick={() => restore.mutate(order.id)}
-                disabled={restore.isPending}
+                onClick={() => reopen.mutate(order.id)}
+                disabled={reopen.isPending}
               >
-                {restore.isPending ? 'Восстанавливаю…' : 'Восстановить'}
+                {reopen.isPending ? 'Возвращаю…' : 'Вернуть в работу'}
               </Button>
             </SheetFooter>
           )}

@@ -35,7 +35,6 @@ const BUCKET_LABEL: Record<ReportBucket, string> = {
   COGS: 'Себестоимость',
   FIXED: 'Постоянные',
   VARIABLE: 'Переменные',
-  NON_OP: 'Прочие операционные',
   TAX: 'Налоги',
   CAPITAL: 'Капитал собственника',
   OTHER: 'Прочее',

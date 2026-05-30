@@ -19,7 +19,6 @@ import type {
   CommitResult,
   PreviewResult,
   PreviewRow,
-  RollbackResult,
 } from './import.types';
 import type { CommitBody } from './import.dto';
 
@@ -288,34 +287,6 @@ export class ImportService {
         imported: rowsToImport.length,
         skipped,
       };
-    });
-  }
-
-  async rollback(opts: {
-    workspaceId: string;
-    batchId: string;
-  }): Promise<RollbackResult> {
-    const batch = await this.prisma.importBatch.findFirst({
-      where: { id: opts.batchId, workspaceId: opts.workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!batch) throw new NotFoundException('Import batch not found');
-
-    return this.prisma.$transaction(async (tx) => {
-      const now = new Date();
-      const result = await tx.transaction.updateMany({
-        where: {
-          importBatchId: opts.batchId,
-          workspaceId: opts.workspaceId,
-          deletedAt: null,
-        },
-        data: { deletedAt: now },
-      });
-      await tx.importBatch.update({
-        where: { id: opts.batchId },
-        data: { deletedAt: now },
-      });
-      return { rolledBack: result.count };
     });
   }
 

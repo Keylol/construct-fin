@@ -29,7 +29,6 @@ model User {
   ownedWorkspaces      Workspace[]        @relation("WorkspaceOwner")
   workspaceMemberships WorkspaceMember[]
   createdTransactions  Transaction[]      @relation("TransactionCreatedBy")
-  closedPeriods        AccountingPeriod[]
   auditLogs            AuditLog[]
   importBatches        ImportBatch[]
 }
@@ -50,14 +49,12 @@ model Workspace {
   categories        Category[]
   counterparties    Counterparty[]
   transactions      Transaction[]
-  recurringRules    RecurringRule[]
   importBatches     ImportBatch[]
   categoryRules     CategoryRule[]
   auditLogs         AuditLog[]
   orders            Order[]
   warehouseItems    WarehouseItem[]
   purchases         Purchase[]
-  accountingPeriods AccountingPeriod[]
   attachments       Attachment[]
 
   @@index([ownerId])
@@ -108,7 +105,6 @@ model Account {
 enum AccountType {
   CASH
   BANK
-  CARD
   OTHER
 }
 
@@ -153,7 +149,6 @@ enum CategoryBucket {
   COGS // себестоимость проданных (учитывается в P&L "себестоимость")
   FIXED // постоянные издержки (аренда, подписки, лицензии)
   VARIABLE // переменные коммерческие (реклама, доставка, комиссии)
-  NON_OP // внереализационные расходы / прочие
   TAX // налоги, страховые
   CAPITAL // вложения / изъятия собственника — НЕ в P&L, только в Cash flow
   OTHER
@@ -226,7 +221,7 @@ model Order {
   title       String?
   description String?
 
-  status        OrderStatus       @default(DRAFT)
+  status        OrderStatus       @default(OPEN)
   paymentStatus OrderPaymentState @default(UNPAID)
 
   /// Итог = sum(items) - discountAmount; кэшируется триггером сервиса.
@@ -256,7 +251,6 @@ model Order {
 }
 
 enum OrderStatus {
-  DRAFT // черновик, не учитывается в отчётах
   OPEN // принят в работу, можно принимать оплату; склад ещё не тронут
   DONE // выполнен: склад списан по WAVG, COGS зафиксирован
   CANCELLED // отменён до DONE; деньги по нему возвращены (если были оплаты)
@@ -435,8 +429,6 @@ model Transaction {
   reversalReason String?
 
   // Метаданные.
-  recurringRuleId         String?
-  recurringOccurrenceDate DateTime?
   importBatchId           String?
   importHash              String?
   createdById             String
@@ -452,12 +444,10 @@ model Transaction {
   purchase      Purchase?      @relation("PurchaseTransaction")
   originalTx    Transaction?   @relation("Reversals", fields: [originalTxId], references: [id])
   reversals     Transaction[]  @relation("Reversals")
-  recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id])
   importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
   createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
   attachments   Attachment[]
 
-  @@unique([recurringRuleId, recurringOccurrenceDate])
   @@index([workspaceId, date])
   @@index([workspaceId, kind, date])
   @@index([workspaceId, accountId, date])
@@ -494,70 +484,6 @@ enum TransactionKind {
 
   // Универсальный — для случаев, не покрытых явными kind'ами.
   OTHER
-}
-
-// ───────────────────────────── Accounting periods ─────────────────────────
-//
-// Месячное закрытие. Если в периоде status=CLOSED — все операции в его
-// диапазоне дат становятся "только-чтение" через сервисный гард.
-// Редактирование закрытой операции = создание сторно + новой записи.
-
-model AccountingPeriod {
-  id          String       @id @default(cuid())
-  workspaceId String
-  year        Int
-  month       Int // 1-12
-  status      PeriodStatus @default(OPEN)
-  closedAt    DateTime?
-  closedById  String?
-  note        String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  closedBy  User?     @relation(fields: [closedById], references: [id], onDelete: SetNull)
-
-  @@unique([workspaceId, year, month])
-  @@index([workspaceId, status])
-}
-
-enum PeriodStatus {
-  OPEN
-  CLOSED
-}
-
-// ───────────────────────────── Recurring rules ─────────────────────────────
-
-model RecurringRule {
-  id           String             @id @default(cuid())
-  workspaceId  String
-  name         String
-  templateJson Json
-  frequency    RecurringFrequency
-  interval     Int                @default(1)
-  startDate    DateTime
-  endDate      DateTime?
-  dayOfMonth   Int?
-  dayOfWeek    Int?
-  nextRunAt    DateTime
-  lastRunAt    DateTime?
-  active       Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  deletedAt    DateTime?
-
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-
-  @@index([active, nextRunAt])
-  @@index([workspaceId, deletedAt])
-}
-
-enum RecurringFrequency {
-  DAILY
-  WEEKLY
-  MONTHLY
-  YEARLY
 }
 
 // ───────────────────────────── Import batches ─────────────────────────────
@@ -641,7 +567,7 @@ model Attachment {
 // ───────────────────────────── Audit & Idempotency ─────────────────────────
 //
 // AuditLog пишется декоратором на репозиториях для критичных доменных
-// действий (Order.cancel/finalize, AccountingPeriod.close, Transaction.delete
+// действий (Order.cancel/finalize, Transaction.delete
 // в закрытом периоде, WarehouseItem.adjustment).
 //
 // IdempotencyKey используется middleware'ом для всех mutating-эндпойнтов:

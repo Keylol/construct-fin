@@ -11,7 +11,6 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork, type TxClient } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
-import { PeriodService } from '../period/period.service';
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
@@ -20,7 +19,6 @@ import type {
   UpdateOrderDto,
   ListOrdersQuery,
   AddPaymentDto,
-  RefundDto,
   OrderItemInput,
 } from './order.dto';
 
@@ -31,7 +29,6 @@ export class OrderService {
     private readonly orders: OrderRepository,
     private readonly uow: UnitOfWork,
     private readonly warehouse: WarehouseService,
-    private readonly periods: PeriodService,
     private readonly audit: AuditService,
   ) {}
 
@@ -64,7 +61,7 @@ export class OrderService {
           clientId: input.clientId ?? null,
           title: input.title ?? null,
           description: input.description ?? null,
-          status: input.open ? 'OPEN' : 'DRAFT',
+          status: 'OPEN',
           paymentStatus: 'UNPAID',
           subtotal,
           discountAmount: discount,
@@ -159,7 +156,6 @@ export class OrderService {
     }
 
     const paymentDate = dto.date ? new Date(dto.date) : new Date();
-    await this.periods.assertOpenForDate(this.prisma, workspaceId, paymentDate);
 
     return this.uow.run(async (tx) => {
       await tx.transaction.create({
@@ -176,56 +172,7 @@ export class OrderService {
           createdById: userId,
         },
       });
-      // DRAFT → OPEN при первой оплате.
-      if (order.status === 'DRAFT') {
-        await tx.order.update({ where: { id: orderId }, data: { status: 'OPEN' } });
-      }
       await this.syncPaymentState(workspaceId, orderId, tx);
-      return this.orders.findById(workspaceId, orderId, tx);
-    });
-  }
-
-  /** Возврат клиенту → Transaction(kind=ORDER_REFUND). Склад вернём на этапе warehouse. */
-  async refund(
-    workspaceId: string,
-    orderId: string,
-    userId: string,
-    dto: RefundDto,
-  ) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-
-    const refundDate = dto.date ? new Date(dto.date) : new Date();
-    await this.periods.assertOpenForDate(this.prisma, workspaceId, refundDate);
-
-    return this.uow.run(async (tx) => {
-      await tx.transaction.create({
-        data: {
-          workspaceId,
-          date: refundDate,
-          amount: money(dto.amount),
-          type: 'EXPENSE',
-          kind: 'ORDER_REFUND',
-          accountId: dto.accountId,
-          orderId,
-          counterpartyId: order.clientId ?? null,
-          description: dto.reason ?? `Возврат по заказу ${order.number}`,
-          createdById: userId,
-        },
-      });
-      await this.syncPaymentState(workspaceId, orderId, tx);
-      await this.audit.record(tx, {
-        workspaceId,
-        actorId: userId,
-        action: 'order.refund',
-        entityType: 'Order',
-        entityId: orderId,
-        diff: {
-          number: order.number,
-          amount: money(dto.amount).toFixed(2),
-          reason: dto.reason ?? null,
-        },
-      });
       return this.orders.findById(workspaceId, orderId, tx);
     });
   }
@@ -246,9 +193,6 @@ export class OrderService {
       throw new BadRequestException('Заказ отменён');
     }
     if (order.status === 'DONE') return order;
-
-    // Финализация создаёт COGS-расход сегодня — если текущий месяц закрыт, отказ.
-    await this.periods.assertOpenForDate(this.prisma, workspaceId, new Date());
 
     return this.uow.run(async (tx) => {
       let manualCogs = D(0);
@@ -324,8 +268,6 @@ export class OrderService {
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === 'CANCELLED') return order;
 
-    await this.assertOrderEditableByPeriod(workspaceId, orderId);
-
     return this.uow.run(async (tx) => {
       if (order.status === 'DONE') {
         await this.reverseFinalization(tx, workspaceId, order);
@@ -344,48 +286,24 @@ export class OrderService {
   }
 
   /**
-   * Вернуть закрытый заказ в работу (OPEN), чтобы отредактировать. Откатывает
-   * склад и COGS-расход. Доступно только для DONE.
+   * Вернуть заказ в работу (OPEN). Доступно для DONE и CANCELLED:
+   *   • DONE → откатывает финализацию (возврат склада + сторно COGS-расхода);
+   *   • CANCELLED → финализация уже была откатана при отмене, поэтому только
+   *     меняем статус. Платежи никуда не девались.
+   * В обоих случаях пересчитываем оплату.
    */
   async reopen(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'DONE') {
-      throw new BadRequestException('Вернуть в работу можно только закрытый заказ');
-    }
-    await this.assertOrderEditableByPeriod(workspaceId, orderId);
-    return this.uow.run(async (tx) => {
-      await this.reverseFinalization(tx, workspaceId, order);
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: 'OPEN', closedAt: null },
-      });
-      await this.audit.record(tx, {
-        workspaceId,
-        actorId: userId,
-        action: 'order.reopen',
-        entityType: 'Order',
-        entityId: orderId,
-        diff: { number: order.number },
-      });
-      return this.orders.findById(workspaceId, orderId, tx);
-    });
-  }
-
-  /**
-   * Восстановить отменённый заказ в работу (CANCELLED → OPEN). При отмене
-   * финализация уже была откатана (склад возвращён, COGS сторнирован), поэтому
-   * здесь только меняем статус и пересчитываем оплату. Платежи никуда не девались,
-   * так что заказ сразу подхватит свой paidAmount/paymentStatus.
-   * Доступно только для CANCELLED.
-   */
-  async restore(workspaceId: string, orderId: string, userId: string) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'CANCELLED') {
-      throw new BadRequestException('Восстановить можно только отменённый заказ');
+    if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
+      throw new BadRequestException(
+        'Вернуть в работу можно только закрытый или отменённый заказ',
+      );
     }
     return this.uow.run(async (tx) => {
+      if (order.status === 'DONE') {
+        await this.reverseFinalization(tx, workspaceId, order);
+      }
       await tx.order.update({
         where: { id: orderId },
         data: { status: 'OPEN', closedAt: null },
@@ -394,25 +312,13 @@ export class OrderService {
       await this.audit.record(tx, {
         workspaceId,
         actorId: userId,
-        action: 'order.restore',
+        action: 'order.reopen',
         entityType: 'Order',
         entityId: orderId,
-        diff: { number: order.number },
+        diff: { number: order.number, previousStatus: order.status },
       });
       return this.orders.findById(workspaceId, orderId, tx);
     });
-  }
-
-  /**
-   * Все связанные транзакции заказа (платежи/возвраты/COGS) должны быть в
-   * открытых периодах. Иначе отмена/удаление сломает закрытую отчётность.
-   */
-  private async assertOrderEditableByPeriod(workspaceId: string, orderId: string) {
-    const txs = await this.prisma.transaction.findMany({
-      where: { workspaceId, orderId, deletedAt: null },
-      select: { date: true },
-    });
-    await this.periods.assertOpenForDates(this.prisma, workspaceId, txs.map((t) => t.date));
   }
 
   /** Откат финализации: restock склада + сторно COGS-расхода. Внутри UoW. */
@@ -457,7 +363,6 @@ export class OrderService {
   async remove(workspaceId: string, orderId: string, userId: string) {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
-    await this.assertOrderEditableByPeriod(workspaceId, orderId);
     return this.uow.run(async (tx) => {
       // Если заказ был закрыт — вернуть склад и сторнировать COGS.
       if (order.status === 'DONE') {

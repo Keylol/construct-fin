@@ -32,7 +32,3 @@ export type CommitResult = {
   imported: number;
   skipped: number;
 };
-
-export type RollbackResult = {
-  rolledBack: number;
-};

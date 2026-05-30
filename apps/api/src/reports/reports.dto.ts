@@ -50,5 +50,5 @@ export const BreakdownQuerySchema = z
   .strict();
 export type BreakdownQuery = z.infer<typeof BreakdownQuerySchema>;
 
-export const ExportFormatSchema = z.enum(['csv', 'xlsx', 'pdf']);
+export const ExportFormatSchema = z.enum(['csv', 'xlsx']);
 export type ExportFormat = z.infer<typeof ExportFormatSchema>;

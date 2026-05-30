@@ -13,13 +13,11 @@ import { CounterpartyModule } from './counterparty/counterparty.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { ImportModule } from './import/import.module';
-import { RecurringModule } from './recurring/recurring.module';
 import { CategoryRuleModule } from './category-rule/category-rule.module';
 import { ReportsModule } from './reports/reports.module';
 import { OrderModule } from './orders/order.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { PurchaseModule } from './purchase/purchase.module';
-import { PeriodModule } from './period/period.module';
 import { AuditModule } from './audit/audit.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
@@ -44,13 +42,11 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
     TransactionModule,
     AttachmentModule,
     ImportModule,
-    RecurringModule,
     CategoryRuleModule,
     ReportsModule,
     OrderModule,
     WarehouseModule,
     PurchaseModule,
-    PeriodModule,
     AuditModule,
   ],
   controllers: [HealthController],

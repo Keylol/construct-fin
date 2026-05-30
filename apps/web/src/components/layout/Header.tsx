@@ -117,7 +117,6 @@ const LABELS: Record<string, string> = {
   accounts: 'Счета',
   categories: 'Категории',
   counterparties: 'Контрагенты',
-  recurring: 'Регулярные',
   import: 'Импорт',
   batches: 'История',
   reports: 'Отчёты',

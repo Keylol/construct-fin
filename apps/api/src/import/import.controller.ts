@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Param,
   Post,
   Query,
   Req,
@@ -93,14 +92,6 @@ export class ImportController {
       userId: user.sub,
       body,
     });
-  }
-
-  @Post('batches/:batchId/rollback')
-  rollback(
-    @CurrentWorkspace() ws: WorkspaceContext,
-    @Param('batchId') batchId: string,
-  ) {
-    return this.service.rollback({ workspaceId: ws.workspaceId, batchId });
   }
 
   @Get('batches')

@@ -52,7 +52,6 @@ const ALL_BUCKETS: CategoryBucket[] = [
   'COGS',
   'FIXED',
   'VARIABLE',
-  'NON_OP',
   'TAX',
   'CAPITAL',
   'OTHER',

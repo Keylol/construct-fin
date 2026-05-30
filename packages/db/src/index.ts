@@ -7,7 +7,6 @@ export type {
   Category,
   Counterparty,
   Transaction,
-  RecurringRule,
   Attachment,
   AuditLog,
   IdempotencyKey,
@@ -17,5 +16,4 @@ export type {
   CategoryKind,
   TxType,
   ImportSource,
-  RecurringFrequency,
 } from '@prisma/client';

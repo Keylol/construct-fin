@@ -2,7 +2,7 @@
 // эти типы переедут в @construct/shared.
 
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
-export type AccountType = 'CASH' | 'BANK' | 'CARD' | 'OTHER';
+export type AccountType = 'CASH' | 'BANK' | 'OTHER';
 export type CategoryKind = 'INCOME' | 'EXPENSE';
 export type TxType = 'INCOME' | 'EXPENSE';
 
@@ -88,7 +88,7 @@ export interface Purchase {
   lines: PurchaseLine[];
 }
 
-export type OrderStatus = 'DRAFT' | 'OPEN' | 'DONE' | 'CANCELLED';
+export type OrderStatus = 'OPEN' | 'DONE' | 'CANCELLED';
 export type OrderPaymentState =
   | 'UNPAID'
   | 'PARTIAL'
@@ -180,34 +180,6 @@ export interface TransactionSummary {
   income: string;
   expense: string;
   net: string;
-}
-
-export type RecurringFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
-
-export interface RecurringTemplate {
-  amount: string;
-  type: TxType;
-  accountId: string;
-  categoryId?: string | null;
-  counterpartyId?: string | null;
-  description?: string | null;
-}
-
-export interface RecurringRule {
-  id: string;
-  name: string;
-  templateJson: RecurringTemplate;
-  frequency: RecurringFrequency;
-  interval: number;
-  startDate: string;
-  endDate: string | null;
-  dayOfMonth: number | null;
-  dayOfWeek: number | null;
-  nextRunAt: string;
-  lastRunAt: string | null;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export type ImportSource =
@@ -306,7 +278,6 @@ export type ReportBucket =
   | 'COGS'
   | 'FIXED'
   | 'VARIABLE'
-  | 'NON_OP'
   | 'TAX'
   | 'CAPITAL'
   | 'OTHER';
