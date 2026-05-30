@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigSchema, validateConfig } from './config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -30,6 +31,10 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
       validate: validateConfig,
     }),
     ScheduleModule.forRoot(),
+    // Базовый лимит: 10 запросов/мин с одного IP. Применяется точечно через
+    // ThrottlerGuard только на login-эндпоинтах (см. AuthController) —
+    // защита от брутфорса, остальной API не троттлится.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     PrismaModule,
     AuthModule,
     WorkspaceModule,

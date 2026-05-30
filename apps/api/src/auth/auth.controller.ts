@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
 import '@fastify/cookie';
 import { ConfigService } from '@nestjs/config';
@@ -21,6 +22,7 @@ export class AuthController {
   ) {}
 
   @Post('telegram/widget')
+  @UseGuards(ThrottlerGuard)
   @HttpCode(200)
   async loginViaWidget(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const payload = TelegramLoginPayloadSchema.parse(body);
@@ -30,6 +32,7 @@ export class AuthController {
   }
 
   @Post('telegram/miniapp')
+  @UseGuards(ThrottlerGuard)
   @HttpCode(200)
   async loginViaMiniApp(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const { initData } = MiniAppLoginSchema.parse(body);
@@ -39,6 +42,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(ThrottlerGuard)
   @HttpCode(200)
   async loginViaPassword(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const { password } = PasswordLoginSchema.parse(body);

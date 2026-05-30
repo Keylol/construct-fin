@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt.guard';
 import { WorkspaceGuard } from '../common/workspace.guard';
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { AttachmentService } from './attachment.service';
+import { assertAllowedAttachment } from './file-validation';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
 @Controller('workspaces/:wsId')
@@ -42,6 +43,7 @@ export class AttachmentController {
       | undefined;
     if (!part) throw new BadRequestException('No file in request');
     const buffer = await part.toBuffer();
+    assertAllowedAttachment(part.mimetype, buffer);
     return this.service.upload({
       workspaceId: ws.workspaceId,
       transactionId: txId,
@@ -74,6 +76,7 @@ export class AttachmentController {
       | undefined;
     if (!part) throw new BadRequestException('No file in request');
     const buffer = await part.toBuffer();
+    assertAllowedAttachment(part.mimetype, buffer);
     return this.service.uploadForOrder({
       workspaceId: ws.workspaceId,
       orderId,
