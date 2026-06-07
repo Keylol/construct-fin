@@ -88,7 +88,7 @@ export default function WarehousePage() {
     },
     {
       key: 'avgCost',
-      header: 'Ср. себест.',
+      header: 'Себестоимость',
       align: 'right',
       cell: (i) => <span className="tabular-nums text-muted-foreground">{formatRub(i.avgCost)}</span>,
       className: 'w-[140px]',
@@ -164,7 +164,7 @@ export default function WarehousePage() {
             <EmptyState
               icon={Package}
               title="Склад пуст"
-              hint="Добавьте позицию вручную или сделайте закупку — остаток и средняя себестоимость посчитаются автоматически."
+              hint="Добавьте позицию вручную или сделайте закупку — остаток и себестоимость посчитаются автоматически."
               action={
                 <Button onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" /> Добавить позицию
@@ -177,7 +177,7 @@ export default function WarehousePage() {
               <div className="min-w-0">
                 <div className="truncate font-medium">{i.name}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {Number(i.qty)} {i.unit} · ср. {formatRub(i.avgCost)}
+                  {Number(i.qty)} {i.unit} · {formatRub(i.avgCost)}
                 </div>
               </div>
               <div className="shrink-0 text-right">
@@ -319,7 +319,7 @@ function WarehouseItemForm({
               <FormField
                 label="Остаток (инвентаризация)"
                 htmlFor="w-adj"
-                hint="Изменение пересчитает остаток вручную. Средняя себестоимость не меняется."
+                hint="Изменение пересчитает остаток вручную. Себестоимость не меняется."
               >
                 <Input id="w-adj" inputMode="decimal" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
               </FormField>
@@ -328,7 +328,7 @@ function WarehouseItemForm({
             {initial && (
               <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Средняя себестоимость</span>
+                  <span className="text-muted-foreground">Себестоимость</span>
                   <span className="tabular-nums">{formatRub(initial.avgCost)}</span>
                 </div>
               </div>
@@ -437,7 +437,7 @@ function PurchaseSheet({
         note: note.trim() || undefined,
         lines: cleaned,
       });
-      toast.success('Закупка проведена', { description: 'Склад и средняя себестоимость обновлены' });
+      toast.success('Закупка проведена', { description: 'Склад и себестоимость обновлены' });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
