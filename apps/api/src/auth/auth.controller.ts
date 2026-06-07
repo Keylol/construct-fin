@@ -10,6 +10,7 @@ import type { JwtPayload } from './auth.service';
 import { TelegramLoginPayloadSchema } from '@construct/shared';
 import { z } from 'zod';
 import type { ConfigSchema } from '../config';
+import { ttlToSeconds } from './jwt-ttl';
 
 const MiniAppLoginSchema = z.object({ initData: z.string().min(1) });
 const PasswordLoginSchema = z.object({ password: z.string().min(1) });
@@ -66,12 +67,14 @@ export class AuthController {
 
   private setCookie(reply: FastifyReply, token: string): void {
     const isProd = this.config.get('NODE_ENV', { infer: true }) === 'production';
+    // maxAge привязан к JWT_EXPIRES_IN (Фаза 2 п.12), чтобы кука не жила дольше токена.
+    const maxAge = ttlToSeconds(this.config.get('JWT_EXPIRES_IN', { infer: true }));
     reply.setCookie('construct_jwt', token, {
       httpOnly: true,
       secure: isProd,
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30d
+      maxAge,
     });
   }
 }

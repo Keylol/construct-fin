@@ -16,9 +16,16 @@ async function bootstrap() {
   // остаются на ConsoleLogger — для их структуризации нужен nestjs-pino
   // (отдельная зависимость, вне зоны конфиг-фазы).
   const fastifyLogger = process.env.NODE_ENV === 'production' ? { level: process.env.LOG_LEVEL ?? 'info' } : false;
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: fastifyLogger }), {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    // trustProxy (Фаза 2 п.12): api слушает 127.0.0.1 за nginx, поэтому без этого
+    // req.ip = loopback и ThrottlerGuard на /auth/* лимитирует ГЛОБАЛЬНО, а не по IP.
+    // С trustProxy Fastify берёт клиента из X-Forwarded-For → троттлинг становится
+    // по-IP. Безопасно: порт не публичный, достучаться может только локальный nginx.
+    // (Заголовок X-Forwarded-For должен проставлять nginx — иначе req.ip = loopback.)
+    new FastifyAdapter({ logger: fastifyLogger, trustProxy: true }),
+    { bufferLogs: true },
+  );
 
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart, {
