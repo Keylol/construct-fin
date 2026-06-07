@@ -26,6 +26,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://construct:ci_password@localhost:5432/construct_v6_ci?schema=public
+      # Отдельная БД под деньги-интеграцию: тесты TRUNCATE'ят её между собой,
+      # держим в стороне от основной CI-БД. Харнес читает TEST_DATABASE_URL.
+      TEST_DATABASE_URL: postgresql://construct:ci_password@localhost:5432/construct_v6_test?schema=public
       JWT_SECRET: ci_secret_at_least_16_chars_long
       TELEGRAM_BOT_TOKEN: 000000:CI_DUMMY_TOKEN
       TELEGRAM_BOT_USERNAME: CIBotMock
@@ -56,7 +59,16 @@ jobs:
 
       - name: Apply migrations
         run: pnpm --filter @construct/db exec prisma migrate deploy
-        continue-on-error: true # на момент первого CI миграций ещё нет
+
+      - name: Prepare integration test DB
+        # Деньги-интеграция гоняется против отдельной construct_v6_test.
+        # psql предустановлен на ubuntu-latest; БД создаём через основное
+        # подключение, затем накатываем те же миграции.
+        run: |
+          PGPASSWORD=ci_password psql -h localhost -U construct -d construct_v6_ci \
+            -c "CREATE DATABASE construct_v6_test"
+          DATABASE_URL="$TEST_DATABASE_URL" \
+            pnpm --filter @construct/db exec prisma migrate deploy
 
       - name: Typecheck
         run: pnpm typecheck
@@ -67,6 +79,11 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Integration tests (money flows)
+        # Самый ценный сьют: закупка→склад→WAVG, finalize→COGS, сторно,
+        # синхронизация оплаты, атомарность. Раньше в CI не гонялся.
+        run: pnpm --filter @construct/api run test:integration
 
       - name: Build
         run: pnpm build
