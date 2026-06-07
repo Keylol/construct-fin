@@ -6,7 +6,7 @@ const RawConfigSchema = z.object({
   API_HOST: z.string().default('0.0.0.0'),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 chars'),
-  JWT_EXPIRES_IN: z.string().default('30d'),
+  JWT_EXPIRES_IN: z.string().default('7d'), // Фаза 2 п.12: было 30d, сокращаем TTL токена
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_BOT_USERNAME: z.string().min(1),
   TELEGRAM_ALLOWED_IDS: z
