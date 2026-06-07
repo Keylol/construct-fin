@@ -37,6 +37,24 @@ export class WarehouseRepository {
     });
   }
 
+  /**
+   * Блокирует строку склада на время транзакции (`SELECT … FOR UPDATE`) и
+   * возвращает её. Нужен для read-modify-write (закупка/продажа/возврат):
+   * Prisma не умеет FOR UPDATE, а без блокировки два параллельных finalize
+   * читают один и тот же qty/avgCost и затирают друг друга (lost update,
+   * oversell). Требует tx (UoW) — вне транзакции блокировка бессмысленна.
+   * Блокировка снимается на commit/rollback транзакции.
+   */
+  async lockForUpdate(tx: TxClient, workspaceId: string, id: string) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "WarehouseItem"
+      WHERE "id" = ${id} AND "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+      FOR UPDATE`;
+    if (locked.length === 0) return null;
+    // Полную строку читаем уже под удержанной блокировкой — данные консистентны.
+    return this.findById(workspaceId, id, tx);
+  }
+
   create(data: Prisma.WarehouseItemCreateInput, tx?: TxClient) {
     return this.db(tx).warehouseItem.create({ data });
   }
