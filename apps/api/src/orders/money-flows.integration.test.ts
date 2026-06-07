@@ -266,3 +266,29 @@ describe('Защита от продажи в минус', () => {
     expect(num((await getItem(itemB)).qty)).toBe(1);
   });
 });
+
+describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.20)', () => {
+  it('две параллельные продажи одной позиции не уходят в oversell', async () => {
+    const itemId = await seedWarehouseItem(h.prisma, seed.workspaceId);
+    await h.purchases.register(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      lines: [{ warehouseItemId: itemId, qty: '5', unitPrice: '100' }],
+    });
+
+    // Каждая продажа списывает 4 из 5 — вместе это 8 > 5. Без FOR UPDATE обе
+    // прочитали бы qty=5 и обе «успели» бы (lost update). С блокировкой строки
+    // транзакции сериализуются: одна списывает 5→1, вторая видит 1 и падает.
+    const sell = () =>
+      h.prisma.$transaction((tx) =>
+        h.warehouse.decrementForSale(tx, seed.workspaceId, itemId, '4'),
+      );
+    const results = await Promise.allSettled([sell(), sell()]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    // Списалась ровно одна продажа: 5 − 4 = 1, в минус не ушли.
+    expect(num((await getItem(itemId)).qty)).toBe(1);
+  });
+});
