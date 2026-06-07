@@ -12,15 +12,52 @@ const isoDate = z
 
 const cuid = z.string().min(1).max(64);
 
-export const CreateTransactionSchema = z.object({
-  date: isoDate,
-  amount: moneyString,
-  type: TxTypeEnum,
-  accountId: cuid,
-  categoryId: cuid.nullable().optional(),
-  counterpartyId: cuid.nullable().optional(),
-  description: z.string().trim().max(500).optional(),
-});
+// kind, разрешённые для РУЧНОГО ввода через transaction API, сгруппированы по type.
+// Системные kind (ORDER_PAYMENT/ORDER_REFUND/COGS/PURCHASE) создаются ТОЛЬКО
+// доменными сервисами (заказ/закупка) и сюда НЕ входят — менять их через дженерик
+// transaction-endpoint нельзя (см. transaction.service + Фаза 3 п.16).
+export const MANUAL_KINDS_BY_TYPE = {
+  INCOME: ['CAPITAL_IN', 'OTHER'],
+  EXPENSE: ['SALARY', 'TAX', 'FIXED_COST', 'VARIABLE_COST', 'NON_OP', 'CAPITAL_OUT', 'OTHER'],
+} as const;
+
+// Объединённый whitelist (любой системный kind отвергается уже на парсинге enum).
+const ManualKindEnum = z.enum([
+  'CAPITAL_IN',
+  'CAPITAL_OUT',
+  'SALARY',
+  'TAX',
+  'FIXED_COST',
+  'VARIABLE_COST',
+  'NON_OP',
+  'OTHER',
+]);
+
+/** Проверка соответствия kind ↔ type (kind должен быть допустим для своего type). */
+function isKindAllowedForType(type: 'INCOME' | 'EXPENSE', kind: string): boolean {
+  return (MANUAL_KINDS_BY_TYPE[type] as readonly string[]).includes(kind);
+}
+
+export const CreateTransactionSchema = z
+  .object({
+    date: isoDate,
+    amount: moneyString,
+    type: TxTypeEnum,
+    kind: ManualKindEnum.optional(),
+    accountId: cuid,
+    categoryId: cuid.nullable().optional(),
+    counterpartyId: cuid.nullable().optional(),
+    description: z.string().trim().max(500).optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.kind && !isKindAllowedForType(val.type, val.kind)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['kind'],
+        message: `kind ${val.kind} недопустим для type ${val.type}`,
+      });
+    }
+  });
 export type CreateTransactionDto = z.infer<typeof CreateTransactionSchema>;
 
 export const UpdateTransactionSchema = z.object({
