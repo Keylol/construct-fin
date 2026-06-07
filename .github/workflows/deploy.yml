@@ -16,8 +16,17 @@ env:
   IMAGE_WEB: ghcr.io/keylol/construct-v6-web
 
 jobs:
+  # Тест-гейт: deploy не запускается, пока CI не прошёл зелёным. Вызываем
+  # ci.yml как reusable workflow (workflow_call) — на том же коммите v6, без
+  # зависимости от дефолтной ветки (важно: дефолтная ветка репо — main, не v6,
+  # поэтому workflow_run здесь не сработал бы).
+  ci-gate:
+    name: CI must pass
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
     name: Build & push images to GHCR
+    needs: ci-gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
