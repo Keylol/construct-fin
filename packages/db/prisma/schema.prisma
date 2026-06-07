@@ -244,7 +244,10 @@ model Order {
   transactions Transaction[] @relation("OrderTransactions")
   attachments  Attachment[]
 
-  @@unique([workspaceId, number])
+  // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
+  // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
+  // partial-@@unique, а глобальный блокировал бы повторное использование номера
+  // после soft-delete. Индекс не отражён в схеме → drift (см. CLAUDE.md грабли).
   @@index([workspaceId, status, expectedDate])
   @@index([workspaceId, clientId])
   @@index([workspaceId, deletedAt])
@@ -337,7 +340,9 @@ model WarehouseItem {
   orderItems      OrderItem[]
   purchaseLines   PurchaseLine[]
 
-  @@unique([workspaceId, sku])
+  // Уникальность sku — partial-unique (WHERE deletedAt IS NULL AND sku IS NOT
+  // NULL), заведена сырым SQL в миграции *_phase4_sku_number_unique (см. Order
+  // и CLAUDE.md грабли). sku опционален, поэтому NULL'ы из индекса исключены.
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
 }
