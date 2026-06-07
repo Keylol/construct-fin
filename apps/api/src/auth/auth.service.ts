@@ -64,6 +64,11 @@ export class AuthService {
     if (!hash) throw new UnauthorizedException('Password auth not configured');
     const ok = await bcrypt.compare(password, hash);
     if (!ok) throw new UnauthorizedException('Неверный пароль');
+    // Password-вход прогоняем через тот же allowlist, что и Telegram (Фаза 2 п.11):
+    // раньше он обходил TELEGRAM_ALLOWED_IDS. Синтетический id=1 не соответствует
+    // ни одному реальному Telegram-аккаунту, поэтому его наличие в списке = «пароль
+    // разрешён». Чтобы десктоп-вход продолжал работать, добавь `1` в TELEGRAM_ALLOWED_IDS.
+    this.assertAllowed(PASSWORD_USER_TELEGRAM_ID);
     const user = await this.prisma.user.upsert({
       where: { telegramId: PASSWORD_USER_TELEGRAM_ID },
       update: {},
@@ -80,6 +85,17 @@ export class AuthService {
     return this.toProfile(user);
   }
 
+  /**
+   * Единая проверка allowlist для всех путей входа. Пустой TELEGRAM_ALLOWED_IDS =
+   * вход открыт (как было); непустой — пускаем только перечисленные telegramId.
+   */
+  private assertAllowed(id: bigint): void {
+    const allowed = this.config.get('TELEGRAM_ALLOWED_IDS', { infer: true });
+    if (allowed.length > 0 && !allowed.includes(id)) {
+      throw new ForbiddenException('Telegram user not in allowlist');
+    }
+  }
+
   private async upsertAndIssue(input: {
     id: bigint;
     username?: string;
@@ -87,10 +103,7 @@ export class AuthService {
     lastName?: string;
     photoUrl?: string;
   }): Promise<{ token: string; user: UserProfile }> {
-    const allowed = this.config.get('TELEGRAM_ALLOWED_IDS', { infer: true });
-    if (allowed.length > 0 && !allowed.includes(input.id)) {
-      throw new ForbiddenException('Telegram user not in allowlist');
-    }
+    this.assertAllowed(input.id);
 
     const user = await this.prisma.user.upsert({
       where: { telegramId: input.id },
