@@ -592,11 +592,14 @@ model AuditLog {
 }
 
 model IdempotencyKey {
-  key          String   @id
+  key          String    @id
   requestHash  String
   responseBody Json
+  /// null = ключ «застолблён», запрос ещё выполняется; ставится при завершении.
+  /// Различает in-flight от готового ответа для атомарной идемпотентности.
+  completedAt  DateTime?
   expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@index([expiresAt])
 }
