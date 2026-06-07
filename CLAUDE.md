@@ -10,7 +10,7 @@
 
 | Ветка / worktree | Зона ответственности (трогать только это) | Статус |
 |---|---|---|
-| `v6` (основной репо) | Фаза 0 (CI/деплой), Фаза 4 (миграции — ТОЛЬКО здесь, по одной), мёрж PR | активно |
+| `v6` (основной репо) | Фаза 0 (CI/деплой), Фаза 4 (миграции — ТОЛЬКО здесь, по одной), мёрж PR | Фаза 0 завершена (PR #2–5 влиты); идёт Фаза 1 (deploy/* + логгер в `main.ts`) |
 | `phase3-dto` | Ф3 п.14+16: `apps/api/src/category/*`, `apps/api/src/transaction/*` | не начато |
 | `phase3-cogs` | Ф3 п.15: `apps/api/src/reports/pnl.service.ts`, `apps/api/src/orders/order.service.ts` | не начато |
 
@@ -28,7 +28,7 @@
 - **Ветка:** `v6` (orphan) в `Keylol/construct-fin`, 8 коммитов, последний `2ea75ee`
 - **Фазы 0–2 закрыты:** монорепо, БД, auth (Login Widget + Mini App), workspaces, accounts, categories (2 уровня), counterparties, transactions (CRUD + фильтры + summary), attachments
 - **Mini App логин работает end-to-end:** `@ConstructFinance_bot` → ngrok → авто-логин → /dashboard
-- **Тесты:** 21 unit зелёный, 14 e2e проверок против живой БД пройдены
+- **Тесты:** 91 unit зелёных + 8 integration (money-flows против `construct_v6_test`). Деньги-интеграция гоняется в CI с Фазы 0 (см. ниже).
 
 ## Стек (фиксирован, не менять без явного согласия)
 
@@ -53,7 +53,7 @@
 ## Что НЕ делаем в MVP
 
 - Двойная запись (есть таблица `IdempotencyKey`, но `JournalEntry` модель не создана)
-- Склад / заказы / COGS (выкинуто из скоупа — был специфичен для сборки ПК)
+- ~~Склад / заказы / COGS~~ — **вернулись в скоуп** (миграция `tier1_orders_warehouse_audit`): есть `OrderService`/`WarehouseService`/`PurchaseService`, WAVG-себестоимость, `COGS`-kind, сьют `money-flows.integration.test.ts`. Учёт **cash-basis** (см. `docs/improvement-plan.md`, решение по COGS + Фаза 3 п.15).
 - Двусторонний Google Sheets sync
 - AI-аналитика расходов
 - Push-уведомления (только in-app)
