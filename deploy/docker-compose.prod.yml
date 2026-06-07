@@ -7,6 +7,10 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Ресурсные лимиты (Фаза 1 п.6) — VPS 2 ГБ. При OOM Docker убивает один
+    # контейнер (поднимет restart), а не валит весь хост. Сумма лимитов
+    # 512+512+384+128 = 1536 МБ, ~512 МБ остаётся хосту + nginx.
+    mem_limit: 512m
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -24,6 +28,7 @@ services:
   api:
     image: ${API_IMAGE:-ghcr.io/keylol/construct-v6-api:latest}
     restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,6 +60,7 @@ services:
   web:
     image: ${WEB_IMAGE:-ghcr.io/keylol/construct-v6-web:latest}
     restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       api:
         condition: service_healthy
@@ -79,6 +85,7 @@ services:
   backup:
     image: prodrigestivill/postgres-backup-local:16
     restart: unless-stopped
+    mem_limit: 128m
     depends_on:
       postgres:
         condition: service_healthy
