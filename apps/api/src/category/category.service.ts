@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { CategoryBucket } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   CreateCategoryDto,
@@ -10,6 +11,7 @@ export interface CategoryRow {
   id: string;
   name: string;
   kind: 'INCOME' | 'EXPENSE';
+  bucket: CategoryBucket;
   parentId: string | null;
   isFixedCost: boolean;
   isArchived: boolean;
@@ -32,7 +34,7 @@ export class CategoryService {
         ...(query.includeArchived ? {} : { isArchived: false }),
       },
       orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, kind: true, parentId: true, isFixedCost: true, isArchived: true },
+      select: { id: true, name: true, kind: true, bucket: true, parentId: true, isFixedCost: true, isArchived: true },
     });
   }
 
@@ -73,10 +75,11 @@ export class CategoryService {
         workspaceId,
         name: input.name,
         kind: input.kind,
+        bucket: input.bucket ?? undefined, // undefined → БД-дефолт OTHER
         parentId: input.parentId ?? null,
         isFixedCost: input.isFixedCost ?? false,
       },
-      select: { id: true, name: true, kind: true, parentId: true, isFixedCost: true, isArchived: true },
+      select: { id: true, name: true, kind: true, bucket: true, parentId: true, isFixedCost: true, isArchived: true },
     });
     return created;
   }
@@ -109,11 +112,12 @@ export class CategoryService {
       where: { id },
       data: {
         name: input.name ?? undefined,
+        bucket: input.bucket ?? undefined,
         parentId: input.parentId === undefined ? undefined : input.parentId,
         isFixedCost: input.isFixedCost ?? undefined,
         isArchived: input.isArchived ?? undefined,
       },
-      select: { id: true, name: true, kind: true, parentId: true, isFixedCost: true, isArchived: true },
+      select: { id: true, name: true, kind: true, bucket: true, parentId: true, isFixedCost: true, isArchived: true },
     });
     return updated;
   }
