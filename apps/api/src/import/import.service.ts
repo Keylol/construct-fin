@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -239,6 +240,20 @@ export class ImportService {
     for (const cp of existing) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
     return this.prisma.$transaction(async (tx) => {
+      // Защита от повторного импорта того же файла: внутри транзакции проверяем,
+      // что батч с этим fileHash ещё не заводился (Фаза 4 п.18). Дополняет
+      // строковый partial-unique по importHash (п.17): даёт понятный ранний отказ
+      // вместо отката по дублю на середине вставки.
+      const dupBatch = await tx.importBatch.findFirst({
+        where: { workspaceId, fileHash: body.fileHash, deletedAt: null },
+        select: { id: true },
+      });
+      if (dupBatch) {
+        throw new ConflictException(
+          'Этот файл уже импортирован (совпал fileHash). Удалите прежний импорт, чтобы повторить.',
+        );
+      }
+
       for (const name of namesNeeded) {
         if (!cpByLcName.has(name.toLowerCase())) {
           const cp = await tx.counterparty.create({
