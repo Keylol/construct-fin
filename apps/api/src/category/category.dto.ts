@@ -2,9 +2,22 @@ import { z } from 'zod';
 
 const CategoryKindEnum = z.enum(['INCOME', 'EXPENSE']);
 
+// Бухгалтерская группа категории — по ней строится P&L (см. pnl.service).
+// Должна совпадать со значениями enum CategoryBucket в schema.prisma.
+const CategoryBucketEnum = z.enum([
+  'REVENUE',
+  'COGS',
+  'FIXED',
+  'VARIABLE',
+  'TAX',
+  'CAPITAL',
+  'OTHER',
+]);
+
 export const CreateCategorySchema = z.object({
   name: z.string().trim().min(1).max(100),
   kind: CategoryKindEnum,
+  bucket: CategoryBucketEnum.optional(),
   parentId: z.string().nullable().optional(),
   isFixedCost: z.boolean().optional().default(false),
 });
@@ -12,6 +25,7 @@ export type CreateCategoryDto = z.infer<typeof CreateCategorySchema>;
 
 export const UpdateCategorySchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
+  bucket: CategoryBucketEnum.optional(),
   parentId: z.string().nullable().optional(),
   isFixedCost: z.boolean().optional(),
   isArchived: z.boolean().optional(),

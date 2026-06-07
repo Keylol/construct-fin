@@ -102,6 +102,7 @@ export class TransactionService {
         date: new Date(input.date),
         amount: new Prisma.Decimal(input.amount),
         type: input.type,
+        kind: input.kind ?? undefined, // undefined → БД-дефолт OTHER
         accountId: input.accountId,
         categoryId: input.categoryId ?? null,
         counterpartyId: input.counterpartyId ?? null,

@@ -57,6 +57,44 @@ describe('CreateTransactionSchema', () => {
     const parsed = CreateTransactionSchema.parse({ ...base, amount: '-100.00' });
     expect(parsed.amount).toBe('-100.00');
   });
+
+  it('accepts an allowed manual kind matching the type', () => {
+    const parsed = CreateTransactionSchema.parse({ ...base, type: 'EXPENSE', kind: 'TAX' });
+    expect(parsed.kind).toBe('TAX');
+  });
+
+  it('accepts CAPITAL_IN for INCOME', () => {
+    const parsed = CreateTransactionSchema.parse({ ...base, type: 'INCOME', kind: 'CAPITAL_IN' });
+    expect(parsed.kind).toBe('CAPITAL_IN');
+  });
+
+  it('defaults kind to undefined when omitted (БД-дефолт OTHER)', () => {
+    expect(CreateTransactionSchema.parse(base).kind).toBeUndefined();
+  });
+
+  it('rejects a system kind (COGS) — заводится только доменом', () => {
+    expect(() =>
+      CreateTransactionSchema.parse({ ...base, type: 'EXPENSE', kind: 'COGS' }),
+    ).toThrow();
+  });
+
+  it('rejects ORDER_PAYMENT — системный kind', () => {
+    expect(() =>
+      CreateTransactionSchema.parse({ ...base, type: 'INCOME', kind: 'ORDER_PAYMENT' }),
+    ).toThrow();
+  });
+
+  it('rejects kind↔type mismatch (CAPITAL_IN при EXPENSE)', () => {
+    expect(() =>
+      CreateTransactionSchema.parse({ ...base, type: 'EXPENSE', kind: 'CAPITAL_IN' }),
+    ).toThrow();
+  });
+
+  it('rejects kind↔type mismatch (TAX при INCOME)', () => {
+    expect(() =>
+      CreateTransactionSchema.parse({ ...base, type: 'INCOME', kind: 'TAX' }),
+    ).toThrow();
+  });
 });
 
 describe('UpdateTransactionSchema', () => {
