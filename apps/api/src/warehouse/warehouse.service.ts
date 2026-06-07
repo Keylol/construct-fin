@@ -92,7 +92,7 @@ export class WarehouseService {
     addQty: string | Prisma.Decimal,
     addUnitPrice: string | Prisma.Decimal,
   ): Promise<void> {
-    const item = await this.repo.findById(workspaceId, itemId, tx);
+    const item = await this.repo.lockForUpdate(tx, workspaceId, itemId);
     if (!item) throw new NotFoundException(`Warehouse item ${itemId} not found`);
     const next = applyPurchase(item.qty, item.avgCost, addQty, addUnitPrice);
     await this.repo.update(itemId, { qty: next.qty, avgCost: next.avgCost }, tx);
@@ -108,7 +108,7 @@ export class WarehouseService {
     itemId: string,
     saleQty: string | Prisma.Decimal,
   ): Promise<Prisma.Decimal> {
-    const item = await this.repo.findById(workspaceId, itemId, tx);
+    const item = await this.repo.lockForUpdate(tx, workspaceId, itemId);
     if (!item) throw new NotFoundException(`Warehouse item ${itemId} not found`);
     try {
       const { state, unitCost } = applySale(item.qty, item.avgCost, saleQty);
@@ -129,7 +129,7 @@ export class WarehouseService {
     itemId: string,
     returnQty: string | Prisma.Decimal,
   ): Promise<void> {
-    const item = await this.repo.findById(workspaceId, itemId, tx);
+    const item = await this.repo.lockForUpdate(tx, workspaceId, itemId);
     if (!item) return; // товар мог быть удалён — молча пропускаем
     const next = applyReturn(item.qty, item.avgCost, returnQty);
     await this.repo.update(itemId, { qty: next.qty }, tx);
