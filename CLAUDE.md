@@ -108,3 +108,4 @@ ngrok http 3000                                       # публичный HTTPS
 - **@construct/shared** и **@construct/db** должны быть собраны в `dist/` (CommonJS), Node 25 ESM не резолвит `.ts`
 - **AuthModule** должен быть `@Global()`, иначе JwtAuthGuard не виден другим модулям
 - **HMR EADDRINUSE:** иногда nest start --watch не убивает старый процесс. `pkill -f "nest start" && lsof -ti :4000 | xargs kill -9`
+- **Partial-unique индексы (Фаза 4 п.17/21)** заведены сырым SQL в миграциях (`Transaction_workspaceId_importHash_active_key` и др. `..._active_key`), т.к. Prisma не умеет `WHERE deletedAt IS NULL` в `@@unique`. Их НЕТ в `schema.prisma` → `prisma migrate dev` видит их как **drift** и предлагает дропнуть. При новой миграции: `migrate dev --create-only`, **убрать из сгенерённого SQL `DROP INDEX ..._active_key`** и при необходимости вписать индекс обратно вручную. Не давать `migrate dev` применить дроп.
