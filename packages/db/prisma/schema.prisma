@@ -26,11 +26,14 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  ownedWorkspaces      Workspace[]        @relation("WorkspaceOwner")
-  workspaceMemberships WorkspaceMember[]
-  createdTransactions  Transaction[]      @relation("TransactionCreatedBy")
-  auditLogs            AuditLog[]
-  importBatches        ImportBatch[]
+  ownedWorkspaces       Workspace[]           @relation("WorkspaceOwner")
+  workspaceMemberships  WorkspaceMember[]
+  createdTransactions   Transaction[]         @relation("TransactionCreatedBy")
+  auditLogs             AuditLog[]
+  importBatches         ImportBatch[]
+  createdTransfers      Transfer[]            @relation("TransferCreatedBy")
+  createdStockMovements StockMovement[]       @relation("StockMovementCreatedBy")
+  balanceChecks         AccountBalanceCheck[] @relation("BalanceCheckCreatedBy")
 }
 
 model Workspace {
@@ -43,19 +46,22 @@ model Workspace {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner             User               @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  members           WorkspaceMember[]
-  accounts          Account[]
-  categories        Category[]
-  counterparties    Counterparty[]
-  transactions      Transaction[]
-  importBatches     ImportBatch[]
-  categoryRules     CategoryRule[]
-  auditLogs         AuditLog[]
-  orders            Order[]
-  warehouseItems    WarehouseItem[]
-  purchases         Purchase[]
-  attachments       Attachment[]
+  owner          User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members        WorkspaceMember[]
+  accounts       Account[]
+  categories     Category[]
+  counterparties Counterparty[]
+  transactions   Transaction[]
+  importBatches  ImportBatch[]
+  categoryRules  CategoryRule[]
+  auditLogs      AuditLog[]
+  orders         Order[]
+  warehouseItems WarehouseItem[]
+  purchases      Purchase[]
+  attachments    Attachment[]
+  transfers      Transfer[]
+  stockMovements StockMovement[]
+  balanceChecks  AccountBalanceCheck[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -84,19 +90,27 @@ enum Role {
 // ───────────────────────────── Accounts ─────────────────────────────
 
 model Account {
-  id             String      @id @default(cuid())
+  id             String       @id @default(cuid())
   workspaceId    String
   name           String
   type           AccountType
-  openingBalance Decimal     @default(0) @db.Decimal(14, 2)
-  isArchived     Boolean     @default(false)
+  /// Бухгалтерский класс: OPERATING — рабочий счёт бизнеса; TRANSIT — транзитный
+  /// (эквайринг, маркетплейс, кошелёк-посредник); PERSONAL — личный счёт физика.
+  /// Все три класса считаются «нашими» деньгами: в консолидированном cashflow они
+  /// сливаются в один пул, и переводы между ними не создают приток/отток.
+  class          AccountClass @default(OPERATING)
+  openingBalance Decimal      @default(0) @db.Decimal(14, 2)
+  isArchived     Boolean      @default(false)
   note           String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  workspace     Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  transfersFrom Transfer[]            @relation("TransferFrom")
+  transfersTo   Transfer[]            @relation("TransferTo")
+  balanceChecks AccountBalanceCheck[]
 
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
@@ -106,6 +120,12 @@ enum AccountType {
   CASH
   BANK
   OTHER
+}
+
+enum AccountClass {
+  OPERATING // рабочий счёт бизнеса (касса, основной р/с)
+  TRANSIT // транзитный: эквайринг, маркетплейс, платёжный посредник
+  PERSONAL // личный счёт физика, через который проходят деньги бизнеса
 }
 
 // ───────────────────────────── Categories ─────────────────────────────
@@ -315,36 +335,92 @@ model OrderItem {
 // При продаже (списании при DONE) и возврате от клиента avgCost НЕ меняется.
 
 model WarehouseItem {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   workspaceId       String
   /// SKU / артикул, человекочитаемый. Опционально.
   sku               String?
   name              String
   /// Единица измерения: «шт», «кг», «ч», «м».
-  unit              String  @default("шт")
+  unit              String   @default("шт")
   /// Текущий остаток на складе.
-  qty               Decimal @default(0) @db.Decimal(14, 3)
+  qty               Decimal  @default(0) @db.Decimal(14, 3)
   /// Средневзвешенная себестоимость единицы.
-  avgCost           Decimal @default(0) @db.Decimal(14, 4)
+  avgCost           Decimal  @default(0) @db.Decimal(14, 4)
+  /// Точка дозаказа: при qty <= reorderPoint позиция попадает в low-stock.
+  /// null — порог не задан, в low-stock не сигналит.
+  reorderPoint      Decimal? @db.Decimal(14, 3)
   /// Поставщик по умолчанию (для подсказок при закупке).
   defaultSupplierId String?
   note              String?
-  isArchived        Boolean @default(false)
+  isArchived        Boolean  @default(false)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  defaultSupplier Counterparty?  @relation("WarehouseDefaultSupplier", fields: [defaultSupplierId], references: [id])
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  defaultSupplier Counterparty?   @relation("WarehouseDefaultSupplier", fields: [defaultSupplierId], references: [id])
   orderItems      OrderItem[]
   purchaseLines   PurchaseLine[]
+  stockMovements  StockMovement[]
 
   // Уникальность sku — partial-unique (WHERE deletedAt IS NULL AND sku IS NOT
   // NULL), заведена сырым SQL в миграции *_phase4_sku_number_unique (см. Order
   // и CLAUDE.md грабли). sku опционален, поэтому NULL'ы из индекса исключены.
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
+}
+
+// ───────────────────────────── Stock movements ─────────────────────────────
+//
+// Неизменяемый журнал движений склада (append-only). Каждое изменение qty
+// любого WarehouseItem пишет одну строку внутри той же UoW-транзакции, что и
+// само изменение (applyPurchaseLine / decrementForSale / restock / adjust /
+// opening). qtyAfter — снимок остатка ПОСЛЕ применения, для аудита и
+// восстановления истории без пересчёта.
+//
+// refType/refId — слабая ссылка на источник (Purchase, Order, Transfer и т.п.);
+// без FK, т.к. источники разнородны и могут быть soft-deleted.
+// Движения НЕ создают Transaction сами по себе (cash-basis): деньги пишет
+// вызывающий use-case отдельно.
+
+model StockMovement {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  warehouseItemId String
+  type            StockMovementType
+  /// Изменение остатка: + приход, − расход. В единицах измерения SKU.
+  qtyDelta        Decimal           @db.Decimal(14, 3)
+  /// Остаток ПОСЛЕ применения движения (снимок).
+  qtyAfter        Decimal           @db.Decimal(14, 3)
+  /// Себестоимость единицы в этом движении (приход — цена прихода; расход —
+  /// unitCostAtSale). null для чисто количественных корректировок.
+  unitCost        Decimal?          @db.Decimal(14, 4)
+  /// Источник движения: «PURCHASE» | «ORDER» | «TRANSFER» | «ADJUST» и т.п.
+  refType         String?
+  refId           String?
+  /// Человекочитаемая причина (для ADJUSTMENT / WRITE_OFF / RETURN_*).
+  reason          String?
+  createdAt       DateTime          @default(now())
+  createdById     String
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  warehouseItem WarehouseItem @relation(fields: [warehouseItemId], references: [id])
+  createdBy     User          @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId, warehouseItemId, createdAt])
+  @@index([workspaceId, type, createdAt])
+  @@index([refType, refId])
+}
+
+enum StockMovementType {
+  PURCHASE // приход с закупки
+  SALE // расход при продаже (финализация заказа)
+  RETURN_CUSTOMER // возврат от клиента → приход
+  RETURN_SUPPLIER // возврат поставщику → расход
+  ADJUSTMENT // ручная корректировка остатка (±)
+  WRITE_OFF // списание (брак, недостача)
+  OPENING // начальный остаток при импорте склада
 }
 
 // ───────────────────────────── Purchases ─────────────────────────────
@@ -425,7 +501,10 @@ model Transaction {
   description    String?
 
   // Доменные привязки (опциональные).
-  orderId String? // ORDER_PAYMENT, ORDER_REFUND
+  orderId         String? // ORDER_PAYMENT, ORDER_REFUND
+  // Перевод между своими счетами: обе ноги (TRANSFER_IN/TRANSFER_OUT) делят общий
+  // transferGroupId = Transfer.id. Исключаются из P&L и из консолид. cashflow.
+  transferGroupId String?
   // PURCHASE-детали (что куплено, в какой склад) живут в Purchase/PurchaseLine,
   // связанных 1:1 через Transaction.purchase.
 
@@ -434,24 +513,25 @@ model Transaction {
   reversalReason String?
 
   // Метаданные.
-  importBatchId           String?
-  importHash              String?
-  createdById             String
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  deletedAt               DateTime?
+  importBatchId String?
+  importHash    String?
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account       Account        @relation(fields: [accountId], references: [id])
-  category      Category?      @relation(fields: [categoryId], references: [id])
-  counterparty  Counterparty?  @relation(fields: [counterpartyId], references: [id])
-  order         Order?         @relation("OrderTransactions", fields: [orderId], references: [id])
-  purchase      Purchase?      @relation("PurchaseTransaction")
-  originalTx    Transaction?   @relation("Reversals", fields: [originalTxId], references: [id])
-  reversals     Transaction[]  @relation("Reversals")
-  importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id])
-  createdBy     User           @relation("TransactionCreatedBy", fields: [createdById], references: [id])
-  attachments   Attachment[]
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account      Account       @relation(fields: [accountId], references: [id])
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
+  order        Order?        @relation("OrderTransactions", fields: [orderId], references: [id])
+  transfer     Transfer?     @relation("TransferLegs", fields: [transferGroupId], references: [id])
+  purchase     Purchase?     @relation("PurchaseTransaction")
+  originalTx   Transaction?  @relation("Reversals", fields: [originalTxId], references: [id])
+  reversals    Transaction[] @relation("Reversals")
+  importBatch  ImportBatch?  @relation(fields: [importBatchId], references: [id])
+  createdBy    User          @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  attachments  Attachment[]
 
   @@index([workspaceId, date])
   @@index([workspaceId, kind, date])
@@ -460,6 +540,7 @@ model Transaction {
   @@index([workspaceId, counterpartyId, date])
   @@index([workspaceId, type, date])
   @@index([workspaceId, orderId])
+  @@index([workspaceId, transferGroupId])
   @@index([workspaceId, deletedAt])
   @@index([workspaceId, importHash])
   @@index([importBatchId])
@@ -487,8 +568,76 @@ enum TransactionKind {
   NON_OP // внереализационные
   CAPITAL_OUT // изъятие собственника
 
+  // Переводы между своими счетами (нога перевода, общий transferGroupId).
+  // НЕ участвуют в P&L; в консолидированном cashflow гасят друг друга.
+  TRANSFER_IN // приход на счёт-получатель
+  TRANSFER_OUT // списание со счёта-источника (включая fee, если есть)
+
   // Универсальный — для случаев, не покрытых явными kind'ами.
   OTHER
+}
+
+// ───────────────────────────── Transfers ─────────────────────────────
+//
+// Перевод денег между двумя своими счетами (любых классов). Создаётся атомарно:
+// одна Transfer + две связанные Transaction-ноги (TRANSFER_OUT со счёта-источника
+// на amount+fee, TRANSFER_IN на счёт-получатель на amount), общий
+// transferGroupId = Transfer.id. fee (комиссия эквайринга/МП/банка) при наличии
+// постится отдельной Transaction(VARIABLE_COST) — это реальный расход, в отличие
+// от самого перевода. Ноги исключаются из P&L и гасятся в консолид. cashflow.
+
+model Transfer {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  fromAccountId String
+  toAccountId   String
+  /// Переводимая сумма (поступает на счёт-получатель).
+  amount        Decimal  @db.Decimal(14, 2)
+  /// Комиссия за перевод (удерживается сверх amount со счёта-источника).
+  fee           Decimal  @default(0) @db.Decimal(14, 2)
+  date          DateTime
+  note          String?
+  createdById   String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fromAccount Account       @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount   Account       @relation("TransferTo", fields: [toAccountId], references: [id])
+  createdBy   User          @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  legs        Transaction[] @relation("TransferLegs")
+
+  @@index([workspaceId, date])
+  @@index([workspaceId, deletedAt])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+}
+
+// ───────────────────────────── Account balance checks ─────────────────────────────
+//
+// Сверка: пользователь вводит фактический остаток счёта на дату (выписка,
+// пересчёт кассы). Отчёт сверки сравнивает расчётный остаток (openingBalance +
+// Σ транзакций) с actualBalance и показывает расхождение. Append-only снимки.
+
+model AccountBalanceCheck {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  accountId     String
+  date          DateTime
+  /// Фактический остаток на дату (что реально на счёте/в кассе).
+  actualBalance Decimal  @db.Decimal(14, 2)
+  note          String?
+  createdById   String
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id])
+  createdBy User      @relation("BalanceCheckCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId, accountId, date])
 }
 
 // ───────────────────────────── Import batches ─────────────────────────────
