@@ -70,7 +70,7 @@ export class TransactionController {
     @Param('id') id: string,
     @Body(new ZodPipe(UpdateTransactionSchema)) body: UpdateTransactionDto,
   ) {
-    return this.service.update(ws.workspaceId, id, body);
+    return this.service.update(ws.workspaceId, id, body, ws.userId);
   }
 
   @Delete(':id')
