@@ -16,8 +16,17 @@ env:
   IMAGE_WEB: ghcr.io/keylol/construct-v6-web
 
 jobs:
+  # Тест-гейт: deploy не запускается, пока CI не прошёл зелёным. Вызываем
+  # ci.yml как reusable workflow (workflow_call) — на том же коммите v6, без
+  # зависимости от дефолтной ветки (важно: дефолтная ветка репо — main, не v6,
+  # поэтому workflow_run здесь не сработал бы).
+  ci-gate:
+    name: CI must pass
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
     name: Build & push images to GHCR
+    needs: ci-gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,17 +86,18 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 45.82.254.230 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H 195.133.1.13 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Pull, restart, migrate
         run: |
-          ssh -i ~/.ssh/deploy_key root@45.82.254.230 << 'REMOTE'
+          ssh -i ~/.ssh/deploy_key root@195.133.1.13 << 'REMOTE'
             set -e
             cd /srv/construct-v6
+            DC="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
             echo "--- pull images ---"
-            docker compose pull
+            $DC pull
             echo "--- up -d ---"
-            docker compose up -d
+            $DC up -d
             echo "--- wait healthy ---"
             for i in $(seq 1 30); do
               s=$(docker inspect --format '{{.State.Health.Status}}' construct-v6-api-1 2>/dev/null || echo "?")
@@ -95,9 +105,9 @@ jobs:
               sleep 4
             done
             echo "--- migrate ---"
-            docker compose exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"
+            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"
             echo "--- final status ---"
-            docker compose ps --format "{{.Name}} {{.Status}}"
+            $DC ps --format "{{.Name}} {{.Status}}"
             echo "--- prune dangling ---"
             docker image prune -f >/dev/null
           REMOTE

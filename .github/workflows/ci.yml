@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [v6, main]
+    branches: [main]
   pull_request:
     branches: [v6, main]
+  # Вызывается как тест-гейт из deploy.yml (reusable workflow). На push в v6
+  # отдельно НЕ запускается — там CI гоняется как gate внутри деплоя, чтобы
+  # не дублировать прогон. PR в v6 по-прежнему проверяется здесь.
+  workflow_call:
 
 jobs:
   lint-typecheck-test:
