@@ -10,7 +10,13 @@ import { Logger } from '@nestjs/common';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: false }), {
+  // Структурный лог (Фаза 1 п.7): в проде включаем встроенный pino Fastify —
+  // JSON на stdout, zero-dependency (pino уже в составе Fastify). В dev держим
+  // выключенным, чтобы не зашумлять локальный вывод. Логи самого Nest (Logger.*)
+  // остаются на ConsoleLogger — для их структуризации нужен nestjs-pino
+  // (отдельная зависимость, вне зоны конфиг-фазы).
+  const fastifyLogger = process.env.NODE_ENV === 'production' ? { level: process.env.LOG_LEVEL ?? 'info' } : false;
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: fastifyLogger }), {
     bufferLogs: true,
   });
 
