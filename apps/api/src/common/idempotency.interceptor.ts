@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { of, type Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { of, from, throwError, type Observable } from 'rxjs';
+import { catchError, mergeMap } from 'rxjs/operators';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -44,43 +44,101 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const requestHash = hashRequest(method, req.url ?? '', req.body);
 
-    const existing = await this.prisma.idempotencyKey.findUnique({ where: { key } });
-    if (existing && existing.expiresAt > new Date()) {
-      if (existing.requestHash !== requestHash) {
+    // Атомарно «застолбить» ключ ДО выполнения: кто успел вставить строку (PK
+    // = key), тот владелец и выполняет запрос. Параллельный запрос с тем же
+    // ключом упрётся в unique-конфликт и получит кэш/409 — без двойного эффекта.
+    const reserved = await this.tryReserve(key, requestHash);
+    if (!reserved.owns) {
+      const ex = reserved.existing;
+      if (ex.requestHash !== requestHash) {
         throw new ConflictException(
           'Idempotency-Key уже использовался с другим запросом',
         );
       }
-      return of(existing.responseBody);
+      if (ex.completedAt === null) {
+        // Ключ застолблён, но ответ ещё не готов — запрос выполняется параллельно.
+        throw new ConflictException('Запрос с этим Idempotency-Key ещё выполняется');
+      }
+      return of(ex.responseBody);
     }
 
+    // Владеем ключом: выполняем хендлер. Ответ отдаём ТОЛЬКО после фиксации
+    // кэша (mergeMap дожидается complete) — иначе мгновенный повтор увидел бы
+    // ещё «висящий» ключ и получил ложный 409. На ошибку освобождаем резерв.
     return next.handle().pipe(
-      tap({
-        next: async (body) => {
-          await this.storeResponse(key, requestHash, body);
-        },
+      mergeMap(async (body) => {
+        await this.complete(key, body);
+        return body;
       }),
+      catchError((err) =>
+        from(this.release(key)).pipe(mergeMap(() => throwError(() => err))),
+      ),
     );
   }
 
-  private async storeResponse(
+  /**
+   * Пытается атомарно занять ключ. Возвращает `{owns:true}` если строка
+   * вставлена нами. При конфликте читает существующую: протухшую — удаляет и
+   * пробует занять заново; живую — возвращает для отдачи кэша/409.
+   */
+  private async tryReserve(
     key: string,
     requestHash: string,
-    body: unknown,
-  ): Promise<void> {
+  ): Promise<{ owns: true } | { owns: false; existing: IdempotencyRow }> {
     const expiresAt = new Date(Date.now() + TTL_MS);
-    const json = (body ?? null) as Prisma.InputJsonValue;
     try {
-      await this.prisma.idempotencyKey.upsert({
+      await this.prisma.idempotencyKey.create({
+        data: { key, requestHash, responseBody: Prisma.JsonNull, completedAt: null, expiresAt },
+      });
+      return { owns: true };
+    } catch (e) {
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') {
+        throw e;
+      }
+      const existing = await this.prisma.idempotencyKey.findUnique({ where: { key } });
+      if (!existing) return this.tryReserve(key, requestHash); // исчез в гонке — повтор
+      if (existing.expiresAt <= new Date()) {
+        // Протух — освобождаем и пробуем занять заново.
+        await this.prisma.idempotencyKey.deleteMany({
+          where: { key, expiresAt: { lte: new Date() } },
+        });
+        return this.tryReserve(key, requestHash);
+      }
+      return { owns: false, existing };
+    }
+  }
+
+  /** Зафиксировать успешный ответ под нашим ключом. */
+  private async complete(key: string, body: unknown): Promise<void> {
+    const json: Prisma.InputJsonValue | typeof Prisma.JsonNull =
+      body === null || body === undefined ? Prisma.JsonNull : (body as Prisma.InputJsonValue);
+    try {
+      await this.prisma.idempotencyKey.update({
         where: { key },
-        create: { key, requestHash, responseBody: json, expiresAt },
-        update: { requestHash, responseBody: json, expiresAt },
+        data: { responseBody: json, completedAt: new Date() },
       });
     } catch (err) {
-      // Идемпотентный кэш — не критично, основной запрос уже успешен.
+      // Кэш — не критично, основной запрос уже успешен.
       console.error('[idempotency] failed to store response', err);
     }
   }
+
+  /** Освободить незавершённый резерв (хендлер упал) — чтобы клиент мог повторить. */
+  private async release(key: string): Promise<void> {
+    try {
+      await this.prisma.idempotencyKey.deleteMany({ where: { key, completedAt: null } });
+    } catch (err) {
+      console.error('[idempotency] failed to release key', err);
+    }
+  }
+}
+
+interface IdempotencyRow {
+  key: string;
+  requestHash: string;
+  responseBody: Prisma.JsonValue;
+  completedAt: Date | null;
+  expiresAt: Date;
 }
 
 /** sha256(method + url + JSON.stringify(body)). */
