@@ -360,3 +360,23 @@ export interface UserProfile {
   lastName: string | null;
   photoUrl: string | null;
 }
+
+export interface AuditActor {
+  id: string;
+  name: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  diff: unknown;
+  createdAt: string;
+  actor: AuditActor | null;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  nextCursor: string | null;
+}
