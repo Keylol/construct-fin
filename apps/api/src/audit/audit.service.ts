@@ -18,6 +18,7 @@ export type AuditAction =
   | 'period.reopen'
   | 'purchase.register'
   | 'warehouse.supplier-return'
+  | 'transaction.update'
   | 'transaction.delete';
 
 export interface AuditEntry {

@@ -1,13 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { isKindAllowedForType } from './transaction.dto';
 import type {
   CreateTransactionDto,
   UpdateTransactionDto,
   ListTransactionsQuery,
   TransactionSummaryQuery,
 } from './transaction.dto';
+
+// Системные kind заводятся ТОЛЬКО доменными сервисами (заказ/закупка) и связаны
+// с инвариантами заказа/склада. Их правка/удаление через дженерик transaction-API
+// запрещены (Фаза 3 п.16) — менять только через соответствующий домен.
+const SYSTEM_KINDS = new Set<TransactionKind>([
+  'ORDER_PAYMENT',
+  'ORDER_REFUND',
+  'COGS',
+  'PURCHASE',
+]);
 
 interface TransactionRow {
   id: string;
@@ -112,11 +123,33 @@ export class TransactionService {
     return this.serialize(created);
   }
 
-  async update(workspaceId: string, id: string, input: UpdateTransactionDto) {
+  async update(
+    workspaceId: string,
+    id: string,
+    input: UpdateTransactionDto,
+    actorId: string | null = null,
+  ) {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Transaction not found');
+
+    // п.16: системную транзакцию через дженерик-endpoint менять нельзя.
+    if (SYSTEM_KINDS.has(existing.kind)) {
+      throw new BadRequestException(
+        `Транзакция ${existing.kind} создана автоматически и правится только через заказ/закупку`,
+      );
+    }
+
+    // Соответствие kind↔type против ИТОГОВОГО type (kind/type могут меняться по
+    // отдельности). existing.kind у несистемной всегда из ручного whitelist.
+    const finalType = input.type ?? existing.type;
+    const finalKind = input.kind ?? existing.kind;
+    if (!isKindAllowedForType(finalType, finalKind)) {
+      throw new BadRequestException(
+        `kind ${finalKind} недопустим для type ${finalType} — укажите совместимый kind`,
+      );
+    }
 
     if (input.accountId || input.categoryId !== undefined || input.counterpartyId !== undefined) {
       await this.validateRefs(workspaceId, {
@@ -133,10 +166,32 @@ export class TransactionService {
         date: input.date ? new Date(input.date) : undefined,
         amount: input.amount !== undefined ? new Prisma.Decimal(input.amount) : undefined,
         type: input.type ?? undefined,
+        kind: input.kind ?? undefined,
         accountId: input.accountId ?? undefined,
         categoryId: input.categoryId === undefined ? undefined : input.categoryId,
         counterpartyId: input.counterpartyId === undefined ? undefined : input.counterpartyId,
         description: input.description === undefined ? undefined : input.description,
+      },
+    });
+
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId,
+      action: 'transaction.update',
+      entityType: 'Transaction',
+      entityId: id,
+      diff: {
+        before: {
+          date: existing.date.toISOString(),
+          amount: existing.amount.toFixed(2),
+          type: existing.type,
+          kind: existing.kind,
+          accountId: existing.accountId,
+          categoryId: existing.categoryId,
+          counterpartyId: existing.counterpartyId,
+          description: existing.description,
+        },
+        changes: { ...input },
       },
     });
     return this.serialize(updated);
@@ -147,6 +202,15 @@ export class TransactionService {
       where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Transaction not found');
+
+    // п.16: системную транзакцию удалять через дженерик-endpoint нельзя — это
+    // рассинхронит заказ/склад. Удаление идёт через домен (отмена заказа и т.п.).
+    if (SYSTEM_KINDS.has(existing.kind)) {
+      throw new BadRequestException(
+        `Транзакция ${existing.kind} создана автоматически и удаляется только через заказ/закупку`,
+      );
+    }
+
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.audit.record(undefined, {
       workspaceId,

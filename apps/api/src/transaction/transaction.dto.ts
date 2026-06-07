@@ -34,7 +34,7 @@ const ManualKindEnum = z.enum([
 ]);
 
 /** Проверка соответствия kind ↔ type (kind должен быть допустим для своего type). */
-function isKindAllowedForType(type: 'INCOME' | 'EXPENSE', kind: string): boolean {
+export function isKindAllowedForType(type: 'INCOME' | 'EXPENSE', kind: string): boolean {
   return (MANUAL_KINDS_BY_TYPE[type] as readonly string[]).includes(kind);
 }
 
@@ -64,6 +64,9 @@ export const UpdateTransactionSchema = z.object({
   date: isoDate.optional(),
   amount: moneyString.optional(),
   type: TxTypeEnum.optional(),
+  // Только ручные kind. Соответствие kind↔type против итогового type проверяется
+  // в transaction.service (здесь type может отсутствовать в частичном апдейте).
+  kind: ManualKindEnum.optional(),
   accountId: cuid.optional(),
   categoryId: cuid.nullable().optional(),
   counterpartyId: cuid.nullable().optional(),
