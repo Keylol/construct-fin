@@ -109,9 +109,14 @@ jobs:
             # (prodrigestivill, дамп → volume backups с ротацией). При set -e
             # фейл бэкапа аборти́т деплой ДО migrate — нет свежего снимка, нет
             # миграции. Откат: восстановить из дампа по deploy/backup-restore.md.
-            $DC exec -T backup /backup.sh
+            #
+            # ⚠️ </dev/null ОБЯЗАТЕЛЕН: `docker compose exec -T` без редиректа
+            # отдаёт процессу stdin SSH-heredoc — /backup.sh съедал остаток
+            # heredoc (включая сам `migrate deploy`), из-за чего миграции молча
+            # не применялись, а деплой при этом был «зелёным».
+            $DC exec -T backup /backup.sh </dev/null
             echo "--- migrate ---"
-            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"
+            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy" </dev/null
             echo "--- final status ---"
             $DC ps --format "{{.Name}} {{.Status}}"
             echo "--- prune dangling ---"
