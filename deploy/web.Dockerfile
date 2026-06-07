@@ -51,9 +51,13 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 # Next.js standalone output: ровно тот минимум, что нужен в рантайме
-COPY --from=builder /workspace/apps/web/.next/standalone ./
-COPY --from=builder /workspace/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /workspace/apps/web/public ./apps/web/public
+COPY --from=builder --chown=node:node /workspace/apps/web/.next/standalone ./
+COPY --from=builder --chown=node:node /workspace/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=node:node /workspace/apps/web/public ./apps/web/public
+
+# Непривилегированный пользователь (Фаза 1 п.8). Standalone-сервер в рантайме
+# на диск не пишет, volume нет — отдельный chown не нужен.
+USER node
 
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]

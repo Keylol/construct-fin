@@ -41,7 +41,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY --from=builder /deploy ./
+# Непривилегированный пользователь (Фаза 1 п.8). Образ node уже содержит
+# юзера `node` (uid 1000); файлы /deploy сразу под ним.
+COPY --from=builder --chown=node:node /deploy ./
+# UPLOAD_DIR=/app/data/uploads — создаём под node, чтобы СВЕЖИЙ volume
+# унаследовал node-владение при первом монтировании. ⚠️ Существующий volume
+# на VPS уже root-owned: после деплоя разово
+# `docker compose -f deploy/docker-compose.prod.yml exec -u 0 api chown -R node:node /app/data`.
+RUN mkdir -p /app/data/uploads && chown -R node:node /app/data
+USER node
 
 EXPOSE 4000
 ENTRYPOINT ["/sbin/tini", "--"]
