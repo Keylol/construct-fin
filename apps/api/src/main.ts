@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fastifyCookie = require('@fastify/cookie');
@@ -8,6 +8,7 @@ const fastifyMultipart = require('@fastify/multipart');
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap() {
   // Структурный лог (Фаза 1 п.7): в проде включаем встроенный pino Fastify —
@@ -36,6 +37,9 @@ async function bootstrap() {
   });
 
   app.useGlobalInterceptors(app.get(IdempotencyInterceptor));
+  // Глобальный фильтр (Фаза 3 п.13): маппинг ошибок Prisma/Zod в 4xx и сокрытие
+  // стектрейсов. HttpException проходят без изменений — контракт ответов сохранён.
+  app.useGlobalFilters(new AllExceptionsFilter(app.get(HttpAdapterHost)));
 
   const port = Number(process.env.API_PORT ?? 4000);
   const host = process.env.API_HOST ?? '0.0.0.0';
