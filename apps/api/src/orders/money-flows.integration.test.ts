@@ -173,6 +173,48 @@ describe('Ручная себестоимость (позиция без скл�
   });
 });
 
+describe('P&L: классификация COGS (Фаза 3 п.15)', () => {
+  // Период, покрывающий «сейчас» — finalize/addPayment ставят дату new Date().
+  const currentMonth = () => {
+    const now = new Date();
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1),
+      to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
+    };
+  };
+  const bucketOf = (totals: { byBucket: { bucket: string; expense: string; income: string }[] }, b: string) =>
+    totals.byBucket.find((x) => x.bucket === b)!;
+
+  it('COGS попадает в бакет COGS, не дублируется в OTHER, и отчёт сходится сам с собой', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '2000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: currentMonth(),
+      comparison: null,
+      groupBy: 'month',
+    });
+    const totals = report.primary.totals;
+
+    // Себестоимость 2*300 = 600 классифицирована в бакет COGS.
+    expect(bucketOf(totals, 'COGS').expense).toBe('600.00');
+    // И НЕ утекла в OTHER (раньше COGS без categoryId дублировался туда).
+    expect(bucketOf(totals, 'OTHER').expense).toBe('0.00');
+    // Отчёт сходится: headline cogs == расходная часть бакета COGS.
+    expect(totals.cogs).toBe(bucketOf(totals, 'COGS').expense);
+    // Валовая прибыль = выручка(оплата 2000) − COGS(600).
+    expect(totals.income).toBe('2000.00');
+    expect(totals.grossProfit).toBe('1400.00');
+  });
+});
+
 describe('Защита от продажи в минус', () => {
   it('finalize заказа с qty больше остатка падает и НЕ меняет состояние (атомарность)', async () => {
     const itemId = await seedWarehouseItem(h.prisma, seed.workspaceId);

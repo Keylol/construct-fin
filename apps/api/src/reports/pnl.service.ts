@@ -112,8 +112,10 @@ export class PnlService {
     const totalsByBucket = newBucketMap();
 
     for (const slice of slices) {
+      // Группируем дополнительно по kind: COGS-операции заводятся системой без
+      // categoryId, поэтому бакетятся не по категории, а по самому kind (см. ниже).
       const groups = await this.prisma.transaction.groupBy({
-        by: ['type', 'categoryId'],
+        by: ['type', 'categoryId', 'kind'],
         where: {
           workspaceId,
           deletedAt: null,
@@ -121,19 +123,6 @@ export class PnlService {
         },
         _sum: { amount: true },
       });
-
-      // Себестоимость заказов за этот период (часть expense).
-      const cogsAgg = await this.prisma.transaction.aggregate({
-        where: {
-          workspaceId,
-          deletedAt: null,
-          kind: 'COGS',
-          date: { gte: slice.from, lte: slice.to },
-        },
-        _sum: { amount: true },
-      });
-      const cogs = cogsAgg._sum.amount ?? new Prisma.Decimal(0);
-      totalCogs = totalCogs.plus(cogs);
 
       let income = new Prisma.Decimal(0);
       let expense = new Prisma.Decimal(0);
@@ -165,9 +154,13 @@ export class PnlService {
         else totalEntry.expense = totalEntry.expense.plus(amount);
         totalsByCat.set(key, totalEntry);
 
-        // По бакету.
-        const meta = key ? catById.get(key) : null;
-        const bucket: CategoryBucket = meta?.bucket ?? 'OTHER';
+        // По бакету. Себестоимость (kind=COGS) создаётся при finalize заказа
+        // БЕЗ categoryId — раньше она утекала в бакет OTHER, дублируя сумму,
+        // которая уже учтена в отдельном headline `cogs`. Теперь COGS-операции
+        // классифицируются в бакет COGS по kind, и отчёт сходится сам с собой:
+        // byBucket.COGS.expense === cogs (headline). Остальное — по category.bucket.
+        const bucket: CategoryBucket =
+          g.kind === 'COGS' ? 'COGS' : key ? catById.get(key)?.bucket ?? 'OTHER' : 'OTHER';
         const bEntry = bucketMap.get(bucket)!;
         const tEntry = totalsByBucket.get(bucket)!;
         if (g.type === 'INCOME') {
@@ -180,9 +173,15 @@ export class PnlService {
         if (bucket === 'CAPITAL') capital = capital.plus(amount);
       }
 
+      // Себестоимость за период — это расходная часть бакета COGS (единый
+      // источник истины; cash-basis: COGS по ручным позициям признаётся в
+      // момент finalize заказа, складские товары — в момент PURCHASE).
+      const cogs = bucketMap.get('COGS')!.expense;
+
       totalIncome = totalIncome.plus(income);
       totalExpense = totalExpense.plus(expense);
       totalCapital = totalCapital.plus(capital);
+      totalCogs = totalCogs.plus(cogs);
 
       // P&L net: доход − расход без CAPITAL (вложения/изъятия собственника
       // не операционные). CAPITAL income / CAPITAL expense оба вычитаем.
