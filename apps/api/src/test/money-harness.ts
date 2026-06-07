@@ -17,6 +17,7 @@ import { WarehouseService } from '../warehouse/warehouse.service';
 import { OrderRepository } from '../orders/order.repository';
 import { OrderService } from '../orders/order.service';
 import { PurchaseService } from '../purchase/purchase.service';
+import { PnlService } from '../reports/pnl.service';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
@@ -29,6 +30,7 @@ export type Harness = {
   purchases: PurchaseService;
   warehouse: WarehouseService;
   orderRepo: OrderRepository;
+  pnl: PnlService;
 };
 
 export function buildHarness(): Harness {
@@ -44,8 +46,9 @@ export function buildHarness(): Harness {
   const orderRepo = new OrderRepository(prisma);
   const orders = new OrderService(prisma, orderRepo, uow, warehouse, audit);
   const purchases = new PurchaseService(prisma, uow, warehouse, audit);
+  const pnl = new PnlService(prisma);
 
-  return { prisma, orders, purchases, warehouse, orderRepo };
+  return { prisma, orders, purchases, warehouse, orderRepo, pnl };
 }
 
 /** Удаляет все данные тестовой БД в порядке, безопасном для FK. */
