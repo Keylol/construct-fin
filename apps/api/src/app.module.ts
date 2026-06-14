@@ -11,6 +11,7 @@ import { AccountModule } from './account/account.module';
 import { CategoryModule } from './category/category.module';
 import { CounterpartyModule } from './counterparty/counterparty.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { TransferModule } from './transfer/transfer.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { ImportModule } from './import/import.module';
 import { CategoryRuleModule } from './category-rule/category-rule.module';
@@ -40,6 +41,7 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
     CategoryModule,
     CounterpartyModule,
     TransactionModule,
+    TransferModule,
     AttachmentModule,
     ImportModule,
     CategoryRuleModule,
