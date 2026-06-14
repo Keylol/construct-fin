@@ -203,6 +203,8 @@ export class OrderService {
             workspaceId,
             item.warehouseItemId,
             item.qty,
+            userId,
+            { refType: 'Order', refId: orderId },
           );
           await tx.orderItem.update({
             where: { id: item.id },
@@ -270,7 +272,7 @@ export class OrderService {
 
     return this.uow.run(async (tx) => {
       if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order);
+        await this.reverseFinalization(tx, workspaceId, order, userId);
       }
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
       await this.audit.record(tx, {
@@ -302,7 +304,7 @@ export class OrderService {
     }
     return this.uow.run(async (tx) => {
       if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order);
+        await this.reverseFinalization(tx, workspaceId, order, userId);
       }
       await tx.order.update({
         where: { id: orderId },
@@ -326,10 +328,14 @@ export class OrderService {
     tx: TxClient,
     workspaceId: string,
     order: NonNullable<Awaited<ReturnType<OrderRepository['findById']>>>,
+    userId: string,
   ) {
     for (const item of order.items ?? []) {
       if (item.warehouseItemId && item.unitCostAtSale !== null) {
-        await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty);
+        await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty, userId, {
+          refType: 'Order',
+          refId: order.id,
+        });
         await tx.orderItem.update({
           where: { id: item.id },
           data: { unitCostAtSale: null },
@@ -366,7 +372,7 @@ export class OrderService {
     return this.uow.run(async (tx) => {
       // Если заказ был закрыт — вернуть склад и сторнировать COGS.
       if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order);
+        await this.reverseFinalization(tx, workspaceId, order, userId);
       }
       // Сторнируем все связанные операции (оплаты/возвраты), чтобы не висели в P&L.
       await tx.transaction.updateMany({

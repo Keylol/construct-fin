@@ -280,7 +280,7 @@ describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.2
     // транзакции сериализуются: одна списывает 5→1, вторая видит 1 и падает.
     const sell = () =>
       h.prisma.$transaction((tx) =>
-        h.warehouse.decrementForSale(tx, seed.workspaceId, itemId, '4'),
+        h.warehouse.decrementForSale(tx, seed.workspaceId, itemId, '4', seed.userId),
       );
     const results = await Promise.allSettled([sell(), sell()]);
 
