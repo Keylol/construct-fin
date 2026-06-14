@@ -14,6 +14,7 @@ export type AuditAction =
   | 'order.restore'
   | 'order.delete'
   | 'order.refund'
+  | 'order.return'
   | 'period.close'
   | 'period.reopen'
   | 'purchase.register'
