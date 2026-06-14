@@ -18,6 +18,17 @@ import { OrderRepository } from '../orders/order.repository';
 import { OrderService } from '../orders/order.service';
 import { PurchaseService } from '../purchase/purchase.service';
 import { PnlService } from '../reports/pnl.service';
+import { TransferService } from '../transfer/transfer.service';
+import { ReconciliationService } from '../reconciliation/reconciliation.service';
+import { MarginService } from '../trade-reports/margin.service';
+import { ReceivablesService } from '../trade-reports/receivables.service';
+import { CashflowService } from '../reports/cashflow.service';
+import { TransactionService } from '../transaction/transaction.service';
+import { ImportService } from '../import/import.service';
+import { AccountService } from '../account/account.service';
+import { CategoryService } from '../category/category.service';
+import { CounterpartyService } from '../counterparty/counterparty.service';
+import { Role } from '@prisma/client';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
@@ -31,6 +42,16 @@ export type Harness = {
   warehouse: WarehouseService;
   orderRepo: OrderRepository;
   pnl: PnlService;
+  transfer: TransferService;
+  reconciliation: ReconciliationService;
+  tradeMargin: MarginService;
+  tradeReceivables: ReceivablesService;
+  cashflow: CashflowService;
+  transactions: TransactionService;
+  importSvc: ImportService;
+  accounts: AccountService;
+  categories: CategoryService;
+  counterparties: CounterpartyService;
 };
 
 export function buildHarness(): Harness {
@@ -48,7 +69,36 @@ export function buildHarness(): Harness {
   const purchases = new PurchaseService(prisma, uow, warehouse, audit);
   const pnl = new PnlService(prisma);
 
-  return { prisma, orders, purchases, warehouse, orderRepo, pnl };
+  // Доп. сервисы для e2e — все инстанцируются от того же prisma/uow/audit.
+  const transfer = new TransferService(prisma, uow);
+  const reconciliation = new ReconciliationService(prisma);
+  const tradeMargin = new MarginService(prisma);
+  const tradeReceivables = new ReceivablesService(prisma);
+  const cashflow = new CashflowService(prisma);
+  const transactions = new TransactionService(prisma, audit);
+  const importSvc = new ImportService(prisma);
+  const accounts = new AccountService(prisma);
+  const categories = new CategoryService(prisma);
+  const counterparties = new CounterpartyService(prisma);
+
+  return {
+    prisma,
+    orders,
+    purchases,
+    warehouse,
+    orderRepo,
+    pnl,
+    transfer,
+    reconciliation,
+    tradeMargin,
+    tradeReceivables,
+    cashflow,
+    transactions,
+    importSvc,
+    accounts,
+    categories,
+    counterparties,
+  };
 }
 
 /** Удаляет все данные тестовой БД в порядке, безопасном для FK. */
@@ -82,6 +132,22 @@ export async function seedBase(prisma: PrismaClient, telegramId: bigint): Promis
     data: { workspaceId: ws.id, name: 'Каса', type: 'CASH' },
   });
   return { userId: user.id, workspaceId: ws.id, accountId: account.id };
+}
+
+/**
+ * Засеивает строку членства WorkspaceMember (composite PK workspaceId+userId).
+ * Нужно для HTTP-e2e: WorkspaceGuard требует строку членства, иначе 403.
+ * seedBase членство НЕ создаёт (сервис-уровень идёт мимо гардов).
+ */
+export async function seedMember(
+  prisma: PrismaClient,
+  workspaceId: string,
+  userId: string,
+  role: Role = Role.OWNER,
+): Promise<void> {
+  await prisma.workspaceMember.create({
+    data: { workspaceId, userId, role },
+  });
 }
 
 /** Создаёт складскую позицию с нулевым остатком. */
