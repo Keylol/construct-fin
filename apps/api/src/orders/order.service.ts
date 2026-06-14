@@ -13,7 +13,7 @@ import { UnitOfWork, type TxClient } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
-import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
+import { add, sub, mul, div, money, cost, gt, lt, isZero, D } from '../common/money';
 import type {
   CreateOrderDto,
   UpdateOrderDto,
@@ -21,6 +21,7 @@ import type {
   AddPaymentDto,
   OrderItemInput,
   ReturnItemDto,
+  ShipItemDto,
 } from './order.dto';
 
 @Injectable()
@@ -90,6 +91,14 @@ export class OrderService {
     if (!existing) throw new NotFoundException('Order not found');
     if (existing.status === 'DONE' || existing.status === 'CANCELLED') {
       throw new BadRequestException('Нельзя редактировать закрытый/отменённый заказ');
+    }
+
+    // Нельзя менять позиции, если что-то уже отгружено — иначе осиротеет
+    // списанный со склада остаток (replace items = delete+recreate).
+    if (input.items && (existing.items ?? []).some((it) => gt(it.shippedQty, '0'))) {
+      throw new BadRequestException(
+        'Нельзя менять позиции частично отгруженного заказа — сначала отмените отгрузку',
+      );
     }
 
     return this.uow.run(async (tx) => {
@@ -176,6 +185,80 @@ export class OrderService {
       await this.syncPaymentState(workspaceId, orderId, tx);
       return this.orders.findById(workspaceId, orderId, tx);
     });
+  }
+
+  /**
+   * Частичная отгрузка позиции ОТКРЫТОГО заказа. Списывает склад СРАЗУ на qty
+   * (StockMovement SALE через decrementForSale), копит OrderItem.shippedQty и
+   * накапливает средневзвешенную unitCostAtSale (для маржи). Заказ остаётся
+   * OPEN; finalize позже отгрузит остаток и закроет. Услуги (без склада) только
+   * увеличивают shippedQty.
+   */
+  async ship(workspaceId: string, orderId: string, userId: string, dto: ShipItemDto) {
+    const order = await this.orders.findById(workspaceId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'OPEN') {
+      throw new BadRequestException('Отгрузка возможна только по открытому заказу');
+    }
+    const item = (order.items ?? []).find((i) => i.id === dto.itemId);
+    if (!item) throw new NotFoundException('Позиция заказа не найдена');
+
+    const shipQty = D(dto.qty);
+    if (!gt(shipQty, '0')) {
+      throw new BadRequestException('qty должен быть положительным');
+    }
+    const remaining = sub(item.qty, item.shippedQty);
+    if (gt(shipQty, remaining)) {
+      throw new BadRequestException(
+        `Нельзя отгрузить больше остатка позиции: доступно ${remaining.toString()}`,
+      );
+    }
+
+    return this.uow.run(async (tx) => {
+      let costSnapshot = item.unitCostAtSale;
+      if (item.warehouseItemId) {
+        const unitCost = await this.warehouse.decrementForSale(
+          tx,
+          workspaceId,
+          item.warehouseItemId,
+          shipQty,
+          userId,
+          { refType: 'Order', refId: orderId },
+        );
+        costSnapshot = this.weightedCost(item.unitCostAtSale, item.shippedQty, unitCost, shipQty);
+      }
+      await tx.orderItem.update({
+        where: { id: item.id },
+        data: { shippedQty: add(item.shippedQty, shipQty), unitCostAtSale: costSnapshot },
+      });
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.ship',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          itemId: item.id,
+          itemName: item.name,
+          shipQty: shipQty.toString(),
+        },
+      });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
+  }
+
+  /** Взвешенная себестоимость единицы при доборе отгрузки. prevCost=null → 0. */
+  private weightedCost(
+    prevCost: Prisma.Decimal | null,
+    prevQty: Prisma.Decimal,
+    newCost: Prisma.Decimal,
+    newQty: Prisma.Decimal,
+  ): Prisma.Decimal {
+    const denom = add(prevQty, newQty);
+    if (isZero(denom)) return cost(newCost);
+    const total = add(mul(prevCost ?? D(0), prevQty), mul(newCost, newQty));
+    return cost(div(total, denom));
   }
 
   /**
@@ -304,20 +387,32 @@ export class OrderService {
       let manualCogs = D(0);
       for (const item of order.items ?? []) {
         if (item.warehouseItemId) {
-          const unitCost = await this.warehouse.decrementForSale(
-            tx,
-            workspaceId,
-            item.warehouseItemId,
-            item.qty,
-            userId,
-            { refType: 'Order', refId: orderId },
-          );
+          // Списываем только ещё НЕ отгруженный остаток (часть могла уйти через ship).
+          const remaining = sub(item.qty, item.shippedQty);
+          let costSnapshot = item.unitCostAtSale;
+          if (gt(remaining, '0')) {
+            const unitCost = await this.warehouse.decrementForSale(
+              tx,
+              workspaceId,
+              item.warehouseItemId,
+              remaining,
+              userId,
+              { refType: 'Order', refId: orderId },
+            );
+            costSnapshot = this.weightedCost(item.unitCostAtSale, item.shippedQty, unitCost, remaining);
+          }
           await tx.orderItem.update({
             where: { id: item.id },
-            data: { unitCostAtSale: unitCost },
+            data: { unitCostAtSale: costSnapshot, shippedQty: item.qty },
           });
-        } else if (item.unitCost !== null) {
-          manualCogs = add(manualCogs, mul(item.qty, item.unitCost));
+        } else {
+          if (item.unitCost !== null) {
+            manualCogs = add(manualCogs, mul(item.qty, item.unitCost));
+          }
+          await tx.orderItem.update({
+            where: { id: item.id },
+            data: { shippedQty: item.qty },
+          });
         }
       }
 
@@ -377,9 +472,8 @@ export class OrderService {
     if (order.status === 'CANCELLED') return order;
 
     return this.uow.run(async (tx) => {
-      if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order, userId);
-      }
+      // Возвращаем отгруженное и для DONE, и для частично отгруженного OPEN.
+      await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
       await this.audit.record(tx, {
         workspaceId,
@@ -409,9 +503,8 @@ export class OrderService {
       );
     }
     return this.uow.run(async (tx) => {
-      if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order, userId);
-      }
+      // Откатываем отгрузку (DONE или частичный OPEN) — вернуть в работу «с нуля».
+      await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({
         where: { id: orderId },
         data: { status: 'OPEN', closedAt: null },
@@ -429,7 +522,12 @@ export class OrderService {
     });
   }
 
-  /** Откат финализации: restock склада + сторно COGS-расхода. Внутри UoW. */
+  /**
+   * Откат отгрузки/финализации: возврат склада + сторно COGS-расхода. Внутри UoW.
+   * Возвращаем на склад фактически отгруженное за вычетом уже возвращённого
+   * (RMA): для DONE отгружено = qty, для частично отгруженного OPEN = shippedQty;
+   * минус returnedQty (его уже вернул возврат). Сбрасываем shippedQty/unitCostAtSale.
+   */
   private async reverseFinalization(
     tx: TxClient,
     workspaceId: string,
@@ -437,14 +535,21 @@ export class OrderService {
     userId: string,
   ) {
     for (const item of order.items ?? []) {
-      if (item.warehouseItemId && item.unitCostAtSale !== null) {
-        await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, item.qty, userId, {
-          refType: 'Order',
-          refId: order.id,
-        });
+      if (item.warehouseItemId) {
+        const out = order.status === 'DONE' ? item.qty : item.shippedQty;
+        const netOut = sub(out, item.returnedQty);
+        if (gt(netOut, '0')) {
+          await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, netOut, userId, {
+            refType: 'Order',
+            refId: order.id,
+          });
+        }
+      }
+      // Сбрасываем отгрузку/снапшот себестоимости по всем позициям.
+      if (gt(item.shippedQty, '0') || item.unitCostAtSale !== null) {
         await tx.orderItem.update({
           where: { id: item.id },
-          data: { unitCostAtSale: null },
+          data: { shippedQty: D(0), unitCostAtSale: null },
         });
       }
     }
@@ -476,10 +581,8 @@ export class OrderService {
     const order = await this.orders.findById(workspaceId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     return this.uow.run(async (tx) => {
-      // Если заказ был закрыт — вернуть склад и сторнировать COGS.
-      if (order.status === 'DONE') {
-        await this.reverseFinalization(tx, workspaceId, order, userId);
-      }
+      // Вернуть склад (DONE или частичный OPEN) и сторнировать COGS.
+      await this.reverseFinalization(tx, workspaceId, order, userId);
       // Сторнируем все связанные операции (оплаты/возвраты), чтобы не висели в P&L.
       await tx.transaction.updateMany({
         where: { workspaceId, orderId, deletedAt: null },
