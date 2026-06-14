@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ImportSource } from '@construct/db';
 import { applyRules } from '../category-rule/matcher';
@@ -20,8 +21,61 @@ import type {
   CommitResult,
   PreviewResult,
   PreviewRow,
+  TransferSuggestion,
 } from './import.types';
 import type { CommitBody } from './import.dto';
+
+/** Окно совпадения дат для детекта пар-переводов в импорте (±дней). */
+const TRANSFER_MATCH_WINDOW_DAYS = 3;
+const DAY_MS = 86_400_000;
+
+/** Кандидат-контрнога для детекта перевода (транзакция на другом счёте). */
+export type TransferCandidate = {
+  id: string;
+  type: 'INCOME' | 'EXPENSE';
+  amount: Prisma.Decimal | string;
+  date: Date;
+  accountId: string;
+  account: { name: string; class: string };
+};
+
+/**
+ * Чистое ядро детекта перевода: для строки превью находит лучшего кандидата —
+ * противоположный тип, та же сумма, дата в пределах windowDays (берём ближайший
+ * по дате). Возвращает suggestion или null. Без БД — тестируется юнитом.
+ */
+export function findTransferMatch(
+  row: { type: 'INCOME' | 'EXPENSE'; amount: string; date: string },
+  candidates: TransferCandidate[],
+  windowDays: number = TRANSFER_MATCH_WINDOW_DAYS,
+): TransferSuggestion | null {
+  const rowDate = Date.parse(row.date);
+  const rowAmount = new Prisma.Decimal(row.amount);
+  const wantType = row.type === 'INCOME' ? 'EXPENSE' : 'INCOME';
+
+  const windowMs = windowDays * DAY_MS;
+  let best: { c: TransferCandidate; diffMs: number } | null = null;
+  for (const c of candidates) {
+    if (c.type !== wantType) continue;
+    if (!new Prisma.Decimal(c.amount).equals(rowAmount)) continue;
+    // Гейт по точным миллисекундам (не по округлённым дням — иначе окно «поплывёт»
+    // до ~3.5 дней). daysDiff ниже — округление только для отображения.
+    const diffMs = Math.abs(rowDate - c.date.getTime());
+    if (diffMs > windowMs) continue;
+    if (!best || diffMs < best.diffMs) best = { c, diffMs };
+  }
+  if (!best) return null;
+
+  return {
+    matchedTransactionId: best.c.id,
+    otherAccountId: best.c.accountId,
+    otherAccountName: best.c.account.name,
+    otherAccountClass: best.c.account.class,
+    matchedType: best.c.type,
+    matchedDate: best.c.date.toISOString(),
+    daysDiff: Math.round(best.diffMs / DAY_MS),
+  };
+}
 
 @Injectable()
 export class ImportService {
@@ -154,6 +208,7 @@ export class ImportService {
         suggestedCategoryId,
         importHash,
         isDuplicate: false,
+        transferSuggestion: null,
         errors: r.errors,
         raw: r.raw,
       });
@@ -176,6 +231,8 @@ export class ImportService {
       }
     }
 
+    await this.annotateTransferSuggestions(opts.workspaceId, opts.accountId, previewRows);
+
     return {
       source: parsed.source,
       headers: parsed.headers,
@@ -191,6 +248,56 @@ export class ImportService {
         duplicates: previewRows.filter((r) => r.isDuplicate).length,
       },
     };
+  }
+
+  /**
+   * Помечает строки превью, похожие на ногу внутреннего перевода: ищем на ДРУГИХ
+   * счетах workspace существующую транзакцию-контрногу (противоположный тип, та
+   * же сумма, дата в пределах TRANSFER_MATCH_WINDOW_DAYS), которая ещё НЕ часть
+   * перевода (transferGroupId=null). Один батч-запрос на все строки. Это лишь
+   * suggestion для UI — сам перевод создаётся через API переводов (Полоса A).
+   */
+  private async annotateTransferSuggestions(
+    workspaceId: string,
+    importAccountId: string,
+    rows: PreviewRow[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+
+    // Окно батч-запроса — НАДмножество кандидатов: union по всем строкам
+    // [r−W, r+W] = [minRowDate−W, maxRowDate+W]. Точная проверка ±W для каждой
+    // строки делается в findTransferMatch, так что лишние кандидаты отсекутся там.
+    const windowMs = TRANSFER_MATCH_WINDOW_DAYS * DAY_MS;
+    const dates = rows.map((r) => Date.parse(r.date));
+    const minDate = new Date(Math.min(...dates) - windowMs);
+    const maxDate = new Date(Math.max(...dates) + windowMs);
+    const amounts = Array.from(new Set(rows.map((r) => r.amount))).map(
+      (a) => new Prisma.Decimal(a),
+    );
+
+    const candidates = (await this.prisma.transaction.findMany({
+      where: {
+        workspaceId,
+        accountId: { not: importAccountId },
+        deletedAt: null,
+        transferGroupId: null,
+        amount: { in: amounts },
+        date: { gte: minDate, lte: maxDate },
+      },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        date: true,
+        accountId: true,
+        account: { select: { name: true, class: true } },
+      },
+    })) as TransferCandidate[];
+    if (candidates.length === 0) return;
+
+    for (const row of rows) {
+      row.transferSuggestion = findTransferMatch(row, candidates, TRANSFER_MATCH_WINDOW_DAYS);
+    }
   }
 
   async commit(opts: {
