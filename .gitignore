@@ -15,6 +15,13 @@ out/
 .env.*.local
 !.env.example
 
+# Secrets / service-account keys (GCP и пр.) — никогда не коммитить
+credentials.json
+*-credentials.json
+*.service-account.json
+*.pem
+*.key
+
 # Logs
 *.log
 npm-debug.log*

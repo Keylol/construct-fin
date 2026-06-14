@@ -6,7 +6,8 @@ import { CreateTransferSchema } from './transfer.dto';
 /**
  * Юнит-тесты сервиса переводов (Полоса A, шаг A2). Prisma и UnitOfWork мокаются;
  * проверяем: создаётся ровно 2 ноги с общим transferGroupId; fee даёт 3-ю
- * транзакцию (VARIABLE_COST без transferGroupId); soft-delete гасит Transfer + ноги.
+ * транзакцию (VARIABLE_COST с тем же transferGroupId); soft-delete гасит
+ * Transfer + все транзакции группы (ноги + комиссию) по transferGroupId.
  */
 
 interface CreatedTx {
@@ -92,7 +93,7 @@ describe('TransferService.create (A2)', () => {
     expect(result.amount).toBe('1000.00');
   });
 
-  it('fee>0 даёт 3-ю транзакцию VARIABLE_COST на счёте-источнике без transferGroupId', async () => {
+  it('fee>0 даёт 3-ю транзакцию VARIABLE_COST на счёте-источнике с transferGroupId перевода', async () => {
     const { service, txClient, created } = buildService();
     await service.create('ws1', 'user1', { ...baseInput, fee: '15.50' });
 
@@ -101,7 +102,8 @@ describe('TransferService.create (A2)', () => {
     expect(feeTx).toBeTruthy();
     expect(feeTx.data.type).toBe('EXPENSE');
     expect(feeTx.data.accountId).toBe('from1');
-    expect(feeTx.data.transferGroupId).toBeUndefined();
+    // комиссия привязана к transferGroupId, чтобы softDelete погасил её каскадом
+    expect(feeTx.data.transferGroupId).toBe('tr1');
     expect((feeTx.data.amount as Prisma.Decimal).toFixed(2)).toBe('15.50');
   });
 
