@@ -141,6 +141,20 @@ export default function WarehousePage() {
             label="Стоимость склада"
             value={stockValue.data ? formatRub(stockValue.data.value) : '—'}
           />
+          <KpiCard
+            label="Без себестоимости"
+            value={
+              items.data
+                ? String(items.data.filter((i) => Number(i.avgCost) === 0 && Number(i.qty) > 0).length)
+                : '—'
+            }
+            hint="Позиции с остатком, но без цены"
+            tone={
+              items.data && items.data.some((i) => Number(i.avgCost) === 0 && Number(i.qty) > 0)
+                ? 'negative'
+                : 'neutral'
+            }
+          />
         </div>
       </div>
 
