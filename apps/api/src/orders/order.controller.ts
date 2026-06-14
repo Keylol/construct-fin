@@ -20,10 +20,12 @@ import {
   UpdateOrderSchema,
   ListOrdersQuerySchema,
   AddPaymentSchema,
+  ReturnItemSchema,
   type CreateOrderDto,
   type UpdateOrderDto,
   type ListOrdersQuery,
   type AddPaymentDto,
+  type ReturnItemDto,
 } from './order.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -70,6 +72,16 @@ export class OrderController {
     @Body(new ZodPipe(AddPaymentSchema)) body: AddPaymentDto,
   ) {
     return this.service.addPayment(ws.workspaceId, id, ws.userId, body);
+  }
+
+  @Post(':id/returns')
+  @HttpCode(200)
+  returnItem(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(ReturnItemSchema)) body: ReturnItemDto,
+  ) {
+    return this.service.returnItem(ws.workspaceId, id, ws.userId, body);
   }
 
   @Post(':id/finalize')
