@@ -1,6 +1,4 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 export interface Crumb {
@@ -11,6 +9,11 @@ export interface Crumb {
 interface PageHeaderProps {
   title: string;
   description?: string;
+  /**
+   * @deprecated Хлебные крошки теперь рендерятся ГЛОБАЛЬНО в верхнем баре
+   * (components/layout/Header) из URL — единый источник. Проп принимается для
+   * совместимости вызовов, но больше не отображается (убран дубль навигации).
+   */
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
   className?: string;
@@ -19,7 +22,6 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
-  breadcrumbs,
   actions,
   className,
 }: PageHeaderProps) {
@@ -32,30 +34,6 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0 flex-1">
-        {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav aria-label="Хлебные крошки" className="mb-1.5">
-            <ol className="flex items-center gap-1 text-xs text-muted-foreground">
-              {breadcrumbs.map((c, i) => {
-                const isLast = i === breadcrumbs.length - 1;
-                return (
-                  <li key={`${c.label}-${i}`} className="flex items-center gap-1">
-                    {c.href && !isLast ? (
-                      <Link
-                        href={c.href as Parameters<typeof Link>[0]['href']}
-                        className="hover:text-foreground transition-colors"
-                      >
-                        {c.label}
-                      </Link>
-                    ) : (
-                      <span className={isLast ? 'text-foreground' : ''}>{c.label}</span>
-                    )}
-                    {!isLast && <ChevronRight className="h-3 w-3 shrink-0" />}
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
-        )}
         <h1 className="text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
           {title}
         </h1>
