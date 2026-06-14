@@ -20,6 +20,7 @@ import { TradeReportsModule } from './trade-reports/trade-reports.module';
 import { OrderModule } from './orders/order.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { PurchaseModule } from './purchase/purchase.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AuditModule } from './audit/audit.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
@@ -51,6 +52,7 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
     OrderModule,
     WarehouseModule,
     PurchaseModule,
+    ReconciliationModule,
     AuditModule,
   ],
   controllers: [HealthController],
