@@ -76,6 +76,19 @@ export function useAdjustStock(wsId: string) {
   });
 }
 
+/**
+ * Установка себестоимости начального остатка (для позиций с avgCost=0, qty>0).
+ * Деньги не двигаются — корректировка оценки. Бэкенд: POST /warehouse/:id/set-cost.
+ */
+export function useSetItemCost(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, unitCost, reason }: { id: string; unitCost: string; reason?: string }) =>
+      api.post<WarehouseItem>(`/workspaces/${wsId}/warehouse/${id}/set-cost`, { unitCost, reason }),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
 export function useDeleteWarehouseItem(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
