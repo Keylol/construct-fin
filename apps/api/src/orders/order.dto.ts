@@ -56,6 +56,14 @@ export const AddPaymentSchema = z.object({
 });
 export type AddPaymentDto = z.infer<typeof AddPaymentSchema>;
 
+/** Частичная отгрузка позиции открытого заказа (списывает склад сразу). */
+export const ShipItemSchema = z.object({
+  itemId: z.string().cuid(),
+  /// Отгружаемое количество (положительное, <= qty − уже отгружено).
+  qty: QtyString,
+});
+export type ShipItemDto = z.infer<typeof ShipItemSchema>;
+
 /** Возврат клиента (RMA): частичный/полный возврат позиции закрытого заказа. */
 export const ReturnItemSchema = z.object({
   itemId: z.string().cuid(),

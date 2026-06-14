@@ -303,6 +303,9 @@ model OrderItem {
   unitCostAtSale  Decimal? @db.Decimal(14, 4)
   /// Возвращённое количество (для частичных возвратов).
   returnedQty     Decimal  @default(0) @db.Decimal(14, 3)
+  /// Отгруженное количество (частичная отгрузка). Склад списывается по мере
+  /// отгрузки; finalize отгружает остаток (qty − shippedQty).
+  shippedQty      Decimal  @default(0) @db.Decimal(14, 3)
 
   /// Кэш итога: qty * unitPrice.
   lineTotal Decimal @db.Decimal(14, 2)
