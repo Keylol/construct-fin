@@ -73,6 +73,7 @@ export class ReportsController {
       workspaceId: ws.workspaceId,
       period,
       accountId: q.accountId ?? null,
+      mode: q.mode,
     });
   }
 
@@ -121,6 +122,7 @@ export class ReportsController {
         workspaceId: ws.workspaceId,
         period,
         accountId: q.accountId ?? null,
+        mode: q.mode,
       });
       table = cashflowToTable(report);
     } else if (kind === 'by-category') {
