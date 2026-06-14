@@ -36,6 +36,9 @@ export const CashflowQuerySchema = z
     from: isoDate.optional(),
     to: isoDate.optional(),
     accountId: z.string().min(1).optional(),
+    // consolidated (по умолчанию): единый пул всех счетов, внутренние переводы
+    // гасятся. byAccount: серия на каждый счёт, переводы видны как движения.
+    mode: z.enum(['consolidated', 'byAccount']).default('consolidated'),
   })
   .strict();
 export type CashflowQuery = z.infer<typeof CashflowQuerySchema>;

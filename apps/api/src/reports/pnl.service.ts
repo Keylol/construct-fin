@@ -120,6 +120,11 @@ export class PnlService {
           workspaceId,
           deletedAt: null,
           date: { gte: slice.from, lte: slice.to },
+          // Ноги переводов между своими счетами (общий transferGroupId,
+          // kind=TRANSFER_IN/OUT) — это не доход/расход, исключаем из P&L.
+          // Комиссия перевода (VARIABLE_COST, transferGroupId=null) ОСТАЁТСЯ.
+          transferGroupId: null,
+          kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
         },
         _sum: { amount: true },
       });
