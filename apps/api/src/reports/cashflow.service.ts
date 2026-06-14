@@ -30,9 +30,9 @@ export interface CashflowReport {
  *  - 'byAccount' — по каждому счёту отдельной серией; движения по счетам видны,
  *    включая ноги переводов (перевод виден как отток с одного и приток на другой).
  *  - 'consolidated' — единый пул всех «наших» счетов (любой Account.class); ноги
- *    переводов (transferGroupId != null) исключаются, поэтому перевод между
+ *    переводов исключаются ПО kind (TRANSFER_IN/OUT), поэтому перевод между
  *    своими счетами не создаёт ни притока, ни оттока. Комиссия перевода
- *    (VARIABLE_COST, transferGroupId=null) учитывается как отток.
+ *    (kind=VARIABLE_COST, хоть и с transferGroupId) учитывается как отток.
  *
  * Если задан accountId — всегда режим конкретного счёта (byAccount по одному).
  */
@@ -115,8 +115,9 @@ export class CashflowService {
 
   /**
    * Консолидированная серия по пулу всех счетов. Ноги переводов исключаются
-   * (transferGroupId=null), поэтому внутренние переводы не двигают консолид.
-   * оборот. openingBalance пула = сумма openingBalance всех счетов.
+   * ПО kind (TRANSFER_IN/OUT), поэтому внутренние переводы не двигают консолид.
+   * оборот; комиссия перевода (kind=VARIABLE_COST, хоть и с transferGroupId)
+   * остаётся реальным оттоком. openingBalance пула = сумма openingBalance всех счетов.
    */
   private async consolidated(
     workspaceId: string,
@@ -134,8 +135,9 @@ export class CashflowService {
     const baseWhere: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
-      // Внутренние переводы между своими счетами гасятся — исключаем их ноги.
-      transferGroupId: null,
+      // Внутренние переводы между своими счетами гасятся — исключаем их ноги
+      // ПО kind (комиссия VARIABLE_COST с transferGroupId при этом остаётся).
+      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
     };
     return this.computeSeries(period, slices, baseWhere, opening, null, 'Все счета');
   }

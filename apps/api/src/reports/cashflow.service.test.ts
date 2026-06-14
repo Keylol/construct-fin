@@ -4,12 +4,14 @@ import { CashflowService } from './cashflow.service';
 
 /**
  * Юнит-тесты cashflow (Полоса A, шаг A4): консолидированный режим не задваивает
- * оборот на внутреннем переводе (ноги transferGroupId!=null исключены), режим
- * по счёту показывает движение. Prisma мокается; groupBy эмулирует фильтр.
+ * оборот на внутреннем переводе (ноги исключаются ПО kind TRANSFER_IN/OUT),
+ * комиссия перевода (VARIABLE_COST) остаётся оттоком, режим по счёту показывает
+ * движение. Prisma мокается; groupBy эмулирует фильтр.
  */
 
 interface FakeTx {
   type: 'INCOME' | 'EXPENSE';
+  kind: string;
   accountId: string;
   transferGroupId: string | null;
   amount: string;
@@ -41,14 +43,14 @@ function buildService(accounts: { id: string; name: string; openingBalance: stri
       groupBy: vi.fn().mockImplementation((args: { where: Record<string, unknown> }) => {
         const where = args.where as {
           accountId?: string;
-          transferGroupId?: null;
+          kind?: { notIn: string[] };
           date?: { lt?: Date; gte?: Date; lte?: Date };
         };
+        const notIn = where.kind?.notIn ?? [];
         const filtered = rows.filter((r) => {
           if (where.accountId && r.accountId !== where.accountId) return false;
-          // если в where явно transferGroupId=null — исключаем ноги переводов
-          if ('transferGroupId' in where && where.transferGroupId === null && r.transferGroupId !== null)
-            return false;
+          // консолидация исключает ноги переводов ПО kind (комиссия остаётся)
+          if (notIn.includes(r.kind)) return false;
           if (where.date?.lt && !(r.date < where.date.lt)) return false;
           if (where.date?.gte && !(r.date >= where.date.gte)) return false;
           if (where.date?.lte && !(r.date <= where.date.lte)) return false;
@@ -79,10 +81,10 @@ const ACCOUNTS = [
   { id: 'acc-tr', name: 'Эквайринг', openingBalance: '0.00' },
 ];
 
-// Перевод 500 с acc-op на acc-tr: две ноги с transferGroupId.
+// Перевод 500 с acc-op на acc-tr: две ноги (kind TRANSFER_OUT/IN) с transferGroupId.
 const TRANSFER_ROWS: FakeTx[] = [
-  { type: 'EXPENSE', accountId: 'acc-op', transferGroupId: 'tr1', amount: '500.00', date: inPeriod },
-  { type: 'INCOME', accountId: 'acc-tr', transferGroupId: 'tr1', amount: '500.00', date: inPeriod },
+  { type: 'EXPENSE', kind: 'TRANSFER_OUT', accountId: 'acc-op', transferGroupId: 'tr1', amount: '500.00', date: inPeriod },
+  { type: 'INCOME', kind: 'TRANSFER_IN', accountId: 'acc-tr', transferGroupId: 'tr1', amount: '500.00', date: inPeriod },
 ];
 
 describe('CashflowService — консолидированный режим (A4)', () => {
@@ -107,7 +109,7 @@ describe('CashflowService — консолидированный режим (A4)
   it('реальный доход учитывается, нога перевода — нет (консолидация)', async () => {
     const rows: FakeTx[] = [
       ...TRANSFER_ROWS,
-      { type: 'INCOME', accountId: 'acc-op', transferGroupId: null, amount: '300.00', date: inPeriod },
+      { type: 'INCOME', kind: 'OTHER', accountId: 'acc-op', transferGroupId: null, amount: '300.00', date: inPeriod },
     ];
     const { service } = buildService(ACCOUNTS, rows);
     const report = await service.build({ workspaceId: 'ws1', period: PERIOD, accountId: null });
@@ -115,6 +117,20 @@ describe('CashflowService — консолидированный режим (A4)
     expect(pt.inflow).toBe('300.00'); // только реальный доход
     expect(pt.outflow).toBe('0.00');
     expect(pt.balance).toBe('1300.00');
+  });
+
+  it('комиссия перевода (VARIABLE_COST с transferGroupId) остаётся оттоком в консолидации', async () => {
+    const rows: FakeTx[] = [
+      ...TRANSFER_ROWS,
+      // комиссия привязана к transferGroupId перевода, но НЕ нога — учитывается
+      { type: 'EXPENSE', kind: 'VARIABLE_COST', accountId: 'acc-op', transferGroupId: 'tr1', amount: '15.00', date: inPeriod },
+    ];
+    const { service } = buildService(ACCOUNTS, rows);
+    const report = await service.build({ workspaceId: 'ws1', period: PERIOD, accountId: null });
+    const pt = report.series[0]!.points[0]!;
+    expect(pt.inflow).toBe('0.00');
+    expect(pt.outflow).toBe('15.00'); // ноги исключены по kind, комиссия осталась
+    expect(pt.balance).toBe('985.00'); // 1000 - 15
   });
 
   it('режим по счёту показывает движение перевода (отток с источника)', async () => {

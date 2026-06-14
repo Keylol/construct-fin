@@ -3,9 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PnlService } from './pnl.service';
 
 /**
- * Юнит-тесты P&L (Полоса A, шаг A3): ноги переводов (TRANSFER_IN/OUT, общий
- * transferGroupId) НЕ участвуют в доходах/расходах; комиссия перевода
- * (VARIABLE_COST, transferGroupId=null) ОСТАЁТСЯ расходом.
+ * Юнит-тесты P&L (Полоса A, шаг A3): ноги переводов исключаются ПО kind
+ * (TRANSFER_IN/OUT) и НЕ участвуют в доходах/расходах; комиссия перевода
+ * (kind=VARIABLE_COST, хоть и с transferGroupId) ОСТАЁТСЯ расходом.
  */
 
 interface FakeTx {
@@ -28,15 +28,12 @@ function buildService(rows: FakeTx[]) {
     transaction: {
       groupBy: vi.fn().mockImplementation((args: { where: Record<string, unknown> }) => {
         groupByCalls.push(args.where);
-        // эмулируем фильтр Prisma: transferGroupId=null И kind notIn [...]
+        // эмулируем фильтр Prisma: kind notIn [...] (ноги исключаются по kind)
         const where = args.where as {
-          transferGroupId: null;
           kind?: { notIn: string[] };
         };
         const notIn = where.kind?.notIn ?? [];
-        const filtered = rows.filter(
-          (r) => r.transferGroupId === null && !notIn.includes(r.kind),
-        );
+        const filtered = rows.filter((r) => !notIn.includes(r.kind));
         // groupBy by [type, categoryId, kind]
         const acc = new Map<string, { type: string; categoryId: string | null; kind: string; sum: Prisma.Decimal }>();
         for (const r of filtered) {
@@ -73,13 +70,14 @@ const PERIOD = {
 };
 
 describe('PnlService — исключение ног переводов (A3)', () => {
-  it('where фильтрует transferGroupId=null и kind notIn TRANSFER_IN/OUT', async () => {
+  it('where фильтрует kind notIn TRANSFER_IN/OUT (не по transferGroupId)', async () => {
     const { service, groupByCalls } = buildService([]);
     await service.build({ workspaceId: 'ws1', primary: PERIOD, comparison: null, groupBy: 'month' });
     expect(groupByCalls.length).toBeGreaterThan(0);
     for (const where of groupByCalls) {
-      expect(where.transferGroupId).toBeNull();
       expect((where.kind as { notIn: string[] }).notIn).toEqual(['TRANSFER_IN', 'TRANSFER_OUT']);
+      // транзит больше НЕ фильтруется по transferGroupId — иначе комиссия выпадет
+      expect(where.transferGroupId).toBeUndefined();
     }
   });
 
@@ -90,8 +88,9 @@ describe('PnlService — исключение ног переводов (A3)', (
       // ноги перевода — должны быть исключены
       { type: 'EXPENSE', kind: 'TRANSFER_OUT', categoryId: null, transferGroupId: 'tr1', amount: '500.00' },
       { type: 'INCOME', kind: 'TRANSFER_IN', categoryId: null, transferGroupId: 'tr1', amount: '500.00' },
-      // комиссия перевода — реальный расход, остаётся
-      { type: 'EXPENSE', kind: 'VARIABLE_COST', categoryId: 'cat-var', transferGroupId: null, amount: '15.00' },
+      // комиссия перевода — реальный расход, остаётся (теперь с transferGroupId,
+      // но фильтр по kind её НЕ исключает)
+      { type: 'EXPENSE', kind: 'VARIABLE_COST', categoryId: 'cat-var', transferGroupId: 'tr1', amount: '15.00' },
     ];
     const { service } = buildService(rows);
     const report = await service.build({

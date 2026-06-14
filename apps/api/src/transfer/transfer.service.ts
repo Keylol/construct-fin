@@ -36,8 +36,11 @@ export class TransferService {
    * Атомарно создаёт перевод между двумя своими счетами: запись Transfer + две
    * ноги Transaction с общим transferGroupId (OUT/EXPENSE со счёта-источника,
    * IN/INCOME на счёт-получатель, обе на amount). Если fee>0 — третья
-   * транзакция VARIABLE_COST на счёте-источнике (реальный расход, БЕЗ
-   * transferGroupId — в P&L остаётся, в консолид. cashflow считается).
+   * транзакция VARIABLE_COST на счёте-источнике (реальный расход). Комиссия
+   * ТОЖЕ помечается transferGroupId перевода — чтобы softDelete погасил её
+   * каскадом. В P&L/консолид.cashflow ноги перевода исключаются ПО kind
+   * (TRANSFER_IN/OUT), а не по наличию transferGroupId, поэтому комиссия
+   * (kind=VARIABLE_COST) остаётся учтённой как реальный расход/отток.
    */
   async create(workspaceId: string, createdById: string, input: CreateTransferDto) {
     const amount = money(input.amount);
@@ -95,7 +98,8 @@ export class TransferService {
           createdById,
         },
       });
-      // Комиссия — отдельный реальный расход (НЕ нога перевода).
+      // Комиссия — реальный расход (НЕ нога перевода по kind), но привязана к
+      // transferGroupId перевода, чтобы softDelete погасил её вместе с ним.
       if (gt(fee, '0')) {
         await tx.transaction.create({
           data: {
@@ -105,6 +109,7 @@ export class TransferService {
             type: 'EXPENSE',
             kind: 'VARIABLE_COST',
             accountId: input.fromAccountId,
+            transferGroupId: transfer.id,
             description: `Комиссия за перевод${input.note ? `: ${input.note}` : ''}`,
             createdById,
           },
@@ -116,9 +121,9 @@ export class TransferService {
   }
 
   /**
-   * Гасит перевод и все его ноги (2 или 3 транзакции) одним soft-delete в одной
-   * UoW. Комиссия (VARIABLE_COST) не помечена transferGroupId, поэтому она
-   * остаётся; гасим только сам Transfer и его связанные ноги.
+   * Гасит перевод и все его транзакции (2 ноги + комиссия, если была) одним
+   * soft-delete в одной UoW. Все они делят transferGroupId = transfer.id,
+   * поэтому updateMany по transferGroupId гасит и комиссию каскадом.
    */
   async softDelete(workspaceId: string, id: string) {
     const existing = await this.prisma.transfer.findFirst({
