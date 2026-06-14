@@ -20,6 +20,7 @@ import type {
   ListOrdersQuery,
   AddPaymentDto,
   OrderItemInput,
+  ReturnItemDto,
 } from './order.dto';
 
 @Injectable()
@@ -175,6 +176,111 @@ export class OrderService {
       await this.syncPaymentState(workspaceId, orderId, tx);
       return this.orders.findById(workspaceId, orderId, tx);
     });
+  }
+
+  /**
+   * Возврат клиента (RMA) по позиции ЗАКРЫТОГО заказа. Атомарно:
+   *   • returnQty возвращается на склад (StockMovement RETURN_CUSTOMER, avgCost
+   *     не меняется), если позиция складская; ручные позиции склад не трогают;
+   *   • OrderItem.returnedQty += returnQty (накопительно — частичные возвраты);
+   *   • Transaction(kind=ORDER_REFUND, type=EXPENSE) на refundAmount (если >0) —
+   *     деньги клиенту; syncPaymentState пересчитывает paidAmount/paymentStatus.
+   *
+   * Ограничение (cash-basis MVP, осознанно): COGS/маржа по возвращённой доле НЕ
+   * пересчитываются (складская себестоимость признана при закупке, ручной COGS
+   * остаётся). Движение денег и остаток склада корректны; сужение маржи по
+   * returnedQty — отдельным заходом.
+   */
+  async returnItem(
+    workspaceId: string,
+    orderId: string,
+    userId: string,
+    dto: ReturnItemDto,
+  ) {
+    const order = await this.orders.findById(workspaceId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'DONE') {
+      throw new BadRequestException('Возврат возможен только по закрытому (DONE) заказу');
+    }
+    const item = (order.items ?? []).find((i) => i.id === dto.itemId);
+    if (!item) throw new NotFoundException('Позиция заказа не найдена');
+
+    const returnQty = new Prisma.Decimal(dto.returnQty);
+    if (!gt(returnQty, '0')) {
+      throw new BadRequestException('returnQty должен быть положительным');
+    }
+    const available = sub(item.qty, item.returnedQty);
+    if (gt(returnQty, available)) {
+      throw new BadRequestException(
+        `Нельзя вернуть больше проданного: доступно ${available.toString()}`,
+      );
+    }
+    const refund = money(dto.refundAmount);
+    if (refund.isNegative()) {
+      throw new BadRequestException('refundAmount не может быть отрицательным');
+    }
+    await this.assertAccount(workspaceId, dto.accountId);
+
+    const refundDate = dto.date ? new Date(dto.date) : new Date();
+
+    return this.uow.run(async (tx) => {
+      if (item.warehouseItemId) {
+        await this.warehouse.restock(
+          tx,
+          workspaceId,
+          item.warehouseItemId,
+          returnQty,
+          userId,
+          { refType: 'Order', refId: orderId },
+        );
+      }
+      await tx.orderItem.update({
+        where: { id: item.id },
+        data: { returnedQty: add(item.returnedQty, returnQty) },
+      });
+      if (gt(refund, '0')) {
+        await tx.transaction.create({
+          data: {
+            workspaceId,
+            date: refundDate,
+            amount: refund,
+            type: 'EXPENSE',
+            kind: 'ORDER_REFUND',
+            accountId: dto.accountId,
+            orderId,
+            counterpartyId: order.clientId ?? null,
+            description:
+              dto.note ?? `Возврат клиента по заказу ${order.number}: ${item.name}`,
+            createdById: userId,
+          },
+        });
+      }
+      await this.syncPaymentState(workspaceId, orderId, tx);
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.return',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          itemId: item.id,
+          itemName: item.name,
+          returnQty: returnQty.toString(),
+          refundAmount: refund.toFixed(2),
+        },
+      });
+      return this.orders.findById(workspaceId, orderId, tx);
+    });
+  }
+
+  /** Проверка принадлежности счёта workspace (для возврата денег). */
+  private async assertAccount(workspaceId: string, accountId: string) {
+    const acc = await this.prisma.account.findFirst({
+      where: { id: accountId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!acc) throw new BadRequestException('Account not found in this workspace');
   }
 
   /**
