@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type AccountClass } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   CreateAccountDto,
@@ -29,6 +29,7 @@ export class AccountService {
         workspaceId,
         name: input.name,
         type: input.type,
+        class: input.class,
         openingBalance: new Prisma.Decimal(input.openingBalance),
         note: input.note ?? null,
       },
@@ -46,6 +47,7 @@ export class AccountService {
       data: {
         name: input.name ?? undefined,
         type: input.type ?? undefined,
+        class: input.class ?? undefined,
         openingBalance:
           input.openingBalance !== undefined ? new Prisma.Decimal(input.openingBalance) : undefined,
         note: input.note === undefined ? undefined : input.note,
@@ -67,6 +69,7 @@ export class AccountService {
     id: string;
     name: string;
     type: 'CASH' | 'BANK' | 'OTHER';
+    class: AccountClass;
     openingBalance: Prisma.Decimal;
     note: string | null;
     isArchived: boolean;
@@ -77,6 +80,7 @@ export class AccountService {
       id: a.id,
       name: a.name,
       type: a.type,
+      class: a.class,
       openingBalance: a.openingBalance.toFixed(2),
       note: a.note,
       isArchived: a.isArchived,
