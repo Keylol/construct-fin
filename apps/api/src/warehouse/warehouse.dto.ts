@@ -38,6 +38,18 @@ export const AdjustStockSchema = z.object({
 });
 export type AdjustStockDto = z.infer<typeof AdjustStockSchema>;
 
+/**
+ * Установка себестоимости начального остатка (корректировка оценки).
+ * Только для позиций с avgCost=0 (ещё не оценённых). Деньги НЕ двигаются
+ * (cash-basis: начальный остаток — не закупка). Действует на будущие продажи.
+ */
+export const SetItemCostSchema = z.object({
+  /// Себестоимость единицы, ₽ (до 4 знаков), строго положительная.
+  unitCost: z.string().regex(/^\d+(\.\d{1,4})?$/),
+  reason: z.string().trim().max(500).optional(),
+});
+export type SetItemCostDto = z.infer<typeof SetItemCostSchema>;
+
 /** Возврат товара поставщику (B4б). */
 export const SupplierReturnSchema = z.object({
   returnQty: z.string().regex(/^\d+(\.\d{1,3})?$/),

@@ -23,6 +23,7 @@ import {
   UpdateWarehouseItemSchema,
   ListWarehouseQuerySchema,
   AdjustStockSchema,
+  SetItemCostSchema,
   SupplierReturnSchema,
   WarehouseImportMappingSchema,
   WarehouseImportCommitSchema,
@@ -30,6 +31,7 @@ import {
   type UpdateWarehouseItemDto,
   type ListWarehouseQuery,
   type AdjustStockDto,
+  type SetItemCostDto,
   type SupplierReturnDto,
   type WarehouseImportCommitDto,
 } from './warehouse.dto';
@@ -122,6 +124,16 @@ export class WarehouseController {
     @Body(new ZodPipe(AdjustStockSchema)) body: AdjustStockDto,
   ) {
     return this.service.adjust(ws.workspaceId, id, body, ws.userId);
+  }
+
+  @Post(':id/set-cost')
+  @HttpCode(200)
+  setCost(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(SetItemCostSchema)) body: SetItemCostDto,
+  ) {
+    return this.service.setCost(ws.workspaceId, id, body, ws.userId);
   }
 
   @Post(':id/supplier-return')
