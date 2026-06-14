@@ -55,3 +55,19 @@ export const AddPaymentSchema = z.object({
   description: z.string().max(500).optional(),
 });
 export type AddPaymentDto = z.infer<typeof AddPaymentSchema>;
+
+/** Возврат клиента (RMA): частичный/полный возврат позиции закрытого заказа. */
+export const ReturnItemSchema = z.object({
+  itemId: z.string().cuid(),
+  /// Возвращаемое количество (положительное, <= проданное минус уже возвращённое).
+  returnQty: QtyString,
+  /// Сумма возврата денег клиенту (>=0; может отличаться от qty·цена — напр. сбор).
+  refundAmount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, 'Сумма возврата — неотрицательное число с ≤2 знаками'),
+  /// Счёт, с которого возвращаются деньги клиенту.
+  accountId: z.string().cuid(),
+  date: z.string().datetime().optional(),
+  note: z.string().max(500).optional(),
+});
+export type ReturnItemDto = z.infer<typeof ReturnItemSchema>;
