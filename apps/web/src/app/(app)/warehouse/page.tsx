@@ -10,6 +10,7 @@ import {
   useCreateWarehouseItem,
   useUpdateWarehouseItem,
   useAdjustStock,
+  useSetItemCost,
   useDeleteWarehouseItem,
 } from '@/hooks/useWarehouse';
 import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
@@ -90,7 +91,12 @@ export default function WarehousePage() {
       key: 'avgCost',
       header: 'Себестоимость',
       align: 'right',
-      cell: (i) => <span className="tabular-nums text-muted-foreground">{formatRub(i.avgCost)}</span>,
+      cell: (i) =>
+        Number(i.avgCost) === 0 && Number(i.qty) > 0 ? (
+          <Badge variant="outline">цена не задана</Badge>
+        ) : (
+          <span className="tabular-nums text-muted-foreground">{formatRub(i.avgCost)}</span>
+        ),
       className: 'w-[140px]',
     },
     {
@@ -217,8 +223,11 @@ function WarehouseItemForm({
   const create = useCreateWarehouseItem(wsId);
   const update = useUpdateWarehouseItem(wsId);
   const adjust = useAdjustStock(wsId);
+  const setCost = useSetItemCost(wsId);
   const del = useDeleteWarehouseItem(wsId);
   const [name, setName] = useState('');
+  const [setCostValue, setSetCostValue] = useState('');
+  const [setCostReason, setSetCostReason] = useState('');
   const [sku, setSku] = useState('');
   const [unit, setUnit] = useState('шт');
   const [openingQty, setOpeningQty] = useState('');
@@ -243,6 +252,8 @@ function WarehouseItemForm({
       setOpeningCost('');
       setIsArchived(false);
     }
+    setSetCostValue('');
+    setSetCostReason('');
     setError(null);
   }, [initial, open]);
 
@@ -281,6 +292,28 @@ function WarehouseItemForm({
     if (!initial) return;
     await del.mutateAsync(initial.id);
     onClose();
+  };
+
+  // Установка себестоимости начального остатка (отдельная операция, не «Сохранить»).
+  const onSetCost = async () => {
+    if (!initial) return;
+    setError(null);
+    const cost = parseAmountInput(setCostValue);
+    if (!cost) {
+      setError('Укажите корректную себестоимость');
+      return;
+    }
+    try {
+      await setCost.mutateAsync({
+        id: initial.id,
+        unitCost: cost,
+        reason: setCostReason.trim() || undefined,
+      });
+      toast.success('Себестоимость задана', { description: 'Применится к будущим продажам' });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
   };
 
   return (
@@ -325,14 +358,53 @@ function WarehouseItemForm({
               </FormField>
             )}
 
-            {initial && (
-              <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Себестоимость</span>
-                  <span className="tabular-nums">{formatRub(initial.avgCost)}</span>
+            {initial &&
+              (Number(initial.avgCost) > 0 ? (
+                // Уже оценено — только показываем (переоценка только через закупку/возврат).
+                <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Себестоимость</span>
+                    <span className="tabular-nums">{formatRub(initial.avgCost)}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : Number(initial.qty) > 0 ? (
+                // Остаток есть, цена не задана → даём проставить (POST /set-cost).
+                <div className="space-y-2 rounded-md border border-border bg-secondary/40 p-3">
+                  <div className="text-sm font-medium">Себестоимость не задана</div>
+                  <p className="text-xs text-muted-foreground">
+                    Позиция заведена остатком без цены. Укажите себестоимость единицы — повлияет на
+                    будущие продажи. Деньги не двигаются (это не закупка).
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      inputMode="decimal"
+                      value={setCostValue}
+                      onChange={(e) => setSetCostValue(e.target.value)}
+                      placeholder="Себест. ед., ₽"
+                      aria-label="Себестоимость единицы"
+                    />
+                    <Input
+                      value={setCostReason}
+                      onChange={(e) => setSetCostReason(e.target.value)}
+                      placeholder="Причина (опц.)"
+                      aria-label="Причина"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={setCost.isPending || !setCostValue.trim()}
+                    onClick={onSetCost}
+                  >
+                    {setCost.isPending ? 'Сохраняю…' : 'Задать себестоимость'}
+                  </Button>
+                </div>
+              ) : (
+                // Нет остатка → нечего оценивать (бэкенд: гвард qty>0).
+                <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
+                  Себестоимость не задана. Сначала заведите остаток (инвентаризация выше или закупка).
+                </div>
+              ))}
 
             {initial && (
               <label className="flex items-center gap-2 text-sm">
