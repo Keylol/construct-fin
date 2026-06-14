@@ -18,6 +18,7 @@ import type {
   UpdateWarehouseItemDto,
   ListWarehouseQuery,
   AdjustStockDto,
+  SetItemCostDto,
   SupplierReturnDto,
   WarehouseImportRow,
   WarehouseImportMapping,
@@ -112,6 +113,54 @@ export class WarehouseService {
           qtyAfter: newQty,
           reason: dto.reason ?? null,
           refType: 'Adjust',
+          createdById: userId,
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  /**
+   * Установка себестоимости начального остатка (корректировка оценки).
+   * Только для НЕоценённых позиций (avgCost=0): задаём avgCost, количество НЕ
+   * трогаем. Деньги НЕ двигаются — в cash-basis начальный остаток не закупка
+   * (нет Transaction). Влияет только на БУДУЩИЕ продажи; уже проданное по 0 не
+   * переписывается. Запись в журнал движений (ADJUSTMENT, qtyDelta=0) — аудит.
+   *
+   * Переоценка УЖЕ оценённого остатка тут запрещена (исказила бы средневзвешенную
+   * относительно реальных закупок) — это была бы отдельная, более рискованная операция.
+   */
+  async setCost(workspaceId: string, id: string, dto: SetItemCostDto, userId: string) {
+    return this.uow.run(async (tx) => {
+      const item = await this.repo.lockForUpdate(tx, workspaceId, id);
+      if (!item) throw new NotFoundException('Warehouse item not found');
+      if (gt(item.avgCost, '0')) {
+        throw new BadRequestException(
+          'Себестоимость уже задана. Переоценка оценённого остатка — отдельная операция (через закупку/возврат).',
+        );
+      }
+      if (!gt(item.qty, '0')) {
+        throw new BadRequestException(
+          'Нельзя задать себестоимость для позиции с нулевым остатком — заведите остаток (закупка/начальный остаток).',
+        );
+      }
+      const newCost = roundCost(dto.unitCost);
+      if (!gt(newCost, '0')) {
+        throw new BadRequestException('Себестоимость должна быть положительной');
+      }
+
+      const updated = await this.repo.update(id, { avgCost: newCost }, tx);
+      await this.repo.recordMovement(
+        {
+          workspaceId,
+          warehouseItemId: id,
+          type: 'ADJUSTMENT',
+          qtyDelta: roundQty(D(0)),
+          qtyAfter: item.qty,
+          unitCost: newCost,
+          reason: dto.reason ?? 'Установка себестоимости начального остатка',
+          refType: 'CostInit',
           createdById: userId,
         },
         tx,
