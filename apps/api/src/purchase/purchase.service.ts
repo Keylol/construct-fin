@@ -108,6 +108,8 @@ export class PurchaseService {
           l.warehouseItemId,
           l.qty,
           l.unitPrice,
+          userId,
+          { refType: 'Purchase', refId: purchase.id },
         );
       }
 
