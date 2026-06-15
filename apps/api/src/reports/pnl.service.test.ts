@@ -137,6 +137,37 @@ describe('PnlService — исключение ног переводов (A3)', (
     expect(totals.grossProfit).toBe('600.00');
   });
 
+  it('PURCHASE → PURCHASES; SUPPLIER_REFUND гасит закупки; grossProfit без закупок (A6)', async () => {
+    const rows: FakeTx[] = [
+      { type: 'INCOME', kind: 'ORDER_PAYMENT', categoryId: null, transferGroupId: null, amount: '2000.00' },
+      { type: 'EXPENSE', kind: 'COGS', categoryId: null, transferGroupId: null, amount: '500.00' },
+      // закупка склада → отдельный бакет PURCHASES (не COGS, не OTHER)
+      { type: 'EXPENSE', kind: 'PURCHASE', categoryId: null, transferGroupId: null, amount: '800.00' },
+      // возврат поставщику (type=INCOME) → PURCHASES.income, гасит закупку
+      { type: 'INCOME', kind: 'SUPPLIER_REFUND', categoryId: null, transferGroupId: null, amount: '100.00' },
+    ];
+    const { service } = buildService(rows);
+    const report = await service.build({
+      workspaceId: 'ws1',
+      primary: PERIOD,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const totals = report.primary.totals;
+    const bucket = (b: string) => totals.byBucket.find((x) => x.bucket === b)!;
+    expect(bucket('PURCHASES').expense).toBe('800.00');
+    expect(bucket('PURCHASES').income).toBe('100.00'); // чистые закупки = 700
+    expect(bucket('REVENUE').income).toBe('2000.00');
+    expect(bucket('COGS').expense).toBe('500.00');
+    expect(bucket('OTHER').income).toBe('0.00');
+    expect(bucket('OTHER').expense).toBe('0.00');
+    // grossProfit НЕ включает закупки: = operatingIncome(2100) − cogs(500) = 1600
+    expect(totals.cogs).toBe('500.00');
+    expect(totals.grossProfit).toBe('1600.00');
+    // net операционный = доход 2100 − расход 1300 = 800 (закупки входят в net)
+    expect(totals.net).toBe('800.00');
+  });
+
   it('перевод без прочих операций даёт нулевой P&L', async () => {
     const rows: FakeTx[] = [
       { type: 'EXPENSE', kind: 'TRANSFER_OUT', categoryId: null, transferGroupId: 'tr1', amount: '500.00' },

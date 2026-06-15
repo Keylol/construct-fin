@@ -167,6 +167,7 @@ enum CategoryKind {
 enum CategoryBucket {
   REVENUE // выручка от продаж (учитывается в P&L "доход")
   COGS // себестоимость проданных (учитывается в P&L "себестоимость")
+  PURCHASES // закупки товара на склад (cash-basis: расход в момент закупки; не входит в grossProfit)
   FIXED // постоянные издержки (аренда, подписки, лицензии)
   VARIABLE // переменные коммерческие (реклама, доставка, комиссии)
   TAX // налоги, страховые
@@ -484,7 +485,7 @@ model PurchaseLine {
 // Единая таблица всех движений денег. type (INCOME/EXPENSE) — для быстрых
 // агрегатов; kind — для бухгалтерской классификации.
 // Правила соответствия (валидируются на сервисе, не в БД):
-//   INCOME:  ORDER_PAYMENT, CAPITAL_IN, OTHER (если category.kind=INCOME)
+//   INCOME:  ORDER_PAYMENT, CAPITAL_IN, SUPPLIER_REFUND, OTHER (если category.kind=INCOME)
 //   EXPENSE: PURCHASE, SALARY, TAX, FIXED_COST, VARIABLE_COST, NON_OP, CAPITAL_OUT, ORDER_REFUND, OTHER
 //
 // Сторно: originalTxId ссылается на оригинальную операцию.
@@ -559,6 +560,7 @@ enum TransactionKind {
   // INCOME
   ORDER_PAYMENT // оплата по заказу от клиента
   CAPITAL_IN // вложение собственника
+  SUPPLIER_REFUND // возврат денег от поставщика — контр-закупка (бакет PURCHASES, не выручка)
 
   // EXPENSE
   ORDER_REFUND // возврат клиенту (минус выручка)

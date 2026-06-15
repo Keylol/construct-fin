@@ -269,10 +269,11 @@ export class OrderService {
    *   • Transaction(kind=ORDER_REFUND, type=EXPENSE) на refundAmount (если >0) —
    *     деньги клиенту; syncPaymentState пересчитывает paidAmount/paymentStatus.
    *
-   * Ограничение (cash-basis MVP, осознанно): COGS/маржа по возвращённой доле НЕ
-   * пересчитываются (складская себестоимость признана при закупке, ручной COGS
-   * остаётся). Движение денег и остаток склада корректны; сужение маржи по
-   * returnedQty — отдельным заходом.
+   * COGS-транзакция (движение денег/расход) по возвращённой доле НЕ сторнируется
+   * (cash-basis: складская себестоимость признана при закупке, ручной COGS
+   * остаётся) — движение денег и остаток склада корректны. А вот ОТЧЁТ по марже
+   * с Трека A (A4) теперь считает по netQty = qty − returnedQty, т.е. возврат
+   * сужает маржу позиции (см. margin.service.ts).
    */
   async returnItem(
     workspaceId: string,
