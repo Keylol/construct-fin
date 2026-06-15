@@ -102,21 +102,7 @@ export class OrderService {
   }
 
   async update(workspaceId: string, id: string, input: UpdateOrderDto) {
-    const existing = await this.orders.findById(workspaceId, id);
-    if (!existing) throw new NotFoundException('Order not found');
-    if (existing.status === 'DONE' || existing.status === 'CANCELLED') {
-      throw new BadRequestException('Нельзя редактировать закрытый/отменённый заказ');
-    }
-
-    // Нельзя менять позиции, если что-то уже отгружено — иначе осиротеет
-    // списанный со склада остаток (replace items = delete+recreate).
-    if (input.items && (existing.items ?? []).some((it) => gt(it.shippedQty, '0'))) {
-      throw new BadRequestException(
-        'Нельзя менять позиции частично отгруженного заказа — сначала отмените отгрузку',
-      );
-    }
-
-    // B4: новый клиент/складские позиции обязаны принадлежать workspace.
+    // B4: внешние refs (клиент/склад) не зависят от состояния заказа — до tx.
     await this.assertOrderRefs(
       workspaceId,
       input.clientId,
@@ -124,6 +110,18 @@ export class OrderService {
     );
 
     return this.uow.run(async (tx) => {
+      // B2: лок + свежее чтение под локом, валидация по актуальному состоянию.
+      const existing = await this.lockAndLoad(tx, workspaceId, id);
+      if (existing.status === 'DONE' || existing.status === 'CANCELLED') {
+        throw new BadRequestException('Нельзя редактировать закрытый/отменённый заказ');
+      }
+      // Нельзя менять позиции, если что-то уже отгружено — иначе осиротеет
+      // списанный со склада остаток (replace items = delete+recreate).
+      if (input.items && (existing.items ?? []).some((it) => gt(it.shippedQty, '0'))) {
+        throw new BadRequestException(
+          'Нельзя менять позиции частично отгруженного заказа — сначала отмените отгрузку',
+        );
+      }
       // Если переданы items — заменяем целиком и пересчитываем суммы.
       if (input.items) {
         await tx.orderItem.deleteMany({ where: { orderId: id } });
@@ -181,18 +179,16 @@ export class OrderService {
     userId: string,
     dto: AddPaymentDto,
   ) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'CANCELLED') {
-      throw new BadRequestException('Заказ отменён');
-    }
-
     const paymentDate = dto.date ? new Date(dto.date) : new Date();
     // B1: счёт обязан принадлежать этому workspace — иначе платёж сел бы на чужой
-    // счёт (утечка изоляции + порча кэш-флоу). Как в returnItem.
+    // счёт (утечка изоляции + порча кэш-флоу). Внешний ref — до tx.
     await this.assertAccount(workspaceId, dto.accountId);
 
     return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
+      if (order.status === 'CANCELLED') {
+        throw new BadRequestException('Заказ отменён');
+      }
       await tx.transaction.create({
         data: {
           workspaceId,
@@ -220,26 +216,27 @@ export class OrderService {
    * увеличивают shippedQty.
    */
   async ship(workspaceId: string, orderId: string, userId: string, dto: ShipItemDto) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'OPEN') {
-      throw new BadRequestException('Отгрузка возможна только по открытому заказу');
-    }
-    const item = (order.items ?? []).find((i) => i.id === dto.itemId);
-    if (!item) throw new NotFoundException('Позиция заказа не найдена');
-
     const shipQty = D(dto.qty);
     if (!gt(shipQty, '0')) {
       throw new BadRequestException('qty должен быть положительным');
     }
-    const remaining = sub(item.qty, item.shippedQty);
-    if (gt(shipQty, remaining)) {
-      throw new BadRequestException(
-        `Нельзя отгрузить больше остатка позиции: доступно ${remaining.toString()}`,
-      );
-    }
 
     return this.uow.run(async (tx) => {
+      // B2: лок + свежее чтение — иначе два параллельных ship по одной позиции
+      // оба прошли бы проверку остатка по устаревшему shippedQty (oversell).
+      const order = await this.lockAndLoad(tx, workspaceId, orderId);
+      if (order.status !== 'OPEN') {
+        throw new BadRequestException('Отгрузка возможна только по открытому заказу');
+      }
+      const item = (order.items ?? []).find((i) => i.id === dto.itemId);
+      if (!item) throw new NotFoundException('Позиция заказа не найдена');
+      const remaining = sub(item.qty, item.shippedQty);
+      if (gt(shipQty, remaining)) {
+        throw new BadRequestException(
+          `Нельзя отгрузить больше остатка позиции: доступно ${remaining.toString()}`,
+        );
+      }
+
       let costSnapshot = item.unitCostAtSale;
       if (item.warehouseItemId) {
         const unitCost = await this.warehouse.decrementForSale(
@@ -306,23 +303,9 @@ export class OrderService {
     userId: string,
     dto: ReturnItemDto,
   ) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'DONE') {
-      throw new BadRequestException('Возврат возможен только по закрытому (DONE) заказу');
-    }
-    const item = (order.items ?? []).find((i) => i.id === dto.itemId);
-    if (!item) throw new NotFoundException('Позиция заказа не найдена');
-
     const returnQty = new Prisma.Decimal(dto.returnQty);
     if (!gt(returnQty, '0')) {
       throw new BadRequestException('returnQty должен быть положительным');
-    }
-    const available = sub(item.qty, item.returnedQty);
-    if (gt(returnQty, available)) {
-      throw new BadRequestException(
-        `Нельзя вернуть больше проданного: доступно ${available.toString()}`,
-      );
     }
     const refund = money(dto.refundAmount);
     if (refund.isNegative()) {
@@ -333,6 +316,21 @@ export class OrderService {
     const refundDate = dto.date ? new Date(dto.date) : new Date();
 
     return this.uow.run(async (tx) => {
+      // B2: лок + свежее чтение — два параллельных возврата по одной позиции
+      // не должны пройти оба по устаревшему returnedQty (over-return).
+      const order = await this.lockAndLoad(tx, workspaceId, orderId);
+      if (order.status !== 'DONE') {
+        throw new BadRequestException('Возврат возможен только по закрытому (DONE) заказу');
+      }
+      const item = (order.items ?? []).find((i) => i.id === dto.itemId);
+      if (!item) throw new NotFoundException('Позиция заказа не найдена');
+      const available = sub(item.qty, item.returnedQty);
+      if (gt(returnQty, available)) {
+        throw new BadRequestException(
+          `Нельзя вернуть больше проданного: доступно ${available.toString()}`,
+        );
+      }
+
       if (item.warehouseItemId) {
         await this.warehouse.restock(
           tx,
@@ -383,6 +381,22 @@ export class OrderService {
     });
   }
 
+  /**
+   * B2: взять row-lock на заказ и перечитать его СВЕЖИМ внутри транзакции.
+   * Все мутации заказа идут через это — чтение и валидация работают по
+   * актуальному состоянию под локом, а не по снапшоту, прочитанному до tx.
+   */
+  private async lockAndLoad(
+    tx: TxClient,
+    workspaceId: string,
+    orderId: string,
+  ): Promise<NonNullable<Awaited<ReturnType<OrderRepository['findById']>>>> {
+    await this.orders.lockForUpdate(tx, workspaceId, orderId);
+    const order = await this.orders.findById(workspaceId, orderId, tx);
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
+  }
+
   /** Проверка принадлежности счёта workspace (для возврата денег). */
   private async assertAccount(workspaceId: string, accountId: string) {
     const acc = await this.prisma.account.findFirst({
@@ -431,14 +445,15 @@ export class OrderService {
    *   • при нехватке остатка по складу — ошибка, ничего не списывается (rollback).
    */
   async finalize(workspaceId: string, orderId: string, userId: string) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'CANCELLED') {
-      throw new BadRequestException('Заказ отменён');
-    }
-    if (order.status === 'DONE') return order;
-
     return this.uow.run(async (tx) => {
+      // B2: лок + свежее чтение — параллельные finalize/ship не должны дважды
+      // списать склад по устаревшему остатку (double-ship).
+      const order = await this.lockAndLoad(tx, workspaceId, orderId);
+      if (order.status === 'CANCELLED') {
+        throw new BadRequestException('Заказ отменён');
+      }
+      if (order.status === 'DONE') return order;
+
       let manualCogs = D(0);
       for (const item of order.items ?? []) {
         if (item.warehouseItemId) {
@@ -522,11 +537,9 @@ export class OrderService {
    * оформляется отдельный возврат).
    */
   async cancel(workspaceId: string, orderId: string, userId: string) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'CANCELLED') return order;
-
     return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
+      if (order.status === 'CANCELLED') return order;
       // Возвращаем отгруженное и для DONE, и для частично отгруженного OPEN.
       await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
@@ -550,14 +563,13 @@ export class OrderService {
    * В обоих случаях пересчитываем оплату.
    */
   async reopen(workspaceId: string, orderId: string, userId: string) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
-      throw new BadRequestException(
-        'Вернуть в работу можно только закрытый или отменённый заказ',
-      );
-    }
     return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
+      if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
+        throw new BadRequestException(
+          'Вернуть в работу можно только закрытый или отменённый заказ',
+        );
+      }
       // Откатываем отгрузку (DONE или частичный OPEN) — вернуть в работу «с нуля».
       await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({
@@ -633,9 +645,8 @@ export class OrderService {
   }
 
   async remove(workspaceId: string, orderId: string, userId: string) {
-    const order = await this.orders.findById(workspaceId, orderId);
-    if (!order) throw new NotFoundException('Order not found');
     return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
       // Вернуть склад (DONE или частичный OPEN) и сторнировать COGS.
       await this.reverseFinalization(tx, workspaceId, order, userId);
       // Сторнируем все связанные операции (оплаты/возвраты), чтобы не висели в P&L.

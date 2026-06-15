@@ -291,4 +291,32 @@ describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.2
     // Списалась ровно одна продажа: 5 − 4 = 1, в минус не ушли.
     expect(num((await getItem(itemId)).qty)).toBe(1);
   });
+
+  it('B2: два параллельных finalize одного заказа → ровно один COGS (лок строки)', async () => {
+    // Ручная позиция (без склада) — складской FOR UPDATE тут НЕ защищает, только
+    // лок строки заказа. Без него оба finalize прочитали бы status=OPEN и каждый
+    // создал бы COGS-расход (двойной счёт себестоимости).
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+
+    const results = await Promise.allSettled([
+      h.orders.finalize(seed.workspaceId, order.id, seed.userId),
+      h.orders.finalize(seed.workspaceId, order.id, seed.userId),
+    ]);
+    // Оба могут зарезолвиться (второй — ранний возврат на DONE), но эффект один.
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+
+    const cogs = await h.prisma.transaction.findMany({
+      where: { workspaceId: seed.workspaceId, orderId: order.id, kind: 'COGS', deletedAt: null },
+    });
+    expect(cogs).toHaveLength(1); // ровно один COGS, не два
+    expect(num(cogs[0]!.amount)).toBe(600); // 2 × 300
+    const done = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(done.status).toBe('DONE');
+  });
 });

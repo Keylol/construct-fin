@@ -44,6 +44,20 @@ export class OrderRepository {
     });
   }
 
+  /**
+   * B2: row-lock строки заказа внутри транзакции (SELECT … FOR UPDATE).
+   * Сериализует конкурентные мутации одного заказа: второй вызов ждёт коммита
+   * первого, после чего перечитывает СВЕЖЕЕ состояние (см. findById с tx) —
+   * иначе оба читали бы устаревший снапшот и давали oversell/double-ship.
+   */
+  async lockForUpdate(tx: TxClient, workspaceId: string, id: string): Promise<void> {
+    await tx.$queryRaw`
+      SELECT id FROM "Order"
+      WHERE id = ${id} AND "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+  }
+
   findById(workspaceId: string, id: string, tx?: TxClient) {
     return this.db(tx).order.findFirst({
       where: { id, workspaceId, deletedAt: null },
