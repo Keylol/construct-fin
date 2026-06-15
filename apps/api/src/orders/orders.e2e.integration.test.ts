@@ -528,3 +528,54 @@ describe('Полный жизненный цикл (сквозной)', () => {
     expect(activeTx).toBe(0);
   });
 });
+
+describe('Трек B: изоляция арендатора и нумерация', () => {
+  it('B1: addPayment с чужим счётом → ошибка (не садится на чужой workspace)', async () => {
+    const other = await seedBase(h.prisma, tg + 700000n);
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+    });
+    await expect(
+      h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+        amount: '100',
+        accountId: other.accountId, // счёт другого пространства
+      }),
+    ).rejects.toThrow();
+    // платёж не создан
+    expect(await h.prisma.transaction.count({ where: { orderId: order.id } })).toBe(0);
+  });
+
+  it('B4: create с чужим clientId → ошибка', async () => {
+    const other = await seedBase(h.prisma, tg + 700001n);
+    const foreignClient = await h.prisma.counterparty.create({
+      data: { workspaceId: other.workspaceId, name: 'Чужой клиент', role: 'CLIENT' },
+    });
+    await expect(
+      h.orders.create(seed.workspaceId, {
+        clientId: foreignClient.id,
+        items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('B4: create с чужой складской позицией → ошибка', async () => {
+    const other = await seedBase(h.prisma, tg + 700002n);
+    const foreignItemId = await seedWarehouseItem(h.prisma, other.workspaceId, 'Чужая деталь');
+    await expect(
+      h.orders.create(seed.workspaceId, {
+        items: [{ warehouseItemId: foreignItemId, name: 'X', qty: '1', unitPrice: '100' }],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('B5: нумерация корректна после 9999 (числовой MAX, без регрессии к 10000)', async () => {
+    const year = new Date().getFullYear();
+    await h.prisma.order.create({
+      data: { workspaceId: seed.workspaceId, number: `ORD-${year}-9999` },
+    });
+    const next = await h.orders.create(seed.workspaceId, { items: [] });
+    expect(next.number).toBe(`ORD-${year}-10000`);
+    const next2 = await h.orders.create(seed.workspaceId, { items: [] });
+    expect(next2.number).toBe(`ORD-${year}-10001`);
+  });
+});

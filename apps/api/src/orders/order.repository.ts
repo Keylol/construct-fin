@@ -62,17 +62,24 @@ export class OrderRepository {
     });
   }
 
-  /** Следующий читаемый номер заказа в рамках workspace: ORD-2026-0042. */
+  /**
+   * Следующий читаемый номер заказа в рамках workspace: ORD-2026-0042.
+   *
+   * B5: MAX по ЧИСЛОВОМУ значению последовательности, а не лексикографически по
+   * строке — иначе после 9999 строка «ORD-2026-9999» сортируется ПОЗЖЕ
+   * «ORD-2026-10000» и номер регрессирует к 10000 навсегда. Гонку двух
+   * параллельных create закрывает partial-unique индекс по number (P2002) +
+   * ретрай в OrderService.create.
+   */
   async nextNumber(workspaceId: string, tx?: TxClient): Promise<string> {
     const year = new Date().getFullYear();
     const prefix = `ORD-${year}-`;
-    const last = await this.db(tx).order.findFirst({
-      where: { workspaceId, number: { startsWith: prefix } },
-      orderBy: { number: 'desc' },
-      select: { number: true },
-    });
-    const lastSeq = last ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
-    const next = (Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
+    const rows = await this.db(tx).$queryRaw<{ seq: number }[]>`
+      SELECT COALESCE(MAX(CAST(substring(number FROM '[0-9]+$') AS INTEGER)), 0) AS seq
+      FROM "Order"
+      WHERE "workspaceId" = ${workspaceId} AND number LIKE ${prefix + '%'}
+    `;
+    const next = (rows[0]?.seq ?? 0) + 1;
     return `${prefix}${String(next).padStart(4, '0')}`;
   }
 
