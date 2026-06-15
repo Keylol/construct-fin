@@ -235,6 +235,11 @@ export class TransactionService {
     const where: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
+      // Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход:
+      // TRANSFER_IN типизирован INCOME, TRANSFER_OUT — EXPENSE, поэтому без этого
+      // фильтра перевод между своими счетами раздувал бы и income, и expense в
+      // сводке (как уже исключено в P&L и консолидированном cashflow).
+      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
       ...(query.from || query.to
         ? {
             date: {

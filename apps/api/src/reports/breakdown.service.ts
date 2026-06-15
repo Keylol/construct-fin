@@ -81,6 +81,10 @@ export class BreakdownService {
     return {
       workspaceId,
       deletedAt: null,
+      // Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход;
+      // без этого фильтра они валились в «Без категории»/«Без контрагента» и
+      // раздували суммы и доли (share). Исключаем по kind (как в P&L/cashflow).
+      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
       date: { gte: period.from, lte: period.to },
       ...(type === 'ALL' ? {} : { type }),
     };
