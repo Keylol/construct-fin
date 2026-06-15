@@ -42,6 +42,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard partial-unique индексы (drift)
+        # Partial-unique индексы (..._active_key, WHERE deletedAt IS NULL) заведены
+        # сырым SQL и НЕ описаны в schema.prisma, поэтому `prisma migrate dev` без
+        # --create-only генерит их DROP (Prisma видит drift). Такой DROP снимает
+        # защиту БД от двойного импорта и дублей номеров/SKU после soft-delete.
+        # Ловим его в любой миграции и валим CI (см. docs/audit-2026-06-16.md, F1).
+        run: |
+          if grep -rniE 'DROP[[:space:]]+INDEX[^;]*_active_key' packages/db/prisma/migrations; then
+            echo "::error::Миграция дропает partial-unique индекс (..._active_key). Убери DROP INDEX из SQL: migrate dev --create-only, затем удали строку DROP."
+            exit 1
+          fi
+          echo "OK: partial-unique индексы (..._active_key) не дропаются"
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
