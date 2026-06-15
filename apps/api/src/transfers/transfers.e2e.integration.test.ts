@@ -577,9 +577,12 @@ describe('Влияние на P&L (PnlService.build)', () => {
     expect(num(report.primary.totals.income)).toBe(2000);
     expect(num(report.primary.totals.expense)).toBe(50);
     expect(num(report.primary.totals.net)).toBe(1950);
-    // Комиссия без categoryId → бакет OTHER (не COGS, не CAPITAL).
+    // Комиссия перевода (kind=VARIABLE_COST) без categoryId → бакет VARIABLE
+    // (Трек A A3: системные kind без категории бакетятся по kind). В OTHER пусто.
+    const variable = report.primary.totals.byBucket.find((b) => b.bucket === 'VARIABLE')!;
+    expect(num(variable.expense)).toBe(50);
     const other = report.primary.totals.byBucket.find((b) => b.bucket === 'OTHER')!;
-    expect(num(other.expense)).toBe(50);
+    expect(num(other.expense)).toBe(0);
   });
 
   it('перевод не влияет на сравнение периодов: net обоих периодов = 0 при одних переводах', async () => {
