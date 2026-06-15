@@ -298,6 +298,11 @@ export class WarehouseService {
       if (!item) throw new NotFoundException('Warehouse item not found');
 
       const returnQty = roundQty(dto.returnQty);
+      // B6: returnQty>0 — DTO-regex допускает '0', а нулевой возврат привёл бы к
+      // делению на ноль в recordMovement (refund.div(returnQty)).
+      if (!gt(returnQty, '0')) {
+        throw new BadRequestException('returnQty должен быть положительным');
+      }
       if (gt(returnQty, item.qty)) {
         throw new InsufficientStockError(item.qty, returnQty);
       }

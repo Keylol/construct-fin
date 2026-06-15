@@ -160,6 +160,21 @@ describe('B4: adjust + supplierReturn', () => {
       where: { workspaceId: seed.workspaceId },
     });
     expect(tx!.type).toBe('INCOME');
+    expect(tx!.kind).toBe('SUPPLIER_REFUND'); // A6: контр-закупка, не OTHER
     expect(tx!.amount.toFixed(2)).toBe('600.00');
+  });
+
+  it('B6: supplierReturn с returnQty=0 → ошибка (защита от деления на ноль)', async () => {
+    const itemId = await makeItem({ qty: '10', avgCost: '100' });
+    await expect(
+      h.warehouse.supplierReturn(seed.workspaceId, itemId, seed.userId, {
+        returnQty: '0',
+        refundAmount: '0',
+        accountId: seed.accountId,
+      }),
+    ).rejects.toThrow();
+    // склад не тронут
+    const item = await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
+    expect(item.qty.toString()).toBe('10');
   });
 });
