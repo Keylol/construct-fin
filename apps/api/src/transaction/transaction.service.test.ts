@@ -89,6 +89,58 @@ describe('TransactionService.update — блокировка системных 
   });
 });
 
+describe('TransactionService.summary — исключение ног переводов (Трек A, A1)', () => {
+  interface FakeTx {
+    type: 'INCOME' | 'EXPENSE';
+    kind: string;
+    amount: string;
+  }
+
+  function buildSummaryService(rows: FakeTx[]) {
+    const groupByCalls: Array<Record<string, unknown>> = [];
+    const prisma = {
+      transaction: {
+        groupBy: vi.fn().mockImplementation((args: { where: Record<string, unknown> }) => {
+          groupByCalls.push(args.where);
+          const notIn = (args.where.kind as { notIn?: string[] } | undefined)?.notIn ?? [];
+          const filtered = rows.filter((r) => !notIn.includes(r.kind));
+          const acc = new Map<string, Prisma.Decimal>();
+          for (const r of filtered) {
+            acc.set(r.type, (acc.get(r.type) ?? new Prisma.Decimal(0)).plus(r.amount));
+          }
+          return Promise.resolve(
+            [...acc.entries()].map(([type, sum]) => ({ type, _sum: { amount: sum } })),
+          );
+        }),
+      },
+    };
+    const audit = { record: vi.fn() };
+    return { service: new TransactionService(prisma as never, audit as never), groupByCalls };
+  }
+
+  it('where исключает kind notIn TRANSFER_IN/OUT', async () => {
+    const { service, groupByCalls } = buildSummaryService([]);
+    await service.summary('ws1', {} as never);
+    expect((groupByCalls[0]!.kind as { notIn: string[] }).notIn).toEqual([
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+    ]);
+  });
+
+  it('перевод между своими счетами НЕ раздувает income/expense', async () => {
+    // Перевод 500 (TRANSFER_OUT=EXPENSE, TRANSFER_IN=INCOME) + реальная выручка 1000.
+    const { service } = buildSummaryService([
+      { type: 'INCOME', kind: 'ORDER_PAYMENT', amount: '1000.00' },
+      { type: 'EXPENSE', kind: 'TRANSFER_OUT', amount: '500.00' },
+      { type: 'INCOME', kind: 'TRANSFER_IN', amount: '500.00' },
+    ]);
+    const res = await service.summary('ws1', {} as never);
+    expect(res.income).toBe('1000.00'); // TRANSFER_IN исключён
+    expect(res.expense).toBe('0.00'); // TRANSFER_OUT исключён
+    expect(res.net).toBe('1000.00');
+  });
+});
+
 describe('TransactionService.softDelete — блокировка системных (п.16)', () => {
   it('отказывает в удалении системной транзакции', async () => {
     const { service, prisma, audit } = buildService(makeTx({ kind: 'ORDER_PAYMENT' }));

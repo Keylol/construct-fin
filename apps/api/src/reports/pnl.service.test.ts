@@ -105,6 +105,38 @@ describe('PnlService — исключение ног переводов (A3)', (
     expect(totals.net).toBe('985.00'); // 1000 - 15
   });
 
+  it('системные операции без категории бакетятся по kind, не утекают в OTHER (A3)', async () => {
+    const rows: FakeTx[] = [
+      // выручка заказа — без категории, должна попасть в REVENUE (раньше → OTHER)
+      { type: 'INCOME', kind: 'ORDER_PAYMENT', categoryId: null, transferGroupId: null, amount: '1000.00' },
+      // вложение собственника — в CAPITAL и ВНЕ операционного net (раньше → OTHER
+      // и ошибочно завышало прибыль)
+      { type: 'INCOME', kind: 'CAPITAL_IN', categoryId: null, transferGroupId: null, amount: '5000.00' },
+      // себестоимость — в COGS
+      { type: 'EXPENSE', kind: 'COGS', categoryId: null, transferGroupId: null, amount: '400.00' },
+    ];
+    const { service } = buildService(rows);
+    const report = await service.build({
+      workspaceId: 'ws1',
+      primary: PERIOD,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const totals = report.primary.totals;
+    const bucket = (b: string) => totals.byBucket.find((x) => x.bucket === b)!;
+    expect(bucket('REVENUE').income).toBe('1000.00');
+    expect(bucket('CAPITAL').income).toBe('5000.00');
+    expect(bucket('COGS').expense).toBe('400.00');
+    expect(bucket('OTHER').income).toBe('0.00'); // ничего не утекло в OTHER
+    expect(bucket('OTHER').expense).toBe('0.00');
+    // headline income включает капитал (6000), но операционный net его исключает:
+    // (1000 опер.дохода) − (400 COGS) = 600. До фикса CAPITAL_IN тёк в OTHER → net=5600.
+    expect(totals.income).toBe('6000.00');
+    expect(totals.net).toBe('600.00');
+    expect(totals.cogs).toBe('400.00');
+    expect(totals.grossProfit).toBe('600.00');
+  });
+
   it('перевод без прочих операций даёт нулевой P&L', async () => {
     const rows: FakeTx[] = [
       { type: 'EXPENSE', kind: 'TRANSFER_OUT', categoryId: null, transferGroupId: 'tr1', amount: '500.00' },

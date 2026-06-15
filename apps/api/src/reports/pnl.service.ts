@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, type CategoryBucket } from '@prisma/client';
+import { Prisma, type CategoryBucket, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   enumerateMonths,
@@ -158,13 +158,16 @@ export class PnlService {
         else totalEntry.expense = totalEntry.expense.plus(amount);
         totalsByCat.set(key, totalEntry);
 
-        // По бакету. Себестоимость (kind=COGS) создаётся при finalize заказа
-        // БЕЗ categoryId — раньше она утекала в бакет OTHER, дублируя сумму,
-        // которая уже учтена в отдельном headline `cogs`. Теперь COGS-операции
-        // классифицируются в бакет COGS по kind, и отчёт сходится сам с собой:
-        // byBucket.COGS.expense === cogs (headline). Остальное — по category.bucket.
-        const bucket: CategoryBucket =
-          g.kind === 'COGS' ? 'COGS' : key ? catById.get(key)?.bucket ?? 'OTHER' : 'OTHER';
+        // По бакету. Приоритет: явная категория пользователя → её bucket.
+        // Если категории нет (системные операции: ORDER_PAYMENT, COGS, ноги
+        // капитала, комиссия перевода и т.п. заводятся БЕЗ categoryId) —
+        // классифицируем по kind. Раньше всё бескатегорийное падало в OTHER:
+        // выручка заказов пряталась в «Прочем», а CAPITAL_IN/OUT попадали в
+        // операционку и искажали net. Теперь byBucket сходится с headline:
+        // byBucket.COGS.expense === cogs.
+        const bucket: CategoryBucket = key
+          ? catById.get(key)?.bucket ?? bucketForSystemKind(g.kind)
+          : bucketForSystemKind(g.kind);
         const bEntry = bucketMap.get(bucket)!;
         const tEntry = totalsByBucket.get(bucket)!;
         if (g.type === 'INCOME') {
@@ -230,6 +233,36 @@ export class PnlService {
         byBucket: buildBucketBreakdown(totalsByBucket),
       },
     };
+  }
+}
+
+/**
+ * Бакет для системной операции БЕЗ явной категории — по её kind.
+ * Используется только когда categoryId отсутствует (явная категория всегда
+ * приоритетна). PURCHASE намеренно остаётся в OTHER: отнесение закупки склада
+ * к COGS поменяло бы смысл headline «себестоимость»/«валовая прибыль»
+ * (cash-basis признаёт расход в момент закупки, а не продажи) — это отдельное
+ * бизнес-решение, см. docs/audit-2026-06-16.md (Трек A, бакет PURCHASE).
+ */
+function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
+  switch (kind) {
+    case 'ORDER_PAYMENT':
+    case 'ORDER_REFUND': // контр-выручка (type=EXPENSE «минус выручка»)
+      return 'REVENUE';
+    case 'COGS':
+      return 'COGS';
+    case 'CAPITAL_IN':
+    case 'CAPITAL_OUT':
+      return 'CAPITAL';
+    case 'TAX':
+      return 'TAX';
+    case 'FIXED_COST':
+    case 'SALARY': // зарплата — постоянная операционная статья
+      return 'FIXED';
+    case 'VARIABLE_COST': // в т.ч. комиссия перевода (заводится без категории)
+      return 'VARIABLE';
+    default: // PURCHASE, NON_OP, TRANSFER_*, OTHER
+      return 'OTHER';
   }
 }
 
