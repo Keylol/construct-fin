@@ -50,6 +50,7 @@ export interface PnlReport {
 const ALL_BUCKETS: CategoryBucket[] = [
   'REVENUE',
   'COGS',
+  'PURCHASES',
   'FIXED',
   'VARIABLE',
   'TAX',
@@ -239,10 +240,12 @@ export class PnlService {
 /**
  * Бакет для системной операции БЕЗ явной категории — по её kind.
  * Используется только когда categoryId отсутствует (явная категория всегда
- * приоритетна). PURCHASE намеренно остаётся в OTHER: отнесение закупки склада
- * к COGS поменяло бы смысл headline «себестоимость»/«валовая прибыль»
- * (cash-basis признаёт расход в момент закупки, а не продажи) — это отдельное
- * бизнес-решение, см. docs/audit-2026-06-16.md (Трек A, бакет PURCHASE).
+ * приоритетна). Закупки склада (PURCHASE) и возврат поставщику (SUPPLIER_REFUND)
+ * идут в отдельный бакет PURCHASES: cash-basis признаёт расход в момент закупки,
+ * а не продажи; PURCHASES НЕ входит в grossProfit (= выручка − COGS), но входит
+ * в операционный net как реальное движение денег. SUPPLIER_REFUND (type=INCOME)
+ * гасит PURCHASES.expense → byBucket.PURCHASES = чистые закупки. См.
+ * docs/audit-2026-06-16.md (Трек A, бакет PURCHASES + A6).
  */
 function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
   switch (kind) {
@@ -251,6 +254,9 @@ function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
       return 'REVENUE';
     case 'COGS':
       return 'COGS';
+    case 'PURCHASE': // закупка товара на склад
+    case 'SUPPLIER_REFUND': // возврат от поставщика — контр-закупка (type=INCOME)
+      return 'PURCHASES';
     case 'CAPITAL_IN':
     case 'CAPITAL_OUT':
       return 'CAPITAL';
@@ -261,7 +267,7 @@ function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
       return 'FIXED';
     case 'VARIABLE_COST': // в т.ч. комиссия перевода (заводится без категории)
       return 'VARIABLE';
-    default: // PURCHASE, NON_OP, TRANSFER_*, OTHER
+    default: // NON_OP, TRANSFER_*, OTHER
       return 'OTHER';
   }
 }

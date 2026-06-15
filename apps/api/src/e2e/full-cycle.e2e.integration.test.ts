@@ -333,11 +333,12 @@ describe('Полный бизнес-цикл через HTTP (реальные �
     expect(margin.method).toBe('by-product');
     const prodRow = margin.rows.find((r) => r.name === 'Деталь A');
     expect(prodRow).toBeTruthy();
-    // Выручка по продукту = 10·500 = 5000 (возврат маржу в cash-basis MVP не сужает).
-    expect(num(prodRow!.revenue)).toBe(5000);
-    // COGS = 10·150 (WAVG) = 1500 → маржа 3500.
-    expect(num(margin.totals.cogs)).toBe(1500);
-    expect(num(margin.totals.margin)).toBe(3500);
+    // Трек A A4: отчёт по марже сужается возвратом клиента. Продано 10, возвращено
+    // 2 → чистая продажа 8: выручка = 8·500 = 4000.
+    expect(num(prodRow!.revenue)).toBe(4000);
+    // COGS = 8·150 (WAVG) = 1200 → маржа 2800.
+    expect(num(margin.totals.cogs)).toBe(1200);
+    expect(num(margin.totals.margin)).toBe(2800);
 
     // Дебиторка: заказ оплачен на 3000 из 5000, рефанд 1000 вернул деньги
     // клиенту → остаток долга по заказу должен быть положительным.

@@ -278,18 +278,14 @@ export class WarehouseService {
    *   3. транзакция-возврат прихода: поставщик возвращает деньги → приход на
    *      счёт, type=INCOME (уменьшает накопленный расход в cash-basis P&L).
    *
-   * Решение по kind: специального kind для возврата поставщику в плоском enum
-   * нет (есть лишь ORDER_REFUND — это возврат КЛИЕНТУ). Возврат поставщику —
-   * это обратная сторона PURCHASE (расход уменьшается). Оформляем как
-   * Transaction(type=INCOME, kind=OTHER) с явным описанием — деньги физически
-   * приходят на счёт, и в cash-basis это корректно гасит часть прежнего расхода.
-   *
-   * РЕШЕНИЕ ПО РЕВЬЮ (подтверждено): чистая прибыль, консолид. cashflow и
-   * margin-отчёты (строятся по OrderItem, не по транзакциям) от этого корректны.
-   * Единственный побочный эффект — в P&L возврат попадает в строку «Выручка»
-   * (бакет OTHER), а не уменьшает расход: для cash-basis MVP это принято как
-   * приемлемое (нетто верное). Contra-расход отрицательной суммой не делаем —
-   * money() запрещает отрицательные, и это потребовало бы правок валидации/отчётов.
+   * kind=SUPPLIER_REFUND (Трек A, A6): возврат поставщику — обратная сторона
+   * PURCHASE. Оформляем как Transaction(type=INCOME, kind=SUPPLIER_REFUND) —
+   * деньги физически приходят на счёт. В P&L он попадает в бакет PURCHASES
+   * (PURCHASES.income), гася PURCHASES.expense → byBucket.PURCHASES показывает
+   * ЧИСТЫЕ закупки, а не раздувает «Выручку». Contra-расход отрицательной суммой
+   * не делаем — money() запрещает отрицательные. Чистая прибыль и консолид.
+   * cashflow корректны (реальный приток денег); margin-отчёты строятся по
+   * OrderItem и от этого не зависят.
    */
   async supplierReturn(
     workspaceId: string,
@@ -316,7 +312,7 @@ export class WarehouseService {
           date: dto.date ? new Date(dto.date) : new Date(),
           amount: refund,
           type: 'INCOME',
-          kind: 'OTHER',
+          kind: 'SUPPLIER_REFUND',
           accountId: dto.accountId,
           counterpartyId: dto.supplierId ?? item.defaultSupplierId ?? null,
           description: dto.note ?? `Возврат поставщику: ${item.name}`,
