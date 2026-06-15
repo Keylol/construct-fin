@@ -78,8 +78,13 @@ export function applySupplierReturn(
 ): StockState {
   const newQty = sub(oldQty, returnQty);
   if (isZero(newQty)) return { qty: roundQty(newQty), avgCost: D(0) };
+  // B6: refund может превышать стоимость остатка (oldQty*oldAvg) — тогда newValue
+  // ушёл бы в минус и отравил avgCost отрицательной себестоимостью. Clamp ≥0:
+  // себестоимость не бывает отрицательной (приток денег по refund отражается
+  // отдельной транзакцией, в P&L он корректен).
   const newValue = sub(mul(oldQty, oldAvg), refundAmount);
-  return { qty: roundQty(newQty), avgCost: roundCost(div(newValue, newQty)) };
+  const safeValue = gt(newValue, D(0)) ? newValue : D(0);
+  return { qty: roundQty(newQty), avgCost: roundCost(div(safeValue, newQty)) };
 }
 
 export class InsufficientStockError extends Error {

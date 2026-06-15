@@ -69,6 +69,15 @@ describe('WAVG: applySupplierReturn', () => {
     expect(r.qty.toString()).toBe('0');
     expect(r.avgCost.toString()).toBe('0');
   });
+
+  it('B6: refund больше стоимости остатка → avgCost clamp до 0 (не уходит в минус)', () => {
+    // 10 шт по 100 (value 1000), вернули 2, но refund 5000 (> 1000).
+    // newValue = 1000 − 5000 = −4000 → clamp 0 → avgCost 0 на остатке 8.
+    const r = applySupplierReturn(10, 100, 2, 5000);
+    expect(r.qty.toString()).toBe('8');
+    expect(r.avgCost.toString()).toBe('0');
+    expect(r.avgCost.isNegative()).toBe(false);
+  });
 });
 
 describe('WAVG: сквозной сценарий', () => {
