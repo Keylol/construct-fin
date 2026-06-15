@@ -50,40 +50,55 @@ export class OrderService {
   }
 
   async create(workspaceId: string, input: CreateOrderDto) {
+    await this.assertOrderRefs(
+      workspaceId,
+      input.clientId,
+      input.items.map((it) => it.warehouseItemId),
+    );
     const subtotal = money(this.subtotalOf(input.items));
     const discount = money(input.discountAmount ?? '0');
     const total = money(sub(subtotal, discount));
 
-    return this.uow.run(async (tx) => {
-      const number = await this.orders.nextNumber(workspaceId, tx);
-      return tx.order.create({
-        data: {
-          workspaceId,
-          number,
-          clientId: input.clientId ?? null,
-          title: input.title ?? null,
-          description: input.description ?? null,
-          status: 'OPEN',
-          paymentStatus: 'UNPAID',
-          subtotal,
-          discountAmount: discount,
-          totalAmount: total,
-          paidAmount: new Prisma.Decimal(0),
-          expectedDate: input.expectedDate ? new Date(input.expectedDate) : null,
-          items: {
-            create: input.items.map((it) => ({
-              warehouseItemId: it.warehouseItemId ?? null,
-              name: it.name,
-              qty: new Prisma.Decimal(it.qty),
-              unitPrice: new Prisma.Decimal(it.unitPrice),
-              unitCost: it.unitCost != null ? new Prisma.Decimal(it.unitCost) : null,
-              lineTotal: money(mul(it.qty, it.unitPrice)),
-            })),
-          },
-        },
-        include: { items: true, client: true },
-      });
-    });
+    // B5: при гонке двух create один упрётся в partial-unique по number (P2002) —
+    // перечитываем MAX и пробуем снова (короткий bounded-ретрай).
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.uow.run(async (tx) => {
+          const number = await this.orders.nextNumber(workspaceId, tx);
+          return tx.order.create({
+            data: {
+              workspaceId,
+              number,
+              clientId: input.clientId ?? null,
+              title: input.title ?? null,
+              description: input.description ?? null,
+              status: 'OPEN',
+              paymentStatus: 'UNPAID',
+              subtotal,
+              discountAmount: discount,
+              totalAmount: total,
+              paidAmount: new Prisma.Decimal(0),
+              expectedDate: input.expectedDate ? new Date(input.expectedDate) : null,
+              items: {
+                create: input.items.map((it) => ({
+                  warehouseItemId: it.warehouseItemId ?? null,
+                  name: it.name,
+                  qty: new Prisma.Decimal(it.qty),
+                  unitPrice: new Prisma.Decimal(it.unitPrice),
+                  unitCost: it.unitCost != null ? new Prisma.Decimal(it.unitCost) : null,
+                  lineTotal: money(mul(it.qty, it.unitPrice)),
+                })),
+              },
+            },
+            include: { items: true, client: true },
+          });
+        });
+      } catch (e) {
+        if (isNumberConflict(e) && attempt < MAX_ATTEMPTS) continue;
+        throw e;
+      }
+    }
   }
 
   async update(workspaceId: string, id: string, input: UpdateOrderDto) {
@@ -100,6 +115,13 @@ export class OrderService {
         'Нельзя менять позиции частично отгруженного заказа — сначала отмените отгрузку',
       );
     }
+
+    // B4: новый клиент/складские позиции обязаны принадлежать workspace.
+    await this.assertOrderRefs(
+      workspaceId,
+      input.clientId,
+      input.items ? input.items.map((it) => it.warehouseItemId) : [],
+    );
 
     return this.uow.run(async (tx) => {
       // Если переданы items — заменяем целиком и пересчитываем суммы.
@@ -166,6 +188,9 @@ export class OrderService {
     }
 
     const paymentDate = dto.date ? new Date(dto.date) : new Date();
+    // B1: счёт обязан принадлежать этому workspace — иначе платёж сел бы на чужой
+    // счёт (утечка изоляции + порча кэш-флоу). Как в returnItem.
+    await this.assertAccount(workspaceId, dto.accountId);
 
     return this.uow.run(async (tx) => {
       await tx.transaction.create({
@@ -365,6 +390,35 @@ export class OrderService {
       select: { id: true },
     });
     if (!acc) throw new BadRequestException('Account not found in this workspace');
+  }
+
+  /**
+   * B4: клиент и складские позиции заказа обязаны принадлежать этому workspace.
+   * Без проверки можно прикрепить чужого контрагента или (опаснее) чужую
+   * складскую позицию — она затем списывалась бы при finalize и пачкала отчёты.
+   */
+  private async assertOrderRefs(
+    workspaceId: string,
+    clientId: string | null | undefined,
+    warehouseItemIds: (string | null | undefined)[],
+  ) {
+    if (clientId) {
+      const client = await this.prisma.counterparty.findFirst({
+        where: { id: clientId, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!client) throw new BadRequestException('Клиент не найден в этом пространстве');
+    }
+    const ids = [...new Set(warehouseItemIds.filter((x): x is string => !!x))];
+    if (ids.length) {
+      const found = await this.prisma.warehouseItem.findMany({
+        where: { id: { in: ids }, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (found.length !== ids.length) {
+        throw new BadRequestException('Складская позиция не найдена в этом пространстве');
+      }
+    }
   }
 
   /**
@@ -642,6 +696,15 @@ export class OrderService {
       data: { paidAmount: paid, paymentStatus: state },
     });
   }
+}
+
+/**
+ * B5: конфликт уникальности номера заказа (partial-unique по number) при гонке
+ * двух create. Единственный unique, который может нарушить order.create, — это
+ * number, поэтому P2002 здесь = коллизия номера → ретрай.
+ */
+function isNumberConflict(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
 /** Хелпер: пересчёт total при изменении только скидки. */
