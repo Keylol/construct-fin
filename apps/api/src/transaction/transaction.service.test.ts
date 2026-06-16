@@ -118,25 +118,27 @@ describe('TransactionService.summary — исключение ног перев�
     return { service: new TransactionService(prisma as never, audit as never), groupByCalls };
   }
 
-  it('where исключает kind notIn TRANSFER_IN/OUT', async () => {
+  it('where исключает ноги переводов И неденежный COGS (R2)', async () => {
     const { service, groupByCalls } = buildSummaryService([]);
     await service.summary('ws1', {} as never);
     expect((groupByCalls[0]!.kind as { notIn: string[] }).notIn).toEqual([
       'TRANSFER_IN',
       'TRANSFER_OUT',
+      'COGS',
     ]);
   });
 
-  it('перевод между своими счетами НЕ раздувает income/expense', async () => {
-    // Перевод 500 (TRANSFER_OUT=EXPENSE, TRANSFER_IN=INCOME) + реальная выручка 1000.
+  it('перевод и COGS НЕ раздувают income/expense дашборда (R2)', async () => {
+    // Перевод 500 (обе ноги) + неденежный COGS 300 + реальная выручка 1000.
     const { service } = buildSummaryService([
       { type: 'INCOME', kind: 'ORDER_PAYMENT', amount: '1000.00' },
       { type: 'EXPENSE', kind: 'TRANSFER_OUT', amount: '500.00' },
       { type: 'INCOME', kind: 'TRANSFER_IN', amount: '500.00' },
+      { type: 'EXPENSE', kind: 'COGS', amount: '300.00' },
     ]);
     const res = await service.summary('ws1', {} as never);
     expect(res.income).toBe('1000.00'); // TRANSFER_IN исключён
-    expect(res.expense).toBe('0.00'); // TRANSFER_OUT исключён
+    expect(res.expense).toBe('0.00'); // TRANSFER_OUT и COGS исключены (не деньги)
     expect(res.net).toBe('1000.00');
   });
 });
