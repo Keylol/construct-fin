@@ -21,10 +21,12 @@ async function bootstrap() {
     AppModule,
     // trustProxy (Фаза 2 п.12): api слушает 127.0.0.1 за nginx, поэтому без этого
     // req.ip = loopback и ThrottlerGuard на /auth/* лимитирует ГЛОБАЛЬНО, а не по IP.
-    // С trustProxy Fastify берёт клиента из X-Forwarded-For → троттлинг становится
-    // по-IP. Безопасно: порт не публичный, достучаться может только локальный nginx.
-    // (Заголовок X-Forwarded-For должен проставлять nginx — иначе req.ip = loopback.)
-    new FastifyAdapter({ logger: fastifyLogger, trustProxy: true }),
+    // D2: trustProxy=1 (а НЕ true) — доверяем ровно ОДНОМУ хопу (nginx). Fastify
+    // берёт правое значение X-Forwarded-For, которое nginx добавляет сам
+    // ($proxy_add_x_forwarded_for → ..., $remote_addr). При trustProxy=true клиент
+    // мог подделать XFF и ротировать бакет троттлинга /auth/login (обход лимита →
+    // брутфорс пароля); с =1 подделанные левые значения игнорируются.
+    new FastifyAdapter({ logger: fastifyLogger, trustProxy: 1 }),
     { bufferLogs: true },
   );
 
