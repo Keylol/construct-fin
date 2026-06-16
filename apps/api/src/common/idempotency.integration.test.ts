@@ -91,6 +91,34 @@ describe('IdempotencyInterceptor — атомарный reserve (п.19)', () => 
     expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
   });
 
+  it('B3: «зависший» in-flight резерв старше lease перезанимается ретраем', async () => {
+    const key = 'key-stale-lease-1';
+    // Симулируем краш: резерв застолблён 11 минут назад, ответ так и не зафиксирован
+    // (completedAt=null), кэш ещё не протух (expiresAt в будущем). Без lease такой
+    // ключ возвращал бы 409 «ещё выполняется» все 24ч.
+    await prisma.idempotencyKey.create({
+      data: {
+        key,
+        requestHash: 'stale-hash',
+        responseBody: { Prisma: 'JsonNull' } as never,
+        completedAt: null,
+        createdAt: new Date(Date.now() - 11 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    let calls = 0;
+    const r = await run(
+      ctx('POST', '/pay', { a: 1 }, key),
+      handler(() => ({ ok: true, n: ++calls })),
+    );
+    expect(calls).toBe(1); // ретрай перезанял ключ и выполнил запрос
+    expect(r).toEqual({ ok: true, n: 1 });
+    // ключ теперь завершён (свежий резерв + completedAt проставлен)
+    const row = await prisma.idempotencyKey.findUniqueOrThrow({ where: { key } });
+    expect(row.completedAt).not.toBeNull();
+  });
+
   it('тот же ключ с другим телом → 409 (другой запрос)', async () => {
     const key = 'key-mismatch-1';
     await run(ctx('POST', '/pay', { a: 1 }, key), handler(() => ({ ok: 1 })));

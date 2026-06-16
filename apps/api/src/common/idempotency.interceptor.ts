@@ -14,6 +14,13 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const TTL_MS = 24 * 60 * 60 * 1000;
+// B3: lease «in-flight» резерва отдельно от 24ч кэша ответа. Резерв с
+// completedAt=null старше LEASE_MS считаем брошенным (процесс упал между
+// коммитом домена и фиксацией ответа) и разрешаем ретраю перезанять ключ —
+// иначе застрявший резерв возвращал бы 409 все 24ч. 10 минут — на порядки
+// больше реального времени денежного хендлера (мс), поэтому перезахват
+// происходит только после краха, не «обгоняя» живой запрос.
+const LEASE_MS = 10 * 60 * 1000;
 const KEY_HEADER = 'idempotency-key';
 
 /**
@@ -98,11 +105,24 @@ export class IdempotencyInterceptor implements NestInterceptor {
       const existing = await this.prisma.idempotencyKey.findUnique({ where: { key } });
       if (!existing) return this.tryReserve(key, requestHash); // исчез в гонке — повтор
       if (existing.expiresAt <= new Date()) {
-        // Протух — освобождаем и пробуем занять заново.
+        // Протух (кэш ответа) — освобождаем и пробуем занять заново.
         await this.prisma.idempotencyKey.deleteMany({
           where: { key, expiresAt: { lte: new Date() } },
         });
         return this.tryReserve(key, requestHash);
+      }
+      // B3: «зависший» in-flight резерв (completedAt=null) старше lease — брошен
+      // упавшим процессом. Освобождаем и перезанимаем, иначе ключ возвращал бы
+      // 409 «ещё выполняется» все 24ч. Guard по createdAt в deleteMany —
+      // атомарность против гонки с самим хендлером.
+      if (existing.completedAt === null) {
+        const leaseDeadline = new Date(Date.now() - LEASE_MS);
+        if (existing.createdAt <= leaseDeadline) {
+          await this.prisma.idempotencyKey.deleteMany({
+            where: { key, completedAt: null, createdAt: { lte: leaseDeadline } },
+          });
+          return this.tryReserve(key, requestHash);
+        }
       }
       return { owns: false, existing };
     }
@@ -139,6 +159,7 @@ interface IdempotencyRow {
   responseBody: Prisma.JsonValue;
   completedAt: Date | null;
   expiresAt: Date;
+  createdAt: Date;
 }
 
 /** sha256(method + url + JSON.stringify(body)). */
