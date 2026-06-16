@@ -481,7 +481,9 @@ export class OrderService {
           }
           await tx.orderItem.update({
             where: { id: item.id },
-            data: { shippedQty: item.qty },
+            // BR2: фиксируем себестоимость услуги снимком в unitCostAtSale —
+            // единообразно со складом, чтобы отчёт маржи (BR1) её видел.
+            data: { shippedQty: item.qty, unitCostAtSale: item.unitCost },
           });
         }
       }
