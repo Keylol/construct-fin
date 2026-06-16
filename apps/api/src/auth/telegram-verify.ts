@@ -13,7 +13,9 @@ import type { TelegramLoginPayload } from '@construct/shared';
 export function verifyTelegramLogin(
   payload: TelegramLoginPayload,
   botToken: string,
-  maxAgeSeconds = 24 * 60 * 60,
+  // D1: окно replay'а Login Widget — 1ч (было 24ч). Виджет постит auth почти
+  // мгновенно после клика; перехваченный payload теперь годен ≤1ч, не сутки.
+  maxAgeSeconds = 60 * 60,
 ): { ok: true } | { ok: false; reason: string } {
   // 1. Свежесть запроса
   const ageSeconds = Math.floor(Date.now() / 1000) - payload.auth_date;
@@ -51,7 +53,9 @@ export function verifyTelegramLogin(
 export function verifyTelegramInitData(
   initDataRaw: string,
   botToken: string,
-  maxAgeSeconds = 24 * 60 * 60,
+  // D1: окно replay'а Mini App initData — 15мин (было 24ч), по рекомендации
+  // Telegram (initData короткоживущий, отдаётся при открытии приложения).
+  maxAgeSeconds = 15 * 60,
 ): { ok: true; data: URLSearchParams } | { ok: false; reason: string } {
   const params = new URLSearchParams(initDataRaw);
   const hash = params.get('hash');
