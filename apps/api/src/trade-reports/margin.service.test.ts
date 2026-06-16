@@ -13,6 +13,7 @@ function item(over: {
   qty: string;
   unitPrice: string;
   unitCostAtSale: string | null;
+  unitCost?: string | null;
   returnedQty?: string;
   clientId?: string | null;
 }) {
@@ -22,6 +23,7 @@ function item(over: {
     returnedQty: new Prisma.Decimal(over.returnedQty ?? '0'),
     unitPrice: new Prisma.Decimal(over.unitPrice),
     unitCostAtSale: over.unitCostAtSale === null ? null : new Prisma.Decimal(over.unitCostAtSale),
+    unitCost: over.unitCost == null ? null : new Prisma.Decimal(over.unitCost),
     order: { clientId: over.clientId ?? null },
   };
 }
@@ -70,6 +72,34 @@ describe('MarginService.byProduct', () => {
     expect(row.cogs).toBe('0.00');
     expect(row.revenue).toBe('300.00');
     expect(row.marginPct).toBe('100.00');
+  });
+
+  it('BR1/C2: услуга с ручной себестоимостью (unitCostAtSale=null) не 100% маржи', async () => {
+    const { service } = buildService([
+      item({ name: 'Монтаж', qty: '1', unitPrice: '1000', unitCostAtSale: null, unitCost: '600' }),
+    ]);
+    const r = await service.byProduct('ws1');
+    const row = r.rows[0]!;
+    expect(row.cogs).toBe('600.00'); // fallback на ручную себестоимость
+    expect(row.margin).toBe('400.00');
+    expect(row.marginPct).toBe('40.00');
+  });
+
+  it('BR1: WAVG-снимок имеет приоритет над ручной себестоимостью', async () => {
+    const { service } = buildService([
+      item({ name: 'Стол', qty: '1', unitPrice: '1000', unitCostAtSale: '600', unitCost: '999' }),
+    ]);
+    const r = await service.byProduct('ws1');
+    expect(r.rows[0]!.cogs).toBe('600.00'); // взят WAVG (600), не ручной 999
+  });
+
+  it('BR1: совсем без себестоимости (оба null) → 100% маржи', async () => {
+    const { service } = buildService([
+      item({ name: 'Консультация', qty: '1', unitPrice: '500', unitCostAtSale: null, unitCost: null }),
+    ]);
+    const r = await service.byProduct('ws1');
+    expect(r.rows[0]!.cogs).toBe('0.00');
+    expect(r.rows[0]!.marginPct).toBe('100.00');
   });
 
   it('возврат клиента (RMA) сужает маржу: считаем по qty − returnedQty (A4)', async () => {

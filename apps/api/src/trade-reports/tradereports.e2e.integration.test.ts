@@ -53,6 +53,8 @@ type ItemInput = {
   unitPrice: string;
   /** unitCostAtSale (себестоимость на момент продажи); undefined → null. */
   cost?: string;
+  /** unitCost (ручная себестоимость позиции); undefined → null. */
+  unitCost?: string;
   warehouseItemId?: string | null;
 };
 
@@ -60,6 +62,7 @@ type ItemInput = {
 async function makeDoneOrder(opts: {
   clientId?: string | null;
   items: ItemInput[];
+  closedAt?: Date;
 }) {
   orderSeq += 1;
   return h.prisma.order.create({
@@ -69,7 +72,7 @@ async function makeDoneOrder(opts: {
       clientId: opts.clientId ?? null,
       status: 'DONE',
       paymentStatus: 'PAID',
-      closedAt: new Date(),
+      closedAt: opts.closedAt ?? new Date(),
       items: {
         create: opts.items.map((it) => ({
           warehouseItemId: it.warehouseItemId ?? null,
@@ -77,6 +80,7 @@ async function makeDoneOrder(opts: {
           qty: new Prisma.Decimal(it.qty),
           unitPrice: new Prisma.Decimal(it.unitPrice),
           unitCostAtSale: it.cost != null ? new Prisma.Decimal(it.cost) : null,
+          unitCost: it.unitCost != null ? new Prisma.Decimal(it.unitCost) : null,
           lineTotal: new Prisma.Decimal(it.qty).times(it.unitPrice),
         })),
       },
@@ -124,6 +128,34 @@ const daysAgo = (n: number, from = Date.now()) => new Date(from - n * DAY);
 // ══════════════════════════ Margin by Product ══════════════════════════
 
 describe('Trade Reports E2E · Margin by Product', () => {
+  it('BR1: услуга с ручным unitCost (без unitCostAtSale) → маржа не 100%', async () => {
+    await makeDoneOrder({
+      items: [{ name: 'Монтаж', qty: '1', unitPrice: '1000', unitCost: '600' }], // cost(unitCostAtSale)=null
+    });
+    const rep = await h.tradeMargin.byProduct(seed.workspaceId);
+    const row = rep.rows.find((r) => r.name === 'Монтаж')!;
+    expect(num(row.cogs)).toBe(600); // взят fallback на unitCost
+    expect(num(row.margin)).toBe(400);
+    expect(row.marginPct).toBe('40.00');
+  });
+
+  it('BR3: фильтр периода по closedAt — заказы вне периода не учитываются', async () => {
+    await makeDoneOrder({
+      items: [{ name: 'Старьё', qty: '1', unitPrice: '1000', cost: '300' }],
+      closedAt: new Date('2026-01-15T12:00:00.000Z'),
+    });
+    await makeDoneOrder({
+      items: [{ name: 'Свежак', qty: '1', unitPrice: '1000', cost: '300' }],
+      closedAt: new Date('2026-06-15T12:00:00.000Z'),
+    });
+    const period = { from: new Date('2026-06-01T00:00:00.000Z'), to: new Date('2026-06-30T23:59:59.000Z') };
+    const rep = await h.tradeMargin.byProduct(seed.workspaceId, period);
+    expect(rep.rows).toHaveLength(1);
+    expect(rep.rows[0]!.name).toBe('Свежак');
+    // без периода — оба
+    expect((await h.tradeMargin.byProduct(seed.workspaceId)).rows).toHaveLength(2);
+  });
+
   it('агрегирует выручку/COGS/маржу из DONE-заказов и сортирует по убыванию маржи', async () => {
     // Высокомаржинальный товар.
     await makeDoneOrder({
