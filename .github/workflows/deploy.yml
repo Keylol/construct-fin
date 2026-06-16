@@ -88,39 +88,70 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 195.133.1.13 >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Pull, restart, migrate
+      - name: Pull, restart, migrate (с авто-откатом, E2)
         run: |
           ssh -i ~/.ssh/deploy_key root@195.133.1.13 << 'REMOTE'
-            set -e
             cd /srv/construct-v6
             DC="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
-            echo "--- pull images ---"
-            $DC pull
-            echo "--- up -d ---"
-            $DC up -d
-            echo "--- wait healthy ---"
-            for i in $(seq 1 30); do
-              s=$(docker inspect --format '{{.State.Health.Status}}' construct-v6-api-1 2>/dev/null || echo "?")
-              if [ "$s" = "healthy" ]; then echo "api healthy after ${i}*4s"; break; fi
-              sleep 4
-            done
+
+            # E2: запоминаем ОБРАЗЫ текущей рабочей версии ДО pull (immutable image ID,
+            # не :latest — его перетрёт pull). При нездоровье откатываемся на них.
+            # Миграции аддитивны (правило проекта) → старый образ совместим с новой
+            # схемой, поэтому откат ТОЛЬКО образа, БД не трогаем.
+            PREV_API=$(docker inspect --format '{{.Image}}' construct-v6-api-1 2>/dev/null || echo "")
+            PREV_WEB=$(docker inspect --format '{{.Image}}' construct-v6-web-1 2>/dev/null || echo "")
+            echo "prev images: api=$PREV_API web=$PREV_WEB"
+
+            api_healthy() {
+              for i in $(seq 1 30); do
+                s=$(docker inspect --format '{{.State.Health.Status}}' construct-v6-api-1 2>/dev/null || echo "?")
+                [ "$s" = "healthy" ] && { echo "api healthy after ${i}*4s"; return 0; }
+                sleep 4
+              done
+              return 1
+            }
+
+            rollback() {
+              echo "::error::Деплой нездоров ($1) — откат на предыдущие образы"
+              if [ -n "$PREV_API" ] && [ -n "$PREV_WEB" ]; then
+                docker tag "$PREV_API" ghcr.io/keylol/construct-v6-api:rollback
+                docker tag "$PREV_WEB" ghcr.io/keylol/construct-v6-web:rollback
+                API_IMAGE=ghcr.io/keylol/construct-v6-api:rollback \
+                WEB_IMAGE=ghcr.io/keylol/construct-v6-web:rollback \
+                  $DC up -d api web
+                echo "--- статус после отката ---"; $DC ps --format "{{.Name}} {{.Status}}"
+                api_healthy && echo "откат успешен (api healthy)" || echo "::error::откат не вернул health — ручной разбор"
+              else
+                echo "::error::нет сохранённых предыдущих образов — ручной разбор"
+              fi
+              exit 1
+            }
+
+            set -e
+            echo "--- pull ---"; $DC pull
+            echo "--- up -d ---"; $DC up -d
+            set +e
+
+            echo "--- wait healthy (после up) ---"
+            api_healthy || rollback "api не стал healthy"
+
             echo "--- pre-migrate snapshot ---"
-            # Снимок БД перед каждой миграцией через существующий backup-сервис
-            # (prodrigestivill, дамп → volume backups с ротацией). При set -e
-            # фейл бэкапа аборти́т деплой ДО migrate — нет свежего снимка, нет
-            # миграции. Откат: восстановить из дампа по deploy/backup-restore.md.
-            #
-            # ⚠️ </dev/null ОБЯЗАТЕЛЕН: `docker compose exec -T` без редиректа
-            # отдаёт процессу stdin SSH-heredoc — /backup.sh съедал остаток
-            # heredoc (включая сам `migrate deploy`), из-за чего миграции молча
-            # не применялись, а деплой при этом был «зелёным».
-            $DC exec -T backup /backup.sh </dev/null
+            # ⚠️ </dev/null ОБЯЗАТЕЛЕН: exec -T без редиректа отдаёт процессу stdin
+            # SSH-heredoc → /backup.sh съедал остаток heredoc (включая migrate).
+            $DC exec -T backup /backup.sh </dev/null || rollback "снапшот БД упал"
             echo "--- migrate ---"
-            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy" </dev/null
-            echo "--- final status ---"
-            $DC ps --format "{{.Name}} {{.Status}}"
-            echo "--- prune dangling ---"
-            docker image prune -f >/dev/null
+            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy" </dev/null \
+              || rollback "миграция упала"
+
+            echo "--- health re-check после миграции ---"
+            # Тот же проб, что и docker healthcheck (node гарантированно в образе;
+            # wget/curl не закладываемся). Ловит случай: миграция применилась, но
+            # новый код не обслуживает /health на мигрированной схеме.
+            $DC exec -T api node -e "require('http').get('http://localhost:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))" </dev/null \
+              || rollback "/health не 200 после миграции"
+
+            echo "--- final status ---"; $DC ps --format "{{.Name}} {{.Status}}"
+            echo "--- prune dangling ---"; docker image prune -f >/dev/null
           REMOTE
 
       - name: Smoke-test external
