@@ -210,3 +210,36 @@ describe('RMA: частичный возврат складской позици
     expect(num((await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } })).returnedQty)).toBe(0);
   });
 });
+
+describe('RMA: сторно себестоимости услуги (Блок C · CR1/CR2)', () => {
+  it('возврат части услуги создаёт отрицательный COGS и уменьшает себестоимость в P&L', async () => {
+    // Услуга 2 шт по 500, ручная себестоимость 300/шт → COGS при finalize = 600.
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+
+    const itemId = (await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } })).id;
+    // Вернуть 1 из 2 БЕЗ рефанда (CR2: всё равно сторнируем себестоимость).
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId,
+      returnQty: '1',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+
+    const cogs = await h.prisma.transaction.findMany({
+      where: { orderId: order.id, kind: 'COGS', deletedAt: null },
+    });
+    // Оригинал +600 и сторно −300 → нетто себестоимость = 300.
+    expect(cogs).toHaveLength(2);
+    expect(cogs.reduce((s, t) => s + num(t.amount), 0)).toBe(300);
+    // Сторно (отрицательный COGS) привязан к оригиналу.
+    const reversal = cogs.find((t) => num(t.amount) < 0)!;
+    expect(reversal.originalTxId).not.toBeNull();
+  });
+});
