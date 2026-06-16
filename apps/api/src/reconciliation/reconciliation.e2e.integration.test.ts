@@ -55,6 +55,7 @@ async function makeTx(over: {
     | 'SALARY'
     | 'TAX'
     | 'FIXED_COST'
+    | 'COGS'
     | 'TRANSFER_IN'
     | 'TRANSFER_OUT';
   accountId?: string;
@@ -105,6 +106,18 @@ describe('D-e2e build: отчёт сверки по данным', () => {
     // net несведённых = +500 − 200 = +300
     expect(num(r.unreconciled.net)).toBe(300);
     expect(r.accountName).toBe('Расчётный');
+  });
+
+  it('R2/C1: неденежный COGS НЕ занижает книжный баланс (нет ложного расхождения)', async () => {
+    const accId = await makeAccount({ openingBalance: '0' });
+    // Реальная оплата заказа на счёт + неденежная себестоимость COGS на тот же счёт.
+    await makeTx({ type: 'INCOME', amount: '1000.00', kind: 'ORDER_PAYMENT', date: '2026-06-05T00:00:00.000Z', accountId: accId });
+    await makeTx({ type: 'EXPENSE', amount: '300.00', kind: 'COGS', date: '2026-06-06T00:00:00.000Z', accountId: accId });
+
+    const r = await h.reconciliation.build(seed.workspaceId, accId, '2026-06-15T00:00:00.000Z');
+    // Книга = только реальные деньги: 0 + 1000. COGS (неденежный) НЕ вычитается.
+    // До фикса было бы 700 → ложное расхождение со сверяемым фактом 1000.
+    expect(num(r.computedBalance)).toBe(1000);
   });
 
   it('со снимком: discrepancy = факт − книга на дату снимка; несведённые ТОЛЬКО после снимка', async () => {

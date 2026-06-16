@@ -318,6 +318,22 @@ describe('Cashflow отчёт (по данным)', () => {
     expect(apr.balance).toBe('4970.00');
   });
 
+  it('R2/C1: неденежный COGS не попадает в отток (consolidated и byAccount)', async () => {
+    const acc = await makeAccount({ name: 'Касса cf-cogs', openingBalance: '0' });
+    await tx({ amount: '1000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(5), accountId: acc });
+    await tx({ amount: '300', type: 'EXPENSE', kind: 'COGS', date: d2025(5), accountId: acc });
+    const period = { from: new Date(2025, 5, 1), to: new Date(2025, 5, 30, 23, 59, 59) };
+
+    const cons = await h.cashflow.build({ workspaceId: seed.workspaceId, period, accountId: null, mode: 'consolidated' });
+    const cp = cons.series[0]!.points.find((p) => p.label === '2025-06')!;
+    expect(cp.inflow).toBe('1000.00');
+    expect(cp.outflow).toBe('0.00'); // COGS исключён — не движение денег
+
+    const byAcc = await h.cashflow.build({ workspaceId: seed.workspaceId, period, accountId: acc, mode: 'byAccount' });
+    const ap = byAcc.series.find((s) => s.accountId === acc)!.points.find((p) => p.label === '2025-06')!;
+    expect(ap.outflow).toBe('0.00'); // и по одному счёту COGS не отток
+  });
+
   it('byAccount: ноги перевода видны как движения между счетами', async () => {
     const from = await makeAccount({ name: 'Источник', openingBalance: '0' });
     const to = await makeAccount({ name: 'Получатель', openingBalance: '0' });
