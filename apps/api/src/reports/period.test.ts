@@ -7,55 +7,50 @@ import {
   resolvePreset,
 } from './period';
 
-const NOW = new Date('2026-05-15T12:00:00');
+/**
+ * Границы периодов считаются в фиксированном поясе UTC+5 (R5), поэтому ассерты
+ * TZ-НЕЗАВИСИМЫ: сравниваем точные UTC-инстанты (toISOString), а не локальные
+ * getMonth/getDate (которые зависели бы от пояса CI). Начало месяца в UTC+5 =
+ * 00:00 UTC+5 = 19:00 UTC предыдущих суток.
+ */
+const NOW = new Date('2026-05-15T12:00:00.000Z'); // в UTC+5 — 15 мая 17:00, середина мая
 
-describe('resolvePreset', () => {
-  it('this-month: 1st of month → now', () => {
+describe('resolvePreset (границы в UTC+5)', () => {
+  it('this-month: с 1-го числа (00:00 UTC+5) по now', () => {
     const p = resolvePreset('this-month', NOW);
-    expect(p.from.getMonth()).toBe(4);
-    expect(p.from.getDate()).toBe(1);
-    expect(p.from.getHours()).toBe(0);
-    expect(p.to.getDate()).toBe(15);
+    expect(p.from.toISOString()).toBe('2026-04-30T19:00:00.000Z'); // 1 мая 00:00 UTC+5
+    expect(p.to.toISOString()).toBe('2026-05-15T18:59:59.999Z'); // 15 мая 23:59:59.999 UTC+5
   });
 
-  it('prev-month: full April 2026', () => {
+  it('prev-month: весь апрель 2026 в UTC+5', () => {
     const p = resolvePreset('prev-month', NOW);
-    expect(p.from.getFullYear()).toBe(2026);
-    expect(p.from.getMonth()).toBe(3);
-    expect(p.from.getDate()).toBe(1);
-    expect(p.to.getMonth()).toBe(3);
-    expect(p.to.getDate()).toBe(30);
+    expect(p.from.toISOString()).toBe('2026-03-31T19:00:00.000Z'); // 1 апр 00:00 UTC+5
+    expect(p.to.toISOString()).toBe('2026-04-30T18:59:59.999Z'); // 30 апр 23:59:59.999 UTC+5
   });
 
-  it('this-quarter: Q2 2026 starts Apr 1', () => {
+  it('this-quarter: Q2 2026 c 1 апреля (UTC+5)', () => {
     const p = resolvePreset('this-quarter', NOW);
-    expect(p.from.getMonth()).toBe(3);
-    expect(p.from.getDate()).toBe(1);
+    expect(p.from.toISOString()).toBe('2026-03-31T19:00:00.000Z');
   });
 
-  it('prev-quarter rolling over the year boundary', () => {
-    const jan = new Date('2026-01-10T12:00:00');
-    const p = resolvePreset('prev-quarter', jan);
-    expect(p.from.getFullYear()).toBe(2025);
-    expect(p.from.getMonth()).toBe(9);
-    expect(p.to.getMonth()).toBe(11);
+  it('prev-quarter через границу года: Q4 2025', () => {
+    const p = resolvePreset('prev-quarter', new Date('2026-01-10T12:00:00.000Z'));
+    expect(p.from.toISOString()).toBe('2025-09-30T19:00:00.000Z'); // 1 окт 2025 00:00 UTC+5
+    expect(p.to.toISOString()).toBe('2025-12-31T18:59:59.999Z'); // 31 дек 2025 23:59:59.999 UTC+5
   });
 
-  it('ytd: from Jan 1 same year', () => {
+  it('ytd: с 1 января текущего года (UTC+5)', () => {
     const p = resolvePreset('ytd', NOW);
-    expect(p.from.getMonth()).toBe(0);
-    expect(p.from.getDate()).toBe(1);
+    expect(p.from.toISOString()).toBe('2025-12-31T19:00:00.000Z'); // 1 янв 2026 00:00 UTC+5
   });
 
-  it('prev-year: full last year', () => {
+  it('prev-year: весь 2025 в UTC+5', () => {
     const p = resolvePreset('prev-year', NOW);
-    expect(p.from.getFullYear()).toBe(2025);
-    expect(p.to.getFullYear()).toBe(2025);
-    expect(p.to.getMonth()).toBe(11);
-    expect(p.to.getDate()).toBe(31);
+    expect(p.from.toISOString()).toBe('2024-12-31T19:00:00.000Z');
+    expect(p.to.toISOString()).toBe('2025-12-31T18:59:59.999Z');
   });
 
-  it('last-30d: 30 day window ending today', () => {
+  it('last-30d: окно длиной 30 дней (TZ-независимо)', () => {
     const p = resolvePreset('last-30d', NOW);
     const days = Math.round((p.to.getTime() - p.from.getTime()) / 86_400_000);
     expect(days).toBe(30);
@@ -63,81 +58,76 @@ describe('resolvePreset', () => {
 });
 
 describe('resolvePeriod', () => {
-  it('uses custom from/to when no preset', () => {
+  it('кастомный from/to → startOfDay/endOfDay в UTC+5', () => {
     const p = resolvePeriod({ from: '2026-01-15', to: '2026-02-15' }, NOW);
-    expect(p.from.getMonth()).toBe(0);
-    expect(p.to.getMonth()).toBe(1);
+    expect(p.from.toISOString()).toBe('2026-01-14T19:00:00.000Z'); // 15 янв 00:00 UTC+5
+    expect(p.to.toISOString()).toBe('2026-02-15T18:59:59.999Z'); // 15 фев 23:59:59.999 UTC+5
   });
 
-  it('falls back to this-month when nothing supplied', () => {
+  it('без параметров → this-month', () => {
     const p = resolvePeriod({}, NOW);
-    expect(p.from.getMonth()).toBe(4);
+    expect(p.from.toISOString()).toBe('2026-04-30T19:00:00.000Z');
+  });
+
+  it('M2: инвертированный диапазон (from > to) → ошибка', () => {
+    expect(() => resolvePeriod({ from: '2026-02-15', to: '2026-01-15' }, NOW)).toThrow();
   });
 });
 
 describe('resolveComparison', () => {
   const primary = resolvePreset('this-month', NOW);
 
-  it('returns null for mode=none', () => {
+  it('mode=none → null', () => {
     expect(resolveComparison(primary, { mode: 'none' })).toBeNull();
   });
 
-  it('prev: equal-length range ending before primary.from', () => {
+  it('prev БЕЗ пресета → диапазон той же длины прямо перед primary', () => {
     const c = resolveComparison(primary, { mode: 'prev' });
     expect(c).not.toBeNull();
     expect(c!.to.getTime()).toBe(primary.from.getTime() - 1);
   });
 
-  it('yoy: same window shifted by 1 year', () => {
-    const c = resolveComparison(primary, { mode: 'yoy' });
-    expect(c).not.toBeNull();
-    expect(c!.from.getFullYear()).toBe(primary.from.getFullYear() - 1);
-    expect(c!.to.getFullYear()).toBe(primary.to.getFullYear() - 1);
+  it('M1: prev С пресетом this-month → ПРЕДЫДУЩИЙ КАЛЕНДАРНЫЙ месяц (весь апрель)', () => {
+    const c = resolveComparison(primary, { mode: 'prev', preset: 'this-month' }, NOW);
+    const prevMonth = resolvePreset('prev-month', NOW);
+    expect(c!.from.toISOString()).toBe(prevMonth.from.toISOString()); // 1 апр
+    expect(c!.to.toISOString()).toBe(prevMonth.to.toISOString()); // 30 апр (полный месяц, не «N дней до»)
   });
 
-  it('custom requires both from and to', () => {
+  it('yoy: то же окно на год назад (1 мая 2025 в UTC+5)', () => {
+    const c = resolveComparison(primary, { mode: 'yoy' });
+    expect(c!.from.toISOString()).toBe('2025-04-30T19:00:00.000Z');
+  });
+
+  it('custom требует обе границы', () => {
     expect(resolveComparison(primary, { mode: 'custom' })).toBeNull();
-    const c = resolveComparison(primary, { mode: 'custom', from: '2025-01-01', to: '2025-01-31' });
-    expect(c).not.toBeNull();
+    expect(resolveComparison(primary, { mode: 'custom', from: '2025-01-01', to: '2025-01-31' })).not.toBeNull();
   });
 });
 
 describe('enumerateMonths', () => {
-  it('lists 3 months for Jan-Mar window', () => {
-    const months = enumerateMonths({
-      from: new Date(2026, 0, 1),
-      to: new Date(2026, 2, 31, 23, 59, 59),
-    });
-    expect(months).toHaveLength(3);
-    expect(months[0]!.label).toBe('2026-01');
-    expect(months[2]!.label).toBe('2026-03');
+  it('3 месяца для окна янв–мар', () => {
+    const months = enumerateMonths(resolvePeriod({ from: '2026-01-01', to: '2026-03-31' }, NOW));
+    expect(months.map((m) => m.label)).toEqual(['2026-01', '2026-02', '2026-03']);
   });
 
-  it('caps edges to period bounds', () => {
-    const months = enumerateMonths({
-      from: new Date(2026, 0, 15),
-      to: new Date(2026, 1, 10, 23, 59, 59),
-    });
+  it('обрезает края по границам периода', () => {
+    const period = resolvePeriod({ from: '2026-01-15', to: '2026-02-10' }, NOW);
+    const months = enumerateMonths(period);
     expect(months).toHaveLength(2);
-    expect(months[0]!.from.getDate()).toBe(15);
-    expect(months[1]!.to.getDate()).toBe(10);
+    expect(months[0]!.from.toISOString()).toBe(period.from.toISOString()); // обрезано до 15 янв
+    expect(months[1]!.to.toISOString()).toBe(period.to.toISOString()); // обрезано до 10 фев
   });
 
-  it('crosses year boundary', () => {
-    const months = enumerateMonths({
-      from: new Date(2025, 10, 1),
-      to: new Date(2026, 1, 28, 23, 59, 59),
-    });
+  it('через границу года', () => {
+    const months = enumerateMonths(resolvePeriod({ from: '2025-11-01', to: '2026-02-28' }, NOW));
     expect(months.map((m) => m.label)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
   });
 });
 
 describe('enumerateQuarters', () => {
   it('Q1+Q2 2026', () => {
-    const qs = enumerateQuarters({
-      from: new Date(2026, 0, 1),
-      to: new Date(2026, 5, 30, 23, 59, 59),
-    });
+    const qs = enumerateQuarters(resolvePeriod({ from: '2026-01-01', to: '2026-06-30' }, NOW));
     expect(qs.map((q) => q.label)).toEqual(['2026-Q1', '2026-Q2']);
   });
 });
