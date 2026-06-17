@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { money, toMoneyString } from '../common/money';
+import { NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
 import type { CreateBalanceCheckDto } from './reconciliation.dto';
 
 /**
@@ -129,7 +130,16 @@ export class ReconciliationService {
   ): Promise<Prisma.Decimal> {
     const groups = await this.prisma.transaction.groupBy({
       by: ['type'],
-      where: { workspaceId, accountId, deletedAt: null, date: { lte: asOf } },
+      // R2: книжный баланс счёта — только по реальным деньгам. Неденежный COGS
+      // исключаем, иначе сверка показывала бы ложное расхождение «книга≠факт».
+      // Переводы по этому счёту — реальное движение, остаются.
+      where: {
+        workspaceId,
+        accountId,
+        deletedAt: null,
+        date: { lte: asOf },
+        kind: { notIn: NON_CASH_FOR_ACCOUNT },
+      },
       _sum: { amount: true },
     });
     const income =

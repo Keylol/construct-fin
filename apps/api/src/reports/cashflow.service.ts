@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { enumerateMonths, type Period } from './period';
+import { NON_CASH_CONSOLIDATED, NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
 
 export interface CashflowPoint {
   label: string; // YYYY-MM
@@ -108,6 +109,9 @@ export class CashflowService {
       workspaceId,
       accountId,
       deletedAt: null,
+      // По одному счёту переводы — реальное движение (видны), но неденежный COGS
+      // исключаем (R2): он не двигал деньги этого счёта.
+      kind: { notIn: NON_CASH_FOR_ACCOUNT },
     };
     const opening = new Prisma.Decimal(account.openingBalance);
     return this.computeSeries(period, slices, baseWhere, opening, account.id, account.name);
@@ -135,9 +139,9 @@ export class CashflowService {
     const baseWhere: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
-      // Внутренние переводы между своими счетами гасятся — исключаем их ноги
-      // ПО kind (комиссия VARIABLE_COST с transferGroupId при этом остаётся).
-      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
+      // Внутренние переводы гасятся + неденежный COGS не двигает деньги (R2).
+      // Комиссия перевода (VARIABLE_COST) при этом остаётся реальным оттоком.
+      kind: { notIn: NON_CASH_CONSOLIDATED },
     };
     return this.computeSeries(period, slices, baseWhere, opening, null, 'Все счета');
   }
