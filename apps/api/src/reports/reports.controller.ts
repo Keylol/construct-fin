@@ -54,6 +54,7 @@ export class ReportsController {
       mode: q.compareWith,
       from: q.compareFrom,
       to: q.compareTo,
+      preset: q.preset, // M1: календарный prev для пресетов this-month/quarter/year
     });
     return this.pnl.build({
       workspaceId: ws.workspaceId,
