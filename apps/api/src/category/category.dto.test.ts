@@ -9,7 +9,7 @@ describe('CreateCategorySchema — bucket', () => {
     expect(parsed.bucket).toBeUndefined();
   });
 
-  it.each(['REVENUE', 'COGS', 'FIXED', 'VARIABLE', 'TAX', 'CAPITAL', 'OTHER'] as const)(
+  it.each(['REVENUE', 'COGS', 'PURCHASES', 'FIXED', 'VARIABLE', 'TAX', 'CAPITAL', 'OTHER'] as const)(
     'accepts bucket %s',
     (bucket) => {
       const parsed = CreateCategorySchema.parse({ ...base, bucket });

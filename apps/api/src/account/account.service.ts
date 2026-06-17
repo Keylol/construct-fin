@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type AccountClass } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -62,6 +62,17 @@ export class AccountService {
       where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Account not found');
+    // M3: счёт с активными операциями удалять нельзя — иначе транзакции осиротеют
+    // (accountId укажет на soft-deleted счёт: cashflow/сверка по счёту теряют их,
+    // а summary учитывает → расхождение). Для вывода из обращения — архивирование.
+    const txCount = await this.prisma.transaction.count({
+      where: { accountId: id, workspaceId, deletedAt: null },
+    });
+    if (txCount > 0) {
+      throw new BadRequestException(
+        'Нельзя удалить счёт с операциями — перенесите/удалите их или архивируйте счёт',
+      );
+    }
     await this.prisma.account.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
