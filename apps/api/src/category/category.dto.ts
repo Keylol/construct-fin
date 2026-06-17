@@ -7,6 +7,8 @@ const CategoryKindEnum = z.enum(['INCOME', 'EXPENSE']);
 const CategoryBucketEnum = z.enum([
   'REVENUE',
   'COGS',
+  'PURCHASES', // F-a (HIGH-5): был в schema.prisma, но отсутствовал в DTO →
+  //              категорию закупок нельзя было создать через API (400).
   'FIXED',
   'VARIABLE',
   'TAX',
