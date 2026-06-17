@@ -292,6 +292,21 @@ describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.2
     expect(num((await getItem(itemId)).qty)).toBe(1);
   });
 
+  it('BR2: finalize услуги фиксирует unitCostAtSale = unitCost (снимок себестоимости)', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    const it = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+    // BR2: ручная себестоимость заморожена снимком → отчёт маржи её увидит (BR1).
+    expect(it.unitCostAtSale).not.toBeNull();
+    expect(num(it.unitCostAtSale!)).toBe(300);
+  });
+
   it('B2: два параллельных finalize одного заказа → ровно один COGS (лок строки)', async () => {
     // Ручная позиция (без склада) — складской FOR UPDATE тут НЕ защищает, только
     // лок строки заказа. Без него оба finalize прочитали бы status=OPEN и каждый
