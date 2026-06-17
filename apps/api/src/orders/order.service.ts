@@ -345,6 +345,42 @@ export class OrderService {
         where: { id: item.id },
         data: { returnedQty: add(item.returnedQty, returnQty) },
       });
+
+      // CR1/CR2 (Блок C): для УСЛУГ/ручных позиций (без склада) с признанной
+      // себестоимостью сторнируем COGS пропорционально возврату — отдельной
+      // видимой проводкой (отрицательный COGS, дата возврата, привязка к
+      // оригиналу). Независимо от рефанда (себестоимость следует за товаром, R4).
+      // Складские товары COGS-проводки не имеют (R1/CR4) — их не трогаем.
+      if (!item.warehouseItemId && item.unitCost !== null && gt(item.unitCost, '0')) {
+        const cogsReversal = money(mul(returnQty, item.unitCost));
+        // Сторнируем ТОЛЬКО против реально признанной COGS-проводки заказа.
+        // Нет оригинала (нечего сторнировать) → пропускаем, чтобы не создать
+        // «висячее» отрицательное COGS, уводящее себестоимость в минус.
+        const originalCogs =
+          gt(cogsReversal, '0')
+            ? await tx.transaction.findFirst({
+                where: { workspaceId, orderId, kind: 'COGS', originalTxId: null, deletedAt: null },
+                select: { id: true, accountId: true },
+              })
+            : null;
+        if (originalCogs) {
+          await tx.transaction.create({
+            data: {
+              workspaceId,
+              date: refundDate,
+              amount: cogsReversal.negated(), // отрицательная → уменьшает COGS в P&L
+              type: 'EXPENSE',
+              kind: 'COGS',
+              accountId: originalCogs.accountId,
+              orderId,
+              originalTxId: originalCogs.id,
+              description: `Сторно себестоимости (возврат): ${item.name}`,
+              createdById: userId,
+            },
+          });
+        }
+      }
+
       if (gt(refund, '0')) {
         await tx.transaction.create({
           data: {
@@ -481,7 +517,9 @@ export class OrderService {
           }
           await tx.orderItem.update({
             where: { id: item.id },
-            data: { shippedQty: item.qty },
+            // BR2: фиксируем себестоимость услуги снимком в unitCostAtSale —
+            // единообразно со складом, чтобы отчёт маржи (BR1) её видел.
+            data: { shippedQty: item.qty, unitCostAtSale: item.unitCost },
           });
         }
       }
