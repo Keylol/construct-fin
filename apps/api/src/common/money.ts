@@ -8,6 +8,14 @@ import { Prisma } from '@prisma/client';
  * Правило проекта: деньги в API/DTO — строки, в БД — Decimal. Конвертация в
  * number допустима только в UI для форматирования.
  */
+
+// Блок E (R: округление half-up везде): ЯВНО закрепляем режим округления
+// Decimal на ROUND_HALF_UP — чтобы не зависеть от дефолта библиотеки. От него
+// зависят все бесхелперные `.toFixed(2)`/округления по коду; пин гарантирует,
+// что это поведение нельзя молча сломать сменой версии/конфига Prisma. Guard в
+// money.test.ts проверяет инвариант.
+Prisma.Decimal.set({ rounding: Prisma.Decimal.ROUND_HALF_UP });
+
 export type Numeric = string | number | Prisma.Decimal;
 
 export const D = (v: Numeric): Prisma.Decimal => new Prisma.Decimal(v);
