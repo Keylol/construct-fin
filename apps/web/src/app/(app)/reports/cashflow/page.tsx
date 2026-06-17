@@ -169,7 +169,16 @@ export default function CashflowReportPage() {
                         <td className="px-3 py-2 text-right tabular-nums text-destructive">
                           {formatRub(p.outflow)}
                         </td>
-                        <td className="px-3 py-2 text-right font-medium tabular-nums">
+                        <td
+                          className={`px-3 py-2 text-right font-medium tabular-nums ${
+                            Number(p.balance) < 0 ? 'text-destructive' : ''
+                          }`}
+                          title={
+                            Number(p.balance) < 0
+                              ? 'Отрицательный остаток (кассовый разрыв)'
+                              : undefined
+                          }
+                        >
                           {formatRub(p.balance)}
                         </td>
                       </tr>
