@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
 import { isKindAllowedForType } from './transaction.dto';
 import type {
   CreateTransactionDto,
@@ -236,11 +237,9 @@ export class TransactionService {
     const where: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
-      // Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход:
-      // TRANSFER_IN типизирован INCOME, TRANSFER_OUT — EXPENSE, поэтому без этого
-      // фильтра перевод между своими счетами раздувал бы и income, и expense в
-      // сводке (как уже исключено в P&L и консолидированном cashflow).
-      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
+      // Дашбордный «net денег» — только реальные движения: исключаем ноги
+      // переводов (раздували бы income и expense) и неденежный COGS (R2).
+      kind: { notIn: NON_CASH_CONSOLIDATED },
       ...(query.from || query.to
         ? {
             date: {
