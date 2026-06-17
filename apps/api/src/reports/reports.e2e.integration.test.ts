@@ -25,7 +25,7 @@ import {
   cashflowToTable,
   pnlToTable,
 } from './export/builders';
-import type { Period } from './period';
+import { resolvePeriod, type Period } from './period';
 import type {
   CategoryBucket,
   CategoryKind,
@@ -59,11 +59,9 @@ beforeEach(async () => {
 
 // ───────────────────────── helpers ─────────────────────────
 
-/** Период «весь 2025-й год» (фикс. даты — тесты детерминированы, не зависят от now). */
-const Y2025: Period = {
-  from: new Date(2025, 0, 1, 0, 0, 0),
-  to: new Date(2025, 11, 31, 23, 59, 59, 999),
-};
+/** Период «весь 2025-й год» в UTC+5 (R5) — TZ-устойчиво через resolvePeriod, иначе
+ *  локальные даты на CI(UTC) уехали бы за границу и дали 13 слайсов вместо 12. */
+const Y2025: Period = resolvePeriod({ from: '2025-01-01', to: '2025-12-31' });
 
 /** ISO-дата внутри 2025-го для конкретного месяца (0-based). */
 const d2025 = (month: number, day = 15) => new Date(2025, month, day, 12, 0, 0);
