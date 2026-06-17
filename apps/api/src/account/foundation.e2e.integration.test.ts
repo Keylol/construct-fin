@@ -201,6 +201,27 @@ describe('Accounts — softDelete', () => {
       h.accounts.softDelete(seed.workspaceId, acc.id),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('M3: счёт с активными операциями удалить нельзя (не осиротить транзакции)', async () => {
+    const acc = await h.accounts.create(seed.workspaceId, {
+      name: 'С операцией', type: 'CASH', class: 'OPERATING', openingBalance: '0',
+    });
+    await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: acc.id,
+        date: new Date(),
+        amount: '100.00',
+        type: 'INCOME',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+    await expect(h.accounts.softDelete(seed.workspaceId, acc.id)).rejects.toThrow();
+    // счёт жив
+    const row = await h.prisma.account.findUniqueOrThrow({ where: { id: acc.id } });
+    expect(row.deletedAt).toBeNull();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
