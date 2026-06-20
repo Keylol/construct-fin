@@ -104,6 +104,46 @@ export class PnlService {
     const nameById = new Map<string, string>();
     for (const [id, meta] of catById.entries()) nameById.set(id, meta.name);
 
+    // ОДИН запрос на серию вместо O(слайсов): groupBy по [бакет-периода, type,
+    // categoryId, kind] через date_trunc в поясе бизнеса (+5, фикс. сдвиг как в
+    // period.ts — без DST). Метка бакета совпадает с enumerateMonths/Quarters
+    // (YYYY-MM / YYYY-Q#). Классификация по бакетам остаётся в JS (ниже) —
+    // меняется только источник строк. Арифметика: NUMERIC в SQL → Prisma.Decimal.
+    const trunc = groupBy === 'month' ? 'month' : 'quarter';
+    const labelFmt = groupBy === 'month' ? 'YYYY-MM' : 'YYYY"-Q"Q';
+    const rawRows = await this.prisma.$queryRaw<
+      Array<{
+        label: string;
+        type: string;
+        categoryId: string | null;
+        kind: string;
+        sum: Prisma.Decimal | null;
+      }>
+    >(
+      Prisma.sql`
+        SELECT to_char(date_trunc(${trunc}, "date" + interval '5 hours'), ${labelFmt}) AS label,
+               "type"::text AS type,
+               "categoryId" AS "categoryId",
+               "kind"::text AS kind,
+               SUM("amount") AS sum
+        FROM "Transaction"
+        WHERE "workspaceId" = ${workspaceId}
+          AND "deletedAt" IS NULL
+          AND "date" >= ${period.from}
+          AND "date" <= ${period.to}
+          -- Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход,
+          -- исключаем ПО kind. Комиссия перевода (VARIABLE_COST) ОСТАЁТСЯ расходом.
+          AND "kind"::text NOT IN ('TRANSFER_IN', 'TRANSFER_OUT')
+        GROUP BY 1, "type", "categoryId", "kind"
+      `,
+    );
+    const rowsByLabel = new Map<string, typeof rawRows>();
+    for (const r of rawRows) {
+      const arr = rowsByLabel.get(r.label) ?? [];
+      arr.push(r);
+      rowsByLabel.set(r.label, arr);
+    }
+
     const buckets: PnlBucket[] = [];
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
@@ -113,21 +153,14 @@ export class PnlService {
     const totalsByBucket = newBucketMap();
 
     for (const slice of slices) {
-      // Группируем дополнительно по kind: COGS-операции заводятся системой без
-      // categoryId, поэтому бакетятся не по категории, а по самому kind (см. ниже).
-      const groups = await this.prisma.transaction.groupBy({
-        by: ['type', 'categoryId', 'kind'],
-        where: {
-          workspaceId,
-          deletedAt: null,
-          date: { gte: slice.from, lte: slice.to },
-          // Ноги переводов между своими счетами (kind=TRANSFER_IN/OUT) — это
-          // не доход/расход, исключаем из P&L ПО kind. Комиссия перевода
-          // (kind=VARIABLE_COST, хоть и с transferGroupId) ОСТАЁТСЯ расходом.
-          kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
-        },
-        _sum: { amount: true },
-      });
+      // COGS-операции заводятся системой без categoryId, поэтому бакетятся не по
+      // категории, а по самому kind (см. bucketForSystemKind ниже).
+      const groups = (rowsByLabel.get(slice.label) ?? []).map((r) => ({
+        type: r.type as 'INCOME' | 'EXPENSE',
+        categoryId: r.categoryId,
+        kind: r.kind as TransactionKind,
+        _sum: { amount: r.sum },
+      }));
 
       let income = new Prisma.Decimal(0);
       let expense = new Prisma.Decimal(0);

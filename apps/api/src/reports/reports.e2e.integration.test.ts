@@ -242,6 +242,28 @@ describe('P&L отчёт (по данным)', () => {
     expect(byQuarter.primary.buckets[1]!.income).toBe('2000.00');
   });
 
+  it('TZ-граница (+5): доход на стыке месяцев бакетится по поясу бизнеса', async () => {
+    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
+    // 2025-03-31T20:00Z = 2025-04-01 01:00 +5 → апрель (Q2), не март (Q1).
+    await tx({
+      amount: '900',
+      type: 'INCOME',
+      kind: 'ORDER_PAYMENT',
+      date: new Date('2025-03-31T20:00:00Z'),
+      categoryId: revCat,
+    });
+    const byMonth = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    expect(byMonth.primary.buckets[2]!.label).toBe('2025-03');
+    expect(byMonth.primary.buckets[2]!.income).toBe('0.00'); // март пуст
+    expect(byMonth.primary.buckets[3]!.label).toBe('2025-04');
+    expect(byMonth.primary.buckets[3]!.income).toBe('900.00'); // ушло в апрель по +5
+  });
+
   it('режим сравнения возвращает данные периода comparison', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     await tx({ amount: '5000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(6), categoryId: revCat }); // primary
@@ -314,6 +336,39 @@ describe('Cashflow отчёт (по данным)', () => {
     expect(apr.net).toBe('3970.00');
     // balance = opening(1000) + net(3970).
     expect(apr.balance).toBe('4970.00');
+  });
+
+  it('TZ-граница (+5): операция в конце месяца по UTC бакетится по поясу бизнеса', async () => {
+    // 2025-01-31T21:00Z = 2025-02-01 02:00 в UTC+5 → должна попасть в ФЕВРАЛЬ
+    // (date_trunc в SQL делает сдвиг +5, как enumerateMonths). Без сдвига уехала
+    // бы в январь. Контроль: операция явно в январе по +5.
+    const acc = await makeAccount({ name: 'Касса tz', openingBalance: '0' });
+    await tx({
+      amount: '700',
+      type: 'INCOME',
+      kind: 'ORDER_PAYMENT',
+      date: new Date('2025-01-31T21:00:00Z'),
+      accountId: acc,
+    });
+    await tx({
+      amount: '300',
+      type: 'INCOME',
+      kind: 'ORDER_PAYMENT',
+      date: new Date('2025-01-15T05:00:00Z'), // 2025-01-15 10:00 +5 → январь
+      accountId: acc,
+    });
+
+    const report = await h.cashflow.build({
+      workspaceId: seed.workspaceId,
+      period: Y2025,
+      accountId: acc,
+      mode: 'byAccount',
+    });
+    const s = report.series[0]!;
+    const jan = s.points.find((p) => p.label === '2025-01')!;
+    const feb = s.points.find((p) => p.label === '2025-02')!;
+    expect(jan.inflow).toBe('300.00'); // только явно-январская
+    expect(feb.inflow).toBe('700.00'); // граничная ушла в февраль по +5
   });
 
   it('R2/C1: неденежный COGS не попадает в отток (consolidated и byAccount)', async () => {
@@ -425,6 +480,18 @@ describe('Breakdown by-category (по данным)', () => {
     expect(noneRow.expense).toBe('2000.00');
     // Сортировка по убыванию total: первой идёт самая крупная (Продажи 6000).
     expect(report.rows[0]!.name).toBe('Продажи');
+  });
+
+  it('неденежный COGS исключён из разреза by-category (не раздувает «Без категории»)', async () => {
+    const rent = await makeCategory('Аренда', 'EXPENSE', 'FIXED');
+    await tx({ amount: '2000', type: 'EXPENSE', kind: 'FIXED_COST', date: d2025(2), categoryId: rent });
+    // COGS — неденежный (R2), без категории. Не должен попасть в разрез расходов
+    // (иначе сел бы в «Без категории» и расходился бы с P&L/cashflow).
+    await tx({ amount: '1500', type: 'EXPENSE', kind: 'COGS', date: d2025(2), categoryId: null });
+
+    const report = await breakdown.byCategory({ workspaceId: seed.workspaceId, period: Y2025, type: 'EXPENSE' });
+    expect(report.totalExpense).toBe('2000.00'); // только аренда, без COGS
+    expect(report.rows.find((r) => r.id === null)).toBeUndefined(); // нет строки «Без категории»
   });
 
   it('type=INCOME показывает только доход, denom = totalIncome', async () => {
