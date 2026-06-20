@@ -56,6 +56,9 @@ function buildHarness(item = makeItem()) {
         return Promise.resolve({ id: `tx${transactions.length}`, ...data });
       }),
     },
+    // Cross-tenant guards supplierReturn/create/update: счёт и поставщик найдены.
+    account: { findFirst: vi.fn().mockResolvedValue({ id: 'acc1' }) },
+    counterparty: { findFirst: vi.fn().mockResolvedValue({ id: 'sup1' }) },
     // tx с FOR UPDATE — возвращает строку, чтобы lockForUpdate нашёл её.
     $queryRaw: vi.fn().mockResolvedValue([{ id: itemState.id }]),
   };
@@ -254,5 +257,35 @@ describe('WarehouseService import (B2)', () => {
     ]);
     expect(res).toEqual({ created: 1, skipped: 1 });
     expect(h.created).toHaveLength(1);
+  });
+});
+
+describe('WarehouseService.restock — возврат на склад (фикс тихой потери)', () => {
+  it('soft-deleted/недоступная позиция: НЕ молчит, пишет компенсирующее движение', async () => {
+    const h = buildHarness();
+    // Позиция «удалена» → lockForUpdate вернёт null ($queryRaw пуст).
+    (h.prisma as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw = vi
+      .fn()
+      .mockResolvedValue([]);
+    await h.service.restock(h.prisma as never, 'ws1', 'item-deleted', '3', 'user1', {
+      refType: 'Order',
+      refId: 'ord1',
+    });
+    // Раньше здесь был тихий return — факт возврата терялся. Теперь — движение-сигнал.
+    expect(h.movements).toHaveLength(1);
+    const mv = h.movements[0]!;
+    expect(mv.type).toBe('RETURN_CUSTOMER');
+    expect((mv.qtyDelta as Prisma.Decimal).toString()).toBe('3');
+    expect(mv.refId).toBe('ord1');
+    expect(mv.reason).toMatch(/удал|недоступн/i);
+  });
+
+  it('обычная позиция: оприходует возврат и пишет RETURN_CUSTOMER', async () => {
+    const h = buildHarness(
+      makeItem({ qty: new Prisma.Decimal('5'), avgCost: new Prisma.Decimal('20') }),
+    );
+    await h.service.restock(h.prisma as never, 'ws1', 'item1', '2', 'user1');
+    expect(h.movements).toHaveLength(1);
+    expect((h.itemState.qty as Prisma.Decimal).toString()).toBe('7'); // 5 + 2
   });
 });

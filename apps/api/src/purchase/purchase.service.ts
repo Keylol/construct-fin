@@ -66,6 +66,12 @@ export class PurchaseService {
 
     const purchaseDate = dto.date ? new Date(dto.date) : new Date();
 
+    // Cross-tenant guard: счёт списания и поставщик из тела запроса обязаны
+    // принадлежать этому workspace. Без проверки расход PURCHASE сел бы на чужой
+    // accountId (порча его cashflow-by-account/остатка/сверки) либо ссылался бы
+    // на чужого контрагента. warehouseItemId защищён локом в applyPurchaseLine.
+    await this.assertRefs(workspaceId, dto.accountId, dto.supplierId ?? null);
+
     return this.uow.run(async (tx) => {
       // 1. Деньги: списание со счёта.
       const transaction = await tx.transaction.create({
@@ -135,5 +141,25 @@ export class PurchaseService {
         },
       });
     });
+  }
+
+  /** Счёт и поставщик закупки обязаны принадлежать этому workspace (cross-tenant). */
+  private async assertRefs(
+    workspaceId: string,
+    accountId: string,
+    supplierId: string | null,
+  ) {
+    const acc = await this.prisma.account.findFirst({
+      where: { id: accountId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+    if (supplierId) {
+      const sup = await this.prisma.counterparty.findFirst({
+        where: { id: supplierId, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!sup) throw new NotFoundException('Поставщик не найден в этом пространстве');
+    }
   }
 }
