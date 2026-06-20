@@ -313,6 +313,22 @@ export class ImportService {
     });
     if (!account) throw new NotFoundException('Account not found');
 
+    // Cross-tenant guard: categoryId строк берётся из тела запроса. Без проверки
+    // принадлежности workspace можно повесить на свои проводки чужую категорию
+    // (утечка имени в отчёты by-category, порча группировок). Счёт уже проверен выше.
+    const categoryIds = Array.from(
+      new Set(body.rows.map((r) => r.categoryId).filter((c): c is string => !!c)),
+    );
+    if (categoryIds.length > 0) {
+      const found = await this.prisma.category.findMany({
+        where: { id: { in: categoryIds }, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (found.length !== categoryIds.length) {
+        throw new BadRequestException('Категория не найдена в этом пространстве');
+      }
+    }
+
     const rowsToImport = body.skipDuplicates
       ? body.rows.filter((r) => !r.isDuplicate)
       : body.rows;
@@ -361,14 +377,23 @@ export class ImportService {
         );
       }
 
-      for (const name of namesNeeded) {
-        if (!cpByLcName.has(name.toLowerCase())) {
-          const cp = await tx.counterparty.create({
-            data: { workspaceId, name },
-            select: { id: true, name: true },
-          });
-          cpByLcName.set(cp.name.toLowerCase(), cp.id);
-        }
+      // Недостающие контрагенты — одним createMany вместо N последовательных
+      // create. createMany не возвращает id, поэтому после вставки до-вычитываем
+      // только созданные имена и достраиваем карту name→id.
+      const toCreate = namesNeeded.filter((n) => !cpByLcName.has(n.toLowerCase()));
+      if (toCreate.length > 0) {
+        await tx.counterparty.createMany({
+          data: toCreate.map((name) => ({ workspaceId, name })),
+        });
+        const created = await tx.counterparty.findMany({
+          where: {
+            workspaceId,
+            deletedAt: null,
+            name: { in: toCreate.map((n) => n.toLowerCase()), mode: 'insensitive' },
+          },
+          select: { id: true, name: true },
+        });
+        for (const cp of created) cpByLcName.set(cp.name.toLowerCase(), cp.id);
       }
 
       const batch = await tx.importBatch.create({
@@ -384,25 +409,26 @@ export class ImportService {
         },
       });
 
-      for (const r of rowsToImport) {
-        await tx.transaction.create({
-          data: {
-            workspaceId,
-            accountId: body.accountId,
-            date: new Date(r.date),
-            amount: r.amount,
-            type: r.type,
-            description: r.description,
-            counterpartyId: r.counterpartyName
-              ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
-              : null,
-            categoryId: r.categoryId,
-            importBatchId: batch.id,
-            importHash: r.importHash,
-            createdById: userId,
-          },
-        });
-      }
+      // Проводки — одним createMany вместо N последовательных INSERT (для выписки
+      // на тысячи строк это тысячи round-trip → один батч). Partial-unique по
+      // importHash остаётся: дубль внутри батча/повтор файла откатит транзакцию.
+      await tx.transaction.createMany({
+        data: rowsToImport.map((r) => ({
+          workspaceId,
+          accountId: body.accountId,
+          date: new Date(r.date),
+          amount: r.amount,
+          type: r.type,
+          description: r.description,
+          counterpartyId: r.counterpartyName
+            ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
+            : null,
+          categoryId: r.categoryId,
+          importBatchId: batch.id,
+          importHash: r.importHash,
+          createdById: userId,
+        })),
+      });
 
       return {
         batchId: batch.id,

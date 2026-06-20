@@ -40,10 +40,18 @@ export class AuditService {
 
   /**
    * Записать аудит-событие. Принимает PrismaService ИЛИ TxClient — для UoW.
-   * Не бросает: ошибки аудита не должны разваливать основную операцию,
-   * но логируются.
+   *
+   * Поведение при ошибке зависит от контекста:
+   *  - АВТОНОМНО (client не передан / это PrismaService): ошибку глотаем —
+   *    сбой аудита не должен ронять уже закоммиченную доменную операцию;
+   *  - ВНУТРИ интерактивной транзакции (передан TxClient): НЕ глотаем. Любая
+   *    ошибка внутри tx уже помечает её aborted на стороне Postgres, поэтому
+   *    последующий commit всё равно упадёт — но с невнятной ошибкой
+   *    «current transaction is aborted». Пробрасываем исходную причину, чтобы
+   *    откат и сообщение были корректными.
    */
   async record(client: AuditClient | undefined, entry: AuditEntry): Promise<void> {
+    const insideTx = !!client && client !== this.prisma;
     const c = client ?? this.prisma;
     try {
       await c.auditLog.create({
@@ -57,8 +65,9 @@ export class AuditService {
         },
       });
     } catch (err) {
-      // Не пробрасываем — аудит не должен ломать домен.
       console.error('[audit] failed to record', entry.action, err);
+      // Внутри tx — пробрасываем: tx уже aborted, глотание лишь маскирует причину.
+      if (insideTx) throw err;
     }
   }
 

@@ -50,7 +50,10 @@ export class WarehouseService {
     return item;
   }
 
-  create(workspaceId: string, input: CreateWarehouseItemDto) {
+  async create(workspaceId: string, input: CreateWarehouseItemDto) {
+    // Cross-tenant guard: поставщик по умолчанию обязан принадлежать workspace,
+    // иначе к позиции привязался бы чужой контрагент (его имя утекло бы в UI/возврат).
+    await this.assertSupplier(workspaceId, input.defaultSupplierId);
     return this.repo.create({
       workspace: { connect: { id: workspaceId } },
       name: input.name,
@@ -67,6 +70,7 @@ export class WarehouseService {
 
   async update(workspaceId: string, id: string, input: UpdateWarehouseItemDto) {
     await this.get(workspaceId, id);
+    await this.assertSupplier(workspaceId, input.defaultSupplierId);
     return this.repo.update(id, {
       name: input.name ?? undefined,
       sku: input.sku === undefined ? undefined : input.sku,
@@ -87,6 +91,31 @@ export class WarehouseService {
     await this.get(workspaceId, id);
     await this.repo.softDelete(id);
     return { ok: true };
+  }
+
+  /** Счёт обязан принадлежать workspace (cross-tenant guard). */
+  private async assertAccount(workspaceId: string, accountId: string, tx?: TxClient) {
+    const db = tx ?? this.prisma;
+    const acc = await db.account.findFirst({
+      where: { id: accountId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+  }
+
+  /** Контрагент-поставщик (если задан) обязан принадлежать workspace. */
+  private async assertSupplier(
+    workspaceId: string,
+    supplierId: string | null | undefined,
+    tx?: TxClient,
+  ) {
+    if (!supplierId) return;
+    const db = tx ?? this.prisma;
+    const sup = await db.counterparty.findFirst({
+      where: { id: supplierId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!sup) throw new NotFoundException('Поставщик не найден в этом пространстве');
   }
 
   /**
@@ -251,7 +280,27 @@ export class WarehouseService {
     ref?: { refType?: string; refId?: string },
   ): Promise<void> {
     const item = await this.repo.lockForUpdate(tx, workspaceId, itemId);
-    if (!item) return; // товар мог быть удалён — молча пропускаем
+    if (!item) {
+      // Позиция soft-deleted/отсутствует: молча НЕ пропускаем — деньги (рефанд) и
+      // returnedQty заказа уже двинулись, тихий пропуск терял бы факт возврата на
+      // склад (расхождение «деньги вернули, товар не оприходован»). Пишем
+      // компенсирующее движение к удалённой позиции для аудита и поднимаем сигнал.
+      await this.repo.recordMovement(
+        {
+          workspaceId,
+          warehouseItemId: itemId,
+          type: 'RETURN_CUSTOMER',
+          qtyDelta: roundQty(returnQty),
+          qtyAfter: roundQty(returnQty), // фактический остаток неизвестен (позиция удалена)
+          reason: 'Возврат на удалённую/недоступную позицию — склад не оприходован',
+          refType: ref?.refType ?? 'Order',
+          refId: ref?.refId ?? null,
+          createdById: userId,
+        },
+        tx,
+      );
+      return;
+    }
     const next = applyReturn(item.qty, item.avgCost, returnQty);
     await this.repo.update(itemId, { qty: next.qty }, tx);
     await this.repo.recordMovement(
@@ -296,6 +345,11 @@ export class WarehouseService {
     return this.uow.run(async (tx) => {
       const item = await this.repo.lockForUpdate(tx, workspaceId, itemId);
       if (!item) throw new NotFoundException('Warehouse item not found');
+
+      // Cross-tenant guard: счёт поступления и поставщик из тела обязаны
+      // принадлежать workspace, иначе приток денег (INCOME) сел бы на чужой счёт.
+      await this.assertAccount(workspaceId, dto.accountId, tx);
+      await this.assertSupplier(workspaceId, dto.supplierId ?? null, tx);
 
       const returnQty = roundQty(dto.returnQty);
       // B6: returnQty>0 — DTO-regex допускает '0', а нулевой возврат привёл бы к
