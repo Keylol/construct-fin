@@ -7,12 +7,12 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { cn } from '@/lib/cn';
 
 const TABS = [
-  { href: '/reports', label: 'P&L' },
-  { href: '/reports/cashflow', label: 'Cash flow' },
-  { href: '/reports/categories', label: 'Категории' },
-  { href: '/reports/counterparties', label: 'Контрагенты' },
-  { href: '/reports/margin', label: 'Маржа' },
-  { href: '/reports/receivables', label: 'Дебиторка' },
+  { href: '/reports', label: 'ОПиУ' },
+  { href: '/reports/cashflow', label: 'ОДДС' },
+  { href: '/reports/categories', label: 'По категориям' },
+  { href: '/reports/counterparties', label: 'По контрагентам' },
+  { href: '/reports/margin', label: 'Валовая прибыль' },
+  { href: '/reports/receivables', label: 'Дебиторская задолженность' },
   { href: '/reports/rules', label: 'Правила' },
 ] as const;
 

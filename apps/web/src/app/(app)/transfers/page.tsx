@@ -325,7 +325,7 @@ function TransferForm({
               onChange={(e) => setDate(e.target.value)}
             />
           </FormField>
-          <FormField label="Заметка" htmlFor="tr-note">
+          <FormField label="Примечание" htmlFor="tr-note">
             <Input
               id="tr-note"
               value={note}

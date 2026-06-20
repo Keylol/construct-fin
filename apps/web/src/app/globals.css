@@ -2,43 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ───── Construct v6 — Oracle Redwood-inspired design tokens ─────
-   Light theme only. HSL color space (shadcn convention) so opacity
-   modifiers work natively (e.g. `bg-primary/50`). */
+/* ───── Construct v6 — строгая «бухгалтерская» система (navy + янтарь) ─────
+   Светлая тема. HSL (shadcn-конвенция), чтобы opacity-модификаторы работали
+   нативно (напр. `bg-primary/90`). Карточки — тонкая линия, плоско; цифры —
+   IBM Plex Mono tabular; акцент navy, янтарь для предупреждений/aging. */
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
+  /* Прохладный off-white фон — карточки (белые) мягко «всплывают» без жирных границ */
+  --background: 214 33% 97%;
+  --foreground: 214 53% 11%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 214 53% 11%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover-foreground: 214 53% 11%;
 
-  --primary: 208 53% 23%;
+  /* Глубокий navy — единый акцент доверия */
+  --primary: 209 65% 22%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
+  /* Нейтральный прохладный hover/secondary */
+  --secondary: 214 30% 95%;
+  --secondary-foreground: 214 53% 11%;
 
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
+  --muted: 214 30% 95%;
+  --muted-foreground: 214 16% 40%;
 
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
+  /* Лёгкий navy-tint — активная навигация, подсветки */
+  --accent: 211 42% 94%;
+  --accent-foreground: 209 65% 22%;
 
-  --destructive: 0 65% 45%;
+  --destructive: 4 65% 45%;
   --destructive-foreground: 0 0% 100%;
 
-  --success: 152 67% 28%;
+  --success: 152 77% 25%;
   --success-foreground: 0 0% 100%;
 
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 208 53% 23%;
+  /* Янтарь — предупреждения, aging 30–60 дн. */
+  --warning: 26 90% 37%;
+  --warning-foreground: 0 0% 100%;
 
-  --radius: 4px;
+  --border: 213 30% 92%;
+  --input: 213 30% 90%;
+  --ring: 209 60% 34%;
+
+  --radius: 8px;
 }
 
 * {
@@ -53,6 +62,60 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+/* Деньги и числовые колонки — моноширинный tabular, лёгкий отрицательный трекинг */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+.num {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Анимации: выразительные, но строгие (spring-подобный ease, появление со сдвигом) ── */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Каскад: дети контейнера .stagger въезжают по очереди */
+.stagger > * {
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.18s;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 0.24s;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-rise,
+  .stagger > * {
+    animation: none;
+  }
 }

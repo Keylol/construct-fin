@@ -622,7 +622,7 @@ function PurchaseSheet({
             </Button>
           </div>
 
-          <FormField label="Заметка" htmlFor="p-note">
+          <FormField label="Примечание" htmlFor="p-note">
             <Input id="p-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Накладная №…" />
           </FormField>
 

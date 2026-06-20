@@ -222,7 +222,7 @@ export default function ReconciliationPage() {
                   <thead className="border-b border-border">
                     <tr className="text-left text-xs uppercase text-muted-foreground">
                       <th className="px-4 py-2 font-medium">Дата</th>
-                      <th className="px-4 py-2 font-medium">Заметка</th>
+                      <th className="px-4 py-2 font-medium">Примечание</th>
                       <th className="px-4 py-2 text-right font-medium">Факт. остаток</th>
                       <th className="w-[56px] px-4 py-2" />
                     </tr>
@@ -356,7 +356,7 @@ function CheckForm({
               autoFocus
             />
           </FormField>
-          <FormField label="Заметка" htmlFor="rc-note">
+          <FormField label="Примечание" htmlFor="rc-note">
             <Input
               id="rc-note"
               value={note}

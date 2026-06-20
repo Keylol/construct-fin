@@ -68,15 +68,15 @@ export default function MarginReportPage() {
         ) : query.isError ? (
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : totals ? (
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="stagger grid gap-4 sm:grid-cols-4">
             <KpiCard label="Выручка" value={formatRub(totals.revenue)} tone="positive" />
             <KpiCard label="Себестоимость" value={formatRub(totals.cogs)} tone="negative" />
             <KpiCard
-              label="Маржа"
+              label="Валовая прибыль"
               value={formatRub(totals.margin)}
               tone={Number(totals.margin) >= 0 ? 'positive' : 'negative'}
             />
-            <KpiCard label="Маржа, %" value={`${totals.marginPct}%`} />
+            <KpiCard label="Рентабельность, %" value={`${totals.marginPct}%`} />
           </div>
         ) : null}
 
@@ -88,9 +88,9 @@ export default function MarginReportPage() {
                   <th className="px-4 py-2 font-medium">{isProduct ? 'Товар' : 'Клиент'}</th>
                   {isProduct && <th className="px-4 py-2 text-right font-medium">Кол-во</th>}
                   <th className="px-4 py-2 text-right font-medium">Выручка</th>
-                  <th className="px-4 py-2 text-right font-medium">Себест.</th>
-                  <th className="px-4 py-2 text-right font-medium">Маржа</th>
-                  <th className="px-4 py-2 text-right font-medium">Маржа %</th>
+                  <th className="px-4 py-2 text-right font-medium">Себестоимость</th>
+                  <th className="px-4 py-2 text-right font-medium">Вал. прибыль</th>
+                  <th className="px-4 py-2 text-right font-medium">Рент., %</th>
                 </tr>
               </thead>
               <tbody>

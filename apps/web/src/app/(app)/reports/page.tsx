@@ -133,9 +133,9 @@ export default function PnlReportPage() {
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : query.isError ? null : totals ? (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <KpiCard label="Доход" value={formatRub(totals.income)} tone="positive" />
-              <KpiCard label="Расход" value={formatRub(totals.expense)} tone="negative" />
+            <div className="stagger grid gap-4 sm:grid-cols-3">
+              <KpiCard label="Доходы" value={formatRub(totals.income)} tone="positive" />
+              <KpiCard label="Расходы" value={formatRub(totals.expense)} tone="negative" />
               <KpiCard
                 label="Чистая прибыль"
                 value={formatRub(totals.net)}
@@ -146,7 +146,7 @@ export default function PnlReportPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <KpiCard label="Себестоимость заказов" value={formatRub(totals.cogs)} tone="negative" />
                 <KpiCard
-                  label="Валовая прибыль (Доход − Себестоимость)"
+                  label="Валовая прибыль (Доходы − Себестоимость)"
                   value={formatRub(totals.grossProfit)}
                   tone={Number(totals.grossProfit) >= 0 ? 'positive' : 'negative'}
                 />
@@ -216,8 +216,8 @@ export default function PnlReportPage() {
               <thead>
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Группа</th>
-                  <th className="px-4 py-2 text-right font-medium">Доход</th>
-                  <th className="px-4 py-2 text-right font-medium">Расход</th>
+                  <th className="px-4 py-2 text-right font-medium">Доходы</th>
+                  <th className="px-4 py-2 text-right font-medium">Расходы</th>
                   <th className="px-4 py-2 text-right font-medium">Сальдо</th>
                 </tr>
               </thead>
@@ -266,9 +266,9 @@ export default function PnlReportPage() {
               <thead className="border-b border-border">
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Период</th>
-                  <th className="px-4 py-2 text-right font-medium">Доход</th>
-                  <th className="px-4 py-2 text-right font-medium">Расход</th>
-                  <th className="px-4 py-2 text-right font-medium">Чистая</th>
+                  <th className="px-4 py-2 text-right font-medium">Доходы</th>
+                  <th className="px-4 py-2 text-right font-medium">Расходы</th>
+                  <th className="px-4 py-2 text-right font-medium">Чистая прибыль</th>
                 </tr>
               </thead>
               <tbody>

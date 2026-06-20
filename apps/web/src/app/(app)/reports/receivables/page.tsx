@@ -16,7 +16,7 @@ import { cn } from '@/lib/cn';
 
 const BUCKET_TONE: Record<AgingBucketKey, string> = {
   '0-30': 'text-foreground',
-  '30-60': 'text-amber-600',
+  '30-60': 'text-warning',
   '60+': 'text-destructive',
 };
 
@@ -86,10 +86,10 @@ export default function ReceivablesReportPage() {
         ) : query.isError ? (
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : data ? (
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="stagger grid gap-4 sm:grid-cols-4">
             <KpiCard label="Всего к получению" value={formatRub(data.totalDue)} />
             <KpiCard label="0–30 дней" value={formatRub(data.buckets['0-30'])} tone="positive" />
-            <KpiCard label="30–60 дней" value={formatRub(data.buckets['30-60'])} />
+            <KpiCard label="30–60 дней" value={formatRub(data.buckets['30-60'])} tone="warning" />
             <KpiCard label="60+ дней" value={formatRub(data.buckets['60+'])} tone="negative" />
           </div>
         ) : null}
@@ -103,7 +103,7 @@ export default function ReceivablesReportPage() {
                   <th className="px-4 py-2 text-right font-medium">0–30</th>
                   <th className="px-4 py-2 text-right font-medium">30–60</th>
                   <th className="px-4 py-2 text-right font-medium">60+</th>
-                  <th className="px-4 py-2 text-right font-medium">Долг</th>
+                  <th className="px-4 py-2 text-right font-medium">К получению</th>
                 </tr>
               </thead>
               <tbody>

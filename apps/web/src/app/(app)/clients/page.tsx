@@ -79,7 +79,7 @@ export default function ClientsPage() {
     },
     {
       key: 'note',
-      header: 'Заметка',
+      header: 'Примечание',
       cell: (c) => (
         <span className="line-clamp-1 text-muted-foreground">{c.note ?? '—'}</span>
       ),
@@ -274,7 +274,7 @@ function ClientForm({
                 onChange={(e) => setSource(e.target.value)}
               />
             </FormField>
-            <FormField label="Заметка" htmlFor="cl-note">
+            <FormField label="Примечание" htmlFor="cl-note">
               <Textarea
                 id="cl-note"
                 value={note}

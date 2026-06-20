@@ -269,7 +269,7 @@ function AccountForm({
                 placeholder="0.00"
               />
             </FormField>
-            <FormField label="Заметка" htmlFor="acc-note">
+            <FormField label="Примечание" htmlFor="acc-note">
               <Input
                 id="acc-note"
                 value={note}
