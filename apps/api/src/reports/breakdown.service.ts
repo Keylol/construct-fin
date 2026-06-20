@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
 import type { Period } from './period';
 
 export type BreakdownType = 'INCOME' | 'EXPENSE' | 'ALL';
@@ -81,10 +82,13 @@ export class BreakdownService {
     return {
       workspaceId,
       deletedAt: null,
-      // Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход;
-      // без этого фильтра они валились в «Без категории»/«Без контрагента» и
-      // раздували суммы и доли (share). Исключаем по kind (как в P&L/cashflow).
-      kind: { notIn: ['TRANSFER_IN', 'TRANSFER_OUT'] },
+      // Разрез — это аналитика ДЕНЕЖНЫХ движений по категории/контрагенту, поэтому
+      // исключаем то же, что и консолидированный денежный расчёт (cashflow/summary):
+      //  - ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход
+      //    (без фильтра валились в «Без категории» и раздували суммы/доли);
+      //  - COGS (неденежный, R2) — иначе расход by-category завышался под «Без
+      //    категории» и расходился с P&L/дашбордом.
+      kind: { notIn: NON_CASH_CONSOLIDATED },
       date: { gte: period.from, lte: period.to },
       ...(type === 'ALL' ? {} : { type }),
     };

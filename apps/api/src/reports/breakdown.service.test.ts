@@ -59,12 +59,15 @@ function buildService(rows: FakeTx[]) {
 const PERIOD = { from: new Date(2026, 5, 1), to: new Date(2026, 5, 30) };
 
 describe('BreakdownService — исключение ног переводов (A2)', () => {
-  it('where исключает kind notIn TRANSFER_IN/OUT', async () => {
+  it('where исключает kind notIn TRANSFER_IN/OUT + COGS (неденежный)', async () => {
     const { service, groupByCalls } = buildService([]);
     await service.byCategory({ workspaceId: 'ws1', period: PERIOD, type: 'ALL' });
+    // Разрез — аналитика денежных движений: исключаем ноги переводов И COGS
+    // (R2, неденежный), как консолидированный cashflow/summary.
     expect((groupByCalls[0]!.kind as { notIn: string[] }).notIn).toEqual([
       'TRANSFER_IN',
       'TRANSFER_OUT',
+      'COGS',
     ]);
   });
 
