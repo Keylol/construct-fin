@@ -1,8 +1,13 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
-import type { Order, OrderStatus } from '@/lib/types';
+import type { Order, OrderListPage, OrderStatus } from '@/lib/types';
 
 export interface OrderItemInput {
   warehouseItemId?: string | null;
@@ -37,20 +42,28 @@ export interface AddPaymentInput {
   description?: string;
 }
 
+/**
+ * Список заказов с курсор-пагинацией («Загрузить ещё»). Бэк отдаёт
+ * { items, nextCursor }. queryKey содержит фильтры — их смена сбрасывает страницы.
+ */
 export function useOrders(
   wsId: string | null,
-  filters?: { status?: OrderStatus; clientId?: string; search?: string },
+  filters?: { status?: OrderStatus; clientId?: string; search?: string; limit?: number },
 ) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['orders', wsId, filters],
-    queryFn: () => {
+    enabled: !!wsId,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
       const p = new URLSearchParams();
       if (filters?.status) p.set('status', filters.status);
       if (filters?.clientId) p.set('clientId', filters.clientId);
       if (filters?.search) p.set('search', filters.search);
-      return api.get<Order[]>(`/workspaces/${wsId}/orders?${p.toString()}`);
+      if (filters?.limit) p.set('limit', String(filters.limit));
+      if (pageParam) p.set('cursor', pageParam);
+      return api.get<OrderListPage>(`/workspaces/${wsId}/orders?${p.toString()}`);
     },
-    enabled: !!wsId,
+    getNextPageParam: (last) => last.nextCursor,
   });
 }
 

@@ -7,7 +7,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import {
-  useTransactions,
+  useInfiniteTransactions,
   useTransactionSummary,
   type TransactionFilters as TF,
 } from '@/hooks/useTransactions';
@@ -60,8 +60,13 @@ export default function TransactionsPage() {
     [filters],
   );
 
-  const txs = useTransactions(wsId, apiFilters);
+  const txs = useInfiniteTransactions(wsId, apiFilters);
   const summary = useTransactionSummary(wsId, filters.range);
+
+  const txRows = useMemo<Transaction[]>(
+    () => txs.data?.pages.flatMap((p) => p.items) ?? [],
+    [txs.data],
+  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -199,7 +204,7 @@ export default function TransactionsPage() {
 
       <div className="rounded-none border-t border-border bg-card">
         <DataTable
-          data={txs.data?.items ?? []}
+          data={txRows}
           columns={columns}
           rowKey={(t) => t.id}
           onRowClick={(t) => setEditingId(t.id)}
@@ -244,6 +249,17 @@ export default function TransactionsPage() {
             );
           }}
         />
+        {txs.hasNextPage && (
+          <div className="flex justify-center border-t border-border py-4">
+            <Button
+              variant="secondary"
+              onClick={() => txs.fetchNextPage()}
+              disabled={txs.isFetchingNextPage}
+            >
+              {txs.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <TransactionFormDialog

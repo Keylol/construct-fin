@@ -1,6 +1,11 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
   Transaction,
@@ -63,6 +68,26 @@ export function useTransactions(wsId: string | null, filters: TransactionFilters
   });
 }
 
+/**
+ * Курсор-пагинация операций («Загрузить ещё») — бэк отдаёт nextCursor.
+ * `cursor` из filters игнорируется (его ведёт pageParam). queryKey содержит
+ * остальные фильтры, поэтому смена периода/фильтра сбрасывает пагинацию.
+ */
+export function useInfiniteTransactions(wsId: string | null, filters: TransactionFilters = {}) {
+  // cursor исключаем из ключа/базовых фильтров — им управляет pageParam.
+  const { cursor: _cursor, ...base } = filters;
+  return useInfiniteQuery({
+    queryKey: ['transactions-infinite', wsId, base],
+    enabled: !!wsId,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      api.get<TransactionListPage>(
+        `/workspaces/${wsId}/transactions?${buildQS({ ...base, cursor: pageParam ?? undefined })}`,
+      ),
+    getNextPageParam: (last) => last.nextCursor,
+  });
+}
+
 export function useTransaction(wsId: string | null, id: string | null) {
   return useQuery({
     queryKey: ['transaction', wsId, id],
@@ -91,6 +116,7 @@ export function useCreateTransaction(wsId: string) {
       api.post<Transaction>(`/workspaces/${wsId}/transactions`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
     },
   });
@@ -103,6 +129,7 @@ export function useUpdateTransaction(wsId: string) {
       api.patch<Transaction>(`/workspaces/${wsId}/transactions/${id}`, input),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
       qc.invalidateQueries({ queryKey: ['transaction', wsId, id] });
     },
@@ -115,6 +142,7 @@ export function useDeleteTransaction(wsId: string) {
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/transactions/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
     },
   });
