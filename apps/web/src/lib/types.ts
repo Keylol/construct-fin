@@ -25,6 +25,20 @@ export interface Account {
   updatedAt: string;
 }
 
+export interface Transfer {
+  id: string;
+  fromAccountId: string;
+  toAccountId: string;
+  /// Переводимая сумма (поступает на счёт-получатель).
+  amount: string;
+  /// Комиссия за перевод (реальный расход на счёте-источнике сверх amount).
+  fee: string;
+  date: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -355,6 +369,101 @@ export interface BreakdownReport {
   totalIncome: string;
   totalExpense: string;
   rows: BreakdownRow[];
+}
+
+// ── Торговые отчёты (маржа / дебиторка) ────────────────────────────────────
+
+export interface MarginRow {
+  /** by-product: ключ=null, name=имя позиции. by-client: ключ=id клиента. */
+  key: string | null;
+  name: string;
+  revenue: string;
+  cogs: string;
+  margin: string;
+  /** Маржа в процентах, строкой с 2 знаками ("42.50"). */
+  marginPct: string;
+  qty: string;
+}
+
+export interface MarginReport {
+  method: 'by-product' | 'by-client';
+  totals: { revenue: string; cogs: string; margin: string; marginPct: string };
+  rows: MarginRow[];
+}
+
+export interface AgingBuckets {
+  '0-30': string;
+  '30-60': string;
+  '60+': string;
+}
+
+export type AgingBucketKey = '0-30' | '30-60' | '60+';
+
+export interface ReceivableOrder {
+  orderId: string;
+  number: string;
+  createdAt: string;
+  ageDays: number;
+  bucket: AgingBucketKey;
+  total: string;
+  paid: string;
+  due: string;
+}
+
+export interface ReceivableClientRow {
+  clientId: string | null;
+  clientName: string;
+  due: string;
+  buckets: AgingBuckets;
+  orders: ReceivableOrder[];
+}
+
+export interface ReceivablesReport {
+  asOf: string;
+  totalDue: string;
+  buckets: AgingBuckets;
+  clients: ReceivableClientRow[];
+}
+
+// ── Сверка счетов ──────────────────────────────────────────────────────────
+
+export interface BalanceCheck {
+  id: string;
+  accountId: string;
+  date: string;
+  actualBalance: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface ReconciliationOperation {
+  id: string;
+  date: string;
+  type: 'INCOME' | 'EXPENSE';
+  kind: string;
+  amount: string;
+  description: string | null;
+}
+
+export interface ReconciliationReport {
+  accountId: string;
+  accountName: string;
+  asOf: string;
+  openingBalance: string;
+  computedBalance: string;
+  lastCheck: {
+    id: string;
+    date: string;
+    actualBalance: string;
+    computedBalance: string;
+    discrepancy: string;
+  } | null;
+  unreconciled: {
+    since: string | null;
+    count: number;
+    net: string;
+    operations: ReconciliationOperation[];
+  };
 }
 
 export interface UserProfile {

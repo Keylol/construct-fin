@@ -12,6 +12,8 @@ import {
   Package,
   Truck,
   History,
+  ArrowLeftRight,
+  Scale,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -35,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
+      { href: '/transfers', label: 'Переводы', icon: ArrowLeftRight },
       { href: '/import', label: 'Импорт', icon: Upload },
     ],
   },
@@ -54,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/reports', label: 'Отчёты', icon: BarChart3 },
       { href: '/reports/rules', label: 'Правила', icon: Filter },
+      { href: '/reconciliation', label: 'Сверка', icon: Scale },
       { href: '/audit', label: 'Аудит', icon: History },
     ],
   },
