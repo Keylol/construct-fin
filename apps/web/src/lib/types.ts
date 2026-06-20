@@ -131,6 +131,11 @@ export interface Order {
   _count?: { items: number };
 }
 
+export interface OrderListPage {
+  items: Order[];
+  nextCursor: string | null;
+}
+
 export type TransactionKind =
   | 'ORDER_PAYMENT'
   | 'CAPITAL_IN'

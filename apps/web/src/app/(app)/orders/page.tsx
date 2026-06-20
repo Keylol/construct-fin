@@ -82,6 +82,10 @@ export default function OrdersPage() {
     status: statusFilter || undefined,
     search: search || undefined,
   });
+  const orderRows = useMemo<Order[]>(
+    () => orders.data?.pages.flatMap((p) => p.items) ?? [],
+    [orders.data],
+  );
 
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -201,7 +205,7 @@ export default function OrdersPage() {
 
       <div className="bg-card">
         <DataTable
-          data={orders.data ?? []}
+          data={orderRows}
           columns={columns}
           rowKey={(o) => o.id}
           onRowClick={(o) => setOpenId(o.id)}
@@ -232,6 +236,17 @@ export default function OrdersPage() {
             </div>
           )}
         />
+        {orders.hasNextPage && (
+          <div className="flex justify-center border-t border-border py-4">
+            <Button
+              variant="secondary"
+              onClick={() => orders.fetchNextPage()}
+              disabled={orders.isFetchingNextPage}
+            >
+              {orders.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <OrderFormSheet

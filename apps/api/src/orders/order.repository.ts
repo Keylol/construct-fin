@@ -19,8 +19,17 @@ export class OrderRepository {
     return tx ?? this.prisma;
   }
 
-  list(workspaceId: string, opts: { status?: string; clientId?: string; search?: string }) {
-    return this.prisma.order.findMany({
+  /**
+   * Курсор-пагинация списка заказов («Загрузить ещё»). Стабильный порядок —
+   * createdAt desc + id desc (тай-брейк), курсор по id, выборка take+1 для
+   * определения nextCursor. limit по умолчанию 100, максимум 200.
+   */
+  async list(
+    workspaceId: string,
+    opts: { status?: string; clientId?: string; search?: string; cursor?: string; limit?: number },
+  ) {
+    const limit = opts.limit ?? 100;
+    const rows = await this.prisma.order.findMany({
       where: {
         workspaceId,
         deletedAt: null,
@@ -39,9 +48,14 @@ export class OrderRepository {
         client: { select: { id: true, name: true } },
         _count: { select: { items: true } },
       },
-      orderBy: [{ createdAt: 'desc' }],
-      take: 200,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     });
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    return { items, nextCursor: hasMore && last ? last.id : null };
   }
 
   /**

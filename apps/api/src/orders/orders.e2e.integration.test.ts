@@ -137,10 +137,33 @@ describe('get / list', () => {
     await h.orders.remove(seed.workspaceId, toDelete.id, seed.userId);
 
     const all = await h.orders.list(seed.workspaceId, {});
-    expect(all.map((o) => o.id).sort()).toEqual([open.id, done.id].sort());
+    expect(all.items.map((o) => o.id).sort()).toEqual([open.id, done.id].sort());
+    expect(all.nextCursor).toBeNull();
 
     const onlyDone = await h.orders.list(seed.workspaceId, { status: 'DONE' });
-    expect(onlyDone.map((o) => o.id)).toEqual([done.id]);
+    expect(onlyDone.items.map((o) => o.id)).toEqual([done.id]);
+  });
+
+  it('курсор-пагинация: limit отдаёт страницу + nextCursor, вторая страница добирает остаток', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const o = await h.orders.create(seed.workspaceId, {
+        items: [{ name: `Поз ${i}`, qty: '1', unitPrice: '100' }],
+      });
+      ids.push(o.id);
+    }
+    const page1 = await h.orders.list(seed.workspaceId, { limit: 2 });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await h.orders.list(seed.workspaceId, { limit: 2, cursor: page1.nextCursor! });
+    expect(page2.items).toHaveLength(1);
+    expect(page2.nextCursor).toBeNull();
+
+    // Все 3 заказа покрыты, без дублей между страницами.
+    const seen = [...page1.items, ...page2.items].map((o) => o.id);
+    expect(new Set(seen).size).toBe(3);
+    expect(seen.sort()).toEqual([...ids].sort());
   });
 });
 
