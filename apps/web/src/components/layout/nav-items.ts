@@ -15,7 +15,7 @@ import {
   ArrowLeftRight,
   Scale,
   type LucideIcon,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 
 export interface NavItem {
   href: string;

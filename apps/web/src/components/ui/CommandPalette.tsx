@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Command as CommandPrimitive } from 'cmdk';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { Search } from 'lucide-react';
+import { Search } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 export const CommandRoot = CommandPrimitive;

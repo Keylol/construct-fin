@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Upload, History } from 'lucide-react';
+import { Upload, History } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';

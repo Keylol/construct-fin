@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ArrowRight, Check, History, Upload } from 'lucide-react';
+import { ArrowRight, Check, History, Upload } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';

@@ -1,0 +1,45 @@
+/**
+ * Единая точка иконок: Carbon (IBM) под именами, которые уже используются в коде.
+ * Так миграция с lucide свелась к смене пути импорта, без правок мест использования.
+ * Carbon-иконки рендерят <svg fill="currentColor"> (цвет — через text-*), размер по
+ * умолчанию 16px; className h-* w-* масштабирует svg как обычно.
+ */
+export {
+  ArrowsHorizontal as ArrowLeftRight,
+  ArrowRight,
+  ChartBar as BarChart3,
+  Checkmark as Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronSort as ChevronsUpDown,
+  ChevronUp,
+  ListChecked as ClipboardList,
+  Download,
+  Filter,
+  Time as History,
+  Home,
+  DocumentBlank as Inbox,
+  Menu,
+  Package,
+  Attachment as Paperclip,
+  Edit as Pencil,
+  Add as Plus,
+  Receipt,
+  Receipt as ReceiptText,
+  Reset as RotateCcw,
+  Scales as Scale,
+  Search,
+  ShoppingCart,
+  Tag,
+  TrashCan as Trash2,
+  Delivery as Truck,
+  Upload,
+  User as UserRound,
+  UserMultiple as Users,
+  Wallet,
+  Close as X,
+} from '@carbon/icons-react';
+
+// Тип компонента-иконки (замена lucide `LucideIcon`).
+export type { CarbonIconType, CarbonIconType as LucideIcon } from '@carbon/icons-react';

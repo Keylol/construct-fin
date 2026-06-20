@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, ClipboardList, X, Trash2, Paperclip } from 'lucide-react';
+import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';

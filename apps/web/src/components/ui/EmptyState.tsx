@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Inbox, type LucideIcon } from 'lucide-react';
+import { Inbox, type LucideIcon } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 interface EmptyStateProps {

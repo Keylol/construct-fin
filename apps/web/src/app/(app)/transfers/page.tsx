@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, ArrowLeftRight, X, Trash2 } from 'lucide-react';
+import { Plus, ArrowLeftRight, X, Trash2 } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';

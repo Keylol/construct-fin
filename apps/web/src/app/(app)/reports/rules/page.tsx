@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Filter, X, Trash2, Pencil } from 'lucide-react';
+import { Plus, Filter, X, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';

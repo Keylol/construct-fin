@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ReceiptText, Wallet } from 'lucide-react';
+import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
