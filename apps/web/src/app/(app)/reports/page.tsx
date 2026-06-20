@@ -29,6 +29,7 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePnlReport } from '@/hooks/useReports';
 import type { CompareMode, ReportBucket } from '@/lib/types';
 import { cn } from '@/lib/cn';
+import { CHART_SEMANTIC } from '@/lib/chart';
 
 const BUCKET_LABEL: Record<ReportBucket, string> = {
   REVENUE: 'Выручка',
@@ -41,10 +42,10 @@ const BUCKET_LABEL: Record<ReportBucket, string> = {
 };
 
 const CHART_COLORS = {
-  income: '#157347',
-  expense: '#C72A2A',
-  incomeCmp: '#86b69e',
-  expenseCmp: '#e09898',
+  income: CHART_SEMANTIC.income,
+  expense: CHART_SEMANTIC.expense,
+  incomeCmp: CHART_SEMANTIC.incomeMuted,
+  expenseCmp: CHART_SEMANTIC.expenseMuted,
 };
 
 export default function PnlReportPage() {

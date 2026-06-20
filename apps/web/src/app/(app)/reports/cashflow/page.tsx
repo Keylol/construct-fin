@@ -23,8 +23,7 @@ import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCashflowReport } from '@/hooks/useReports';
 import { useAccounts } from '@/hooks/useAccounts';
-
-const COLORS = ['#1B3A57', '#157347', '#B45309', '#6D28D9', '#C72A2A', '#0891B2'];
+import { CHART_PALETTE as COLORS } from '@/lib/chart';
 
 export default function CashflowReportPage() {
   const ws = useCurrentWorkspace();
