@@ -23,8 +23,15 @@ function signJwt(payload, secret, expiresInSec = 3600) {
 }
 
 const BASE = 'http://localhost:4000';
-const JWT_SECRET = 'c2f652d9fd31538526df56f921dc0ea380046886f2b346aded8676c880c5cd1eeada58ba568c5dd2fc9bd926f1e34959';
-const ROOT = '/Users/alexander/Documents/construct-v6';
+// Секрет НЕ хардкодим: подписанный токен должен совпадать с секретом живого API,
+// поэтому читаем тот же JWT_SECRET из окружения (как и сам API из .env).
+// Запуск: `export $(grep -v '^#' .env | xargs) && node apps/api/e2e-phase3.mjs`.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET не задан в окружении (нужен тот же, что у API).');
+  process.exit(2);
+}
+const ROOT = process.env.CONSTRUCT_ROOT ?? resolve(import.meta.dirname, '../..');
 
 const prisma = new PrismaClient();
 let passed = 0;
