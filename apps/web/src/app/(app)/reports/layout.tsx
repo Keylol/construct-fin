@@ -11,6 +11,8 @@ const TABS = [
   { href: '/reports/cashflow', label: 'Cash flow' },
   { href: '/reports/categories', label: 'Категории' },
   { href: '/reports/counterparties', label: 'Контрагенты' },
+  { href: '/reports/margin', label: 'Маржа' },
+  { href: '/reports/receivables', label: 'Дебиторка' },
   { href: '/reports/rules', label: 'Правила' },
 ] as const;
 
