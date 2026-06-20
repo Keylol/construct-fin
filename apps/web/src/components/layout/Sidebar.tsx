@@ -59,10 +59,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                         href={item.href as Parameters<typeof Link>[0]['href']}
                         onClick={onNavigate}
                         className={cn(
-                          'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm transition-colors',
+                          'relative flex h-8 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors',
                           active
-                            ? 'bg-secondary font-medium text-primary'
-                            : 'text-foreground/80 hover:bg-secondary hover:text-foreground',
+                            ? 'bg-accent font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-r before:bg-primary'
+                            : 'text-foreground/75 hover:bg-secondary hover:text-foreground',
                         )}
                       >
                         <Icon

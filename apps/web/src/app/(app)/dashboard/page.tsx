@@ -57,26 +57,26 @@ export default function DashboardPage() {
       <PageHeader title="Главная" description="Сводка за текущий месяц" />
 
       <div className="space-y-6 px-6 py-6">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="stagger grid gap-4 sm:grid-cols-3">
           {isLoading || !summary.data ? (
             <>
-              <Skeleton className="h-[88px]" />
-              <Skeleton className="h-[88px]" />
-              <Skeleton className="h-[88px]" />
+              <Skeleton className="h-[92px]" />
+              <Skeleton className="h-[92px]" />
+              <Skeleton className="h-[92px]" />
             </>
           ) : (
             <>
               <KpiCard
-                label="Доход"
+                label="Доходы"
                 value={formatRub(summary.data.income)}
                 tone="positive"
               />
               <KpiCard
-                label="Расход"
+                label="Расходы"
                 value={formatRub(summary.data.expense)}
                 tone="negative"
               />
-              <KpiCard label="Чистый" value={formatRub(summary.data.net)} />
+              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
             </>
           )}
         </div>

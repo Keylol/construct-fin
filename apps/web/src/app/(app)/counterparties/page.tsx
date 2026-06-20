@@ -68,7 +68,7 @@ export default function CounterpartiesPage() {
     },
     {
       key: 'note',
-      header: 'Заметка',
+      header: 'Примечание',
       cell: (c) => (
         <span className="line-clamp-1 text-muted-foreground">{c.note ?? '—'}</span>
       ),
@@ -252,7 +252,7 @@ function CounterpartyForm({
                 placeholder="телефон, email, @username"
               />
             </FormField>
-            <FormField label="Заметка" htmlFor="cp-note">
+            <FormField label="Примечание" htmlFor="cp-note">
               <Textarea
                 id="cp-note"
                 value={note}

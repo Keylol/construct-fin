@@ -70,7 +70,7 @@ export default function CounterpartiesReportPage() {
               <thead className="border-b border-border">
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Контрагент</th>
-                  <th className="px-4 py-2 text-right font-medium">Транзакций</th>
+                  <th className="px-4 py-2 text-right font-medium">Операций</th>
                   <th className="px-4 py-2 text-right font-medium">Доход</th>
                   <th className="px-4 py-2 text-right font-medium">Расход</th>
                   <th className="px-4 py-2 text-right font-medium">Итого</th>

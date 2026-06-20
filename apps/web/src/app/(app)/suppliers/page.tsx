@@ -68,7 +68,7 @@ export default function SuppliersPage() {
     },
     {
       key: 'note',
-      header: 'Заметка',
+      header: 'Примечание',
       cell: (c) => <span className="line-clamp-1 text-muted-foreground">{c.note ?? '—'}</span>,
     },
     {
@@ -243,7 +243,7 @@ function SupplierForm({
             <FormField label="ИНН" htmlFor="s-inn">
               <Input id="s-inn" value={inn} onChange={(e) => setInn(e.target.value)} inputMode="numeric" />
             </FormField>
-            <FormField label="Заметка" htmlFor="s-note">
+            <FormField label="Примечание" htmlFor="s-note">
               <Textarea id="s-note" value={note} onChange={(e) => setNote(e.target.value)} rows={3} />
             </FormField>
             {initial && (

@@ -154,8 +154,8 @@ export default function CashflowReportPage() {
                   <thead className="border-b border-border">
                     <tr className="text-left text-xs uppercase text-muted-foreground">
                       <th className="px-3 py-2 font-medium">Период</th>
-                      <th className="px-3 py-2 text-right font-medium">Приход</th>
-                      <th className="px-3 py-2 text-right font-medium">Расход</th>
+                      <th className="px-3 py-2 text-right font-medium">Поступления</th>
+                      <th className="px-3 py-2 text-right font-medium">Выплаты</th>
                       <th className="px-3 py-2 text-right font-medium">Остаток</th>
                     </tr>
                   </thead>

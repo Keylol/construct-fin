@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onCommandOpen={() => setCmdOpen(true)} />
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1 animate-rise">{children}</main>
         </div>
       </div>
 
