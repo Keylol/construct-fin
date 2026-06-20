@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Paperclip, Trash2, X } from 'lucide-react';
+import { Paperclip, Trash2, X } from '@/components/ui/icons';
 import type { TxType, Account, Category, Counterparty } from '@/lib/types';
 import {
   useCreateTransaction,

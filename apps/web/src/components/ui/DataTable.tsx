@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 export interface Column<T> {

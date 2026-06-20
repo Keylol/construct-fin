@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Package, Search, X, Trash2, ShoppingCart } from 'lucide-react';
+import { Plus, Package, Search, X, Trash2, ShoppingCart } from '@/components/ui/icons';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Download } from 'lucide-react';
+import { Download } from '@/components/ui/icons';
 import { buildExportUrl } from '@/hooks/useReports';
 
 export function ExportButtons({

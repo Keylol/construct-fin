@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, Search, ChevronRight } from 'lucide-react';
+import { Menu, Search, ChevronRight } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
 import { Sheet, SheetContent } from '@/components/ui/Sheet';

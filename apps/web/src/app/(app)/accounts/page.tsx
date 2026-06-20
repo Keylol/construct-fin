@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Wallet, X, Trash2 } from 'lucide-react';
+import { Plus, Wallet, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useAccounts,

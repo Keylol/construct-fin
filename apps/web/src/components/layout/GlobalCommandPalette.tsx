@@ -15,7 +15,7 @@ import {
   UserRound,
   Package,
   Truck,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import {
   CommandPalette,
   CommandGroup,

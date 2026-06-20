@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from '@/components/ui/icons';
 import { Button } from './Button';
 import { Select } from './Select';
 import { cn } from '@/lib/cn';

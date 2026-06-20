@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';

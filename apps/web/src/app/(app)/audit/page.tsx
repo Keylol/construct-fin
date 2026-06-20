@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { History } from 'lucide-react';
+import { History } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAudit } from '@/hooks/useAudit';
 import type { AuditEntry } from '@/lib/types';
