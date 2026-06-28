@@ -105,9 +105,15 @@ export class ReportsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const format: ExportFormat = ExportFormatSchema.parse(formatRaw);
+    // `format` — чисто экспортный query-параметр, его нет в схемах отчётов.
+    // Схемы объявлены .strict() (защита обычных эндпоинтов от опечаток в
+    // параметрах), поэтому передавать его в .parse() нельзя — иначе Zod бросит
+    // unrecognized_keys и экспорт ломается. Вырезаем точечно на пути экспорта,
+    // strict со схем НЕ снимаем.
+    const { format: _format, ...query } = rawQuery;
     let table;
     if (kind === 'pnl') {
-      const q = PnlQuerySchema.parse(rawQuery);
+      const q = PnlQuerySchema.parse(query);
       const primary = resolvePeriod({ preset: q.preset, from: q.from, to: q.to });
       const report = await this.pnl.build({
         workspaceId: ws.workspaceId,
@@ -117,7 +123,7 @@ export class ReportsController {
       });
       table = pnlToTable(report);
     } else if (kind === 'cashflow') {
-      const q = CashflowQuerySchema.parse(rawQuery);
+      const q = CashflowQuerySchema.parse(query);
       const period = resolvePeriod({ preset: q.preset, from: q.from, to: q.to });
       const report = await this.cashflow.build({
         workspaceId: ws.workspaceId,
@@ -127,7 +133,7 @@ export class ReportsController {
       });
       table = cashflowToTable(report);
     } else if (kind === 'by-category') {
-      const q = BreakdownQuerySchema.parse(rawQuery);
+      const q = BreakdownQuerySchema.parse(query);
       const period = resolvePeriod({ preset: q.preset, from: q.from, to: q.to });
       const report = await this.breakdown.byCategory({
         workspaceId: ws.workspaceId,
@@ -136,7 +142,7 @@ export class ReportsController {
       });
       table = breakdownToTable(report, 'category');
     } else if (kind === 'by-counterparty') {
-      const q = BreakdownQuerySchema.parse(rawQuery);
+      const q = BreakdownQuerySchema.parse(query);
       const period = resolvePeriod({ preset: q.preset, from: q.from, to: q.to });
       const report = await this.breakdown.byCounterparty({
         workspaceId: ws.workspaceId,
