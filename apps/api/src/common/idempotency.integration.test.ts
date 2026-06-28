@@ -12,12 +12,17 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { IdempotencyInterceptor } from './idempotency.interceptor';
+import { TransactionalContext } from './transactional-context';
+import { UnitOfWork, type TxClient } from './unit-of-work';
 import { TEST_DATABASE_URL } from '../test/money-harness';
 
 const prisma = new PrismaService({
   datasources: { db: { url: TEST_DATABASE_URL } },
 }) as unknown as PrismaService;
-const interceptor = new IdempotencyInterceptor(prisma);
+const txContext = new TransactionalContext();
+const interceptor = new IdempotencyInterceptor(prisma, txContext);
+// Тот же txContext, что у интерцептора — иначе commit-hook не дошёл бы до UoW.
+const uow = new UnitOfWork(prisma, txContext);
 
 function ctx(method: string, url: string, body: unknown, key?: string): ExecutionContext {
   const req = { method, url, body, headers: key ? { 'idempotency-key': key } : {} };
@@ -157,6 +162,134 @@ describe('IdempotencyInterceptor — атомарный reserve (п.19)', () => 
       }),
     );
     expect(calls).toBe(2); // выполнился заново
+    expect(r).toEqual({ ok: true });
+  });
+});
+
+/**
+ * Handler, исполняющий доменную работу через РЕАЛЬНЫЙ uow.run (как денежный
+ * хендлер: addPayment/finalize/purchase). Это поднимает commit-hook
+ * интерцептора внутри доменной транзакции через общий TransactionalContext.
+ */
+function uowHandler(
+  domain: (tx: TxClient) => Promise<unknown>,
+  opts: { crashAfterCommit?: boolean } = {},
+): CallHandler {
+  return {
+    handle: () =>
+      new Observable((sub) => {
+        uow
+          .run(async (tx) => domain(tx))
+          .then((res) => {
+            if (opts.crashAfterCommit) {
+              // Имитация краха процесса ПОСЛЕ коммита домена, но ДО записи кэша
+              // ответа (cacheResponse). Доменная tx уже закоммичена, completedAt
+              // выставлен commit-hook'ом внутри неё.
+              sub.error(new Error('crash после коммита, до cacheResponse'));
+              return;
+            }
+            sub.next(res);
+            sub.complete();
+          })
+          .catch((e) => sub.error(e));
+      }),
+  };
+}
+
+describe('IdempotencyInterceptor — атомарность completedAt с доменной tx (R6)', () => {
+  it('completedAt фиксируется commit-hook ВНУТРИ доменной транзакции', async () => {
+    const key = 'key-atomic-ok-1';
+    let calls = 0;
+    const r = await run(
+      ctx('POST', '/pay', { a: 1 }, key),
+      uowHandler(async () => {
+        calls++;
+        return { ok: true };
+      }),
+    );
+    expect(calls).toBe(1);
+    expect(r).toEqual({ ok: true });
+    const row = await prisma.idempotencyKey.findUniqueOrThrow({ where: { key } });
+    expect(row.completedAt).not.toBeNull();
+  });
+
+  it('ALS-пропагация: idempotency-ключ виден из UnitOfWork внутри доменной tx', async () => {
+    const key = 'key-atomic-als-1';
+    let seenKey: string | undefined;
+    await run(
+      ctx('POST', '/pay', { a: 1 }, key),
+      uowHandler(async () => {
+        seenKey = txContext.getStore()?.idempotencyKey;
+        return { ok: true };
+      }),
+    );
+    expect(seenKey).toBe(key);
+  });
+
+  it('КРАШ после коммита домена (до записи кэша): маркер атомарен → ретрай НЕ дублирует [регресс R6]', async () => {
+    const key = 'key-atomic-crash-1';
+    let calls = 0;
+    const make = (crash: boolean) =>
+      uowHandler(
+        async () => {
+          calls++;
+          return { ok: true, n: calls };
+        },
+        { crashAfterCommit: crash },
+      );
+
+    // 1-й запрос: домен коммитится (хук выставляет completedAt в той же tx),
+    // затем «краш» до cacheResponse.
+    await expect(run(ctx('POST', '/pay', { a: 1 }, key), make(true))).rejects.toThrow();
+    expect(calls).toBe(1);
+
+    // Несмотря на краш до записи кэша — completedAt ВЫСТАВЛЕН commit-hook'ом
+    // внутри доменной tx. Это и есть доказательство атомарности.
+    const row = await prisma.idempotencyKey.findUniqueOrThrow({ where: { key } });
+    expect(row.completedAt).not.toBeNull();
+
+    // Состарим резерв старше lease и повторим тем же ключом.
+    await prisma.idempotencyKey.update({
+      where: { key },
+      data: { createdAt: new Date(Date.now() - 11 * 60 * 1000) },
+    });
+    await run(ctx('POST', '/pay', { a: 1 }, key), make(false));
+
+    // ДО фикса: completedAt писался только в cacheResponse (которого лишил краш)
+    // → оставался null → lease перезанимал ключ → calls=2 (ДВОЙНОЙ платёж).
+    // ПОСЛЕ фикса: completedAt!=null → отдан кэш, домен НЕ перевыполнен.
+    expect(calls).toBe(1);
+  });
+
+  it('КРАШ до коммита (домен бросил внутри tx): хук не сработал → ключ освобождается, ретрай выполняет заново', async () => {
+    const key = 'key-atomic-rollback-1';
+    let calls = 0;
+    await expect(
+      run(
+        ctx('POST', '/pay', { a: 1 }, key),
+        uowHandler(async () => {
+          calls++;
+          throw new Error('boom внутри tx');
+        }),
+      ),
+    ).rejects.toThrow('boom');
+    expect(calls).toBe(1);
+
+    // tx откатилась → commit-hook completedAt НЕ выставил → release удалил резерв.
+    for (let i = 0; i < 50; i++) {
+      if (!(await prisma.idempotencyKey.findUnique({ where: { key } }))) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(await prisma.idempotencyKey.findUnique({ where: { key } })).toBeNull();
+
+    const r = await run(
+      ctx('POST', '/pay', { a: 1 }, key),
+      uowHandler(async () => {
+        calls++;
+        return { ok: true };
+      }),
+    );
+    expect(calls).toBe(2); // выполнился заново (семантика B3 сохранена)
     expect(r).toEqual({ ok: true });
   });
 });
