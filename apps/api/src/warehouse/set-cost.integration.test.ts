@@ -10,6 +10,7 @@ import {
   buildHarness,
   resetDb,
   seedBase,
+  seedStockItem,
   type Harness,
   type Seed,
 } from '../test/money-harness';
@@ -32,12 +33,21 @@ beforeEach(async () => {
   seed = await seedBase(h.prisma, tg);
 });
 
-/** Позиция с остатком, но нулевой себестоимостью (как залитые начальные остатки). */
+/**
+ * Позиция с остатком, но нулевой себестоимостью (как залитые начальные остатки).
+ * FIFO: материализуем остаток OPENING-партией с unitCost=0 — именно ей setCost
+ * проставит цену. Прямой create без партии оставил бы позицию «без лотов» →
+ * recomputeCaches обнулил бы qty при первой же операции.
+ */
 async function zeroCostItem(qty = '10') {
-  const item = await h.prisma.warehouseItem.create({
-    data: { workspaceId: seed.workspaceId, name: 'Iron Pride X', qty, avgCost: '0' },
+  const { id } = await seedStockItem(h.prisma, {
+    workspaceId: seed.workspaceId,
+    createdById: seed.userId,
+    name: 'Iron Pride X',
+    qty,
+    unitCost: '0',
   });
-  return item.id;
+  return id;
 }
 
 describe('setCost — установка себестоимости начального остатка', () => {

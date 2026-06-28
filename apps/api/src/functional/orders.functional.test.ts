@@ -18,12 +18,13 @@
  *   POST   /orders/:id/reopen     — вернуть в работу → OPEN + откат склада
  *
  * Деньги — Decimal: сверяем через .toFixed(2). Для отгрузки/финализации нужен
- * склад с запасом — создаём WarehouseItem с qty/avgCost напрямую через prisma.
+ * склад с запасом — создаём позицию вместе с FIFO-партией через seedStockItem
+ * (прямой create без партии не имел бы лотов для списания при ship/finalize).
  * Диапазон telegramId: 2500000n+ (не пересекается с другими сьютами).
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { buildHttpApp, type HttpApp } from '../e2e/http-harness';
-import { resetDb, seedBase, seedMember, type Seed } from '../test/money-harness';
+import { resetDb, seedBase, seedMember, seedStockItem, type Seed } from '../test/money-harness';
 
 const num = (v: { toString(): string }) => Number(v.toString());
 
@@ -69,12 +70,20 @@ interface OrderJson {
   items: OrderItemJson[];
 }
 
-/** Складская позиция с готовым остатком и средневзвешенной себестоимостью. */
+/**
+ * Складская позиция с готовым остатком и себестоимостью, материализованным
+ * FIFO-партией (OPENING-лот @avgCost). При единственной партии FIFO-списание идёт
+ * по unitCost = avgCost, поэтому unitCostAtSale/COGS совпадают со старыми WAVG-ожиданиями.
+ */
 async function stockedItem(qty = '100', avgCost = '50', name = 'Деталь A'): Promise<string> {
-  const item = await H.prisma.warehouseItem.create({
-    data: { workspaceId: seed.workspaceId, name, qty, avgCost },
+  const { id } = await seedStockItem(H.prisma, {
+    workspaceId: seed.workspaceId,
+    createdById: seed.userId,
+    name,
+    qty,
+    unitCost: avgCost,
   });
-  return item.id;
+  return id;
 }
 
 /** Контрагент-клиент (для проверки привязки counterpartyId в проводках). */

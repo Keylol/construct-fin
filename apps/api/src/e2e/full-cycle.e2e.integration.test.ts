@@ -4,7 +4,7 @@
  * Прогоняет связную историю торгового бизнеса через настоящий Nest+Fastify
  * (buildHttpApp / http-harness), не минуя JwtAuthGuard и WorkspaceGuard:
  *
- *   health → справочники (категория + клиент) → склад+закупка (WAVG)
+ *   health → справочники (категория + клиент) → склад+закупка (FIFO)
  *   → заказ → частичная отгрузка → оплата → финализация → возврат
  *   → перевод между счетами → отчёты (P&L / cashflow / маржа / дебиторка)
  *   → сверка (снимок + отчёт) → негатив (401 без токена, 403 к чужому ws).
@@ -84,7 +84,7 @@ describe('Полный бизнес-цикл через HTTP (реальные �
     expect(client.id).toBeTruthy();
     expect(client.role).toBe('CLIENT');
 
-    // ── 3. Склад: позиция через HTTP + закупка (WAVG) ─────────────────────
+    // ── 3. Склад: позиция через HTTP + закупка (FIFO-партии) ──────────────
     const itemRes = await H.inject({
       method: 'POST',
       url: `/workspaces/${ws}/warehouse`,
@@ -95,7 +95,7 @@ describe('Полный бизнес-цикл через HTTP (реальные �
     const item = itemRes.json<{ id: string; name: string }>();
     expect(item.id).toBeTruthy();
 
-    // Закупка: 10@100 + 10@200 → остаток 20, avgCost = (1000+2000)/20 = 150.
+    // Закупка: 10@100 + 10@200 → две партии, остаток 20, avgCost-кэш = (1000+2000)/20 = 150.
     const purchaseRes = await H.inject({
       method: 'POST',
       url: `/workspaces/${ws}/purchases`,
@@ -121,7 +121,7 @@ describe('Полный бизнес-цикл через HTTP (реальные �
     expect(purchase.transaction.type).toBe('EXPENSE');
     expect(num(purchase.transaction.amount)).toBe(3000);
 
-    // Проверяем WAVG фактом в БД (отчёты строятся поверх него).
+    // Проверяем derived-кэш avgCost фактом в БД (отчёты строятся поверх партий).
     const itemAfter = await H.prisma.warehouseItem.findUniqueOrThrow({
       where: { id: item.id },
     });
@@ -336,9 +336,11 @@ describe('Полный бизнес-цикл через HTTP (реальные �
     // Трек A A4: отчёт по марже сужается возвратом клиента. Продано 10, возвращено
     // 2 → чистая продажа 8: выручка = 8·500 = 4000.
     expect(num(prodRow!.revenue)).toBe(4000);
-    // COGS = 8·150 (WAVG) = 1200 → маржа 2800.
-    expect(num(margin.totals.cogs)).toBe(1200);
-    expect(num(margin.totals.margin)).toBe(2800);
+    // FIFO: куплено 10@100 + 10@200; все 10 проданных ушли из первой (дешёвой)
+    // партии @100 (4 при отгрузке + 6 при финализации), возврат 2 откатил 2 из них
+    // → чистая продажа 8 @100. COGS = 8·100 = 800 → маржа 4000 − 800 = 3200.
+    expect(num(margin.totals.cogs)).toBe(800);
+    expect(num(margin.totals.margin)).toBe(3200);
 
     // Дебиторка: заказ оплачен на 3000 из 5000, рефанд 1000 вернул деньги
     // клиенту → остаток долга по заказу должен быть положительным.
