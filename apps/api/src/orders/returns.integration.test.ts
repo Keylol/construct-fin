@@ -211,6 +211,70 @@ describe('RMA: частичный возврат складской позици
   });
 });
 
+describe('M5: reopen/cancel сбрасывают накопленный returnedQty', () => {
+  it('возврат → reopen обнуляет returnedQty/shippedQty, склад восстановлен, повторный возврат возможен', async () => {
+    // Продано 5 из 20 → склад 15.
+    const { order, itemId } = await doneWarehouseOrder('5', '100');
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+
+    // Возврат 2 (без денег) → склад 17, returnedQty=2.
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '2',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    expect(num((await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } })).returnedQty)).toBe(2);
+    expect(num((await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } })).qty)).toBe(17);
+
+    // reopen → откат отгрузки: дотолкать 5-2=3 на склад → 20; обнулить returnedQty/shippedQty.
+    const reopened = await h.orders.reopen(seed.workspaceId, order.id, seed.userId);
+    expect(reopened!.status).toBe('OPEN');
+    const oiReopened = await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } });
+    expect(num(oiReopened.returnedQty)).toBe(0); // ← ядро M5
+    expect(num(oiReopened.shippedQty)).toBe(0);
+    expect(oiReopened.unitCostAtSale).toBeNull();
+    // Склад полностью восстановлен (инвариант склад=Σдвижений): 20.
+    expect(num((await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } })).qty)).toBe(20);
+
+    // Повторный finalize → снова списывает 5 → склад 15, shippedQty=5.
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    expect(num((await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } })).shippedQty)).toBe(5);
+    expect(num((await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } })).qty)).toBe(15);
+
+    // Повторный возврат на ПОЛНЫЕ 5 теперь проходит (раньше available=5-2=3 ломал бы это).
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '5',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    expect(num((await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } })).returnedQty)).toBe(5);
+    expect(num((await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } })).qty)).toBe(20);
+  });
+
+  it('возврат → cancel обнуляет returnedQty и полностью восстанавливает склад', async () => {
+    const { order, itemId } = await doneWarehouseOrder('4', '100'); // склад 16
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '1',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    expect(num((await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } })).returnedQty)).toBe(1);
+
+    const cancelled = await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
+    expect(cancelled!.status).toBe('CANCELLED');
+    const oiAfter = await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } });
+    expect(num(oiAfter.returnedQty)).toBe(0); // ← ядро M5
+    expect(num(oiAfter.shippedQty)).toBe(0);
+    // Склад полностью восстановлен: 20 (приход) − 0 (всё откатано).
+    expect(num((await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } })).qty)).toBe(20);
+  });
+});
+
 describe('RMA: сторно себестоимости услуги (Блок C · CR1/CR2)', () => {
   it('возврат части услуги создаёт отрицательный COGS и уменьшает себестоимость в P&L', async () => {
     // Услуга 2 шт по 500, ручная себестоимость 300/шт → COGS при finalize = 600.

@@ -135,6 +135,67 @@ describe('Функциональные мутации: категории (categ
     expect(row.deletedAt).not.toBeNull();
   });
 
+  it('M13: POST /categories → 400 при kind=EXPENSE + bucket=REVENUE, запись не создаётся', async () => {
+    const ws = seed.workspaceId;
+    const before = await H.prisma.category.count({ where: { workspaceId: ws } });
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/categories`,
+      token,
+      payload: { name: 'РасходВВыручку', kind: 'EXPENSE', bucket: 'REVENUE' },
+    });
+    expect(res.statusCode).toBe(400);
+    const after = await H.prisma.category.count({ where: { workspaceId: ws } });
+    expect(after).toBe(before);
+  });
+
+  it('M13: POST /categories → 400 при kind=INCOME + bucket=COGS', async () => {
+    const ws = seed.workspaceId;
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/categories`,
+      token,
+      payload: { name: 'ДоходВСебестоимость', kind: 'INCOME', bucket: 'COGS' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('M13: POST /categories → 201 для валидных пар (EXPENSE+COGS, INCOME+REVENUE, нейтральный CAPITAL)', async () => {
+    const ws = seed.workspaceId;
+    for (const payload of [
+      { name: 'Себестоимость', kind: 'EXPENSE', bucket: 'COGS' },
+      { name: 'Продажи', kind: 'INCOME', bucket: 'REVENUE' },
+      { name: 'Взнос учредителя', kind: 'INCOME', bucket: 'CAPITAL' },
+      { name: 'Изъятие учредителя', kind: 'EXPENSE', bucket: 'CAPITAL' },
+    ]) {
+      const res = await H.inject({
+        method: 'POST',
+        url: `/workspaces/${ws}/categories`,
+        token,
+        payload,
+      });
+      expect(res.statusCode).toBe(201);
+      const row = await H.prisma.category.findUniqueOrThrow({ where: { id: res.json<{ id: string }>().id } });
+      expect(row.bucket).toBe(payload.bucket);
+    }
+  });
+
+  it('M13: PATCH /categories/:id → 400 при смене bucket на несовместимый с kind, БД не меняется', async () => {
+    const ws = seed.workspaceId;
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws, name: 'Расход', kind: 'EXPENSE', bucket: 'COGS' },
+    });
+    const res = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/categories/${cat.id}`,
+      token,
+      payload: { bucket: 'REVENUE' },
+    });
+    expect(res.statusCode).toBe(400);
+    const row = await H.prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+    expect(row.bucket).toBe('COGS');
+  });
+
   it('негатив: 401 без токена и 403 к чужому workspace', async () => {
     const ws = seed.workspaceId;
     const noAuth = await H.inject({
