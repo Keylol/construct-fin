@@ -23,6 +23,14 @@ describe('parseAmount', () => {
     expect(parseAmount('-21,540.00 ₽')).toBe('-21540.00');
     expect(parseAmount('500 р')).toBe('500.00');
   });
+  // #22: буквенные коды валют (ISO + кириллические) не должны браковать число
+  it('strips ISO and cyrillic currency codes', () => {
+    expect(parseAmount('1 234,56 RUB')).toBe('1234.56');
+    expect(parseAmount('100 USD')).toBe('100.00');
+    expect(parseAmount('50 грн')).toBe('50.00');
+    expect(parseAmount('1 200,00 руб')).toBe('1200.00');
+    expect(parseAmount('99.50 EUR')).toBe('99.50');
+  });
   it('returns null for garbage', () => {
     expect(parseAmount('hello')).toBeNull();
     expect(parseAmount('')).toBeNull();
@@ -141,6 +149,11 @@ describe('detectSourceByFilename', () => {
   it('falls back to generic', () => {
     expect(detectSourceByFilename('random.csv')).toBe('GENERIC_CSV');
     expect(detectSourceByFilename('budget.xlsx')).toBe('GENERIC_XLSX');
+  });
+  // #21: неизвестный PDF не должен молча уходить в parseWbPdf — явная ошибка.
+  it('throws on unknown PDF instead of silently routing to WB', () => {
+    expect(() => detectSourceByFilename('random.pdf')).toThrow(/Неизвестный формат PDF/);
+    expect(() => detectSourceByFilename('scan.pdf', 'application/pdf')).toThrow(/Неизвестный формат PDF/);
   });
 });
 

@@ -12,7 +12,19 @@ const webp = Buffer.concat([
 const heic = Buffer.concat([
   Buffer.from([0x00, 0x00, 0x00, 0x18]),
   Buffer.from([0x66, 0x74, 0x79, 0x70]), // ftyp на offset 4
-  Buffer.from([0x68, 0x65, 0x69, 0x63]),
+  Buffer.from([0x68, 0x65, 0x69, 0x63]), // 'heic' brand на offset 8
+]);
+// MP4: ftyp на offset 4, но бренд 'isom' (НЕ heic/heif) на offset 8.
+const mp4 = Buffer.concat([
+  Buffer.from([0x00, 0x00, 0x00, 0x18]),
+  Buffer.from([0x66, 0x74, 0x79, 0x70]),
+  Buffer.from([0x69, 0x73, 0x6f, 0x6d]), // 'isom'
+]);
+// RIFF-контейнер, но WAVE (не WEBP) на offset 8.
+const wav = Buffer.concat([
+  Buffer.from([0x52, 0x49, 0x46, 0x46]),
+  Buffer.from([0x00, 0x00, 0x00, 0x00]),
+  Buffer.from([0x57, 0x41, 0x56, 0x45]), // 'WAVE'
 ]);
 const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46]); // ELF executable
 
@@ -43,5 +55,16 @@ describe('assertAllowedAttachment', () => {
 
   it('отклоняет PNG-mimeType с содержимым JPEG', () => {
     expect(() => assertAllowedAttachment('image/png', jpeg)).toThrow(/не соответствует/);
+  });
+
+  // #17: один лишь 'ftyp' проходит и для MP4/MOV — проверяем бренд на offset 8.
+  it('отклоняет MP4 (ftyp без HEIF-бренда) под видом HEIC', () => {
+    expect(() => assertAllowedAttachment('image/heic', mp4)).toThrow(/не соответствует/);
+    expect(() => assertAllowedAttachment('image/heif', mp4)).toThrow(/не соответствует/);
+  });
+
+  // #18: RIFF сам по себе — ещё и WAV/AVI; требуем 'WEBP' на offset 8.
+  it('отклоняет WAV (RIFF без WEBP) под видом WEBP', () => {
+    expect(() => assertAllowedAttachment('image/webp', wav)).toThrow(/не соответствует/);
   });
 });

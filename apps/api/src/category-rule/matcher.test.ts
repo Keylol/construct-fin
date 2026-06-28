@@ -49,4 +49,20 @@ describe('applyRules', () => {
   it('trims keyword whitespace before matching', () => {
     expect(applyRules([rule('  coffee  ', 'c1')], { description: 'morning coffee' })).toBe('c1');
   });
+
+  // #23: правило расходной категории не должно липнуть к доходной транзакции.
+  it('skips rule whose kind differs from transaction kind', () => {
+    const rules: MatchableRule[] = [{ keyword: 'coffee', categoryId: 'exp', priority: 0, kind: 'EXPENSE' }];
+    expect(applyRules(rules, { description: 'morning coffee', kind: 'INCOME' })).toBeNull();
+  });
+
+  it('applies rule when kind matches transaction kind', () => {
+    const rules: MatchableRule[] = [{ keyword: 'coffee', categoryId: 'exp', priority: 0, kind: 'EXPENSE' }];
+    expect(applyRules(rules, { description: 'morning coffee', kind: 'EXPENSE' })).toBe('exp');
+  });
+
+  it('does not filter by kind when transaction kind is unknown', () => {
+    const rules: MatchableRule[] = [{ keyword: 'coffee', categoryId: 'exp', priority: 0, kind: 'EXPENSE' }];
+    expect(applyRules(rules, { description: 'morning coffee' })).toBe('exp');
+  });
 });

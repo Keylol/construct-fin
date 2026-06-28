@@ -1,13 +1,24 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyTelegramLogin, verifyTelegramInitData } from './telegram-verify';
 import type { ConfigSchema } from '../config';
 import type { TelegramLoginPayload, UserProfile } from '@construct/shared';
 
 const PASSWORD_USER_TELEGRAM_ID = 1n;
+
+// Структура поля `user` в Telegram initData (после JSON.parse). Минимально
+// требуем числовой id; остальные поля опциональны.
+const InitDataUserSchema = z.object({
+  id: z.number(),
+  username: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  photo_url: z.string().optional(),
+});
 
 export interface JwtPayload {
   sub: string; // user.id
@@ -16,6 +27,8 @@ export interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -26,7 +39,11 @@ export class AuthService {
   async loginViaWidget(payload: TelegramLoginPayload): Promise<{ token: string; user: UserProfile }> {
     const token = this.config.get('TELEGRAM_BOT_TOKEN', { infer: true });
     const result = verifyTelegramLogin(payload, token);
-    if (!result.ok) throw new UnauthorizedException(`Telegram verify failed: ${result.reason}`);
+    if (!result.ok) {
+      // Причину логируем для диагностики, клиенту — обобщённое сообщение (не утекаем детали).
+      this.logger.warn(`Telegram Login Widget verify failed: ${result.reason}`);
+      throw new UnauthorizedException('Telegram verification failed');
+    }
     return this.upsertAndIssue({
       id: BigInt(payload.id),
       username: payload.username,
@@ -40,16 +57,20 @@ export class AuthService {
   async loginViaMiniApp(initDataRaw: string): Promise<{ token: string; user: UserProfile }> {
     const token = this.config.get('TELEGRAM_BOT_TOKEN', { infer: true });
     const result = verifyTelegramInitData(initDataRaw, token);
-    if (!result.ok) throw new UnauthorizedException(`Telegram initData verify failed: ${result.reason}`);
+    if (!result.ok) {
+      // Причину логируем, клиенту — обобщённое сообщение (не утекаем детали).
+      this.logger.warn(`Telegram initData verify failed: ${result.reason}`);
+      throw new UnauthorizedException('Telegram verification failed');
+    }
     const userJson = result.data.get('user');
     if (!userJson) throw new UnauthorizedException('initData has no user');
-    const parsed = JSON.parse(userJson) as {
-      id: number;
-      username?: string;
-      first_name?: string;
-      last_name?: string;
-      photo_url?: string;
-    };
+    let parsed: z.infer<typeof InitDataUserSchema>;
+    try {
+      parsed = InitDataUserSchema.parse(JSON.parse(userJson));
+    } catch (err) {
+      this.logger.warn(`Telegram initData user payload invalid: ${(err as Error).message}`);
+      throw new UnauthorizedException('Invalid Telegram user data');
+    }
     return this.upsertAndIssue({
       id: BigInt(parsed.id),
       username: parsed.username,
@@ -91,7 +112,13 @@ export class AuthService {
    */
   private assertAllowed(id: bigint): void {
     const allowed = this.config.get('TELEGRAM_ALLOWED_IDS', { infer: true });
-    if (allowed.length > 0 && !allowed.includes(id)) {
+    if (allowed.length === 0) {
+      // Поведение намеренно НЕ меняем (fail-open мог бы залочить прод), но фиксируем
+      // в логах, что allowlist пуст и вход открыт всем.
+      this.logger.warn('TELEGRAM_ALLOWED_IDS is empty — login allowlist is OPEN to everyone');
+      return;
+    }
+    if (!allowed.includes(id)) {
       throw new ForbiddenException('Telegram user not in allowlist');
     }
   }

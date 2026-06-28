@@ -60,7 +60,15 @@ export function parseAmount(raw: string | null | undefined, decimalSep?: '.' | '
   let s = String(raw).trim();
   if (!s) return null;
 
-  s = s.replace(/[₽р₸$€£]/gi, '').replace(/\s| /g, '').trim();
+  // Чистим валюту. Порядок важен: словесные кириллические коды снимаем ДО
+  // удаления одиночной «р», иначе «руб»/«грн» развалятся. ISO-коды — это 3+
+  // латинские буквы (RUB/USD/EUR); буквы в числе незначимы, удаление безопасно
+  // (десятичные/тысячные разделители и минус не трогаем).
+  s = s
+    .replace(/грн|руб/gi, '')
+    .replace(/[a-z]{3,}/gi, '')
+    .replace(/[₽р₸$€£]/gi, '')
+    .replace(/\s| /g, '').trim();
   if (!s) return null;
 
   // Если decimalSep задан явно — уважаем его (поведение для заданного sep

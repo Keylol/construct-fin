@@ -84,7 +84,12 @@ export class AttachmentService {
 
     await this.prisma.attachment.delete({ where: { id: att.id } });
 
-    const stillUsed = await this.prisma.attachment.count({ where: { hash: att.hash } });
+    // Дедуп в store() — per-workspace (hash + workspaceId), и файл лежит под
+    // каталогом workspace. Поэтому «ещё используется» тоже считаем per-workspace,
+    // иначе можно удалить с диска файл, который ещё нужен другому workspace.
+    const stillUsed = await this.prisma.attachment.count({
+      where: { hash: att.hash, workspaceId },
+    });
     if (stillUsed === 0 && existsSync(att.storagePath)) {
       await fs.unlink(att.storagePath).catch(() => undefined);
     }
