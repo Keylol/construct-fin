@@ -125,3 +125,39 @@ M7 остаточный риск: account.softDelete (M3-guard) не берёт 
   при retry:0 + сериализации RQ.
 TODO дальше: Low(32) в бэклог; M1+M17 (в F0/FE-проход); M10 DB-бэкстоп (миграция); R6 Layer 2 (миграция);
   план 06-24 (F0/FIFO — фундамент склада); Playwright (Фаза 5).
+
+=== Low (32) статического аудита — ОБРАБОТАНЫ (2026-06-28) ===
+Метод тот же: read-only триаж против ТЕКУЩЕГО кода (4 параллельных агента) → фиксы по группам
+  (4 параллельных агента, файлы не пересекаются) → cheap Haiku-review каждой группы → централизованный прогон.
+Из 32 по verdict.severity: 3 УЖЕ ЗАКРЫТЫ попутно — #8 idempotency complete() (архитектурно в R6: completedAt
+  commit-hook'ом внутри доменной tx); #28 и #31 (это ОДИН баг — инвалидация кэшей в useImportCommit, закрыт R7
+  коммитом 7fed333; в реестре дублирующая запись).
+ОТЛОЖЕНЫ 2 (по решению пользователя): #1 cashflow byAccount N+1 (perf-долг, переписывать рабочую SQL-агрегацию
+  ради малой выгоды не стали); #20 attachment create-TOCTOU (полное закрытие требует @@unique(workspaceId,hash)
+  = миграция, по правилам репо только в v6).
+#24 — фактически закрыта 2-уровневым инвариантом категорий (self-parent/дети/kind уже запрещены в update()) — no-op.
+ИСПРАВЛЕНО 27:
+  Reports/Trade/Export: #2 marginPct не прячет убыток при revenue=0 (отрицательный %); #3 by-product ключ
+    нормализован trim+lower (имя для показа — исходное); #4 cashflow-export строка Итого (Decimal); #26 marginPeriod
+    частичный период → отклоняется валидацией (refine both-or-none); #27 isoDate строгий regex + calendar-refine
+    (2026-13-45/02-30 браковка); дедуп локальной копии isoDate; #32 убрана мёртвая ветка query.isError.
+  Core: #7 $transaction { maxWait 5000, timeout 15000 }; #9 assertAccountTx ВНУТРИ uow (addPayment+returnItem,
+    TOCTOU accountId); #10 resolvePaymentState для total=0 (paid<0→REFUNDED, =0→PAID, >0→OVERPAID); #11 qty/price>0
+    refine; #12 transfer FOR UPDATE + AND isArchived=false (перевод на архивный счёт отклонён); #13 from<=to
+    superRefine в list+summary.
+  Auth/Att/Import/Cat: #14 причина Telegram-verify в logger.warn, клиенту generic; #15 JSON.parse в try/catch +
+    zod-валидация user (id:number); #16 logger.warn при пустом TELEGRAM_ALLOWED_IDS (поведение fail-open НЕ менялось);
+    #17/#18 file-validation сигнатуры (HEIC/HEIF: ftyp@4 И бренд@8; WEBP: RIFF@0 И WEBP@8) — MP4/WAV больше не проходят;
+    #19 дедуп при remove считает hash+workspaceId (без миграции); #21 неизвестный PDF → BadRequest (GENERIC_PDF нет,
+    тихий parseWbPdf убран); #22 очистка валютных кодов (RUB/USD/EUR/грн/руб); #23 matcher учитывает kind
+    (протянут в import.service); #25 inn regex ^(\d{10}|\d{12})$.
+  Shared+FE: #5 parseAmountInput через Decimal (заведён decimal.js-light в packages/shared, ROUND_HALF_UP зеркалит
+    бэк; bundle-нейтрально — уже тянется recharts); #6 fromLocalDateInput фиксирует UTC+5 через tzInstant (как M4);
+    #29 COGS/прибыль/маржа заказа на shared-Decimal (Number убран, Prisma.Decimal во фронт не тянется); #30 удаление
+    чека через ConfirmDialog (паттерн отмены заказа).
+В прогоне всплыл 1 межфайловый ассерт: transfers.e2e.integration.test.ts ждал старый текст ошибки #12 —
+  3 ассерта обновлены под "not found or archived in this workspace" (поведение корректно).
+Регрессия ЗЕЛЁНАЯ: 300 unit + 16 web-unit + 305 integration + 119 functional + 4 loadtest (5×1000, наруш.=0).
+  typecheck api+web чисто. Всё в рабочем дереве (НЕ закоммичено — ждёт явного решения).
+TODO дальше: коммит Low-пачки в audit/hardening; затем F0/FIFO (план 06-24); миграции в v6 (M10 + R6 L2 + #20);
+  M17 + Playwright (FE-проход); решение о мёрже audit/hardening (push в v6 = прод-деплой).
