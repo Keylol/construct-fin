@@ -34,6 +34,7 @@ model User {
   createdTransfers      Transfer[]            @relation("TransferCreatedBy")
   createdStockMovements StockMovement[]       @relation("StockMovementCreatedBy")
   balanceChecks         AccountBalanceCheck[] @relation("BalanceCheckCreatedBy")
+  createdStockLots      StockLot[]            @relation("StockLotCreatedBy")
 }
 
 model Workspace {
@@ -46,22 +47,24 @@ model Workspace {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner          User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  members        WorkspaceMember[]
-  accounts       Account[]
-  categories     Category[]
-  counterparties Counterparty[]
-  transactions   Transaction[]
-  importBatches  ImportBatch[]
-  categoryRules  CategoryRule[]
-  auditLogs      AuditLog[]
-  orders         Order[]
-  warehouseItems WarehouseItem[]
-  purchases      Purchase[]
-  attachments    Attachment[]
-  transfers      Transfer[]
-  stockMovements StockMovement[]
-  balanceChecks  AccountBalanceCheck[]
+  owner           User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members         WorkspaceMember[]
+  accounts        Account[]
+  categories      Category[]
+  counterparties  Counterparty[]
+  transactions    Transaction[]
+  importBatches   ImportBatch[]
+  categoryRules   CategoryRule[]
+  auditLogs       AuditLog[]
+  orders          Order[]
+  warehouseItems  WarehouseItem[]
+  purchases       Purchase[]
+  attachments     Attachment[]
+  transfers       Transfer[]
+  stockMovements  StockMovement[]
+  balanceChecks   AccountBalanceCheck[]
+  stockLots       StockLot[]
+  lotConsumptions LotConsumption[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -111,6 +114,7 @@ model Account {
   transfersFrom Transfer[]            @relation("TransferFrom")
   transfersTo   Transfer[]            @relation("TransferTo")
   balanceChecks AccountBalanceCheck[]
+  stockLots     StockLot[]            @relation("StockLotAccount")
 
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
@@ -212,6 +216,7 @@ model Counterparty {
   ordersAsClient    Order[]         @relation("OrderClient")
   warehouseDefaults WarehouseItem[] @relation("WarehouseDefaultSupplier")
   purchases         Purchase[]      @relation("PurchaseSupplier")
+  stockLotsSupplied StockLot[]      @relation("StockLotSupplier")
 
   @@index([workspaceId, role, isArchived])
   @@index([workspaceId, deletedAt])
@@ -346,9 +351,11 @@ model WarehouseItem {
   name              String
   /// Единица измерения: «шт», «кг», «ч», «м».
   unit              String   @default("шт")
-  /// Текущий остаток на складе.
+  /// DERIVED-КЭШ остатка. Истина — StockLot: qty == Σ open lot.qtyRemaining.
+  /// Пересчитывается recomputeCaches() в той же UoW под FOR UPDATE.
   qty               Decimal  @default(0) @db.Decimal(14, 3)
-  /// Средневзвешенная себестоимость единицы.
+  /// DERIVED-КЭШ средневзвешенной себестоимости (подсказка для lowStock/UI).
+  /// Истина — StockLot: avgCost == Σ(qtyRemaining*unitCost)/Σ qtyRemaining (0 если пусто).
   avgCost           Decimal  @default(0) @db.Decimal(14, 4)
   /// Точка дозаказа: при qty <= reorderPoint позиция попадает в low-stock.
   /// null — порог не задан, в low-stock не сигналит.
@@ -367,6 +374,7 @@ model WarehouseItem {
   orderItems      OrderItem[]
   purchaseLines   PurchaseLine[]
   stockMovements  StockMovement[]
+  lots            StockLot[]
 
   // Уникальность sku — partial-unique (WHERE deletedAt IS NULL AND sku IS NOT
   // NULL), заведена сырым SQL в миграции *_phase4_sku_number_unique (см. Order
@@ -408,9 +416,10 @@ model StockMovement {
   createdAt       DateTime          @default(now())
   createdById     String
 
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  warehouseItem WarehouseItem @relation(fields: [warehouseItemId], references: [id])
-  createdBy     User          @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  warehouseItem   WarehouseItem    @relation(fields: [warehouseItemId], references: [id])
+  createdBy       User             @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
+  lotConsumptions LotConsumption[]
 
   @@index([workspaceId, warehouseItemId, createdAt])
   @@index([workspaceId, type, createdAt])
@@ -475,9 +484,114 @@ model PurchaseLine {
 
   purchase      Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   warehouseItem WarehouseItem @relation(fields: [warehouseItemId], references: [id])
+  lots          StockLot[]
 
   @@index([purchaseId])
   @@index([warehouseItemId])
+}
+
+// ───────────────────────────── Stock lots (FIFO) ─────────────────────────────
+//
+// Партионный (FIFO) учёт себестоимости. Истина по складу — НЕ WarehouseItem.qty/avgCost
+// (это derived-кэши), а набор StockLot: каждая закупка/приход создаёт партию со своей
+// unitCost, поставщиком, счётом и датой поступления. Любой расход (продажа, возврат
+// поставщику, инвентаризация-вниз, write-off) списывает партии в FIFO-порядке
+// (receivedAt ASC, seq ASC) и пишет append-only-запись LotConsumption. Возврат клиента и
+// откат финализации РЕВЕРСИРУЮТ конкретные потребления (восстанавливают qtyRemaining тех
+// же партий по их СНИМОЧНОЙ себестоимости).
+//
+// Сериализация — на строке WarehouseItem (repo.lockForUpdate FOR UPDATE): пока UoW держит
+// строку SKU, лоты этого SKU мутируются эксклюзивно. Мутации лотов всегда внутри этого лока.
+
+model StockLot {
+  id              String         @id @default(cuid())
+  workspaceId     String
+  warehouseItemId String
+  /// Полученное количество партии (неизменно после создания).
+  qtyInitial      Decimal        @db.Decimal(14, 3)
+  /// Остаток партии = qtyInitial − Σ(LotConsumption.qty со знаком). КЭШ; цель FOR UPDATE при списании.
+  qtyRemaining    Decimal        @db.Decimal(14, 3)
+  /// Себестоимость единицы партии, >= 0 (CHECK в миграции).
+  unitCost        Decimal        @db.Decimal(14, 4)
+  sourceType      StockLotSource
+  /// Слабая ссылка на источник (Purchase.id / Order.id / Adjust). Без FK — источники разнородны.
+  sourceId        String?
+  /// Сильная трасса к строке закупки (F5). null для OPENING/MIGRATION/ADJUSTMENT/возврата.
+  purchaseLineId  String?
+  /// Трасса до поставщика (F5). null для OPENING/MIGRATION.
+  supplierId      String?
+  /// Трасса до счёта оплаты закупки (F5). null где неприменимо.
+  accountId       String?
+  /// Бизнес-дата поступления — ПЕРВИЧНЫЙ ключ FIFO-сортировки.
+  receivedAt      DateTime
+  /// Монотонный детерминированный tie-break FIFO при равных receivedAt.
+  seq             BigInt         @default(autoincrement())
+  createdAt       DateTime       @default(now())
+  createdById     String
+  /// soft-delete для единообразия; в норме лоты не удаляем (исчерпание = qtyRemaining→0).
+  deletedAt       DateTime?
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  warehouseItem WarehouseItem    @relation(fields: [warehouseItemId], references: [id])
+  purchaseLine  PurchaseLine?    @relation(fields: [purchaseLineId], references: [id], onDelete: SetNull)
+  supplier      Counterparty?    @relation("StockLotSupplier", fields: [supplierId], references: [id])
+  account       Account?         @relation("StockLotAccount", fields: [accountId], references: [id])
+  createdBy     User             @relation("StockLotCreatedBy", fields: [createdById], references: [id])
+  consumptions  LotConsumption[]
+
+  // FIFO-скан/лок по бизнес-порядку (receivedAt, seq). Partial-вариант
+  // (WHERE qtyRemaining>0 AND deletedAt IS NULL) заводится сырым SQL в миграции (known-drift).
+  @@index([workspaceId, warehouseItemId, receivedAt, seq])
+  @@index([purchaseLineId])
+  @@index([workspaceId, supplierId])
+}
+
+enum StockLotSource {
+  PURCHASE // партия из закупки (есть purchaseLineId/supplierId/accountId)
+  OPENING // начальный остаток (create openingQty / import)
+  MIGRATION // единый лот при WAVG→FIFO миграции (supplier/account=null)
+  ADJUSTMENT // излишек инвентаризации (adjust delta>0)
+  RETURN_CUSTOMER // FALLBACK-лот возврата клиента (нет исходных потреблений)
+}
+
+// Append-only леджер потреблений/реверсов партий. Каждая лот-операция (списание или
+// восстановление) пишет запись со СНИМКОМ unitCost партии на момент операции. Реверс
+// возврата клиента берёт цену из снимка реверсируемой CONSUME-строки, НЕ из текущего
+// lot.unitCost → возврат cost-neutral (снимает конфликт с setCost).
+
+model LotConsumption {
+  id           String             @id @default(cuid())
+  workspaceId  String
+  lotId        String
+  /// Движение-источник (SALE/RETURN_SUPPLIER/WRITE_OFF/ADJUSTMENT для CONSUME;
+  /// RETURN_CUSTOMER для REVERSAL). Всегда задано.
+  movementId   String
+  /// Денорм. слабая ссылка на строку заказа — ключ адресного реверса и пер-строчной трассы.
+  orderItemId  String?
+  /// Знаковое: + списание (CONSUME), − восстановление (REVERSAL). CHECK qty <> 0 в миграции.
+  qty          Decimal            @db.Decimal(14, 3)
+  /// Снимок lot.unitCost на момент операции. Реверс берёт цену отсюда.
+  unitCost     Decimal            @db.Decimal(14, 4)
+  kind         LotConsumptionKind @default(CONSUME)
+  /// Для REVERSAL — ссылка на реверсируемую CONSUME-строку (учёт остаточной реверсируемости).
+  reversalOfId String?
+  createdAt    DateTime           @default(now())
+
+  workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lot        StockLot         @relation(fields: [lotId], references: [id])
+  movement   StockMovement    @relation(fields: [movementId], references: [id])
+  reversalOf LotConsumption?  @relation("ConsumptionReversal", fields: [reversalOfId], references: [id])
+  reversals  LotConsumption[] @relation("ConsumptionReversal")
+
+  @@index([lotId])
+  @@index([orderItemId])
+  @@index([movementId])
+  @@index([reversalOfId])
+}
+
+enum LotConsumptionKind {
+  CONSUME // списание (+qty)
+  REVERSAL // восстановление при возврате/откате (−qty)
 }
 
 // ───────────────────────────── Transactions ─────────────────────────────
