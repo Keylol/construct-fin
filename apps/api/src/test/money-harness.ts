@@ -104,11 +104,18 @@ export function buildHarness(): Harness {
 /** Удаляет все данные тестовой БД в порядке, безопасном для FK. */
 export async function resetDb(prisma: PrismaClient): Promise<void> {
   // TRUNCATE ... CASCADE на всех таблицах данных. RESTART IDENTITY не нужен (cuid).
+  // Перечисляем ВСЕ таблицы данных явно (не полагаясь на каскад от родителей):
+  // StockMovement/Transfer/AccountBalanceCheck чистятся CASCADE через FK, но
+  // IdempotencyKey — автономная таблица без FK, поэтому CASCADE её НЕ затрагивает.
+  // Без явного TRUNCATE ключи протекали между тестами: захардкоженный
+  // Idempotency-Key + меняющийся url (новые ws/order id) → ложный 409
+  // «использовался с другим запросом» во втором и последующих прогонах.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       "Attachment","AuditLog","PurchaseLine","Purchase","OrderItem","Order",
-      "Transaction","WarehouseItem","Counterparty","Category","Account",
-      "CategoryRule","ImportBatch",
+      "Transaction","StockMovement","Transfer","AccountBalanceCheck",
+      "WarehouseItem","Counterparty","Category","Account",
+      "CategoryRule","ImportBatch","IdempotencyKey",
       "WorkspaceMember","Workspace","User"
     RESTART IDENTITY CASCADE
   `);
