@@ -44,6 +44,40 @@ function tzParts(date: Date): TzParts {
   return { y: shifted.getUTCFullYear(), mo: shifted.getUTCMonth(), d: shifted.getUTCDate() };
 }
 
+/** Y/M/D + время суток момента в поясе бизнеса (UTC+5). */
+function tzPartsTime(date: Date) {
+  const s = new Date(date.getTime() + OFFSET_MS);
+  return {
+    y: s.getUTCFullYear(),
+    mo: s.getUTCMonth(),
+    d: s.getUTCDate(),
+    h: s.getUTCHours(),
+    mi: s.getUTCMinutes(),
+    s: s.getUTCSeconds(),
+    ms: s.getUTCMilliseconds(),
+  };
+}
+
+/**
+ * Сдвиг момента на целое число лет КАЛЕНДАРНО в поясе бизнеса (UTC+5), сохраняя
+ * месяц/день/время суток границы. Календарный сдвиг (а НЕ вычитание фиксированных
+ * 365/366 мс) корректен вокруг високосного года — иначе YoY-граница уезжала на
+ * сутки (M2). Date.UTC нормализует несуществующее 29 фев → 1 мар.
+ */
+function shiftYearsTz(date: Date, deltaYears: number): Date {
+  const p = tzPartsTime(date);
+  const shifted = tzInstant(p.y + deltaYears, p.mo, p.d, p.h, p.mi, p.s, p.ms);
+  // Граничный случай 29 фев: в невисокосном целевом году Date.UTC нормализовал
+  // бы несуществующее 29 фев ВПЕРЁД (→ 1 мар), снова смещая YoY-границу на сутки.
+  // При «уехавшей» дате клампим к последнему дню целевого месяца (28 фев):
+  // tzInstant(y, mo+1, 0) → день 0 = последний день месяца mo.
+  const sp = tzPartsTime(shifted);
+  if (sp.d !== p.d || sp.mo !== p.mo) {
+    return tzInstant(p.y + deltaYears, p.mo + 1, 0, p.h, p.mi, p.s, p.ms);
+  }
+  return shifted;
+}
+
 /**
  * UTC-инстант, у которого стенные часы в UTC+5 равны (y, mo, d, h:mi:s.ms).
  * Date.UTC нормализует переполнение (mo=-1 → декабрь пред. года, d=0 → последний
@@ -61,12 +95,14 @@ function tzInstant(
   return new Date(Date.UTC(y, mo, d, h, mi, s, ms) - OFFSET_MS);
 }
 
-function startOfDay(date: Date): Date {
+/** Начало суток (00:00:00.000) даты в поясе бизнеса (UTC+5). */
+export function startOfDay(date: Date): Date {
   const p = tzParts(date);
   return tzInstant(p.y, p.mo, p.d, 0, 0, 0, 0);
 }
 
-function endOfDay(date: Date): Date {
+/** Конец суток (23:59:59.999) даты в поясе бизнеса (UTC+5). */
+export function endOfDay(date: Date): Date {
   const p = tzParts(date);
   return tzInstant(p.y, p.mo, p.d, 23, 59, 59, 999);
 }
@@ -170,12 +206,12 @@ export function resolveComparison(
     return { from, to };
   }
   if (input.mode === 'yoy') {
-    const f = tzParts(primary.from);
-    const t = tzParts(primary.to);
-    // Сдвиг на календарный год назад с сохранением времени суток границы.
+    // M2: тот же интервал на КАЛЕНДАРНЫЙ год назад в поясе бизнеса (сохраняем
+    // месяц/день/время суток). Вычитание фиксированных 365/366 мс смещало
+    // границу на сутки вокруг високосного года.
     return {
-      from: new Date(primary.from.getTime() - yearShiftMs(f.y)),
-      to: new Date(primary.to.getTime() - yearShiftMs(t.y)),
+      from: shiftYearsTz(primary.from, -1),
+      to: shiftYearsTz(primary.to, -1),
     };
   }
   // prev
@@ -187,12 +223,6 @@ export function resolveComparison(
   const to = new Date(primary.from.getTime() - 1);
   const from = new Date(to.getTime() - lengthMs);
   return { from, to };
-}
-
-/** Длительность года (в мс), предшествующего году y — учитывает високосность. */
-function yearShiftMs(y: number): number {
-  const isLeap = (y - 1) % 4 === 0 && ((y - 1) % 100 !== 0 || (y - 1) % 400 === 0);
-  return (isLeap ? 366 : 365) * 24 * 60 * 60 * 1000;
 }
 
 export function enumerateMonths(period: Period): { from: Date; to: Date; label: string }[] {

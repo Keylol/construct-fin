@@ -3,6 +3,7 @@ import { Prisma, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
+import { startOfDay, endOfDay } from '../reports/period';
 import { isKindAllowedForType } from './transaction.dto';
 import type {
   CreateTransactionDto,
@@ -240,11 +241,14 @@ export class TransactionService {
       // Дашбордный «net денег» — только реальные движения: исключаем ноги
       // переводов (раздували бы income и expense) и неденежный COGS (R2).
       kind: { notIn: NON_CASH_CONSOLIDATED },
+      // R5/M8: границы периода считаем в поясе бизнеса (UTC+5), как cashflow/pnl.
+      // from → начало суток, to → конец суток (inclusive lte). Сырой
+      // new Date('2026-05-15') = 00:00 UTC резал бы день и расходился с отчётами.
       ...(query.from || query.to
         ? {
             date: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
+              ...(query.from ? { gte: startOfDay(new Date(query.from)) } : {}),
+              ...(query.to ? { lte: endOfDay(new Date(query.to)) } : {}),
             },
           }
         : {}),

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { money, toMoneyString } from '../common/money';
 import { NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
+import { endOfDay } from '../reports/period';
 import type { CreateBalanceCheckDto } from './reconciliation.dto';
 
 /**
@@ -61,7 +62,11 @@ export class ReconciliationService {
 
   async build(workspaceId: string, accountId: string, asOfInput?: string) {
     const account = await this.assertAccount(workspaceId, accountId);
-    const asOf = asOfInput ? new Date(asOfInput) : new Date();
+    // R5/M3: asOf — это КАЛЕНДАРНАЯ дата «на конец дня». DTO допускает date-only
+    // ('2026-05-15'), а сырой new Date(date-only) = 00:00 UTC, что в поясе UTC+5
+    // отсекает операции после 05:00 местного утра → книжный баланс/расхождение
+    // занижались. Берём конец суток в UTC+5 (как endOfDay в period.ts).
+    const asOf = endOfDay(asOfInput ? new Date(asOfInput) : new Date());
     const opening = new Prisma.Decimal(account.openingBalance);
 
     const computedBalance = await this.computedBalanceAt(workspaceId, accountId, opening, asOf);
@@ -81,11 +86,16 @@ export class ReconciliationService {
     let since: Date | null = null;
 
     if (lastCheck) {
+      // R5/M3: снимок фиксирует ФАКТ на конец своей даты. Книжный баланс «на
+      // снимок» считаем тоже до конца суток в UTC+5 (lastCheck.date — date-only,
+      // 00:00 UTC), иначе расхождение факт−книга занижалось бы на операции дня
+      // снимка. Та же граница задаёт начало «несведённого» хвоста (since).
+      const checkEnd = endOfDay(lastCheck.date);
       const computedAtCheck = await this.computedBalanceAt(
         workspaceId,
         accountId,
         opening,
-        lastCheck.date,
+        checkEnd,
       );
       const actual = new Prisma.Decimal(lastCheck.actualBalance);
       lastCheckOut = {
@@ -96,7 +106,7 @@ export class ReconciliationService {
         // discrepancy = факт − книга: >0 книга занижена, <0 завышена, 0 сходится.
         discrepancy: toMoneyString(actual.minus(computedAtCheck)),
       };
-      since = lastCheck.date;
+      since = checkEnd;
     }
 
     const unreconciled = await this.opsBetween(workspaceId, accountId, since, asOf);

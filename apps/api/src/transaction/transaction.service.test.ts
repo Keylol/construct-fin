@@ -141,6 +141,17 @@ describe('TransactionService.summary — исключение ног перев�
     expect(res.expense).toBe('0.00'); // TRANSFER_OUT и COGS исключены (не деньги)
     expect(res.net).toBe('1000.00');
   });
+
+  it('M8: from/to нормализуются к границам суток в UTC+5 (как cashflow/pnl)', async () => {
+    const { service, groupByCalls } = buildSummaryService([]);
+    await service.summary('ws1', { from: '2026-05-15', to: '2026-05-15' } as never);
+    const date = groupByCalls[0]!.date as { gte: Date; lte: Date };
+    // from → начало суток 15 мая в UTC+5 = 14 мая 19:00 UTC.
+    expect(date.gte.toISOString()).toBe('2026-05-14T19:00:00.000Z');
+    // to → конец суток 15 мая в UTC+5 = 15 мая 18:59:59.999 UTC (inclusive lte),
+    // а НЕ сырой 2026-05-15T00:00:00Z, который резал бы весь день.
+    expect(date.lte.toISOString()).toBe('2026-05-15T18:59:59.999Z');
+  });
 });
 
 describe('TransactionService.softDelete — блокировка системных (п.16)', () => {
