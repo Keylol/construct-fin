@@ -10,10 +10,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork, type TxClient } from '../common/unit-of-work';
-import { WarehouseService } from '../warehouse/warehouse.service';
+import { WarehouseService, NoConsumptionsError } from '../warehouse/warehouse.service';
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
-import { add, sub, mul, div, money, cost, gt, lt, isZero, D } from '../common/money';
+import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
 import type {
   CreateOrderDto,
   UpdateOrderDto,
@@ -250,15 +250,17 @@ export class OrderService {
 
       let costSnapshot = item.unitCostAtSale;
       if (item.warehouseItemId) {
-        const unitCost = await this.warehouse.decrementForSale(
+        await this.warehouse.decrementForSale(
           tx,
           workspaceId,
           item.warehouseItemId,
           shipQty,
           userId,
-          { refType: 'Order', refId: orderId },
+          { refType: 'Order', refId: orderId, orderItemId: item.id },
         );
-        costSnapshot = this.weightedCost(item.unitCostAtSale, item.shippedQty, unitCost, shipQty);
+        // unitCostAtSale — деривация из net-леджера FIFO-потреблений (одна формула
+        // для ship/finalize/return; убирает дрейф старого взвешивания).
+        costSnapshot = await this.warehouse.unitCostAtSaleFor(tx, workspaceId, item.id);
       }
       await tx.orderItem.update({
         where: { id: item.id },
@@ -281,17 +283,16 @@ export class OrderService {
     });
   }
 
-  /** Взвешенная себестоимость единицы при доборе отгрузки. prevCost=null → 0. */
-  private weightedCost(
-    prevCost: Prisma.Decimal | null,
-    prevQty: Prisma.Decimal,
-    newCost: Prisma.Decimal,
-    newQty: Prisma.Decimal,
-  ): Prisma.Decimal {
-    const denom = add(prevQty, newQty);
-    if (isZero(denom)) return cost(newCost);
-    const total = add(mul(prevCost ?? D(0), prevQty), mul(newCost, newQty));
-    return cost(div(total, denom));
+  /**
+   * Детерминированный порядок позиций для лока партий: по warehouseItemId ASC
+   * (услуги без склада — в конце). Применяется во ВСЕХ мультипозиционных путях
+   * (finalize/reverseFinalization/remove), чтобы две конкурентные операции с
+   * зеркальными наборами SKU не ушли в deadlock на встречных лотах-локах.
+   */
+  private sortItemsForLocking<T extends { warehouseItemId: string | null }>(items: T[]): T[] {
+    return [...items].sort((a, b) =>
+      (a.warehouseItemId ?? '￿').localeCompare(b.warehouseItemId ?? '￿'),
+    );
   }
 
   /**
@@ -344,19 +345,46 @@ export class OrderService {
       // #9: перепроверяем счёт возврата под транзакцией (TOCTOU) перед проводками.
       await this.assertAccountTx(tx, workspaceId, dto.accountId);
 
+      let costSnapshot = item.unitCostAtSale;
       if (item.warehouseItemId) {
-        await this.warehouse.restock(
-          tx,
-          workspaceId,
-          item.warehouseItemId,
-          returnQty,
-          userId,
-          { refType: 'Order', refId: orderId },
-        );
+        // Адресный реверс: восстанавливаем ИМЕННО те партии, из которых ушёл товар
+        // (по их снимочной себестоимости). Если потреблений нет (до-миграционный
+        // заказ / удалённая позиция) — fallback на новую RETURN_CUSTOMER-партию.
+        try {
+          await this.warehouse.reverseConsumption(
+            tx,
+            workspaceId,
+            item.warehouseItemId,
+            item.id,
+            returnQty,
+            userId,
+            { refType: 'Order', refId: orderId },
+          );
+        } catch (e) {
+          if (e instanceof NoConsumptionsError) {
+            await this.warehouse.restock(
+              tx,
+              workspaceId,
+              item.warehouseItemId,
+              returnQty,
+              userId,
+              { refType: 'Order', refId: orderId },
+              item.unitCostAtSale ?? item.unitCost ?? null,
+            );
+          } else {
+            throw e;
+          }
+        }
+        // Пересчёт снимка: теперь = себестоимость ОСТАВШИХСЯ проданных единиц → маржа
+        // (netQty × unitCostAtSale) остаётся равна FIFO-COGS оставшихся (I8).
+        costSnapshot = await this.warehouse.unitCostAtSaleFor(tx, workspaceId, item.id);
       }
       await tx.orderItem.update({
         where: { id: item.id },
-        data: { returnedQty: add(item.returnedQty, returnQty) },
+        data: {
+          returnedQty: add(item.returnedQty, returnQty),
+          ...(item.warehouseItemId ? { unitCostAtSale: costSnapshot } : {}),
+        },
       });
 
       // CR1/CR2 (Блок C): для УСЛУГ/ручных позиций (без склада) с признанной
@@ -517,22 +545,23 @@ export class OrderService {
       if (order.status === 'DONE') return order;
 
       let manualCogs = D(0);
-      for (const item of order.items ?? []) {
+      // Сортировка по warehouseItemId ASC — единый лок-порядок партий (анти-deadlock).
+      for (const item of this.sortItemsForLocking(order.items ?? [])) {
         if (item.warehouseItemId) {
           // Списываем только ещё НЕ отгруженный остаток (часть могла уйти через ship).
           const remaining = sub(item.qty, item.shippedQty);
-          let costSnapshot = item.unitCostAtSale;
           if (gt(remaining, '0')) {
-            const unitCost = await this.warehouse.decrementForSale(
+            await this.warehouse.decrementForSale(
               tx,
               workspaceId,
               item.warehouseItemId,
               remaining,
               userId,
-              { refType: 'Order', refId: orderId },
+              { refType: 'Order', refId: orderId, orderItemId: item.id },
             );
-            costSnapshot = this.weightedCost(item.unitCostAtSale, item.shippedQty, unitCost, remaining);
           }
+          // Снимок себестоимости — из net-леджера (учитывает и ship, и этот finalize).
+          const costSnapshot = await this.warehouse.unitCostAtSaleFor(tx, workspaceId, item.id);
           await tx.orderItem.update({
             where: { id: item.id },
             data: { unitCostAtSale: costSnapshot, shippedQty: item.qty },
@@ -665,15 +694,39 @@ export class OrderService {
     order: NonNullable<Awaited<ReturnType<OrderRepository['findById']>>>,
     userId: string,
   ) {
-    for (const item of order.items ?? []) {
+    for (const item of this.sortItemsForLocking(order.items ?? [])) {
       if (item.warehouseItemId) {
         const out = order.status === 'DONE' ? item.qty : item.shippedQty;
         const netOut = sub(out, item.returnedQty);
         if (gt(netOut, '0')) {
-          await this.warehouse.restock(tx, workspaceId, item.warehouseItemId, netOut, userId, {
-            refType: 'Order',
-            refId: order.id,
-          });
+          // Реверсируем НЕ возвращённый ещё остаток списанного (returnedQty уже
+          // реверсировал returnItem) — по остаточной реверсируемости, без двойного
+          // реверса. Fallback на restock для до-миграционных/удалённых позиций.
+          try {
+            await this.warehouse.reverseConsumption(
+              tx,
+              workspaceId,
+              item.warehouseItemId,
+              item.id,
+              netOut,
+              userId,
+              { refType: 'Order', refId: order.id },
+            );
+          } catch (e) {
+            if (e instanceof NoConsumptionsError) {
+              await this.warehouse.restock(
+                tx,
+                workspaceId,
+                item.warehouseItemId,
+                netOut,
+                userId,
+                { refType: 'Order', refId: order.id },
+                item.unitCostAtSale ?? item.unitCost ?? null,
+              );
+            } else {
+              throw e;
+            }
+          }
         }
       }
       // Сбрасываем отгрузку/снапшот себестоимости И накопленный возврат по всем
