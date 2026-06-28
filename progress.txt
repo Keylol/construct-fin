@@ -161,3 +161,29 @@ TODO дальше: Low(32) в бэклог; M1+M17 (в F0/FE-проход); M10 
   typecheck api+web чисто. Всё в рабочем дереве (НЕ закоммичено — ждёт явного решения).
 TODO дальше: коммит Low-пачки в audit/hardening; затем F0/FIFO (план 06-24); миграции в v6 (M10 + R6 L2 + #20);
   M17 + Playwright (FE-проход); решение о мёрже audit/hardening (push в v6 = прод-деплой).
+
+=== Аудит влит в v6 + ПРОД (2026-06-28) ===
+audit/hardening (19 коммитов: High+Med+Low, без миграций) → FF-мёрж в v6 (034232b) → push origin/v6 →
+прод-деплой run 28320988490 УСПЕШЕН (CI+build+deploy, миграций в этом деплое нет). Реестр Фазы 1 закрыт полностью.
+
+=== F0 — склад WAVG→FIFO (2026-06-28, ветка f0/fifo от v6@034232b) ===
+Дизайн спроектирован многоагентным workflow (4 варианта → 8 адверсариальных верификаций → синтез),
+docs/f0-fifo-design.md, утверждён (4 бизнес-решения). Реализовано (5 коммитов 9db54e5..55ccdd5, НЕ влито):
+- Схема: StockLot (партия) + LotConsumption (append-only леджер CONSUME/REVERSAL со снимком unitCost) + enums;
+  partial FIFO-индекс + CHECK сырым SQL (verified фактом БД). WarehouseItem.qty/avgCost → derived-кэш.
+  Backfill-миграция: MIGRATION-лот на позицию qty>0 (идемпотентно, NOT EXISTS) + gate сверки (RAISE при расхожд.);
+  проверена вручную (idempotent + reconciles). Прод применит через migrate deploy (auto, авто-откат E2).
+- Ядро: common/fifo.ts (consumePlan/reversePlan/weightedUnitCost). warehouse.service/repository переписаны на
+  партии под FOR UPDATE строки позиции (единственный мьютекс SKU); recomputeCaches из лотов; адресный
+  reverseConsumption (LIFO по снимку); supplier-return приоритет+spill (M1 устранён структурно); adjust требует
+  unitCost на излишек без партий; setCost по нулевым партиям; stockValue из лотов.
+- order.service: ship/finalize/return/reverse через FIFO; unitCostAtSale = деривация из net-леджера по orderItemId
+  (margin==FIFO-COGS, в т.ч. частичный возврат); лок-порядок warehouseItemId ASC. purchase.service: трасса партий.
+- Доказательства: e2e COGS 1200(WAVG)→800(FIFO); канон 5@100+5@200 продажа10 возврат5 → COGS оставшихся 500 (не 750).
+Регрессия ЗЕЛЁНАЯ: 303 unit + 16 web-unit + 320 integration + 119 functional + 4 loadtest (5×1000 + лот-инварианты
+  I2/I3/I5/I9, наруш.=0). typecheck api+web чисто. Удалён obsolete mock warehouse.service.test.ts.
+Решения блица: supplier spill / adjust-unitCost / бэкдейт-warn / единый MIGRATION-лот; defaults LIFO-реверс,
+  M1-устранение, write-off→F4, variance refund без отд.проводки.
+Follow-up: wavg.ts стал мёртвым кроме InsufficientStockError (перенести в fifo.ts, убрать WAVG-математику+wavg.test).
+TODO дальше: решение о мёрже f0/fifo в v6 (миграции StockLot+backfill пойдут на прод); затем F1 (маржа на бэке+D4),
+  F2 (PaymentSchedule), F4 (writeOff #10 — нужен выбор double-count), F5 (витрина трассировки), F3 (рассрочка gross).
