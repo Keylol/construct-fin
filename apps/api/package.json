@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:functional": "vitest run --config vitest.functional.config.ts",
+    "test:loadtest": "vitest run --config vitest.loadtest.config.ts"
   },
   "dependencies": {
     "@construct/db": "workspace:*",
