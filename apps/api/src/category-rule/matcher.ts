@@ -2,11 +2,15 @@ export interface MatchableRule {
   keyword: string;
   categoryId: string;
   priority: number;
+  /** kind категории правила. Если задан и у транзакции тоже — должны совпасть. */
+  kind?: 'INCOME' | 'EXPENSE' | null;
 }
 
 export interface MatchableTransaction {
   description?: string | null;
   counterpartyName?: string | null;
+  /** kind транзакции. Если задан — правило другого kind не применяется. */
+  kind?: 'INCOME' | 'EXPENSE' | null;
 }
 
 export function applyRules(
@@ -22,6 +26,9 @@ export function applyRules(
   for (const rule of rules) {
     const needle = rule.keyword.trim().toLowerCase();
     if (!needle) continue;
+    // Не применяем правило расходной категории к доходной транзакции (и наоборот).
+    // Фильтруем только когда kind известен с обеих сторон.
+    if (tx.kind && rule.kind && rule.kind !== tx.kind) continue;
     if (!haystack.includes(needle)) continue;
     if (
       !best ||

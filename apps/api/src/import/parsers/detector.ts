@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import type { ImportSource } from '@construct/db';
 
 const NAME_PATTERNS: Array<{ rx: RegExp; source: ImportSource }> = [
@@ -20,7 +21,15 @@ export function detectSourceByFilename(filename: string, mimeType?: string): Imp
   }
 
   if (isXlsx) return 'GENERIC_XLSX';
-  if (isPdf) return 'WB_PDF';
+  if (isPdf) {
+    // PDF без распознанного банка/маркетплейса. GENERIC_PDF-источника/парсера
+    // нет, а слепо отдавать неизвестный PDF в parseWbPdf — это тихий мис-парсинг.
+    // Поэтому явная внятная ошибка вместо порчи данных (пользователь укажет
+    // источник вручную, если это поддерживаемый формат).
+    throw new BadRequestException(
+      'Неизвестный формат PDF: автоопределение не сработало. Укажите источник выписки вручную.',
+    );
+  }
   if (isCsv) return 'GENERIC_CSV';
   return 'GENERIC_CSV';
 }

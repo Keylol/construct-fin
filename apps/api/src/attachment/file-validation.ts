@@ -19,21 +19,38 @@ const ALLOWED_MIME = new Set([
 
 type Sig = { offset: number; bytes: number[] };
 
-// Сигнатуры по фактическому содержимому. Значение — список допустимых
-// вариантов; достаточно совпадения хотя бы одного.
-const SIGNATURES: Record<string, Sig[]> = {
-  'application/pdf': [{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }], // %PDF
-  'image/jpeg': [{ offset: 0, bytes: [0xff, 0xd8, 0xff] }],
-  'image/png': [{ offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }],
-  'image/webp': [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }], // RIFF (+ WEBP на offset 8)
-  // HEIC/HEIF: ISO-BMFF box 'ftyp' на offset 4.
-  'image/heic': [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }],
-  'image/heif': [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }],
+const ascii = (s: string): number[] => Array.from(s, (c) => c.charCodeAt(0));
+
+// ISO-BMFF 'ftyp' на offset 4 + допустимый бренд на offset 8. Без проверки
+// бренда сигнатура 'ftyp' проходит и для MP4/MOV/3GP — поэтому каждый HEIF/HEIC
+// бренд проверяем как отдельный вариант (ftyp И конкретный major_brand).
+const HEIF_BRANDS = ['heic', 'heix', 'mif1', 'heif'];
+const HEIF_SIGNATURES: Sig[][] = HEIF_BRANDS.map((brand) => [
+  { offset: 4, bytes: ascii('ftyp') },
+  { offset: 8, bytes: ascii(brand) },
+]);
+
+// Сигнатуры по фактическому содержимому. Внешний список — допустимые ВАРИАНТЫ
+// (достаточно одного), внутренний — байт-проверки одного варианта (должны
+// совпасть ВСЕ).
+const SIGNATURES: Record<string, Sig[][]> = {
+  'application/pdf': [[{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }]], // %PDF
+  'image/jpeg': [[{ offset: 0, bytes: [0xff, 0xd8, 0xff] }]],
+  'image/png': [[{ offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }]],
+  // RIFF на offset 0 И 'WEBP' на offset 8 (RIFF сам по себе — ещё и WAV/AVI).
+  'image/webp': [[{ offset: 0, bytes: ascii('RIFF') }, { offset: 8, bytes: ascii('WEBP') }]],
+  'image/heic': HEIF_SIGNATURES,
+  'image/heif': HEIF_SIGNATURES,
 };
 
-function matches(buffer: Buffer, sig: Sig): boolean {
+function matchesPart(buffer: Buffer, sig: Sig): boolean {
   if (buffer.length < sig.offset + sig.bytes.length) return false;
   return sig.bytes.every((b, i) => buffer[sig.offset + i] === b);
+}
+
+// Вариант совпал, если совпали ВСЕ его байт-проверки.
+function matchesVariant(buffer: Buffer, parts: Sig[]): boolean {
+  return parts.every((p) => matchesPart(buffer, p));
 }
 
 /**
@@ -48,7 +65,7 @@ export function assertAllowedAttachment(mimeType: string, buffer: Buffer): void 
     );
   }
   const sigs = SIGNATURES[mime];
-  if (sigs && !sigs.some((s) => matches(buffer, s))) {
+  if (sigs && !sigs.some((variant) => matchesVariant(buffer, variant))) {
     throw new BadRequestException(
       'Содержимое файла не соответствует заявленному типу (возможна подмена расширения).',
     );

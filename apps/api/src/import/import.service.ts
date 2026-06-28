@@ -172,7 +172,7 @@ export class ImportService {
 
     const rules = await this.prisma.categoryRule.findMany({
       where: { workspaceId: opts.workspaceId, isActive: true, deletedAt: null },
-      select: { keyword: true, categoryId: true, priority: true },
+      select: { keyword: true, categoryId: true, priority: true, category: { select: { kind: true } } },
     });
 
     const previewRows: PreviewRow[] = [];
@@ -191,10 +191,19 @@ export class ImportService {
         counterpartyName: r.counterpartyName,
         description: r.description,
       });
-      const suggestedCategoryId = applyRules(rules, {
-        description: r.description,
-        counterpartyName: r.counterpartyName,
-      });
+      const suggestedCategoryId = applyRules(
+        rules.map((rule) => ({
+          keyword: rule.keyword,
+          categoryId: rule.categoryId,
+          priority: rule.priority,
+          kind: rule.category.kind,
+        })),
+        {
+          description: r.description,
+          counterpartyName: r.counterpartyName,
+          kind: r.type,
+        },
+      );
       previewRows.push({
         rawIndex: r.rawIndex,
         date: r.date.toISOString(),

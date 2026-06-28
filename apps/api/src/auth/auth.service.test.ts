@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
+import { verifyTelegramLogin, verifyTelegramInitData } from './telegram-verify';
+
+// Мокаем HMAC-проверку, чтобы управлять её результатом в тестах путей входа.
+vi.mock('./telegram-verify', () => ({
+  verifyTelegramLogin: vi.fn(),
+  verifyTelegramInitData: vi.fn(),
+}));
 
 // Лёгкие моки Nest-зависимостей: проверяем только allowlist-гейт пароля (Фаза 2 п.11).
 function makeService(opts: { allowedIds: bigint[]; passwordHash?: string }) {
@@ -9,6 +16,7 @@ function makeService(opts: { allowedIds: bigint[]; passwordHash?: string }) {
     get: (key: string) => {
       if (key === 'TELEGRAM_ALLOWED_IDS') return opts.allowedIds;
       if (key === 'AUTH_PASSWORD_HASH') return opts.passwordHash;
+      if (key === 'TELEGRAM_BOT_TOKEN') return 'test-bot-token';
       return undefined;
     },
   };
@@ -64,5 +72,69 @@ describe('AuthService.loginViaPassword — allowlist gate (Фаза 2 п.11)', (
   it('401, если пароль-вход не сконфигурирован (нет хэша)', async () => {
     const { service } = makeService({ allowedIds: [], passwordHash: undefined });
     await expect(service.loginViaPassword(PASSWORD)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  // #16: пустой allowlist = открытый вход (поведение не меняем), но логируем warn.
+  it('логирует предупреждение об открытом allowlist при пустом списке', async () => {
+    const { service } = makeService({ allowedIds: [], passwordHash: hash });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warn = vi.spyOn((service as any).logger, 'warn');
+    await service.loginViaPassword(PASSWORD);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('OPEN'));
+  });
+});
+
+describe('AuthService — не утекает деталь verify (#14) и валидирует initData (#15)', () => {
+  beforeEach(() => {
+    vi.mocked(verifyTelegramLogin).mockReset();
+    vi.mocked(verifyTelegramInitData).mockReset();
+  });
+
+  it('loginViaWidget: при неуспехе verify — обобщённое сообщение, причина в логах', async () => {
+    vi.mocked(verifyTelegramLogin).mockReturnValue({ ok: false, reason: 'hash mismatch' });
+    const { service } = makeService({ allowedIds: [] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warn = vi.spyOn((service as any).logger, 'warn');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(service.loginViaWidget({ id: 1 } as any)).rejects.toMatchObject({
+      message: 'Telegram verification failed', // без 'hash mismatch'
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('hash mismatch'));
+  });
+
+  it('loginViaMiniApp: при неуспехе verify — обобщённое сообщение, причина в логах', async () => {
+    vi.mocked(verifyTelegramInitData).mockReturnValue({ ok: false, reason: 'no hash' });
+    const { service } = makeService({ allowedIds: [] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warn = vi.spyOn((service as any).logger, 'warn');
+    await expect(service.loginViaMiniApp('raw')).rejects.toMatchObject({
+      message: 'Telegram verification failed',
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no hash'));
+  });
+
+  it('loginViaMiniApp: невалидный JSON в user → Unauthorized, без падения процесса', async () => {
+    const data = new URLSearchParams();
+    data.set('user', '{ not valid json');
+    vi.mocked(verifyTelegramInitData).mockReturnValue({ ok: true, data });
+    const { service } = makeService({ allowedIds: [] });
+    await expect(service.loginViaMiniApp('raw')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('loginViaMiniApp: отсутствует числовой id → Unauthorized', async () => {
+    const data = new URLSearchParams();
+    data.set('user', JSON.stringify({ username: 'bob' }));
+    vi.mocked(verifyTelegramInitData).mockReturnValue({ ok: true, data });
+    const { service } = makeService({ allowedIds: [] });
+    await expect(service.loginViaMiniApp('raw')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('loginViaMiniApp: валидный user → выдаёт токен', async () => {
+    const data = new URLSearchParams();
+    data.set('user', JSON.stringify({ id: 42, username: 'bob' }));
+    vi.mocked(verifyTelegramInitData).mockReturnValue({ ok: true, data });
+    const { service } = makeService({ allowedIds: [] });
+    const res = await service.loginViaMiniApp('raw');
+    expect(res.token).toBe('signed.jwt.token');
   });
 });
