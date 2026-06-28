@@ -132,7 +132,7 @@ export default function PnlReportPage() {
           </div>
         ) : query.isError ? (
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
-        ) : query.isError ? null : totals ? (
+        ) : totals ? (
           <>
             <div className="stagger grid gap-4 sm:grid-cols-3">
               <KpiCard label="Доходы" value={formatRub(totals.income)} tone="positive" />

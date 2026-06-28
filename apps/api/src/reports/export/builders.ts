@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { BreakdownReport } from '../breakdown.service';
 import type { CashflowReport } from '../cashflow.service';
 import type { PnlReport } from '../pnl.service';
@@ -38,6 +39,9 @@ export function cashflowToTable(report: CashflowReport): ReportTable {
     { key: 'balance', label: 'Остаток', kind: 'money' as const, width: 16 },
   ];
   const rows: ReportTable['rows'] = [];
+  let totalInflow = new Prisma.Decimal(0);
+  let totalOutflow = new Prisma.Decimal(0);
+  let totalNet = new Prisma.Decimal(0);
   for (const s of report.series) {
     for (const p of s.points) {
       rows.push({
@@ -48,6 +52,10 @@ export function cashflowToTable(report: CashflowReport): ReportTable {
         net: p.net,
         balance: p.balance,
       });
+      // Деньги суммируем в Decimal по строкам-снимкам, не через Number.
+      totalInflow = totalInflow.plus(p.inflow);
+      totalOutflow = totalOutflow.plus(p.outflow);
+      totalNet = totalNet.plus(p.net);
     }
   }
   return {
@@ -55,6 +63,13 @@ export function cashflowToTable(report: CashflowReport): ReportTable {
     period: report.period,
     columns,
     rows,
+    // balance — нарастающий остаток (running balance), суммировать его по строкам
+    // бессмысленно, поэтому в тоталах его не выводим (ячейка пустая).
+    totals: {
+      inflow: totalInflow.toFixed(2),
+      outflow: totalOutflow.toFixed(2),
+      net: totalNet.toFixed(2),
+    },
   };
 }
 
