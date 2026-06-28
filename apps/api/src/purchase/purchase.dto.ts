@@ -1,7 +1,15 @@
 import { z } from 'zod';
 
-const Money = z.string().regex(/^\d+(\.\d{1,4})?$/, 'Цена — число с ≤4 знаками');
-const Qty = z.string().regex(/^\d+(\.\d{1,3})?$/, 'Кол-во — число с ≤3 знаками');
+// #11: регэкспы допускают «0»/«0.00». Закупка нулевого кол-ва или по нулевой
+// цене бессмысленна (порча WAVG/себестоимости), поэтому требуем строго > 0.
+const Money = z
+  .string()
+  .regex(/^\d+(\.\d{1,4})?$/, 'Цена — число с ≤4 знаками')
+  .refine((v) => Number(v) > 0, 'Цена должна быть больше 0');
+const Qty = z
+  .string()
+  .regex(/^\d+(\.\d{1,3})?$/, 'Кол-во — число с ≤3 знаками')
+  .refine((v) => Number(v) > 0, 'Кол-во должно быть больше 0');
 
 export const PurchaseLineInputSchema = z.object({
   warehouseItemId: z.string().cuid(),

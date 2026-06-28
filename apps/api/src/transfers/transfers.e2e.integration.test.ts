@@ -184,7 +184,7 @@ describe('Переводы — создание по данным (POST /transfe
         fee: '0',
         date: DATE,
       }),
-    ).rejects.toThrow('fromAccount not found in this workspace');
+    ).rejects.toThrow('fromAccount not found or archived in this workspace');
     expect(await activeTx()).toHaveLength(0);
   });
 
@@ -197,7 +197,7 @@ describe('Переводы — создание по данным (POST /transfe
         fee: '0',
         date: DATE,
       }),
-    ).rejects.toThrow('toAccount not found in this workspace');
+    ).rejects.toThrow('toAccount not found or archived in this workspace');
     expect(await activeTx()).toHaveLength(0);
   });
 
@@ -221,7 +221,7 @@ describe('Переводы — создание по данным (POST /transfe
         fee: '0',
         date: DATE,
       }),
-    ).rejects.toThrow('toAccount not found in this workspace');
+    ).rejects.toThrow('toAccount not found or archived in this workspace');
     expect(await activeTx()).toHaveLength(0);
   });
 });

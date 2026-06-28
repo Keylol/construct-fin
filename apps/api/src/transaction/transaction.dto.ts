@@ -74,23 +74,42 @@ export const UpdateTransactionSchema = z.object({
 });
 export type UpdateTransactionDto = z.infer<typeof UpdateTransactionSchema>;
 
-export const ListTransactionsQuerySchema = z.object({
-  from: isoDate.optional(),
-  to: isoDate.optional(),
-  accountId: cuid.optional(),
-  categoryId: cuid.optional(),
-  counterpartyId: cuid.optional(),
-  type: TxTypeEnum.optional(),
-  minAmount: moneyString.optional(),
-  maxAmount: moneyString.optional(),
-  search: z.string().trim().min(1).optional(),
-  cursor: cuid.optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
+// #13: from/to задают период; from > to — заведомо пустой/ошибочный диапазон,
+// отклоняем явно (а не молча возвращаем 0 строк). Общий рефайн для обеих схем.
+const assertFromBeforeTo = (
+  val: { from?: string; to?: string },
+  ctx: z.RefinementCtx,
+) => {
+  if (val.from && val.to && Date.parse(val.from) > Date.parse(val.to)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['to'],
+      message: 'to не может быть раньше from',
+    });
+  }
+};
+
+export const ListTransactionsQuerySchema = z
+  .object({
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+    accountId: cuid.optional(),
+    categoryId: cuid.optional(),
+    counterpartyId: cuid.optional(),
+    type: TxTypeEnum.optional(),
+    minAmount: moneyString.optional(),
+    maxAmount: moneyString.optional(),
+    search: z.string().trim().min(1).optional(),
+    cursor: cuid.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .superRefine(assertFromBeforeTo);
 export type ListTransactionsQuery = z.infer<typeof ListTransactionsQuerySchema>;
 
-export const TransactionSummaryQuerySchema = z.object({
-  from: isoDate.optional(),
-  to: isoDate.optional(),
-});
+export const TransactionSummaryQuerySchema = z
+  .object({
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .superRefine(assertFromBeforeTo);
 export type TransactionSummaryQuery = z.infer<typeof TransactionSummaryQuerySchema>;

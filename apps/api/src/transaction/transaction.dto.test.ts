@@ -3,6 +3,7 @@ import {
   CreateTransactionSchema,
   UpdateTransactionSchema,
   ListTransactionsQuerySchema,
+  TransactionSummaryQuerySchema,
 } from './transaction.dto';
 
 describe('CreateTransactionSchema', () => {
@@ -144,5 +145,49 @@ describe('ListTransactionsQuerySchema', () => {
     });
     expect(parsed.type).toBe('INCOME');
     expect(parsed.minAmount).toBe('100.00');
+  });
+
+  // #13: from > to — заведомо пустой период, отклоняем явно.
+  it('rejects from > to', () => {
+    expect(() =>
+      ListTransactionsQuerySchema.parse({
+        from: '2026-12-31T00:00:00Z',
+        to: '2026-01-01T00:00:00Z',
+      }),
+    ).toThrow();
+  });
+
+  it('accepts from == to', () => {
+    expect(() =>
+      ListTransactionsQuerySchema.parse({
+        from: '2026-06-01T00:00:00Z',
+        to: '2026-06-01T00:00:00Z',
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts from only / to only (no pair to compare)', () => {
+    expect(() => ListTransactionsQuerySchema.parse({ from: '2026-06-01T00:00:00Z' })).not.toThrow();
+    expect(() => ListTransactionsQuerySchema.parse({ to: '2026-06-01T00:00:00Z' })).not.toThrow();
+  });
+});
+
+describe('TransactionSummaryQuerySchema (#13)', () => {
+  it('rejects from > to', () => {
+    expect(() =>
+      TransactionSummaryQuerySchema.parse({
+        from: '2026-12-31T00:00:00Z',
+        to: '2026-01-01T00:00:00Z',
+      }),
+    ).toThrow();
+  });
+
+  it('accepts from <= to', () => {
+    expect(() =>
+      TransactionSummaryQuerySchema.parse({
+        from: '2026-01-01T00:00:00Z',
+        to: '2026-12-31T00:00:00Z',
+      }),
+    ).not.toThrow();
   });
 });
