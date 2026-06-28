@@ -48,6 +48,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       return this.fromPrisma(exception);
     }
+    // 2a. Ошибка инициализации клиента / подключения к БД (P1001 — сервер
+    //     недоступен, P1002 — таймаут соединения). Это НЕ вина запроса, а
+    //     транзиентная серверная проблема: 503 Service Unavailable, чтобы
+    //     клиент/прокси понимали, что запрос можно повторить. Деталей не светим.
+    if (exception instanceof Prisma.PrismaClientInitializationError) {
+      this.logger.warn(`Prisma initialization error ${exception.errorCode ?? '<no-code>'}`);
+      return this.error(HttpStatus.SERVICE_UNAVAILABLE, 'База данных временно недоступна');
+    }
     if (exception instanceof Prisma.PrismaClientValidationError) {
       return this.error(HttpStatus.BAD_REQUEST, 'Некорректные данные запроса');
     }
@@ -105,6 +113,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       case 'P2003':
       case 'P2014':
         return this.error(HttpStatus.BAD_REQUEST, 'Ссылка на несуществующую связанную запись');
+      // Конфликт записи на уровне транзакции: write conflict / deadlock
+      // (READ COMMITTED + ручные SELECT FOR UPDATE — deadlock реален). Это НЕ
+      // плохой запрос, а конкурентная коллизия: 409 Conflict (retryable), чтобы
+      // клиент мог безопасно повторить операцию, а не считал её невалидной.
+      case 'P2034':
+        return this.error(HttpStatus.CONFLICT, 'Конфликт параллельного доступа, повторите операцию');
+      // Транзиентные серверные проблемы доступа к БД:
+      //   P2024 — таймаут получения соединения из пула;
+      //   P1001 — сервер БД недоступен; P1002 — таймаут соединения
+      //           (обычно приходят как InitializationError, но обрабатываем и
+      //            здесь на случай прихода как known-request error).
+      // Все — 503 Service Unavailable (retryable), а не 400.
+      case 'P2024':
+      case 'P1001':
+      case 'P1002':
+        return this.error(HttpStatus.SERVICE_UNAVAILABLE, 'База данных временно недоступна');
       default:
         // Прочие известные коды Prisma — не светим внутренности, но это 4xx,
         // т.к. как правило вызвано данными запроса. Логируем код для разбора.
@@ -125,5 +149,6 @@ const STATUS_NAMES: Record<number, string> = {
   [HttpStatus.BAD_REQUEST]: 'Bad Request',
   [HttpStatus.NOT_FOUND]: 'Not Found',
   [HttpStatus.CONFLICT]: 'Conflict',
+  [HttpStatus.SERVICE_UNAVAILABLE]: 'Service Unavailable',
   [HttpStatus.INTERNAL_SERVER_ERROR]: 'Internal Server Error',
 };

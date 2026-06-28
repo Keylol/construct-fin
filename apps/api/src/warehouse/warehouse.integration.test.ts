@@ -178,3 +178,36 @@ describe('B4: adjust + supplierReturn', () => {
     expect(item.qty.toString()).toBe('10');
   });
 });
+
+describe('M6: stockValue считается агрегацией в БД (не обрезается на 300 позициях)', () => {
+  it('совпадает с ручной суммой qty*avgCost на нескольких позициях', async () => {
+    await makeItem({ name: 'Поз 1', qty: '10', avgCost: '100' }); // 1000
+    await makeItem({ name: 'Поз 2', qty: '3.5', avgCost: '12.4' }); // 43.40
+    await makeItem({ name: 'Поз 3', qty: '0', avgCost: '999' }); // 0
+    await makeItem({ name: 'Архивная', qty: '5', avgCost: '1000', isArchived: true }); // НЕ в остатках
+
+    const value = await h.warehouse.stockValue(seed.workspaceId);
+    // 10*100 + 3.5*12.4 + 0 = 1043.40 (архивная исключена)
+    expect(value).toBe('1043.40');
+  });
+
+  it('НЕ занижается при >300 позициях (раньше list был обрезан take:300)', async () => {
+    const N = 305;
+    await h.prisma.warehouseItem.createMany({
+      data: Array.from({ length: N }, (_, i) => ({
+        workspaceId: seed.workspaceId,
+        name: `Поз ${String(i).padStart(4, '0')}`,
+        qty: '2',
+        avgCost: '10',
+      })),
+    });
+    // каждая позиция: 2*10 = 20; всего 305*20 = 6100.00
+    const value = await h.warehouse.stockValue(seed.workspaceId);
+    expect(value).toBe('6100.00');
+  });
+
+  it('пустой склад → 0.00 (COALESCE)', async () => {
+    const value = await h.warehouse.stockValue(seed.workspaceId);
+    expect(value).toBe('0.00');
+  });
+});

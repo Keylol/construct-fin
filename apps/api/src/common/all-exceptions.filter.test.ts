@@ -76,6 +76,35 @@ describe('AllExceptionsFilter', () => {
     expect(run(prismaKnown('P2099')).status).toBe(400);
   });
 
+  it('maps Prisma write conflict / deadlock (P2034) to 409 (retryable, not 400)', () => {
+    const { status, body } = run(prismaKnown('P2034'));
+    expect(status).toBe(409);
+    expect(body.error).toBe('Conflict');
+  });
+
+  it('maps Prisma pool timeout (P2024) to 503, not 400', () => {
+    const { status, body } = run(prismaKnown('P2024'));
+    expect(status).toBe(503);
+    expect(body.error).toBe('Service Unavailable');
+  });
+
+  it('maps Prisma connection codes (P1001/P1002) as known-request error to 503', () => {
+    expect(run(prismaKnown('P1001')).status).toBe(503);
+    expect(run(prismaKnown('P1002')).status).toBe(503);
+  });
+
+  it('maps PrismaClientInitializationError (P1001 — db unreachable) to 503 without leaking detail', () => {
+    const err = new Prisma.PrismaClientInitializationError(
+      "Can't reach database server at localhost:5433",
+      'test',
+      'P1001',
+    );
+    const { status, body } = run(err);
+    expect(status).toBe(503);
+    expect(body.error).toBe('Service Unavailable');
+    expect(JSON.stringify(body)).not.toContain('localhost');
+  });
+
   it('maps a stray ZodError to 400 with issues', () => {
     let zerr: ZodError;
     try {
