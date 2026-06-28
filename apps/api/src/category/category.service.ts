@@ -17,6 +17,36 @@ export interface CategoryRow {
   isArchived: boolean;
 }
 
+// M13: допустимые bucket'ы по kind. Без этой проверки можно было завести
+// kind=EXPENSE с bucket=REVENUE (расход попал бы в выручку P&L) или
+// kind=INCOME с bucket=COGS — искажение отчётов. REVENUE — только доход;
+// COGS/PURCHASES/FIXED/VARIABLE/TAX — только расход; CAPITAL/OTHER —
+// нейтральны (вложения/изъятия и прочее встречаются в обоих видах).
+const ALLOWED_BUCKETS: Record<'INCOME' | 'EXPENSE', ReadonlySet<CategoryBucket>> = {
+  INCOME: new Set<CategoryBucket>(['REVENUE', 'CAPITAL', 'OTHER']),
+  EXPENSE: new Set<CategoryBucket>([
+    'COGS',
+    'PURCHASES',
+    'FIXED',
+    'VARIABLE',
+    'TAX',
+    'CAPITAL',
+    'OTHER',
+  ]),
+};
+
+function assertBucketMatchesKind(
+  kind: 'INCOME' | 'EXPENSE',
+  bucket: CategoryBucket | undefined,
+): void {
+  if (bucket === undefined) return; // не задан → БД-дефолт OTHER (валиден для обоих)
+  if (!ALLOWED_BUCKETS[kind].has(bucket)) {
+    throw new BadRequestException(
+      `Группа отчёта (bucket=${bucket}) недопустима для категории kind=${kind}`,
+    );
+  }
+}
+
 export interface CategoryTreeNode extends CategoryRow {
   children: CategoryTreeNode[];
 }
@@ -70,6 +100,7 @@ export class CategoryService {
         throw new BadRequestException('Подкатегория должна совпадать по kind с родителем');
       }
     }
+    assertBucketMatchesKind(input.kind, input.bucket); // M13
     const created = await this.prisma.category.create({
       data: {
         workspaceId,
@@ -107,6 +138,10 @@ export class CategoryService {
         if (hasChildren > 0) throw new BadRequestException('У категории есть подкатегории — нельзя сделать её дочерней');
       }
     }
+
+    // M13: kind у категории неизменяем (нет в UpdateCategoryDto) — сверяем новый
+    // bucket с уже сохранённым kind.
+    assertBucketMatchesKind(existing.kind, input.bucket);
 
     const updated = await this.prisma.category.update({
       where: { id },

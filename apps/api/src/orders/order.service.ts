@@ -659,11 +659,20 @@ export class OrderService {
           });
         }
       }
-      // Сбрасываем отгрузку/снапшот себестоимости по всем позициям.
-      if (gt(item.shippedQty, '0') || item.unitCostAtSale !== null) {
+      // Сбрасываем отгрузку/снапшот себестоимости И накопленный возврат по всем
+      // позициям. После полного отката (cancel/reopen/remove) заказ возвращается
+      // в состояние «как с нуля»: товар целиком вернулся на склад (returnQty уже
+      // restock'нут возвратом, остаток netOut — этим откатом), поэтому returnedQty
+      // обязан обнулиться. Иначе после reopen→finalize повторный возврат считал бы
+      // available = qty − старый returnedQty и ломал бы returnItem (M5).
+      if (
+        gt(item.shippedQty, '0') ||
+        item.unitCostAtSale !== null ||
+        gt(item.returnedQty, '0')
+      ) {
         await tx.orderItem.update({
           where: { id: item.id },
-          data: { shippedQty: D(0), unitCostAtSale: null },
+          data: { shippedQty: D(0), unitCostAtSale: null, returnedQty: D(0) },
         });
       }
     }
