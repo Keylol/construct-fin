@@ -34,6 +34,10 @@ export type ListWarehouseQuery = z.infer<typeof ListWarehouseQuerySchema>;
 /** Ручная корректировка остатка (инвентаризация). */
 export const AdjustStockSchema = z.object({
   newQty: z.string().regex(/^\d+(\.\d{1,3})?$/),
+  /// Себестоимость единицы излишка (FIFO): обязательна, если остаток растёт, а
+  /// открытых партий нет (неоткуда взять цену) — иначе излишек по нулю раздул бы
+  /// маржу при продаже. Когда открытые партии есть, по умолчанию берётся avgCost.
+  unitCost: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
   reason: z.string().trim().max(500).optional(),
 });
 export type AdjustStockDto = z.infer<typeof AdjustStockSchema>;

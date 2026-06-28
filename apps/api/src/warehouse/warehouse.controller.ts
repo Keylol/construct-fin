@@ -104,7 +104,7 @@ export class WarehouseController {
     @CurrentWorkspace() ws: WorkspaceContext,
     @Body(new ZodPipe(CreateWarehouseItemSchema)) body: CreateWarehouseItemDto,
   ) {
-    return this.service.create(ws.workspaceId, body);
+    return this.service.create(ws.workspaceId, body, ws.userId);
   }
 
   @Patch(':id')
