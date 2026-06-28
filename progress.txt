@@ -1,0 +1,79 @@
+PROD-READINESS АУДИТ construct-fin — журнал прогресса
+Ветка: audit/hardening (от v6 @ f4765ab). НЕ пушить в v6 (триггерит prod-deploy).
+План: ~/.claude/plans/velvety-giggling-wozniak.md
+
+=== Фаза 0 — Подготовка инфры (ЗАВЕРШЕНА 2026-06-20) ===
+- Ветка audit/hardening создана от v6 @ f4765ab.
+- Colima + docker: construct-v6-postgres healthy на :5433 (creds construct/construct_dev_change_me).
+- БД construct_v6 и construct_v6_test существуют; test мигрирована (18 миграций, 0 pending).
+- Prisma client сгенерирован; @construct/db и @construct/shared собраны в dist/.
+- ВАЖНО: корневой .env принадлежит ДРУГОМУ проекту (Python miniapp). Реального apps/api/.env нет.
+  Env для прогонов задаётся вручную:
+    DATABASE_URL=postgresql://construct:construct_dev_change_me@127.0.0.1:5433/construct_v6?schema=public
+    TEST_DATABASE_URL=...construct_v6_test?schema=public
+    JWT_SECRET=test-jwt-secret-please-change-0123456789
+    TZ=UTC
+- ЭТАЛОННЫЙ ПРОГОН (зелёный, базовая линия):
+    Unit (api):        216 passed (23 файла)
+    Integration (api): 293 passed (20 файлов)
+    Web typecheck:     OK
+    Web build:         OK (26 маршрутов)
+
+=== Фаза 1 — Статический аудит (4 ветки, Workflow) — СЛЕДУЮЩАЯ ===
+Ветки: A ядро/деньги · B конкурентность/tx/идемпотентность · C безопасность/multi-tenant · D флоу/API/фронт.
+Реестр дефектов → docs/audit-2026-06-20.md. Реестр тест-кейсов → tests.json.
+
+=== Фаза 2 — Динамические тесты === (В РАБОТЕ)
+Инфраструктура готова:
+- apps/api/src/loadtest/load-harness.ts — реальный listen :4100 + fetch-клиент (call).
+- apps/api/src/loadtest/invariants.ts — независимая сверка инвариантов (склад=Σдвижений, paidAmount=Σпроводок, ship<=qty, return<=ship, переводы, COGS>=0, балансы).
+- apps/api/src/loadtest/concurrent-load.loadtest.ts — 4 сценария (смешанная нагрузка + 3 burst).
+- vitest.loadtest.config.ts + script test:loadtest.
+
+SMOKE-ПРОГОН (20-40 ops/воркер) ВЫЯВИЛ 2 ДЕФЕКТА-КАНДИДАТА (классификация/фикс — Фаза 4):
+  [LT-1] finalize → 500 Internal server error под конкуренцией (30× из ~100 ops).
+         Причина: InsufficientStockError (кастомный класс, wavg.ts) НЕ маппится в
+         all-exceptions.filter.ts:68 → падает в дженерик 500. Когда finalize дотгружает
+         остаток, а общий товар распродан конкурентами → 500 вместо 400/409. Severity: High.
+  [LT-2] РАЗРЕШЁН (2026-06-28) — это НЕ потеря платежа и НЕ прод-баг, а дефект ИЗОЛЯЦИИ ТЕСТА.
+         Гипотеза «req.body нестабилен» ОПРОВЕРГНУТА фактом: in-memory дамп интерцептора
+         показал у всех 12 запросов ИДЕНТИЧНЫЙ requestHash и полный body (bodyType=object).
+         Корень: resetDb (money-harness.ts) делал TRUNCATE без таблицы IdempotencyKey. У неё
+         нет FK → CASCADE её не чистил → захардкоженный ключ loadtest-idem-key-0001 ПРОТЕКАЛ
+         между прогонами. url хэша содержит свежие ws/order id (новые после resetDb), поэтому
+         2-й и последующие прогоны видели старую строку с ДРУГИМ requestHash → честный 409
+         "другой запрос", проводок=0. Первый прогон на свежей БД всегда зеленел (отсюда
+         «гейзенбаг» с console.log — лог-прогон был первым). Интерцептор КОРРЕКТЕН.
+         ФИКС: в resetDb добавлены IdempotencyKey + (для явности) StockMovement/Transfer/
+         AccountBalanceCheck. Проверка: Сценарий 4 8/8 зелёных (проводок=1, 1×200+11×409
+         "ещё выполняется"); 293 integration зелёные; Сценарии 2/3/4 зелёные.
+  [LT-1] РАЗРЕШЁН (2026-06-28) — причина НЕ InsufficientStockError (гипотеза опровергнута
+         дампом исходного исключения). Реально: finalize — единственный body-less POST, а
+         load-harness ВСЕГДА слал content-type: application/json → Fastify бросал
+         FST_ERR_CTP_EMPTY_JSON_BODY (statusCode 400), а all-exceptions.filter не уважал
+         готовый statusCode → дженерик 500. Прод НЕ затронут: фронт (apps/web/src/lib/api.ts)
+         ставит content-type ТОЛЬКО при наличии тела, finalize шлётся без него.
+         ФИКС (2 слоя): (1) all-exceptions.filter — ошибки с statusCode 4xx (FastifyError)
+         отдаются своим кодом, не маскируются 500; (2) load-harness.call ставит content-type
+         только при body (как прод api.ts). Проверка: Сценарий 1 5×5xx=0, нарушений=0;
+         все 4 loadtest-сценария зелёные; 216 unit + 293 integration зелёные.
+  ЗЕЛЁНЫЕ инварианты (держатся): Сценарий 2 (paidAmount синхронен при 30 оплатах),
+         Сценарий 3 (нет oversell при 40 отгрузках на сток 10) — ручные FOR UPDATE работают.
+
+=== Фаза 2 — ЗАВЕРШЕНА (2026-06-28, кроме Playwright→Фаза5) ===
+- Нагрузка 5×1000 (5000 ops): Сц1 5xx=0 нарушений=0; Сц2/3/4 нарушений=0, idem проводок=1. ЗЕЛЁНО.
+- Функциональные мутации: 49/49 эндпоинтов покрыты, 101 тест в 13 файлах (apps/api/src/functional/),
+  vitest.functional.config.ts + script test:functional. Конвенция: buildHttpApp (реальные guards+
+  ZodPipe+filter) → inject → проверка statusCode + факт БД через Prisma. Диапазоны telegramId по
+  доменам (2100000n..2630000n) для изоляции в общей тест-БД.
+- НАЙДЕН+ИСПРАВЛЕН [LT-3]: supplier-return при returnQty>остаток → 500 вместо 400. Причина = тот же
+  класс, что LT-1: warehouse.service.ts:361 бросал InsufficientStockError (extends Error) НАПРЯМУЮ,
+  фильтр не маппит в 4xx. Фикс: обёрнут в BadRequestException (как decrementForSale:266). Это РЕАЛЬНЫЙ
+  прод-баг (нагрузочный тест его не покрывал — не звал supplier-return с превышением). Полнота:
+  оставшийся throw в wavg.ts:53 защищён catch в decrementForSale.
+- Playwright (Фаза 2.3) — отложен в Фазу 5 (UI после фиксов бэка).
+- Регрессия всего пакета ЗЕЛЁНАЯ: 216 unit + 293 integration + 101 functional + 4 loadtest.
+TODO: Playwright (Фаза5). Дальше — план 06-24 (F0/FIFO) или rollout High аудита (дорожка R).
+=== старое ===
+=== Фаза 3 — Сводный отчёт === (не начато)
+=== Фаза 4 — Фиксы Critical/High + зелёный прогон === (не начато)
