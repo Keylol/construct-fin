@@ -358,7 +358,11 @@ export class WarehouseService {
         throw new BadRequestException('returnQty должен быть положительным');
       }
       if (gt(returnQty, item.qty)) {
-        throw new InsufficientStockError(item.qty, returnQty);
+        // Клиентская ошибка (возврат больше остатка) — отдаём 400, а не 500.
+        // InsufficientStockError (extends Error) не маппится фильтром в 4xx,
+        // поэтому оборачиваем явно (как decrementForSale выше).
+        const err = new InsufficientStockError(item.qty, returnQty);
+        throw new BadRequestException(`«${item.name}»: ${err.message}`);
       }
       const refund = money(dto.refundAmount);
 

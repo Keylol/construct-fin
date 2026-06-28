@@ -65,7 +65,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
-    // 4. Всё остальное — внутренняя ошибка. Логируем полностью на сервере,
+    // 4. Ошибки с готовым клиентским statusCode (например FastifyError при
+    //    разборе запроса: FST_ERR_CTP_EMPTY_JSON_BODY — пустое тело при
+    //    content-type: application/json — несёт statusCode 400). Это вина
+    //    запроса, а не сервера: отдаём её код, а не маскируем дженерик-500.
+    const sc = (exception as { statusCode?: unknown })?.statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500) {
+      const msg = (exception as { message?: string })?.message;
+      return this.error(sc, msg && typeof msg === 'string' ? msg : 'Некорректный запрос');
+    }
+
+    // 5. Всё остальное — внутренняя ошибка. Логируем полностью на сервере,
     //    наружу отдаём дженерик без стектрейса.
     this.logger.error(
       'Unhandled exception',
