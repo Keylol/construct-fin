@@ -3,6 +3,15 @@ import { z } from 'zod';
 const MoneyString = z
   .string()
   .regex(/^-?\d+(\.\d{1,2})?$/, 'Сумма должна быть числом с ≤2 знаками');
+/**
+ * Неотрицательные деньги (без ведущего «-»). Для скидки: отрицательная скидка
+ * раздувала бы totalAmount (sub(subtotal, -X) = subtotal+X) и искажала
+ * дебиторку/выручку в отчётах (дефект R5a). Отдельный тип, чтобы НЕ ужесточать
+ * общий MoneyString (он нужен со знаком для unitPrice/amount/платежей).
+ */
+const NonNegativeMoneyString = z
+  .string()
+  .regex(/^\d+(\.\d{1,2})?$/, 'Сумма должна быть неотрицательным числом с ≤2 знаками');
 const QtyString = z
   .string()
   .regex(/^\d+(\.\d{1,3})?$/, 'Количество должно быть числом с ≤3 знаками');
@@ -25,7 +34,7 @@ export const CreateOrderSchema = z.object({
   clientId: z.string().cuid().nullable().optional(),
   title: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
-  discountAmount: MoneyString.optional(),
+  discountAmount: NonNegativeMoneyString.optional(),
   expectedDate: z.string().datetime().nullable().optional(),
   items: z.array(OrderItemInputSchema).default([]),
 });
@@ -35,7 +44,7 @@ export const UpdateOrderSchema = z.object({
   clientId: z.string().cuid().nullable().optional(),
   title: z.string().max(200).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
-  discountAmount: MoneyString.optional(),
+  discountAmount: NonNegativeMoneyString.optional(),
   expectedDate: z.string().datetime().nullable().optional(),
   items: z.array(OrderItemInputSchema).optional(),
 });

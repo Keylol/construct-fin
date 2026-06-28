@@ -1,3 +1,60 @@
+import { toMoneyString } from '../../common/money';
+
+/**
+ * Решает, является ли ЕДИНСТВЕННЫЙ разделитель данного типа (`sepChar`)
+ * десятичным или разделителем тысяч.
+ *
+ * Правило (R4b, политика «асимметрия по локали» — согласовано):
+ * - Разделитель встречается > 1 раза → точно тысячи (десятичный может быть один).
+ * - ЗАПЯТАЯ один раз с ровно 3 цифрами после и «головой» группы (1–3 цифры без
+ *   ведущего нуля) → разделитель ТЫСЯЧ US-формата ("1,234" = 1234). Это и был
+ *   исходный баг 1000×. Запятая в иных позициях → десятичная ("1234,56", "1,5", "0,123").
+ * - ТОЧКА один раз → ВСЕГДА десятичная ("1.005" = 1.01, "12.345" = 12.345). Точка
+ *   как разделитель тысяч в EU всегда идёт в паре с запятой-десятичной
+ *   ("1.234,56") — этот случай ловится раньше в inferDecimalSep (оба символа).
+ *   Поэтому одиночную точку безопаснее и предсказуемее трактовать как десятичную.
+ */
+function singleSepIsDecimal(s: string, sepChar: ',' | '.'): boolean {
+  const count = sepChar === ',' ? (s.match(/,/g)?.length ?? 0) : (s.match(/\./g)?.length ?? 0);
+  if (count > 1) return false; // несколько одинаковых разделителей → тысячи
+  // Правило «3 цифры → тысячи» применяем ТОЛЬКО к запятой (асимметрия по локали).
+  if (sepChar === ',') {
+    const idx = s.indexOf(sepChar);
+    const before = s.slice(0, idx).replace('-', '');
+    const after = s.slice(idx + 1);
+    if (after.length === 3 && /^[1-9]\d{0,2}$/.test(before)) return false;
+  }
+  return true;
+}
+
+/**
+ * Определяет десятичный разделитель строки. Возвращает ',' / '.' либо null
+ * (нет десятичного разделителя — все встретившиеся `,`/`.` это тысячи).
+ *
+ * - Оба символа присутствуют → десятичный тот, что стоит ПОЗЖЕ
+ *   ("1,234.56" → '.', "1.234,56" → ',').
+ * - Только один тип → решает singleSepIsDecimal.
+ */
+function inferDecimalSep(s: string): ',' | '.' | null {
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    return s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
+  }
+  if (hasComma) return singleSepIsDecimal(s, ',') ? ',' : null;
+  if (hasDot) return singleSepIsDecimal(s, '.') ? '.' : null;
+  return null;
+}
+
+/**
+ * Парсит денежную строку из импорта в каноничную "1234.56" (string | null).
+ *
+ * R4a: финальная конвертация идёт через Decimal-хелпер (`toMoneyString`,
+ * half-up до 2 знаков), а НЕ через Number()/toFixed — деньги в проекте никогда
+ * не проходят через IEEE754 float. Регекс остаётся гейтом валидности.
+ * R4b: см. inferDecimalSep/singleSepIsDecimal — корректно различает запятую как
+ * разделитель тысяч ("1,234" → 1234.00) и как десятичный ("1234,56" → 1234.56).
+ */
 export function parseAmount(raw: string | null | undefined, decimalSep?: '.' | ','): string | null {
   if (raw === null || raw === undefined) return null;
   let s = String(raw).trim();
@@ -6,25 +63,28 @@ export function parseAmount(raw: string | null | undefined, decimalSep?: '.' | '
   s = s.replace(/[₽р₸$€£]/gi, '').replace(/\s| /g, '').trim();
   if (!s) return null;
 
-  let sep = decimalSep;
-  if (!sep) {
-    const lastComma = s.lastIndexOf(',');
-    const lastDot = s.lastIndexOf('.');
-    if (lastComma > lastDot) sep = ',';
-    else sep = '.';
-  }
+  // Если decimalSep задан явно — уважаем его (поведение для заданного sep
+  // сохранено). Иначе — выводим эвристикой (может вернуть null = «нет дес.»).
+  const sep = decimalSep ?? inferDecimalSep(s);
 
   if (sep === ',') {
+    // дробь через запятую: точки — тысячи, единственная запятая — десятичная.
     s = s.replace(/\./g, '').replace(',', '.');
-  } else {
+  } else if (sep === '.') {
+    // дробь через точку: запятые — тысячи.
     s = s.replace(/,/g, '');
+  } else {
+    // нет десятичного разделителя: все `,`/`.` это группировка тысяч.
+    s = s.replace(/[.,]/g, '');
   }
 
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
 
-  const num = Number(s);
-  if (!Number.isFinite(num)) return null;
-  return num.toFixed(2);
+  try {
+    return toMoneyString(s); // Decimal, half-up до 2 знаков
+  } catch {
+    return null;
+  }
 }
 
 export function parseDate(raw: string | Date | null | undefined): Date | null {

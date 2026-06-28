@@ -57,6 +57,12 @@ export class OrderService {
     );
     const subtotal = money(this.subtotalOf(input.items));
     const discount = money(input.discountAmount ?? '0');
+    // R5b: скидка > суммы позиций увела бы totalAmount в минус (бессмысленный
+    // paymentStatus). Явный отказ — чтобы пользователь увидел ошибку, а не молча
+    // потерял деньги в дебиторке. (R5a — отрицательная скидка — отсечён в DTO.)
+    if (gt(discount, subtotal)) {
+      throw new BadRequestException('Скидка не может превышать сумму позиций');
+    }
     const total = money(sub(subtotal, discount));
 
     // B5: при гонке двух create один упрётся в partial-unique по number (P2002) —
@@ -129,6 +135,9 @@ export class OrderService {
         const discount = money(
           input.discountAmount ?? existing.discountAmount.toString(),
         );
+        if (gt(discount, subtotal)) {
+          throw new BadRequestException('Скидка не может превышать сумму позиций');
+        }
         const total = money(sub(subtotal, discount));
         await tx.order.update({
           where: { id },
@@ -762,5 +771,10 @@ function recomputeWithDiscount(
   discountStr: string,
 ): { discountAmount: Prisma.Decimal; totalAmount: Prisma.Decimal } {
   const discount = money(discountStr);
+  // R5b: та же защита, что и в create/replace — скидка не должна превышать
+  // сумму позиций (иначе totalAmount < 0). DTO уже отсёк отрицательную скидку.
+  if (gt(discount, subtotal)) {
+    throw new BadRequestException('Скидка не может превышать сумму позиций');
+  }
   return { discountAmount: discount, totalAmount: money(sub(subtotal, discount)) };
 }

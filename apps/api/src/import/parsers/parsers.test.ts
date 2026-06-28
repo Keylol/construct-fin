@@ -28,6 +28,44 @@ describe('parseAmount', () => {
     expect(parseAmount('')).toBeNull();
     expect(parseAmount(null)).toBeNull();
   });
+
+  // R4a: точность через Decimal, без IEEE754 float
+  it('keeps precision for large values (no float drift)', () => {
+    expect(parseAmount('99999999.99')).toBe('99999999.99');
+    expect(parseAmount('9999999999999.99')).toBe('9999999999999.99');
+  });
+  it('rounds half-up, not banker / float-toFixed', () => {
+    // Number('1.005') === 1.00499999... → toFixed даёт "1.00"; Decimal half-up → "1.01"
+    expect(parseAmount('1.005')).toBe('1.01');
+    expect(parseAmount('2.675')).toBe('2.68');
+    expect(parseAmount('0.005')).toBe('0.01');
+  });
+
+  // R4b: эвристика разделителей (запятая-тысячи vs десятичная)
+  it('treats comma+exactly-3-digits as thousands, not decimal (1000x bug)', () => {
+    expect(parseAmount('1,234')).toBe('1234.00'); // главный баг: было 1.23
+    expect(parseAmount('12,345')).toBe('12345.00');
+    expect(parseAmount('1,234,567')).toBe('1234567.00');
+  });
+  it('handles all separator formats unambiguously', () => {
+    expect(parseAmount('1,234.56')).toBe('1234.56'); // US
+    expect(parseAmount('1.234,56')).toBe('1234.56'); // EU
+    expect(parseAmount('1234,56')).toBe('1234.56'); // EU decimal
+    expect(parseAmount('1234.56')).toBe('1234.56'); // plain
+    expect(parseAmount('1.234.567,89')).toBe('1234567.89'); // EU full
+    expect(parseAmount('1,234,567.89')).toBe('1234567.89'); // US full
+  });
+  it('keeps comma as decimal when not a 3-digit thousands group', () => {
+    expect(parseAmount('1,2')).toBe('1.20');
+    expect(parseAmount('1,23')).toBe('1.23');
+    expect(parseAmount('0,123')).toBe('0.12'); // ведущий ноль → десятичная
+    expect(parseAmount('1234,567')).toBe('1234.57'); // 4 цифры до → десятичная
+  });
+  it('respects explicit decimalSep override', () => {
+    expect(parseAmount('1,234', ',')).toBe('1.23'); // явно: запятая десятичная
+    expect(parseAmount('1.234', '.')).toBe('1.23'); // явно: точка десятичная
+    expect(parseAmount('1.234', ',')).toBe('1234.00'); // явно: точка тысячи
+  });
 });
 
 describe('parseDate', () => {
