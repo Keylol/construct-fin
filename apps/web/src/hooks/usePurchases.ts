@@ -42,6 +42,13 @@ export function useCreatePurchase(wsId: string) {
       qc.invalidateQueries({ queryKey: ['warehouse', wsId] });
       qc.invalidateQueries({ queryKey: ['warehouse-stock-value', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      // Закупка списывает деньги со счёта → лента/KPI/отчёты/сверка/остатки.
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['trade-reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['accounts', wsId] });
     },
   });
 }

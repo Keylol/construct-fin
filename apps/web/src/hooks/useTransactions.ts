@@ -118,6 +118,8 @@ export function useCreateTransaction(wsId: string) {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
     },
   });
 }
@@ -132,6 +134,8 @@ export function useUpdateTransaction(wsId: string) {
       qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
       qc.invalidateQueries({ queryKey: ['transaction', wsId, id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
     },
   });
 }
@@ -144,6 +148,8 @@ export function useDeleteTransaction(wsId: string) {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
     },
   });
 }
