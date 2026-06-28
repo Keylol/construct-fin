@@ -33,10 +33,15 @@ export class WorkspaceGuard implements CanActivate {
     const wsId = params?.wsId;
     if (!wsId) throw new ForbiddenException('No workspace in path');
 
+    // Один запрос: членство + сам workspace (для проверки soft-delete).
     const membership = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: wsId, userId: user.sub } },
+      include: { workspace: { select: { deletedAt: true } } },
     });
     if (!membership) throw new ForbiddenException('Not a member of this workspace');
+
+    // Soft-deleted workspace недоступен на чтение/запись по вложенным URL (R1).
+    if (membership.workspace.deletedAt) throw new ForbiddenException('Workspace is deleted');
 
     req.workspace = { workspaceId: wsId, userId: user.sub, role: membership.role };
     return true;
