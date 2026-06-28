@@ -143,8 +143,9 @@ describe('D-e2e build: отчёт сверки по данным', () => {
     expect(num(r.lastCheck!.actualBalance)).toBe(1450);
     // discrepancy = 1450 − 1500 = −50 (книга завышена)
     expect(num(r.lastCheck!.discrepancy)).toBe(-50);
-    // несведённые — только EXPENSE 200 после 06-08
-    expect(r.unreconciled.since).toBe('2026-06-08T00:00:00.000Z');
+    // несведённые — только EXPENSE 200 после 06-08. Граница since — конец суток
+    // снимка в UTC+5 (M3): 2026-06-08 23:59:59.999 UTC+5 = 18:59:59.999 UTC.
+    expect(r.unreconciled.since).toBe('2026-06-08T18:59:59.999Z');
     expect(r.unreconciled.count).toBe(1);
     expect(num(r.unreconciled.net)).toBe(-200);
     expect(r.unreconciled.operations[0]!.amount).toBe('200.00');
@@ -447,8 +448,9 @@ describe('D-e2e deleteCheck: физическое удаление снимка'
     // книга на 06-05 = 100; факт 95; discrepancy = 95 − 100 = −5
     expect(num(after.lastCheck!.computedBalance)).toBe(100);
     expect(num(after.lastCheck!.discrepancy)).toBe(-5);
-    // несведённые теперь — INCOME 100 на 06-10 (после 06-05)
-    expect(after.unreconciled.since).toBe('2026-06-05T00:00:00.000Z');
+    // несведённые теперь — INCOME 100 на 06-10 (после 06-05). since — конец суток
+    // снимка 06-05 в UTC+5 (M3) = 2026-06-05T18:59:59.999Z.
+    expect(after.unreconciled.since).toBe('2026-06-05T18:59:59.999Z');
     expect(after.unreconciled.count).toBe(1);
     expect(num(after.unreconciled.net)).toBe(100);
 

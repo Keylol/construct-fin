@@ -186,10 +186,49 @@ describe('ReconciliationService.build', () => {
     expect(r.lastCheck!.actualBalance).toBe('1450.00');
     // discrepancy = факт − книга = 1450 - 1500 = -50 (книга завышена)
     expect(r.lastCheck!.discrepancy).toBe('-50.00');
-    // несведённые — только операция после 06-08 (EXPENSE 200)
-    expect(r.unreconciled.since).toBe('2026-06-08T00:00:00.000Z');
+    // несведённые — только операция после снимка (EXPENSE 200). Граница since —
+    // КОНЕЦ суток снимка в UTC+5 (M3): 2026-06-08 23:59:59.999 UTC+5 = 18:59:59.999 UTC.
+    expect(r.unreconciled.since).toBe('2026-06-08T18:59:59.999Z');
     expect(r.unreconciled.count).toBe(1);
     expect(r.unreconciled.net).toBe('-200.00');
+  });
+
+  it('M3: asOf date-only включает операции до конца суток в UTC+5', async () => {
+    // Операция в 23:30 по UTC+5 (2026-06-15) = 2026-06-15T18:30:00Z. asOf — date-only.
+    // Сырой new Date('2026-06-15') = 00:00 UTC отрезал бы её (computedBalance занижен).
+    const lateTx = new Date('2026-06-15T18:30:00.000Z');
+    const { service } = buildService({
+      txs: [{ type: 'INCOME', amount: '300.00', date: lateTx }],
+    });
+    const r = await service.build('ws1', 'acc1', '2026-06-15');
+    expect(r.computedBalance).toBe('1300.00'); // 1000 + 300, операция НЕ выпала
+    expect(r.unreconciled.count).toBe(1);
+    expect(r.unreconciled.net).toBe('300.00');
+  });
+
+  it('M3: книга на дату снимка учитывает операции дня снимка (UTC+5)', async () => {
+    // Снимок 2026-06-08; операция в 22:00 по UTC+5 того же дня = 2026-06-08T17:00:00Z.
+    // Старый код (lastCheck.date 00:00 UTC) исключил бы её → ложное расхождение.
+    const sameDayLate = new Date('2026-06-08T17:00:00.000Z');
+    const { service } = buildService({
+      txs: [{ type: 'INCOME', amount: '200.00', date: sameDayLate }],
+      checks: [
+        {
+          id: 'chk1',
+          accountId: 'acc1',
+          date: new Date('2026-06-08T00:00:00.000Z'),
+          actualBalance: '1200.00',
+          note: null,
+          createdAt: new Date('2026-06-08T00:00:00.000Z'),
+        },
+      ],
+    });
+    const r = await service.build('ws1', 'acc1', '2026-06-15');
+    // книга на конец 2026-06-08 = 1000 + 200 = 1200, расхождение с фактом 1200 = 0.
+    expect(r.lastCheck!.computedBalance).toBe('1200.00');
+    expect(r.lastCheck!.discrepancy).toBe('0.00');
+    // операция входит в день снимка → НЕ числится несведённой.
+    expect(r.unreconciled.count).toBe(0);
   });
 });
 

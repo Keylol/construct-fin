@@ -99,6 +99,31 @@ describe('resolveComparison', () => {
     expect(c!.from.toISOString()).toBe('2025-04-30T19:00:00.000Z');
   });
 
+  it('M2: yoy вокруг високосного года НЕ смещает границу на сутки', () => {
+    // primary = март 2025 (год ПОСЛЕ високосного 2024). Календарный yoy:
+    // 1 мар 2025 → 1 мар 2024 (UTC+5). Старый фикс-мс-сдвиг (366 дней, т.к.
+    // 2024 високосный) уводил начало на 29 фев 2024 — на сутки раньше.
+    const primaryMar = resolvePeriod({ from: '2025-03-01', to: '2025-03-31' }, NOW);
+    const c = resolveComparison(primaryMar, { mode: 'yoy' });
+    // 1 мар 2024 00:00 UTC+5 = 29 фев 2024 19:00 UTC (а НЕ 28 фев — багованный сдвиг).
+    expect(c!.from.toISOString()).toBe('2024-02-29T19:00:00.000Z');
+    // 31 мар 2024 23:59:59.999 UTC+5 = 31 мар 2024 18:59:59.999 UTC.
+    expect(c!.to.toISOString()).toBe('2024-03-31T18:59:59.999Z');
+  });
+
+  it('M2: yoy с границей 29 фев високосного → клампит к 28 фев (не уезжает в 1 мар)', () => {
+    // primary = февраль 2024 (високосный, до 29-го). yoy → 2023 (невисокосный):
+    // 29 фев 2023 не существует. Без клампа Date.UTC нормализовал бы в 1 мар 2023
+    // (граница уехала бы на сутки вперёд, лишний день в колонке сравнения).
+    const primaryFeb = resolvePeriod({ from: '2024-02-01', to: '2024-02-29' }, NOW);
+    const c = resolveComparison(primaryFeb, { mode: 'yoy' });
+    // 1 фев 2023 00:00 UTC+5 = 31 янв 2023 19:00 UTC.
+    expect(c!.from.toISOString()).toBe('2023-01-31T19:00:00.000Z');
+    // граница 29 фев 2024 → клампнута к 28 фев 2023 23:59:59.999 UTC+5
+    // = 28 фев 2023 18:59:59.999 UTC (а НЕ 1 мар — это и был бы баг).
+    expect(c!.to.toISOString()).toBe('2023-02-28T18:59:59.999Z');
+  });
+
   it('custom требует обе границы', () => {
     expect(resolveComparison(primary, { mode: 'custom' })).toBeNull();
     expect(resolveComparison(primary, { mode: 'custom', from: '2025-01-01', to: '2025-01-31' })).not.toBeNull();
