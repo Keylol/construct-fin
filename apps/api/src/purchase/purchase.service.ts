@@ -56,10 +56,11 @@ export class PurchaseService {
    * Всё в одной транзакции UoW: либо всё, либо ничего.
    */
   async register(workspaceId: string, userId: string, dto: CreatePurchaseDto) {
-    const lines = dto.lines.map((l) => ({
-      ...l,
-      lineTotal: money(mul(l.qty, l.unitPrice)),
-    }));
+    // Лок-порядок партий: сортируем строки по warehouseItemId ASC (анти-deadlock
+    // при конкурентных закупках с зеркальными наборами SKU — единый порядок локов).
+    const lines = dto.lines
+      .map((l) => ({ ...l, lineTotal: money(mul(l.qty, l.unitPrice)) }))
+      .sort((a, b) => a.warehouseItemId.localeCompare(b.warehouseItemId));
     const totalAmount = money(
       lines.reduce((acc, l) => add(acc, l.lineTotal), new Prisma.Decimal(0)),
     );
@@ -88,26 +89,29 @@ export class PurchaseService {
         },
       });
 
-      // 2. Документ закупки + строки.
+      // 2. Документ закупки (строки создаём по одной ниже — нужен id каждой строки
+      //    для трассы партии purchaseLineId).
       const purchase = await tx.purchase.create({
         data: {
           workspaceId,
           transactionId: transaction.id,
           supplierId: dto.supplierId ?? null,
           note: dto.note ?? null,
-          lines: {
-            create: lines.map((l) => ({
-              warehouseItemId: l.warehouseItemId,
-              qty: new Prisma.Decimal(l.qty),
-              unitPrice: new Prisma.Decimal(l.unitPrice),
-              lineTotal: l.lineTotal,
-            })),
-          },
         },
       });
 
-      // 3. Приход на склад + WAVG.
+      // 3. На каждую строку: PurchaseLine + FIFO-партия (StockLot) с трассой
+      //    поставщик/счёт/строка-закупки + PURCHASE-движение.
       for (const l of lines) {
+        const line = await tx.purchaseLine.create({
+          data: {
+            purchaseId: purchase.id,
+            warehouseItemId: l.warehouseItemId,
+            qty: new Prisma.Decimal(l.qty),
+            unitPrice: new Prisma.Decimal(l.unitPrice),
+            lineTotal: l.lineTotal,
+          },
+        });
         await this.warehouse.applyPurchaseLine(
           tx,
           workspaceId,
@@ -116,6 +120,12 @@ export class PurchaseService {
           l.unitPrice,
           userId,
           { refType: 'Purchase', refId: purchase.id },
+          {
+            supplierId: dto.supplierId ?? null,
+            accountId: dto.accountId,
+            purchaseLineId: line.id,
+            receivedAt: purchaseDate,
+          },
         );
       }
 
