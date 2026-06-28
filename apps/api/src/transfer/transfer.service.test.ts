@@ -153,6 +153,17 @@ describe('TransferService.create (A2)', () => {
     expect(sql).toContain('"Account"');
     expect(sql).toContain('FOR UPDATE');
     expect(sql).toContain('"deletedAt" IS NULL');
+    // #12: архивные счета исключены прямо в lock-запросе.
+    expect(sql).toContain('"isArchived" = false');
+  });
+
+  it('#12: перевод на архивный счёт отклоняется и НИ ОДНА нога не создаётся', async () => {
+    // Архивный toAccount не попадает в locked-набор (lock-запрос фильтрует
+    // isArchived=false) — мок отдаёт только активный from1.
+    const { service, txClient } = buildService({ accountIds: ['from1'] });
+    await expect(service.create('ws1', 'user1', { ...baseInput })).rejects.toThrow();
+    expect(txClient.transaction.create).not.toHaveBeenCalled();
+    expect(txClient.transfer.create).not.toHaveBeenCalled();
   });
 
   it('M7: перевод на soft-deleted/чужой счёт отклоняется и НИ ОДНА нога не создаётся', async () => {

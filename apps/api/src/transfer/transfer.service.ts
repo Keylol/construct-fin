@@ -162,16 +162,22 @@ export class TransferService {
     fromId: string,
     toId: string,
   ) {
+    // #12: архивный счёт (isArchived) — закрытый, на него нельзя проводить
+    // перевод. Отсекаем в том же FOR UPDATE-запросе: архивный/удалённый/чужой
+    // счёт не попадёт в locked → перевод отклонится с понятной ошибкой ниже.
     const locked = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "Account"
       WHERE "id" IN (${fromId}, ${toId})
         AND "workspaceId" = ${workspaceId}
         AND "deletedAt" IS NULL
+        AND "isArchived" = false
       ORDER BY "id"
       FOR UPDATE`;
     const ids = new Set(locked.map((a) => a.id));
-    if (!ids.has(fromId)) throw new BadRequestException('fromAccount not found in this workspace');
-    if (!ids.has(toId)) throw new BadRequestException('toAccount not found in this workspace');
+    if (!ids.has(fromId))
+      throw new BadRequestException('fromAccount not found or archived in this workspace');
+    if (!ids.has(toId))
+      throw new BadRequestException('toAccount not found or archived in this workspace');
   }
 
   private serialize(t: TransferRow) {

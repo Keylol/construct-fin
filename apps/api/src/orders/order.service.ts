@@ -198,6 +198,8 @@ export class OrderService {
       if (order.status === 'CANCELLED') {
         throw new BadRequestException('Заказ отменён');
       }
+      // #9: перепроверяем счёт под транзакцией (TOCTOU) перед созданием проводки.
+      await this.assertAccountTx(tx, workspaceId, dto.accountId);
       await tx.transaction.create({
         data: {
           workspaceId,
@@ -339,6 +341,8 @@ export class OrderService {
           `Нельзя вернуть больше проданного: доступно ${available.toString()}`,
         );
       }
+      // #9: перепроверяем счёт возврата под транзакцией (TOCTOU) перед проводками.
+      await this.assertAccountTx(tx, workspaceId, dto.accountId);
 
       if (item.warehouseItemId) {
         await this.warehouse.restock(
@@ -445,6 +449,19 @@ export class OrderService {
   /** Проверка принадлежности счёта workspace (для возврата денег). */
   private async assertAccount(workspaceId: string, accountId: string) {
     const acc = await this.prisma.account.findFirst({
+      where: { id: accountId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!acc) throw new BadRequestException('Account not found in this workspace');
+  }
+
+  /**
+   * Та же проверка, но ВНУТРИ транзакции (TOCTOU): между внешней assertAccount и
+   * созданием проводки счёт могли soft-delete. Перепроверяем под tx прямо перед
+   * tx.transaction.create, чтобы платёж/возврат не сел на удалённый счёт.
+   */
+  private async assertAccountTx(tx: TxClient, workspaceId: string, accountId: string) {
+    const acc = await tx.account.findFirst({
       where: { id: accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
@@ -752,15 +769,9 @@ export class OrderService {
     const paid = money(sub(paidIn, refunded));
     const total = order.totalAmount;
 
-    let state: OrderPaymentState;
-    if (lt(paid, '0') || isZero(paid)) state = paid.isNegative() ? 'REFUNDED' : 'UNPAID';
-    else if (lt(paid, total)) state = 'PARTIAL';
-    else if (gt(paid, total)) state = 'OVERPAID';
-    else state = 'PAID';
-
     await tx.order.update({
       where: { id: orderId },
-      data: { paidAmount: paid, paymentStatus: state },
+      data: { paidAmount: paid, paymentStatus: resolvePaymentState(paid, total) },
     });
   }
 }
@@ -772,6 +783,31 @@ export class OrderService {
  */
 function isNumberConflict(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+/**
+ * Чистое правило статуса оплаты заказа от (paid, total). Выделено из
+ * syncPaymentState для unit-тестов.
+ *
+ * #10: при total=0 (нечего платить) и paid≥0 заказ считается PAID, а не UNPAID —
+ * раньше ветка isZero(paid) срабатывала раньше сравнения с total и заказ с
+ * total=0/paid=0 ошибочно оставался UNPAID. Порядок проверок:
+ *   • paid<0  → REFUNDED (при любом total: вернули больше, чем заплатили);
+ *   • total=0: paid=0 → PAID (платить нечего), paid>0 → OVERPAID (клиент
+ *     переплатил по нулевому заказу — ему причитается возврат; важно для
+ *     кэш-флоу, поэтому НЕ схлопываем в PAID);
+ *   • далее (total>0) как раньше: 0→UNPAID, <total→PARTIAL, >total→OVERPAID, =→PAID.
+ */
+export function resolvePaymentState(
+  paid: Prisma.Decimal,
+  total: Prisma.Decimal,
+): OrderPaymentState {
+  if (paid.isNegative()) return 'REFUNDED';
+  if (isZero(total)) return isZero(paid) ? 'PAID' : 'OVERPAID';
+  if (isZero(paid)) return 'UNPAID';
+  if (lt(paid, total)) return 'PARTIAL';
+  if (gt(paid, total)) return 'OVERPAID';
+  return 'PAID';
 }
 
 /** Хелпер: пересчёт total при изменении только скидки. */

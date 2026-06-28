@@ -10,6 +10,17 @@ import { TransactionalContext } from './transactional-context';
 export type TxClient = Prisma.TransactionClient;
 
 /**
+ * Явные лимиты для $transaction. Без них Prisma берёт дефолт timeout=5000ms,
+ * которого мало для доменных транзакций с `SELECT … FOR UPDATE` под конкуренцией
+ * (lockForUpdate в order/transfer): под нагрузкой блокированная транзакция
+ * абортится по таймауту и операция падает. Поднимаем:
+ *   • maxWait — сколько ждать свободного соединения из пула перед стартом tx;
+ *   • timeout — максимум на саму tx (от старта до commit).
+ */
+const TX_MAX_WAIT_MS = 5000;
+const TX_TIMEOUT_MS = 15000;
+
+/**
  * Unit of Work — единая точка для атомарных мульти-табличных операций.
  *
  * Пластичность: доменные use-case'ы зависят от этого интерфейса, а не от
@@ -40,6 +51,6 @@ export class UnitOfWork {
       // запросы) поведение не меняется.
       await this.txContext.drainCommitHooks(tx);
       return result;
-    });
+    }, { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS });
   }
 }
