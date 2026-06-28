@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { PeriodPresetSchema } from '../reports/reports.dto';
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/);
+import { PeriodPresetSchema, isoDate } from '../reports/reports.dto';
 
 /**
  * Период для отчёта маржи (BR3) — опционален: без параметров считаем по всей
  * истории; с preset либо from+to — фильтр по дате закрытия заказа (closedAt).
+ * Частично заданный период (ровно одна из from/to без preset) — ошибка ввода:
+ * иначе он тихо игнорировался бы и считалась вся история (см. marginPeriod).
  */
 export const MarginQuerySchema = z
   .object({
@@ -13,7 +13,11 @@ export const MarginQuerySchema = z
     from: isoDate.optional(),
     to: isoDate.optional(),
   })
-  .strict();
+  .strict()
+  .refine((q) => q.preset != null || !!q.from === !!q.to, {
+    message: 'Период: укажите обе границы (from и to) либо preset',
+    path: ['from'],
+  });
 export type MarginQuery = z.infer<typeof MarginQuerySchema>;
 
 /**

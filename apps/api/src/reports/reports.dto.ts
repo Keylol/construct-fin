@@ -15,7 +15,22 @@ export const PeriodPresetSchema = z.enum([
 
 export const CompareModeSchema = z.enum(['none', 'prev', 'yoy', 'custom']);
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/);
+// Дата (или дата-время) ISO. Регэксп ограничивает месяц 01-12 и день 01-31, а
+// .refine отбраковывает несуществующие даты (2026-02-30, 2026-04-31): строим
+// UTC-дату из Y-M-D и сверяем, что компоненты не «переехали» при нормализации.
+export const isoDate = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(T.*)?$/)
+  .refine((s) => {
+    const parts = s.slice(0, 10).split('-');
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+    );
+  }, 'invalid calendar date');
 
 export const PnlQuerySchema = z
   .object({

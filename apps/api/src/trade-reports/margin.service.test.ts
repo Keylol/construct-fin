@@ -138,6 +138,30 @@ describe('MarginService.byProduct', () => {
     expect(r.rows[0]!.qty).toBe('2.000');
   });
 
+  it('выручка 0 при положительной себестоимости → отрицательная маржа% (не прячем убыток)', async () => {
+    const { service } = buildService([
+      item({ name: 'Брак', qty: '1', unitPrice: '0', unitCostAtSale: '600' }),
+    ]);
+    const r = await service.byProduct('ws1');
+    const row = r.rows[0]!;
+    expect(row.revenue).toBe('0.00');
+    expect(row.cogs).toBe('600.00');
+    expect(row.margin).toBe('-600.00');
+    expect(row.marginPct).toBe('-60000.00'); // margin*100, отрицательный сигнал
+    expect(r.totals.marginPct).toBe('-60000.00');
+  });
+
+  it('нормализует имя позиции (trim + lower) при группировке, имя для показа — исходное', async () => {
+    const { service } = buildService([
+      item({ name: 'Стол', qty: '1', unitPrice: '1000', unitCostAtSale: '600' }),
+      item({ name: 'стол ', qty: '1', unitPrice: '1000', unitCostAtSale: '600' }),
+    ]);
+    const r = await service.byProduct('ws1');
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]!.name).toBe('Стол'); // оригинал первой позиции
+    expect(r.rows[0]!.revenue).toBe('2000.00');
+  });
+
   it('пустой набор → нулевые тоталы, маржа% = 0 при выручке 0', async () => {
     const { service } = buildService([]);
     const r = await service.byProduct('ws1');
