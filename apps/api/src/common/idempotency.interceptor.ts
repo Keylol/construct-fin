@@ -7,10 +7,11 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { of, from, throwError, type Observable } from 'rxjs';
+import { of, from, throwError, Observable } from 'rxjs';
 import { catchError, mergeMap } from 'rxjs/operators';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TransactionalContext, type CommitHook } from './transactional-context';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -34,7 +35,10 @@ const KEY_HEADER = 'idempotency-key';
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly txContext: TransactionalContext,
+  ) {}
 
   async intercept(
     context: ExecutionContext,
@@ -69,18 +73,35 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return of(ex.responseBody);
     }
 
-    // Владеем ключом: выполняем хендлер. Ответ отдаём ТОЛЬКО после фиксации
-    // кэша (mergeMap дожидается complete) — иначе мгновенный повтор увидел бы
-    // ещё «висящий» ключ и получил ложный 409. На ошибку освобождаем резерв.
-    return next.handle().pipe(
-      mergeMap(async (body) => {
-        await this.complete(key, body);
-        return body;
-      }),
-      catchError((err) =>
-        from(this.release(key)).pipe(mergeMap(() => throwError(() => err))),
-      ),
-    );
+    // Владеем ключом. Маркер завершения completedAt фиксируем АТОМАРНО с
+    // денежной проводкой — через commit-hook ВНУТРИ доменной транзакции
+    // (UnitOfWork.drainCommitHooks). Это закрывает окно «деньги закоммичены,
+    // но completedAt ещё не записан»: после краха в этом окне completedAt уже
+    // выставлен в той же tx, что и деньги, поэтому lease/expiry-recovery его
+    // НЕ перевыполнит. responseBody (кэш ответа) пишем после, best-effort.
+    const completeHook: CommitHook = (tx) =>
+      tx.idempotencyKey
+        .updateMany({ where: { key, completedAt: null }, data: { completedAt: new Date() } })
+        .then(() => undefined);
+
+    // Оборачиваем подписку в ALS-контекст, чтобы хук был виден из UnitOfWork
+    // внутри доменной транзакции (next.handle() исполняется при subscribe).
+    return new Observable((subscriber) => {
+      this.txContext.run({ idempotencyKey: key, commitHooks: [completeHook] }, () => {
+        next
+          .handle()
+          .pipe(
+            mergeMap(async (body) => {
+              await this.cacheResponse(key, body);
+              return body;
+            }),
+            catchError((err) =>
+              from(this.release(key)).pipe(mergeMap(() => throwError(() => err))),
+            ),
+          )
+          .subscribe(subscriber);
+      });
+    });
   }
 
   /**
@@ -128,14 +149,27 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
   }
 
-  /** Зафиксировать успешный ответ под нашим ключом. */
-  private async complete(key: string, body: unknown): Promise<void> {
+  /**
+   * Кэшировать ответ под нашим ключом (best-effort, после хендлера).
+   *
+   * responseBody — кэш для повторной отдачи при ретрае; пишется всегда.
+   * completedAt для ДЕНЕЖНЫХ путей уже выставлен commit-hook'ом ВНУТРИ доменной
+   * tx (атомарно с деньгами), поэтому здесь updateMany по completedAt=null будет
+   * no-op. Для путей БЕЗ uow.run (не-денежные мутирующие эндпойнты с ключом)
+   * хук не срабатывал — выставляем маркер здесь как fallback; окно краха для
+   * них безопасно, т.к. денежного эффекта нет.
+   */
+  private async cacheResponse(key: string, body: unknown): Promise<void> {
     const json: Prisma.InputJsonValue | typeof Prisma.JsonNull =
       body === null || body === undefined ? Prisma.JsonNull : (body as Prisma.InputJsonValue);
     try {
       await this.prisma.idempotencyKey.update({
         where: { key },
-        data: { responseBody: json, completedAt: new Date() },
+        data: { responseBody: json },
+      });
+      await this.prisma.idempotencyKey.updateMany({
+        where: { key, completedAt: null },
+        data: { completedAt: new Date() },
       });
     } catch (err) {
       // Кэш — не критично, основной запрос уже успешен.

@@ -11,6 +11,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork } from '../common/unit-of-work';
+import { TransactionalContext } from '../common/transactional-context';
 import { AuditService } from '../audit/audit.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { WarehouseService } from '../warehouse/warehouse.service';
@@ -60,7 +61,7 @@ export function buildHarness(): Harness {
     datasources: { db: { url: TEST_DATABASE_URL } },
   }) as unknown as PrismaService & PrismaClient;
 
-  const uow = new UnitOfWork(prisma);
+  const uow = new UnitOfWork(prisma, new TransactionalContext());
   const audit = new AuditService(prisma);
   const whRepo = new WarehouseRepository(prisma);
   const warehouse = new WarehouseService(prisma, whRepo, uow, audit);

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TransactionalContext } from './transactional-context';
 
 /**
  * Транзакционный клиент Prisma — то, что получают репозитории внутри UoW.
@@ -24,9 +25,21 @@ export type TxClient = Prisma.TransactionClient;
  */
 @Injectable()
 export class UnitOfWork {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly txContext: TransactionalContext,
+  ) {}
 
   run<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
-    return this.prisma.$transaction((tx) => fn(tx));
+    return this.prisma.$transaction(async (tx) => {
+      const result = await fn(tx);
+      // Внутритранзакционные финализаторы (напр. idempotency-маркер completedAt)
+      // выполняются ВНУТРИ этой же транзакции перед коммитом — атомарно с
+      // доменной работой. No-op вне request-контекста и без хуков, поэтому
+      // на все существующие uow.run (cron, прямые вызовы, не-идемпотентные
+      // запросы) поведение не меняется.
+      await this.txContext.drainCommitHooks(tx);
+      return result;
+    });
   }
 }
