@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
 import type { Purchase } from '@/lib/types';
@@ -32,10 +33,16 @@ export function usePurchases(wsId: string | null, supplierId?: string) {
 
 export function useCreatePurchase(wsId: string) {
   const qc = useQueryClient();
+  // M18: ключ фиксируется один раз на операцию в onMutate (см. useOrders) —
+  // стабилен при retry той же мутации, новый mutate() даёт новый ключ.
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: (input: CreatePurchaseInput) =>
       api.post<Purchase>(`/workspaces/${wsId}/purchases`, input, {
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: idemKey.current,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchases', wsId] });

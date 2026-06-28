@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import {
   useInfiniteQuery,
   useMutation,
@@ -111,10 +112,17 @@ export function useUpdateOrder(wsId: string) {
 
 export function useAddOrderPayment(wsId: string) {
   const qc = useQueryClient();
+  // M18: ключ фиксируется ОДИН раз на логическую операцию в onMutate (срабатывает
+  // один раз на mutate, НЕ на каждый retry mutationFn) и переиспользуется при
+  // повторах той же мутации. Новый вызов mutate() → новый onMutate → новый ключ.
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: ({ id, ...input }: AddPaymentInput & { id: string }) =>
       api.post<Order>(`/workspaces/${wsId}/orders/${id}/payments`, input, {
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: idemKey.current,
       }),
     onSuccess: () => invalidate(qc, wsId),
   });
@@ -122,10 +130,15 @@ export function useAddOrderPayment(wsId: string) {
 
 export function useFinalizeOrder(wsId: string) {
   const qc = useQueryClient();
+  // M18: см. useAddOrderPayment — ключ стабилен на время операции (retry не задвоит).
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: (id: string) =>
       api.post<Order>(`/workspaces/${wsId}/orders/${id}/finalize`, undefined, {
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: idemKey.current,
       }),
     onSuccess: () => invalidate(qc, wsId),
   });
