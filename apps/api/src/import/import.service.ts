@@ -268,9 +268,20 @@ export class ImportService {
     // [r−W, r+W] = [minRowDate−W, maxRowDate+W]. Точная проверка ±W для каждой
     // строки делается в findTransferMatch, так что лишние кандидаты отсекутся там.
     const windowMs = TRANSFER_MATCH_WINDOW_DAYS * DAY_MS;
-    const dates = rows.map((r) => Date.parse(r.date));
-    const minDate = new Date(Math.min(...dates) - windowMs);
-    const maxDate = new Date(Math.max(...dates) + windowMs);
+    // Спред Math.min/max(...dates) роняет стек на больших импортах (десятки тысяч
+    // строк → `apply` с огромным числом аргументов). Считаем границы линейным
+    // проходом без spread. NaN-даты (нераспознанные) пропускаем, не отравляя min/max.
+    let minMs = Number.POSITIVE_INFINITY;
+    let maxMs = Number.NEGATIVE_INFINITY;
+    for (const r of rows) {
+      const t = Date.parse(r.date);
+      if (Number.isNaN(t)) continue;
+      if (t < minMs) minMs = t;
+      if (t > maxMs) maxMs = t;
+    }
+    if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return;
+    const minDate = new Date(minMs - windowMs);
+    const maxDate = new Date(maxMs + windowMs);
     const amounts = Array.from(new Set(rows.map((r) => r.amount))).map(
       (a) => new Prisma.Decimal(a),
     );
@@ -338,13 +349,20 @@ export class ImportService {
       throw new BadRequestException('Nothing to import — all rows are duplicates');
     }
 
-    const namesNeeded = Array.from(
-      new Set(
-        rowsToImport
-          .map((r) => r.counterpartyName?.trim())
-          .filter((n): n is string => !!n),
-      ),
-    );
+    // Дедуп контрагентов по lowercase-ключу, а НЕ по точному регистру: иначе
+    // «Ромашка» и «РОМАШКА» из одного файла попадали бы в namesNeeded оба и
+    // createMany завёл бы два отдельных контрагента (дубли пачкают отчёты
+    // by-counterparty и авто-резолв). Храним первое встреченное написание как
+    // каноническое. (DB-бэкстоп — партиал-unique по (workspaceId, lower(name)) —
+    // остаётся отдельной миграцией, см. заметку в отчёте.)
+    const canonicalByLc = new Map<string, string>();
+    for (const r of rowsToImport) {
+      const n = r.counterpartyName?.trim();
+      if (!n) continue;
+      const lc = n.toLowerCase();
+      if (!canonicalByLc.has(lc)) canonicalByLc.set(lc, n);
+    }
+    const namesNeeded = Array.from(canonicalByLc.values());
     const existing =
       namesNeeded.length > 0
         ? await this.prisma.counterparty.findMany({
