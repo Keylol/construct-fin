@@ -167,6 +167,91 @@ describe('Функциональные мутации: заказы (orders)', (
     expect(after).toBe(before);
   });
 
+  // ─── R5: валидация скидки заказа ───────────────────────────────────────────
+  it('POST /orders → 400 при отрицательной скидке (R5a), заказ не создаётся', async () => {
+    const ws = seed.workspaceId;
+    const item = await stockedItem();
+    const before = await H.prisma.order.count({ where: { workspaceId: ws } });
+
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/orders`,
+      token,
+      payload: {
+        items: [{ warehouseItemId: item, name: 'Деталь A', qty: '10', unitPrice: '500' }],
+        discountAmount: '-100', // отрицательная скидка раздула бы total
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    const after = await H.prisma.order.count({ where: { workspaceId: ws } });
+    expect(after).toBe(before);
+  });
+
+  it('POST /orders → 400 при скидке больше суммы позиций (R5b), заказ не создаётся', async () => {
+    const ws = seed.workspaceId;
+    const item = await stockedItem();
+    const before = await H.prisma.order.count({ where: { workspaceId: ws } });
+
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/orders`,
+      token,
+      payload: {
+        items: [{ warehouseItemId: item, name: 'Деталь A', qty: '10', unitPrice: '500' }], // subtotal 5000
+        discountAmount: '5001', // > subtotal → total < 0
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    const after = await H.prisma.order.count({ where: { workspaceId: ws } });
+    expect(after).toBe(before);
+  });
+
+  it('POST /orders → 201 при валидной скидке (0 < discount < subtotal), totalAmount = subtotal − discount', async () => {
+    const item = await stockedItem();
+    const order = await orderWith(item, '10', '500', { discountAmount: '1500' }); // subtotal 5000
+
+    const row = await H.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(row.subtotal.toFixed(2)).toBe('5000.00');
+    expect(row.discountAmount.toFixed(2)).toBe('1500.00');
+    expect(row.totalAmount.toFixed(2)).toBe('3500.00');
+  });
+
+  it('PATCH /orders/:id → 400 при отрицательной скидке (R5a), суммы не меняются', async () => {
+    const ws = seed.workspaceId;
+    const item = await stockedItem();
+    const order = await orderWith(item, '10', '500'); // subtotal/total 5000
+
+    const res = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/orders/${order.id}`,
+      token,
+      payload: { discountAmount: '-100' },
+    });
+    expect(res.statusCode).toBe(400);
+
+    const row = await H.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(row.totalAmount.toFixed(2)).toBe('5000.00');
+    expect(row.discountAmount.toFixed(2)).toBe('0.00');
+  });
+
+  it('PATCH /orders/:id → 400 при скидке больше суммы позиций (R5b), суммы не меняются', async () => {
+    const ws = seed.workspaceId;
+    const item = await stockedItem();
+    const order = await orderWith(item, '10', '500'); // subtotal 5000
+
+    const res = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/orders/${order.id}`,
+      token,
+      payload: { discountAmount: '5001' }, // > subtotal
+    });
+    expect(res.statusCode).toBe(400);
+
+    const row = await H.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(row.totalAmount.toFixed(2)).toBe('5000.00');
+    expect(row.discountAmount.toFixed(2)).toBe('0.00');
+  });
+
   // ─── 2. PATCH /orders/:id ──────────────────────────────────────────────────
   it('PATCH /orders/:id → 200, обновляет поля и заменяет позиции с пересчётом', async () => {
     const item = await stockedItem();
