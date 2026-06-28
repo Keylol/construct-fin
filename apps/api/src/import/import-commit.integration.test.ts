@@ -114,3 +114,111 @@ describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
     expect(again.imported).toBe(1);
   });
 });
+
+describe('Import commit: дедуп контрагентов по lowercase (M10)', () => {
+  it('«Ромашка» и «РОМАШКА» из одного файла → один контрагент, общий id', async () => {
+    const res = await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        rows: [
+          {
+            date: '2026-05-01',
+            amount: '100.00',
+            type: 'EXPENSE',
+            description: 'оплата 1',
+            counterpartyName: 'Ромашка',
+            categoryId: null,
+            importHash: 'cp-row-1',
+            isDuplicate: false,
+          },
+          {
+            date: '2026-05-02',
+            amount: '200.00',
+            type: 'EXPENSE',
+            description: 'оплата 2',
+            counterpartyName: 'РОМАШКА',
+            categoryId: null,
+            importHash: 'cp-row-2',
+            isDuplicate: false,
+          },
+        ],
+      }),
+    });
+    expect(res.imported).toBe(2);
+
+    const cps = await h.prisma.counterparty.findMany({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    expect(cps).toHaveLength(1); // регистр-дубль НЕ создан
+
+    const txs = await h.prisma.transaction.findMany({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+      select: { counterpartyId: true },
+    });
+    expect(txs).toHaveLength(2);
+    expect(txs[0]?.counterpartyId).toBe(cps[0]?.id);
+    expect(txs[1]?.counterpartyId).toBe(cps[0]?.id); // обе ноги ссылаются на один id
+  });
+
+  it('переиспользует уже существующего контрагента независимо от регистра', async () => {
+    const cp = await h.prisma.counterparty.create({
+      data: { workspaceId: seed.workspaceId, name: 'Ромашка' },
+    });
+    const res = await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        rows: [
+          {
+            date: '2026-05-01',
+            amount: '100.00',
+            type: 'EXPENSE',
+            description: 'оплата',
+            counterpartyName: 'рОмАшКа',
+            categoryId: null,
+            importHash: 'cp-row-3',
+            isDuplicate: false,
+          },
+        ],
+      }),
+    });
+    expect(res.imported).toBe(1);
+    const count = await h.prisma.counterparty.count({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+    });
+    expect(count).toBe(1); // нового не завели
+    const tx = await h.prisma.transaction.findFirst({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+      select: { counterpartyId: true },
+    });
+    expect(tx?.counterpartyId).toBe(cp.id);
+  });
+});
+
+describe('annotateTransferSuggestions: границы дат без spread (M11)', () => {
+  it('не роняет стек на десятках тысяч строк', async () => {
+    const rows = Array.from({ length: 60000 }, (_, i) => ({
+      rawIndex: i,
+      date: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),
+      amount: '100.00',
+      type: 'EXPENSE' as const,
+      description: null,
+      counterpartyName: null,
+      resolvedCounterpartyId: null,
+      suggestedCategoryId: null,
+      importHash: `h-${i}`,
+      isDuplicate: false,
+      transferSuggestion: null,
+      errors: [],
+      raw: {},
+    }));
+    // Раньше Math.min/max(...dates) на таком объёме давал RangeError (stack).
+    await expect(
+      (svc as unknown as {
+        annotateTransferSuggestions: (w: string, a: string, r: typeof rows) => Promise<void>;
+      }).annotateTransferSuggestions(seed.workspaceId, seed.accountId, rows),
+    ).resolves.toBeUndefined();
+  });
+});

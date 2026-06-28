@@ -84,6 +84,28 @@ describe('parseDate', () => {
   it('returns null for garbage', () => {
     expect(parseDate('not-a-date')).toBeNull();
   });
+
+  // M12: month/day-overflow НЕ должен тихо роллить дату вперёд — возвращаем null.
+  it('rejects month-overflow instead of silently rolling forward', () => {
+    expect(parseDate('31/13/2024')).toBeNull(); // месяц 13 → раньше уезжал в след. год
+    expect(parseDate('01/00/2024')).toBeNull(); // месяц 0 невалиден
+  });
+  it('rejects day-overflow instead of silently rolling forward', () => {
+    expect(parseDate('32/01/2024')).toBeNull(); // день 32 → раньше уезжал в февраль
+    expect(parseDate('00/01/2024')).toBeNull(); // день 0 невалиден
+    expect(parseDate('31/04/2024')).toBeNull(); // апрель 30 дней → роллило в май
+    expect(parseDate('29/02/2025')).toBeNull(); // 2025 не високосный → роллило в март
+  });
+  it('rejects invalid ISO month/day without rolling', () => {
+    expect(parseDate('2024-13-01')).toBeNull();
+    expect(parseDate('2024-02-30')).toBeNull();
+  });
+  it('still accepts valid edge dates', () => {
+    expect(parseDate('29/02/2024')?.toISOString().slice(0, 10)).toBe('2024-02-29'); // високосный
+    expect(parseDate('31/12/2024')?.toISOString().slice(0, 10)).toBe('2024-12-31');
+    expect(parseDate('01.01.26')?.toISOString().slice(0, 10)).toBe('2026-01-01'); // 2-значный год
+    expect(parseDate('2024-02-29')?.toISOString().slice(0, 10)).toBe('2024-02-29');
+  });
 });
 
 describe('detectType', () => {

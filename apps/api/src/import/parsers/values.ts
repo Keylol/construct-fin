@@ -87,6 +87,38 @@ export function parseAmount(raw: string | null | undefined, decimalSep?: '.' | '
   }
 }
 
+/**
+ * Собирает UTC-дату из разобранных компонентов с СТРОГОЙ валидацией: проверяет
+ * диапазоны (месяц 1–12, день 1–31, время 0–23/0–59) и затем сверяет, что
+ * получившаяся дата не «свалилась» в соседний месяц/год (например 31.04 → 01.05
+ * или 31.13 → 01.{след.год}). При любом несоответствии возвращает null, а не
+ * тихо роллит дату вперёд (иначе платёж сядет не в тот период). Возвращает Date
+ * либо null.
+ */
+function buildUtcDate(
+  year: number,
+  month: number, // 1-12
+  day: number, // 1-31
+  hh: number,
+  mm: number,
+  ss: number,
+): Date | null {
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  if (hh > 23 || mm > 59 || ss > 59) return null;
+  const dt = new Date(Date.UTC(year, month - 1, day, hh, mm, ss));
+  if (Number.isNaN(dt.getTime())) return null;
+  // Защита от тихого роллинга: компоненты после нормализации должны совпасть.
+  if (
+    dt.getUTCFullYear() !== year ||
+    dt.getUTCMonth() !== month - 1 ||
+    dt.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return dt;
+}
+
 export function parseDate(raw: string | Date | null | undefined): Date | null {
   if (raw === null || raw === undefined) return null;
   if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
@@ -97,8 +129,9 @@ export function parseDate(raw: string | Date | null | undefined): Date | null {
   const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
   if (iso) {
     const [, y, m, d, hh = '00', mm = '00', ss = '00'] = iso;
-    const dt = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss)));
-    if (!Number.isNaN(dt.getTime())) return dt;
+    // Формат распознан как ISO → невалидную дату возвращаем как null, НЕ роллим
+    // и не падаем в нативный new Date() (там разбор неоднозначен).
+    return buildUtcDate(Number(y), Number(m), Number(d), Number(hh), Number(mm), Number(ss));
   }
 
   const dmy = /^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{4}|\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
@@ -110,8 +143,10 @@ export function parseDate(raw: string | Date | null | undefined): Date | null {
     const mm = dmy[5] ?? '00';
     const ss = dmy[6] ?? '00';
     const year = yyS.length === 2 ? 2000 + Number(yyS) : Number(yyS);
-    const dt = new Date(Date.UTC(year, Number(mmS) - 1, Number(ddS), Number(hh), Number(mm), Number(ss)));
-    if (!Number.isNaN(dt.getTime())) return dt;
+    // Первая группа трактуется как ДЕНЬ, вторая как МЕСЯЦ. При month-overflow
+    // (напр. «31/13/2024») или day-overflow («32/01/2024») buildUtcDate вернёт
+    // null вместо тихого роллинга вперёд.
+    return buildUtcDate(year, Number(mmS), Number(ddS), Number(hh), Number(mm), Number(ss));
   }
 
   const fallback = new Date(s);
