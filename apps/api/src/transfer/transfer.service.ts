@@ -52,11 +52,19 @@ export class TransferService {
       throw new BadRequestException('fee не может быть отрицательным');
     }
 
-    await this.assertAccounts(workspaceId, input.fromAccountId, input.toAccountId);
-
     const date = new Date(input.date);
 
     return this.uow.run(async (tx) => {
+      // M7: проверку принадлежности счетов делаем ВНУТРИ транзакции и берём
+      // `SELECT … FOR UPDATE` на обе строки Account. Иначе между проверкой вне
+      // UoW и вставкой ног есть окно, в котором счёт могут soft-delete
+      // (account.softDelete, guard M3) → ноги сядут на удалённый счёт
+      // (осиротевшие транзакции, расхождение книга/сверка). Под блокировкой
+      // конкурентный softDelete (он делает UPDATE той же строки) ждёт коммита,
+      // а если счёт уже удалён — фильтр `deletedAt IS NULL` его не вернёт и
+      // перевод будет отклонён. Лок снимается на commit/rollback.
+      await this.lockAndAssertAccounts(tx, workspaceId, input.fromAccountId, input.toAccountId);
+
       const transfer = await tx.transfer.create({
         data: {
           workspaceId,
@@ -141,12 +149,27 @@ export class TransferService {
     });
   }
 
-  private async assertAccounts(workspaceId: string, fromId: string, toId: string) {
-    const accounts = await this.prisma.account.findMany({
-      where: { id: { in: [fromId, toId] }, workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    const ids = new Set(accounts.map((a) => a.id));
+  /**
+   * Блокирует строки счетов (`SELECT … FOR UPDATE`) внутри транзакции и
+   * проверяет, что оба активны и принадлежат workspace. Лок гарантирует, что
+   * счёт не будет soft-deleted между проверкой и вставкой ног перевода (M7).
+   * `ORDER BY id` задаёт детерминированный порядок захвата блокировок, чтобы
+   * два встречных перевода по тем же счетам не словили deadlock.
+   */
+  private async lockAndAssertAccounts(
+    tx: TxClient,
+    workspaceId: string,
+    fromId: string,
+    toId: string,
+  ) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Account"
+      WHERE "id" IN (${fromId}, ${toId})
+        AND "workspaceId" = ${workspaceId}
+        AND "deletedAt" IS NULL
+      ORDER BY "id"
+      FOR UPDATE`;
+    const ids = new Set(locked.map((a) => a.id));
     if (!ids.has(fromId)) throw new BadRequestException('fromAccount not found in this workspace');
     if (!ids.has(toId)) throw new BadRequestException('toAccount not found in this workspace');
   }

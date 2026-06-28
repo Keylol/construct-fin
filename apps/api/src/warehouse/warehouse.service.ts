@@ -546,10 +546,22 @@ export class WarehouseService {
     return D(cleaned).toDecimalPlaces(places).toString();
   }
 
-  /** Helper для отчётов: стоимость остатков склада. */
+  /**
+   * Helper для отчётов: стоимость остатков склада = Σ(qty × avgCost) по всем
+   * активным позициям. M6: считаем агрегацией в БД, а не по постраничному
+   * `repo.list` (он молча обрезан `take: 300` → у workspace с >300 номенклатуры
+   * стоимость занижалась). SUM(qty*avgCost) — оба Decimal, поэтому результат
+   * numeric; приводим к ::text и парсим через Decimal, чтобы не потерять
+   * точность на JS-number. Архивные позиции в стоимость остатков не входят
+   * (как и в repo.list с includeArchived:false).
+   */
   async stockValue(workspaceId: string): Promise<string> {
-    const items = await this.repo.list(workspaceId, { includeArchived: false });
-    const total = items.reduce((acc, it) => acc.plus(it.qty.times(it.avgCost)), D(0));
-    return total.toFixed(2);
+    const rows = await this.prisma.$queryRaw<Array<{ total: string }>>`
+      SELECT COALESCE(SUM("qty" * "avgCost"), 0)::text AS total
+      FROM "WarehouseItem"
+      WHERE "workspaceId" = ${workspaceId}
+        AND "deletedAt" IS NULL
+        AND "isArchived" = false`;
+    return D(rows[0]?.total ?? '0').toFixed(2);
   }
 }

@@ -19,6 +19,10 @@ function buildService(opts: { accountIds?: string[] } = {}) {
   const accountIds = opts.accountIds ?? ['from1', 'to1'];
 
   const txClient = {
+    // M7: проверка/блокировка счетов теперь идёт ВНУТРИ транзакции через
+    // `tx.$queryRaw … FOR UPDATE` на строки Account. Мок возвращает строки тех
+    // счетов, что «активны» (accountIds) — отсутствующий id => счёт удалён/чужой.
+    $queryRaw: vi.fn().mockImplementation(() => Promise.resolve(accountIds.map((id) => ({ id })))),
     transfer: {
       create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
         Promise.resolve({
@@ -136,6 +140,28 @@ describe('TransferService.create (A2)', () => {
   it('отклоняет перевод, если один из счетов не в workspace', async () => {
     const { service } = buildService({ accountIds: ['from1'] }); // нет to1
     await expect(service.create('ws1', 'user1', { ...baseInput })).rejects.toThrow();
+  });
+
+  it('M7: блокировка/проверка счетов идёт ВНУТРИ транзакции (FOR UPDATE на Account)', async () => {
+    const { service, txClient } = buildService();
+    await service.create('ws1', 'user1', { ...baseInput });
+    // лок-запрос выполнен на tx-клиенте (т.е. внутри uow.run), а не на prisma
+    expect(txClient.$queryRaw).toHaveBeenCalledOnce();
+    // и его сырой SQL — именно FOR UPDATE на таблице Account
+    const sqlParts = txClient.$queryRaw.mock.calls[0]![0] as string[];
+    const sql = sqlParts.join(' ');
+    expect(sql).toContain('"Account"');
+    expect(sql).toContain('FOR UPDATE');
+    expect(sql).toContain('"deletedAt" IS NULL');
+  });
+
+  it('M7: перевод на soft-deleted/чужой счёт отклоняется и НИ ОДНА нога не создаётся', async () => {
+    // accountIds=['from1'] => to1 «удалён»: lock FOR UPDATE его не вернёт.
+    const { service, txClient } = buildService({ accountIds: ['from1'] });
+    await expect(service.create('ws1', 'user1', { ...baseInput })).rejects.toThrow();
+    // ноги перевода не должны быть вставлены, иначе они осиротеют на удалённом счёте
+    expect(txClient.transaction.create).not.toHaveBeenCalled();
+    expect(txClient.transfer.create).not.toHaveBeenCalled();
   });
 });
 
