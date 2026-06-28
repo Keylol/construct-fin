@@ -103,5 +103,25 @@ SMOKE-ПРОГОН (20-40 ops/воркер) ВЫЯВИЛ 2 ДЕФЕКТА-КАН
      инвалидация React Query в 4 хуках. web typecheck зелёный.
 Каждый фикс прогнан через дешёвого (Haiku) субагента-ревьюера. Финальный пакет ЗЕЛЁНЫЙ:
   232 unit + 297 integration (+4 атомарности) + 115 functional + 4 loadtest. typecheck api+web чисто.
-TODO дальше: Medium(19)/Low(32) из реестра в бэклог; R6 Layer 2 (DB partial-unique, миграция);
+
+=== Medium (19) статического аудита — ОБРАБОТАНЫ (2026-06-28) ===
+Из 19 по verdict.severity: 3 уже закрыты дорожкой R7 (M14/M15/M19 — FE-инвалидация),
+1 отложен в F0 (M1 applySupplierReturn avgCost — WAVG-специфика, устранится при FIFO),
+1 отложен как FE-фича (M17 useShip/useReturn — эндпоинты есть, нет хуков/UI; отдельный FE-проход).
+ИСПРАВЛЕНО 14 (параллельные субагенты + 2 cheap-review):
+  TZ/UTC+5: M2 YoY календарный сдвиг + кламп 29 фев (cheap-review поймал half-fix); M3 reconciliation
+    asOf→endOfDay; M8 transaction summary startOfDay/endOfDay; M4 (FE) periods.ts rangeFor в UTC+5.
+  import: M10 дедуп контрагентов по lowercase (DB-бэкстоп=миграция отложена); M11 Math.min/max спред→
+    цикл (стек); M12 parseDate buildUtcDate строгая валидация (month/day-overflow→null).
+  orders/category: M5 reverseFinalization сбрасывает returnedQty (reopen/cancel/remove); M13 ALLOWED_BUCKETS
+    валидация kind↔bucket в create+update.
+  infra/concurrency: M9 Prisma transient коды (P2034→409, P2024/P1001/P1002→503, InitializationError→503);
+    M7 transfer assertAccounts ВНУТРЬ uow + SELECT FOR UPDATE (deadlock-ordering); M6 stockValue SQL-
+    агрегация SUM(qty*avgCost) вместо cap-300.
+  FE: M16 useTransfers дополнена инвалидация; M18 idempotency-ключ стабилен на операцию (onMutate/useRef).
+Регрессия ЗЕЛЁНАЯ: 246 unit + 305 integration + 119 functional + 4 loadtest. typecheck api+web чисто.
+M7 остаточный риск: account.softDelete (M3-guard) не берёт FOR UPDATE — полное закрытие требует правки
+  account.service (вне скоупа). M18 design-smell (shared ref при конкурентных mutate) — не воспроизводим
+  при retry:0 + сериализации RQ.
+TODO дальше: Low(32) в бэклог; M1+M17 (в F0/FE-проход); M10 DB-бэкстоп (миграция); R6 Layer 2 (миграция);
   план 06-24 (F0/FIFO — фундамент склада); Playwright (Фаза 5).
