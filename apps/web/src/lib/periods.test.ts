@@ -77,4 +77,10 @@ describe('toLocalDateInput / fromLocalDateInput', () => {
     const iso = fromLocalDateInput('2026-03-09');
     expect(toLocalDateInput(new Date(iso))).toBe('2026-03-09');
   });
+
+  it('собирает полдень в ПОЯСЕ БИЗНЕСА (UTC+5), независимо от TZ браузера', () => {
+    // Полдень 2026-03-09 в UTC+5 == 07:00:00Z. Абсолютный инстант не зависит от
+    // пояса раннера: западнее UTC+5 наивный `T12:00:00` дал бы др. сутки в ISO.
+    expect(fromLocalDateInput('2026-03-09')).toBe('2026-03-09T07:00:00.000Z');
+  });
 });

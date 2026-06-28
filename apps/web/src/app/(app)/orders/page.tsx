@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
-import { formatRub, parseAmountInput } from '@construct/shared';
+import { formatRub, parseAmountInput, D, add, sub, mul, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -638,6 +638,7 @@ function OrderDetailSheet({
   const [payAmount, setPayAmount] = useState('');
   const [payAccount, setPayAccount] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const onPay = async () => {
@@ -740,23 +741,26 @@ function OrderDetailSheet({
                 {/* Доход / Расход / Прибыль. Расход (себестоимость) = unitCost
                     (ручной) ?? WAVG-снапшот. Доход = фактически оплачено. */}
                 {(() => {
+                  // Деньги через shared-Decimal (НЕ JS number): иначе qty*cost и
+                  // оплата теряли бы копейку на больших суммах. Prisma.Decimal во
+                  // фронт-бандл не тащим — только shared-хелперы.
                   const cost = (order.items ?? []).reduce((acc, it) => {
                     const c = it.unitCost ?? it.unitCostAtSale;
-                    return acc + (c ? Number(it.qty) * Number(c) : 0);
-                  }, 0);
-                  const income = Number(order.paidAmount);
-                  if (cost <= 0 && income <= 0) return null;
-                  const profit = income - cost;
-                  const profitPct = income > 0 ? (profit / income) * 100 : 0;
+                    return c ? add(acc, mul(it.qty, c)) : acc;
+                  }, D(0));
+                  const income = D(order.paidAmount);
+                  if (cost.lte(0) && income.lte(0)) return null;
+                  const profit = sub(income, cost);
+                  const profitPct = income.gt(0) ? profit.div(income).times(100) : D(0);
                   return (
                     <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
-                      <Row label="Доход (оплачено)" value={formatRub(income)} tone="pos" />
-                      <Row label="Расход (себестоимость)" value={formatRub(cost)} />
+                      <Row label="Доход (оплачено)" value={formatRub(toMoneyString(income))} tone="pos" />
+                      <Row label="Расход (себестоимость)" value={formatRub(toMoneyString(cost))} />
                       <Row
                         label="Прибыль"
-                        value={`${formatRub(profit)}${income > 0 ? ` · ${profitPct.toFixed(0)}%` : ''}`}
+                        value={`${formatRub(toMoneyString(profit))}${income.gt(0) ? ` · ${profitPct.toFixed(0)}%` : ''}`}
                         strong
-                        tone={profit >= 0 ? 'pos' : undefined}
+                        tone={profit.gte(0) ? 'pos' : undefined}
                       />
                     </div>
                   );
@@ -785,7 +789,7 @@ function OrderDetailSheet({
                         </span>
                         <button
                           type="button"
-                          onClick={() => deleteAtt.mutate(a.id)}
+                          onClick={() => setConfirmDeleteAtt(a.id)}
                           aria-label="Удалить чек"
                           className="text-destructive transition-colors hover:opacity-80"
                         >
@@ -936,6 +940,21 @@ function OrderDetailSheet({
           setConfirmCancel(false);
         }}
         loading={cancel.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteAtt !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteAtt(null);
+        }}
+        title="Удалить чек?"
+        description="Файл будет удалён без возможности восстановления."
+        confirmText="Удалить"
+        onConfirm={async () => {
+          if (confirmDeleteAtt) await deleteAtt.mutateAsync(confirmDeleteAtt);
+          setConfirmDeleteAtt(null);
+        }}
+        loading={deleteAtt.isPending}
       />
     </>
   );
