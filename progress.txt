@@ -73,7 +73,35 @@ SMOKE-ПРОГОН (20-40 ops/воркер) ВЫЯВИЛ 2 ДЕФЕКТА-КАН
   оставшийся throw в wavg.ts:53 защищён catch в decrementForSale.
 - Playwright (Фаза 2.3) — отложен в Фазу 5 (UI после фиксов бэка).
 - Регрессия всего пакета ЗЕЛЁНАЯ: 216 unit + 293 integration + 101 functional + 4 loadtest.
-TODO: Playwright (Фаза5). Дальше — план 06-24 (F0/FIFO) или rollout High аудита (дорожка R).
-=== старое ===
-=== Фаза 3 — Сводный отчёт === (не начато)
-=== Фаза 4 — Фиксы Critical/High + зелёный прогон === (не начато)
+
+=== Фаза 4 / Дорожка R — rollout 11 High статического аудита — ЗАВЕРШЕНА (2026-06-28) ===
+ВАЖНО про реестр: summary в docs/audit-phase1-registry.json ВРЁТ (Critical:0/High:11), а top-level
+поле severity завышено (Critical:4/High:24). Истинный источник = verdict.severity (после адверс.
+верификации 3 голосами): High:11/Med:19/Low:32. Все 11 High верифицированы против ТЕКУЩЕГО кода.
+Все 11 закрыты, каждый с тестом, весь пакет зелёный:
+  R1 multi-tenant: WorkspaceGuard не проверял Workspace.deletedAt → soft-deleted ws оставался рабочим.
+     Фикс: include workspace.deletedAt в findUnique членства (1 запрос). + functional-тест.
+  R2 security: CSV formula injection (escapeCsv не нейтрализовал =+-@ TAB CR). Фикс: neutralizeFormula
+     префиксует "'" для text-колонок (по kind, числа/минус не трогаем). + unit-тест.
+  R3 flow: экспорт отчётов сломан — .strict()-схемы отвергали query-параметр format. Фикс: исключить
+     format из rawQuery перед parse во всех ветках kind. + functional-тест.
+  R4 money: parseAmount (a) гнал деньги через float Number/toFixed → Decimal toMoneyString half-up;
+     (b) разделители 1000× для US "1,234". Политика «асимметрия по локали» (согласована с А.):
+     запятая+3цифры→тысячи, точка одиночная→всегда десятичная (1.005=1.01). + unit-тесты.
+  R5 money: скидка заказа — отрицательная раздувала total, >subtotal давала отрицательный. Фикс:
+     NonNegativeMoneyString для discountAmount + gt(discount,subtotal)→400 в create/update/recompute.
+  R6 idempotency (АРХИТЕКТУРНЫЙ, выбран полный фикс): completedAt писался отдельной tx ПОСЛЕ коммита
+     домена → краш в окне → ретрай дублировал платёж. Дизайн-проход (3 Plan-агента) → синтез: новый
+     TransactionalContext (ALS + generic commit-hook), UoW.drainCommitHooks ВНУТРИ $transaction пишет
+     completedAt атомарно с деньгами; interceptor оборачивает подписку в ALS, complete→cacheResponse
+     (responseBody + fallback). БЕЗ миграции. completedAt=null теперь надёжно = «деньги не прошли»,
+     поэтому lease/expiry-recovery стали корректны. Layer 2 (DB partial-unique на Transaction) —
+     ОТЛОЖЕН (требует миграции, отдельный шаг). + 4 теста атомарности (краш-симуляция, ALS, rollback).
+     ПРИМ: cheap-review советовал try-catch в хуке — ОТКЛОНЕНО (вернуло бы баг: деньги без маркера).
+  R7 frontend: мутации order/purchase/transaction/import не инвалидировали reports/trade-reports/
+     summary/warehouse/reconciliation/accounts → устаревшие деньги на экранах. Фикс: дополнена
+     инвалидация React Query в 4 хуках. web typecheck зелёный.
+Каждый фикс прогнан через дешёвого (Haiku) субагента-ревьюера. Финальный пакет ЗЕЛЁНЫЙ:
+  232 unit + 297 integration (+4 атомарности) + 115 functional + 4 loadtest. typecheck api+web чисто.
+TODO дальше: Medium(19)/Low(32) из реестра в бэклог; R6 Layer 2 (DB partial-unique, миграция);
+  план 06-24 (F0/FIFO — фундамент склада); Playwright (Фаза 5).

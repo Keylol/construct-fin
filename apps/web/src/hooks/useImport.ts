@@ -87,6 +87,13 @@ export function useImportCommit(wsId: string) {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
       qc.invalidateQueries({ queryKey: ['import-batches', wsId] });
+      // Импорт массово добавляет операции → лента, отчёты, торг.отчёты,
+      // сверка и остатки по счетам тоже устаревают.
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['trade-reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['accounts', wsId] });
     },
   });
 }

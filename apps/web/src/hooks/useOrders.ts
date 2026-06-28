@@ -79,6 +79,16 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, wsId: string) {
   qc.invalidateQueries({ queryKey: ['orders', wsId] });
   qc.invalidateQueries({ queryKey: ['order', wsId] });
   qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+  // Денежные операции по заказу затрагивают кэш-флоу/P&L, торговые отчёты,
+  // KPI/summary, ленту операций, склад (COGS), сверку и остатки по счетам.
+  qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+  qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+  qc.invalidateQueries({ queryKey: ['reports'] });
+  qc.invalidateQueries({ queryKey: ['trade-reports'] });
+  qc.invalidateQueries({ queryKey: ['warehouse', wsId] });
+  qc.invalidateQueries({ queryKey: ['warehouse-stock-value', wsId] });
+  qc.invalidateQueries({ queryKey: ['reconciliation'] });
+  qc.invalidateQueries({ queryKey: ['accounts', wsId] });
 }
 
 export function useCreateOrder(wsId: string) {
