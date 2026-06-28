@@ -1,8 +1,8 @@
 /**
  * Интеграционные тесты частичной отгрузки (Полоса A, Волна 2) против реальной БД.
  * Покрывают: ship списывает склад сразу + копит shippedQty (заказ OPEN);
- * finalize отгружает остаток и закрывает; взвешенная unitCostAtSale при отгрузках
- * по разной WAVG; отмена частично отгруженного OPEN возвращает склад; гварды.
+ * finalize отгружает остаток и закрывает; FIFO unitCostAtSale при отгрузках
+ * через несколько партий; отмена частично отгруженного OPEN возвращает склад; гварды.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import {
@@ -86,9 +86,9 @@ describe('Частичная отгрузка', () => {
     expect(num(oiAfter.unitCostAtSale!)).toBe(150);
   });
 
-  it('взвешенная unitCostAtSale при отгрузках по разной WAVG', async () => {
+  it('FIFO unitCostAtSale при отгрузках через несколько партий', async () => {
     const itemId = await seedWarehouseItem(h.prisma, seed.workspaceId);
-    // 10@100 → avg 100, qty 10
+    // партия №1: 10@100 (qty 10, avg-кэш 100)
     await h.purchases.register(seed.workspaceId, seed.userId, {
       accountId: seed.accountId,
       lines: [{ warehouseItemId: itemId, qty: '10', unitPrice: '100' }],
@@ -98,20 +98,20 @@ describe('Частичная отгрузка', () => {
     });
     const oi = await itemOf(order.id);
 
-    // отгрузка 2 по avg=100 → остаток склада 8 (value 800)
+    // отгрузка 2 из партии №1 @100 → у партии №1 остаётся 8, остаток склада 8
     await h.orders.ship(seed.workspaceId, order.id, seed.userId, { itemId: oi.id, qty: '2' });
-    // докупка 2@300 → value 800+600=1400, qty 10, avg=140
+    // докупка партии №2: 2@300 (получена позже → в хвосте FIFO-очереди), avg-кэш=140
     await h.purchases.register(seed.workspaceId, seed.userId, {
       accountId: seed.accountId,
       lines: [{ warehouseItemId: itemId, qty: '2', unitPrice: '300' }],
     });
-    // отгрузка ещё 2 по avg=140
+    // отгрузка ещё 2: FIFO берёт из партии №1 (в ней ещё 8 @100), НЕ из №2 @300
     await h.orders.ship(seed.workspaceId, order.id, seed.userId, { itemId: oi.id, qty: '2' });
 
     const oiAfter = await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } });
     expect(num(oiAfter.shippedQty)).toBe(4);
-    // взвешенно: (100·2 + 140·2)/4 = 120
-    expect(num(oiAfter.unitCostAtSale!)).toBe(120);
+    // FIFO: обе отгрузки ушли из партии №1 @100 → unitCostAtSale = (100·2 + 100·2)/4 = 100
+    expect(num(oiAfter.unitCostAtSale!)).toBe(100);
   });
 
   it('отмена частично отгруженного OPEN-заказа возвращает склад', async () => {

@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import ExcelJS from 'exceljs';
 import { buildHttpApp, type HttpApp } from '../e2e/http-harness';
-import { resetDb, seedBase, seedMember, type Seed } from '../test/money-harness';
+import { resetDb, seedBase, seedMember, seedStockItem, type Seed } from '../test/money-harness';
 
 let H: HttpApp;
 let seed: Seed;
@@ -67,9 +67,14 @@ describe('Функциональные мутации: склад (warehouse)', 
     expect(row.avgCost.toString()).toBe('50');
     expect(row.note).toBe('старт');
     expect(row.deletedAt).toBeNull();
-    // create() начальный остаток НЕ оформляет движением (OPENING пишет только импорт).
-    const moves = await H.prisma.stockMovement.count({ where: { warehouseItemId: created.id } });
-    expect(moves).toBe(0);
+    // FIFO: create() с openingQty атомарно создаёт OPENING-партию + OPENING-движение
+    // (qty == Σ движений — намеренный фикс латентного разрыва остатка и журнала).
+    const moves = await H.prisma.stockMovement.findMany({ where: { warehouseItemId: created.id } });
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.type).toBe('OPENING');
+    expect(moves[0]!.qtyDelta.toString()).toBe('10');
+    expect(moves[0]!.qtyAfter.toString()).toBe('10');
+    expect(moves[0]!.unitCost!.toString()).toBe('50');
   });
 
   it('POST /warehouse → дефолты unit=шт, qty=0, avgCost=0', async () => {
@@ -142,24 +147,32 @@ describe('Функциональные мутации: склад (warehouse)', 
 
   it('POST /warehouse/:id/adjust → 200, меняет qty и пишет StockMovement(ADJUSTMENT)', async () => {
     const ws = seed.workspaceId;
-    const item = await H.prisma.warehouseItem.create({
-      data: { workspaceId: ws, name: 'Доска', qty: '10', avgCost: '30' },
+    // FIFO: остаток 10 материализуем партией @30; adjust вниз спишет 3 из неё.
+    const { id: itemId } = await seedStockItem(H.prisma, {
+      workspaceId: ws,
+      createdById: seed.userId,
+      name: 'Доска',
+      qty: '10',
+      unitCost: '30',
     });
     const res = await H.inject({
       method: 'POST',
-      url: `/workspaces/${ws}/warehouse/${item.id}/adjust`,
+      url: `/workspaces/${ws}/warehouse/${itemId}/adjust`,
       token,
       payload: { newQty: '7', reason: 'инвентаризация' },
     });
     expect(res.statusCode).toBe(200);
 
-    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: item.id } });
+    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(row.qty.toString()).toBe('7');
-    expect(row.avgCost.toString()).toBe('30'); // adjust avgCost не трогает
+    // FIFO: списали 3 из партии @30, осталось 7@30 → avgCost-кэш = 30 (не размывается).
+    expect(row.avgCost.toString()).toBe('30');
 
-    const moves = await H.prisma.stockMovement.findMany({ where: { warehouseItemId: item.id } });
+    // Берём ADJUSTMENT-движение (помимо него есть OPENING от сидирования партии).
+    const moves = await H.prisma.stockMovement.findMany({
+      where: { warehouseItemId: itemId, type: 'ADJUSTMENT' },
+    });
     expect(moves).toHaveLength(1);
-    expect(moves[0]!.type).toBe('ADJUSTMENT');
     expect(moves[0]!.qtyDelta.toString()).toBe('-3'); // 7 − 10
     expect(moves[0]!.qtyAfter.toString()).toBe('7');
     expect(moves[0]!.reason).toBe('инвентаризация');
@@ -183,24 +196,32 @@ describe('Функциональные мутации: склад (warehouse)', 
 
   it('POST /warehouse/:id/set-cost → 200, задаёт avgCost (qty не трогает), движение без денег', async () => {
     const ws = seed.workspaceId;
-    const item = await H.prisma.warehouseItem.create({
-      data: { workspaceId: ws, name: 'Уголок', qty: '10', avgCost: '0' },
+    // FIFO: неоценённый остаток 10 — партия @0; setCost проставит ей цену.
+    const { id: itemId } = await seedStockItem(H.prisma, {
+      workspaceId: ws,
+      createdById: seed.userId,
+      name: 'Уголок',
+      qty: '10',
+      unitCost: '0',
     });
     const res = await H.inject({
       method: 'POST',
-      url: `/workspaces/${ws}/warehouse/${item.id}/set-cost`,
+      url: `/workspaces/${ws}/warehouse/${itemId}/set-cost`,
       token,
       payload: { unitCost: '25', reason: 'оценка остатка' },
     });
     expect(res.statusCode).toBe(200);
 
-    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: item.id } });
+    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
+    // setCost проставил unitCost=25 нулевой партии → avgCost-кэш = (10·25)/10 = 25.
     expect(row.avgCost.toString()).toBe('25');
     expect(row.qty.toString()).toBe('10'); // qty НЕ меняется
 
-    const moves = await H.prisma.stockMovement.findMany({ where: { warehouseItemId: item.id } });
+    // Берём ADJUSTMENT-движение (помимо него есть OPENING от сидирования партии).
+    const moves = await H.prisma.stockMovement.findMany({
+      where: { warehouseItemId: itemId, type: 'ADJUSTMENT' },
+    });
     expect(moves).toHaveLength(1);
-    expect(moves[0]!.type).toBe('ADJUSTMENT');
     expect(moves[0]!.qtyDelta.toString()).toBe('0');
     expect(moves[0]!.qtyAfter.toString()).toBe('10');
     expect(moves[0]!.unitCost!.toString()).toBe('25');
@@ -228,29 +249,37 @@ describe('Функциональные мутации: склад (warehouse)', 
 
   it('POST /warehouse/:id/supplier-return → 200: уменьшает qty, пишет RETURN_SUPPLIER и INCOME(SUPPLIER_REFUND)', async () => {
     const ws = seed.workspaceId;
-    const item = await H.prisma.warehouseItem.create({
-      data: { workspaceId: ws, name: 'Кабель', qty: '10', avgCost: '50' },
+    // FIFO: остаток 10 одной партией @50; возврат спишет 4 из неё по её цене.
+    const { id: itemId } = await seedStockItem(H.prisma, {
+      workspaceId: ws,
+      createdById: seed.userId,
+      name: 'Кабель',
+      qty: '10',
+      unitCost: '50',
     });
     const res = await H.inject({
       method: 'POST',
-      url: `/workspaces/${ws}/warehouse/${item.id}/supplier-return`,
+      url: `/workspaces/${ws}/warehouse/${itemId}/supplier-return`,
       token,
       payload: { returnQty: '4', refundAmount: '200', accountId: seed.accountId, reason: 'брак' },
     });
     expect(res.statusCode).toBe(200);
 
-    // Склад: qty 10−4=6; avgCost = (10*50 − 200)/6 = 300/6 = 50.
-    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: item.id } });
+    // Склад: qty 10−4=6. M1 устранён — списываем конкретную партию по её цене,
+    // avgCost НЕ размывается рефандом: остаётся 6@50 → avgCost-кэш = 50.
+    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(row.qty.toString()).toBe('6');
     expect(row.avgCost.toString()).toBe('50');
 
-    // Движение склада: RETURN_SUPPLIER, отрицательный qtyDelta, unitCost = refund/qty.
-    const moves = await H.prisma.stockMovement.findMany({ where: { warehouseItemId: item.id } });
+    // Движение склада: RETURN_SUPPLIER, отрицательный qtyDelta, unitCost = себестоимость
+    // списанной партии. Помимо него есть OPENING от сидирования — фильтруем по типу.
+    const moves = await H.prisma.stockMovement.findMany({
+      where: { warehouseItemId: itemId, type: 'RETURN_SUPPLIER' },
+    });
     expect(moves).toHaveLength(1);
-    expect(moves[0]!.type).toBe('RETURN_SUPPLIER');
     expect(moves[0]!.qtyDelta.toString()).toBe('-4');
     expect(moves[0]!.qtyAfter.toString()).toBe('6');
-    expect(moves[0]!.unitCost!.toString()).toBe('50'); // 200 / 4
+    expect(moves[0]!.unitCost!.toString()).toBe('50'); // 4·50 / 4 (цена партии)
 
     // Деньги: приход (INCOME / SUPPLIER_REFUND) на счёт возврата.
     const txs = await H.prisma.transaction.findMany({ where: { workspaceId: ws } });

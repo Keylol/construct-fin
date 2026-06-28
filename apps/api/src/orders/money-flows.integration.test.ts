@@ -75,7 +75,7 @@ describe('Закупка → склад → WAVG', () => {
 });
 
 describe('Finalize складского заказа → списание + unitCostAtSale', () => {
-  it('списывает склад по WAVG, фиксирует unitCostAtSale, статус DONE', async () => {
+  it('списывает склад по FIFO, фиксирует unitCostAtSale, статус DONE', async () => {
     const itemId = await seedWarehouseItem(h.prisma, seed.workspaceId);
     await h.purchases.register(seed.workspaceId, seed.userId, {
       accountId: seed.accountId,
@@ -96,7 +96,8 @@ describe('Finalize складского заказа → списание + unit
     expect(num(item.qty)).toBe(15); // 20 - 5
 
     const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
-    expect(num(oi.unitCostAtSale!)).toBe(150); // WAVG на момент продажи
+    // FIFO: проданы 5 из первой (дешёвой) партии @100 → unitCostAtSale = 500/5 = 100.
+    expect(num(oi.unitCostAtSale!)).toBe(100);
   });
 });
 

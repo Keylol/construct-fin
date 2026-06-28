@@ -93,7 +93,7 @@ describe('warehouse — чужие ссылки отклоняются', () => {
       data: { workspaceId: B.workspaceId, name: 'Поставщик B' },
     });
     await expect(
-      h.warehouse.create(A.workspaceId, { name: 'Новая деталь', defaultSupplierId: supplierB.id }),
+      h.warehouse.create(A.workspaceId, { name: 'Новая деталь', defaultSupplierId: supplierB.id }, A.userId),
     ).rejects.toThrow(/Поставщик не найден/);
     expect(await h.prisma.warehouseItem.count({ where: { workspaceId: A.workspaceId } })).toBe(0);
   });

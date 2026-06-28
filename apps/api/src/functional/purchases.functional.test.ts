@@ -16,6 +16,7 @@ import {
   resetDb,
   seedBase,
   seedMember,
+  seedStockItem,
   seedWarehouseItem,
   type Seed,
 } from '../test/money-harness';
@@ -96,11 +97,16 @@ describe('Функциональные мутации: закупки (purchases
     expect(moves[0]!.refId).toBe(created.id);
   });
 
-  it('POST /purchases → пересчёт WAVG на непустом остатке', async () => {
+  it('POST /purchases → пересчёт avgCost-кэша на непустом остатке (FIFO)', async () => {
     const ws = seed.workspaceId;
-    // Остаток 10 @ 50.
-    const item = await H.prisma.warehouseItem.create({
-      data: { workspaceId: ws, name: 'Песок', qty: '10', avgCost: '50' },
+    // Остаток 10 @ 50, материализованный OPENING-партией (иначе avgCost-кэш увидел бы
+    // только партию закупки). FIFO-кэш для чистых закупок без продаж == WAVG.
+    const { id: itemId } = await seedStockItem(H.prisma, {
+      workspaceId: ws,
+      createdById: seed.userId,
+      name: 'Песок',
+      qty: '10',
+      unitCost: '50',
     });
 
     const res = await H.inject({
@@ -109,13 +115,14 @@ describe('Функциональные мутации: закупки (purchases
       token,
       payload: {
         accountId: seed.accountId,
-        lines: [{ warehouseItemId: item.id, qty: '10', unitPrice: '100' }],
+        lines: [{ warehouseItemId: itemId, qty: '10', unitPrice: '100' }],
       },
     });
     expect(res.statusCode).toBe(201);
 
-    // WAVG: (10*50 + 10*100) / 20 = 1500/20 = 75; qty 20.
-    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: item.id } });
+    // Две открытые партии: 10@50 + 10@100 → avgCost-кэш = Σ(qtyRem·unitCost)/Σqty =
+    // (10*50 + 10*100) / 20 = 1500/20 = 75; qty 20.
+    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(row.qty.toString()).toBe('20');
     expect(row.avgCost.toString()).toBe('75');
   });

@@ -113,8 +113,8 @@ export async function resetDb(prisma: PrismaClient): Promise<void> {
   // «использовался с другим запросом» во втором и последующих прогонах.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      "Attachment","AuditLog","PurchaseLine","Purchase","OrderItem","Order",
-      "Transaction","StockMovement","Transfer","AccountBalanceCheck",
+      "Attachment","AuditLog","LotConsumption","StockLot","PurchaseLine","Purchase",
+      "OrderItem","Order","Transaction","StockMovement","Transfer","AccountBalanceCheck",
       "WarehouseItem","Counterparty","Category","Account",
       "CategoryRule","ImportBatch","IdempotencyKey",
       "WorkspaceMember","Workspace","User"
@@ -127,6 +127,71 @@ export type Seed = {
   workspaceId: string;
   accountId: string;
 };
+
+/**
+ * Засеивает складскую позицию ВМЕСТЕ с FIFO-партией (OPENING-лот + OPENING-движение),
+ * чтобы derived-кэши WarehouseItem.qty/avgCost совпадали с истиной в StockLot.
+ * Прямой `prisma.warehouseItem.create({qty, avgCost})` после перехода на FIFO даёт
+ * позицию БЕЗ партий → списание/stockValue видят 0. Используй этот хелпер вместо него.
+ * qty=0 (или unitCost не задан) — позиция без партии (как неоприходованная).
+ */
+export async function seedStockItem(
+  prisma: PrismaClient,
+  params: {
+    workspaceId: string;
+    createdById: string;
+    name?: string;
+    unit?: string;
+    sku?: string | null;
+    qty: string;
+    unitCost: string;
+    isArchived?: boolean;
+    reorderPoint?: string | null;
+    receivedAt?: Date;
+    defaultSupplierId?: string | null;
+  },
+): Promise<{ id: string }> {
+  const item = await prisma.warehouseItem.create({
+    data: {
+      workspaceId: params.workspaceId,
+      name: params.name ?? 'Деталь',
+      unit: params.unit ?? 'шт',
+      sku: params.sku ?? null,
+      qty: params.qty,
+      avgCost: params.unitCost,
+      isArchived: params.isArchived ?? false,
+      reorderPoint: params.reorderPoint ?? null,
+      defaultSupplierId: params.defaultSupplierId ?? null,
+    },
+  });
+  if (Number(params.qty) > 0) {
+    await prisma.stockLot.create({
+      data: {
+        workspaceId: params.workspaceId,
+        warehouseItemId: item.id,
+        qtyInitial: params.qty,
+        qtyRemaining: params.qty,
+        unitCost: params.unitCost,
+        sourceType: 'OPENING',
+        receivedAt: params.receivedAt ?? new Date(),
+        createdById: params.createdById,
+      },
+    });
+    await prisma.stockMovement.create({
+      data: {
+        workspaceId: params.workspaceId,
+        warehouseItemId: item.id,
+        type: 'OPENING',
+        qtyDelta: params.qty,
+        qtyAfter: params.qty,
+        unitCost: params.unitCost,
+        refType: 'Opening',
+        createdById: params.createdById,
+      },
+    });
+  }
+  return { id: item.id };
+}
 
 /** Базовый набор: пользователь, workspace, один счёт. */
 export async function seedBase(prisma: PrismaClient, telegramId: bigint): Promise<Seed> {

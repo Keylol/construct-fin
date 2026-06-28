@@ -13,6 +13,7 @@ import {
   buildHarness,
   resetDb,
   seedBase,
+  seedStockItem,
   type Harness,
   type Seed,
 } from '../test/money-harness';
@@ -129,7 +130,13 @@ describe('B3: low-stock', () => {
 
 describe('B4: adjust + supplierReturn', () => {
   it('adjust сохраняет reason в ADJUSTMENT-движении', async () => {
-    const itemId = await makeItem({ qty: '10', avgCost: '100' });
+    // FIFO: остаток 10 материализован партией @100; adjust в минус спишет 3 из неё.
+    const { id: itemId } = await seedStockItem(h.prisma, {
+      workspaceId: seed.workspaceId,
+      createdById: seed.userId,
+      qty: '10',
+      unitCost: '100',
+    });
     await h.warehouse.adjust(seed.workspaceId, itemId, { newQty: '7', reason: 'бой' }, seed.userId);
     const mv = await h.prisma.stockMovement.findFirst({
       where: { warehouseItemId: itemId, type: 'ADJUSTMENT' },
@@ -141,7 +148,13 @@ describe('B4: adjust + supplierReturn', () => {
   });
 
   it('supplierReturn двигает qty/avg, пишет RETURN_SUPPLIER + INCOME-транзакцию', async () => {
-    const itemId = await makeItem({ qty: '20', avgCost: '150' });
+    // FIFO: остаток 20 одной партией @150. Возврат 3 списывает партию по её цене.
+    const { id: itemId } = await seedStockItem(h.prisma, {
+      workspaceId: seed.workspaceId,
+      createdById: seed.userId,
+      qty: '20',
+      unitCost: '150',
+    });
     await h.warehouse.supplierReturn(seed.workspaceId, itemId, seed.userId, {
       returnQty: '3',
       refundAmount: '600',
@@ -149,7 +162,9 @@ describe('B4: adjust + supplierReturn', () => {
     });
     const item = await h.prisma.warehouseItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(item.qty.toString()).toBe('17');
-    expect(item.avgCost.toFixed(2)).toBe('141.18');
+    // M1 устранён: списываются конкретные партии по их цене, avgCost НЕ размывается
+    // рефандом. Остаётся 17 @150 → avgCost-кэш = (17·150)/17 = 150.00 (не 141.18 WAVG).
+    expect(item.avgCost.toFixed(2)).toBe('150.00');
 
     const mv = await h.prisma.stockMovement.findFirst({
       where: { warehouseItemId: itemId, type: 'RETURN_SUPPLIER' },
@@ -180,11 +195,14 @@ describe('B4: adjust + supplierReturn', () => {
 });
 
 describe('M6: stockValue считается агрегацией в БД (не обрезается на 300 позициях)', () => {
-  it('совпадает с ручной суммой qty*avgCost на нескольких позициях', async () => {
-    await makeItem({ name: 'Поз 1', qty: '10', avgCost: '100' }); // 1000
-    await makeItem({ name: 'Поз 2', qty: '3.5', avgCost: '12.4' }); // 43.40
-    await makeItem({ name: 'Поз 3', qty: '0', avgCost: '999' }); // 0
-    await makeItem({ name: 'Архивная', qty: '5', avgCost: '1000', isArchived: true }); // НЕ в остатках
+  it('совпадает с ручной суммой qtyRemaining*unitCost по партиям на нескольких позициях', async () => {
+    // FIFO: stockValue считается из открытых партий, поэтому материализуем их.
+    const item = (over: { name: string; qty: string; unitCost: string; isArchived?: boolean }) =>
+      seedStockItem(h.prisma, { workspaceId: seed.workspaceId, createdById: seed.userId, ...over });
+    await item({ name: 'Поз 1', qty: '10', unitCost: '100' }); // 1000
+    await item({ name: 'Поз 2', qty: '3.5', unitCost: '12.4' }); // 43.40
+    await item({ name: 'Поз 3', qty: '0', unitCost: '999' }); // 0 (нет партии)
+    await item({ name: 'Архивная', qty: '5', unitCost: '1000', isArchived: true }); // НЕ в остатках
 
     const value = await h.warehouse.stockValue(seed.workspaceId);
     // 10*100 + 3.5*12.4 + 0 = 1043.40 (архивная исключена)
@@ -199,6 +217,24 @@ describe('M6: stockValue считается агрегацией в БД (не �
         name: `Поз ${String(i).padStart(4, '0')}`,
         qty: '2',
         avgCost: '10',
+      })),
+    });
+    // FIFO: stockValue суммирует партии, не кэш avgCost — материализуем по партии
+    // на каждую позицию (одна OPENING-партия 2@10).
+    const items = await h.prisma.warehouseItem.findMany({
+      where: { workspaceId: seed.workspaceId },
+      select: { id: true },
+    });
+    await h.prisma.stockLot.createMany({
+      data: items.map((it) => ({
+        workspaceId: seed.workspaceId,
+        warehouseItemId: it.id,
+        qtyInitial: '2',
+        qtyRemaining: '2',
+        unitCost: '10',
+        sourceType: 'OPENING' as const,
+        receivedAt: new Date(),
+        createdById: seed.userId,
       })),
     });
     // каждая позиция: 2*10 = 20; всего 305*20 = 6100.00
