@@ -53,3 +53,12 @@ data/uploads/
 
 # Turbo
 .turbo/
+
+# Локальные resume-заметки сессий (генерит save)
+CLAUDE.local.md
+
+# Локальные данные/выгрузки/бэкапы вне репо
+backups/
+/data/
+apps/api/data/
+memory/
