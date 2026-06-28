@@ -113,5 +113,12 @@ export function toLocalDateInput(d: Date | string): string {
 
 /** Из YYYY-MM-DD в ISO. */
 export function fromLocalDateInput(s: string): string {
-  return new Date(`${s}T12:00:00`).toISOString();
+  // Полдень берём в ФИКСИРОВАННОМ поясе бизнеса (UTC+5), а НЕ в локальном поясе
+  // браузера. Иначе западнее UTC+5 (Москва UTC+3, Европа и т.д.) `new Date(`${s}T12:00:00`)`
+  // строит полдень локального дня, и при .toISOString() дата могла уехать на сутки
+  // относительно бэка. Считаем через тот же tzInstant, что и rangeFor (R5) —
+  // детерминированно в любом TZ раннера/браузера.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return new Date(`${s}T12:00:00+05:00`).toISOString();
+  return toIso(tzInstant(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
 }
