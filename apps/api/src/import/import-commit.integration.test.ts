@@ -346,3 +346,38 @@ describe('F3 (5d): привязка импортной строки к зака�
     ).rejects.toThrow('отменён');
   });
 });
+
+describe('F3 (5d): заказ без клиента', () => {
+  it('привязка к заказу без клиента → counterpartyId=null (не эквайер из выписки)', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Услуга', qty: '1', unitPrice: '500.00' }],
+    });
+    await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        fileHash: 'FILE-ORD-5',
+        rows: [
+          {
+            date: '2026-06-02',
+            amount: '500.00',
+            type: 'INCOME',
+            description: 'QR-платёж',
+            counterpartyName: 'БАНК ЭКВАЙЕР',
+            categoryId: null,
+            orderId: order.id,
+            importHash: 'row-ord-5',
+            isDuplicate: false,
+          },
+        ],
+      }),
+    });
+    const tx = await h.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, orderId: order.id, deletedAt: null },
+    });
+    expect(tx.kind).toBe('ORDER_PAYMENT');
+    expect(tx.counterpartyId).toBeNull(); // семантика addPayment: clientId ?? null
+    const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(fresh.paymentStatus).toBe('PAID');
+  });
+});
