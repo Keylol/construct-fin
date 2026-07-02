@@ -22,6 +22,7 @@ import type {
   SupplierReturnDto,
   WarehouseImportRow,
   WarehouseImportMapping,
+  WriteOffDto,
 } from './warehouse.dto';
 
 export interface WarehouseImportPreview {
@@ -368,6 +369,89 @@ export class WarehouseService {
         );
         await this.recomputeCaches(tx, workspaceId, id);
       }
+      return this.repo.findById(workspaceId, id, tx);
+    });
+  }
+
+  /**
+   * F4 (решение #10): списание со склада — брак/порча/недостача.
+   * Атомарно: FIFO-списание лотов (StockMovement WRITE_OFF + LotConsumption)
+   * и НЕДЕНЕЖНАЯ проводка-убыток Transaction(kind=WRITE_OFF, EXPENSE) на
+   * фактическую FIFO-стоимость списанного. Деньги ушли при закупке — касса
+   * не трогается (NON_CASH_KINDS), но потеря бьёт по прибыли (бакет COGS).
+   * Нулевая стоимость (неоценённые партии) → движение есть, проводки нет.
+   */
+  async writeOff(workspaceId: string, id: string, dto: WriteOffDto, userId: string) {
+    const qty = roundQty(dto.qty);
+    if (!gt(qty, '0')) {
+      throw new BadRequestException('Количество списания должно быть положительным');
+    }
+    return this.uow.run(async (tx) => {
+      const item = await this.repo.lockForUpdate(tx, workspaceId, id);
+      if (!item) throw new NotFoundException('Warehouse item not found');
+
+      let totalCost: Prisma.Decimal;
+      try {
+        ({ totalCost } = await this.consumeLots({
+          tx,
+          workspaceId,
+          itemId: id,
+          cachedQty: item.qty,
+          consumeQty: qty,
+          movementType: 'WRITE_OFF',
+          userId,
+          ref: { refType: 'WriteOff' },
+          reason: dto.reason,
+        }));
+      } catch (e) {
+        if (e instanceof InsufficientStockError) {
+          throw new BadRequestException(`«${item.name}»: ${e.message}`);
+        }
+        throw e;
+      }
+
+      const loss = money(totalCost);
+      if (gt(loss, '0')) {
+        // Технический счёт проводки: неденежная (исключена из кассы/сверки по
+        // kind), но Transaction.accountId обязателен — как у COGS услуг берём
+        // первый активный счёт.
+        const account = await tx.account.findFirst({
+          where: { workspaceId, deletedAt: null, isArchived: false },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (!account) {
+          throw new BadRequestException(
+            'Нет счёта для проводки списания — добавьте хотя бы один счёт',
+          );
+        }
+        await tx.transaction.create({
+          data: {
+            workspaceId,
+            date: new Date(),
+            amount: loss,
+            type: 'EXPENSE',
+            kind: 'WRITE_OFF',
+            accountId: account.id,
+            description: `Списание со склада: ${item.name} — ${dto.reason}`,
+            createdById: userId,
+          },
+        });
+      }
+
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'warehouse.write-off',
+        entityType: 'WarehouseItem',
+        entityId: id,
+        diff: {
+          name: item.name,
+          qty: qty.toString(),
+          loss: loss.toFixed(2),
+          reason: dto.reason,
+        },
+      });
       return this.repo.findById(workspaceId, id, tx);
     });
   }

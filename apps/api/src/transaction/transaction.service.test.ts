@@ -125,6 +125,7 @@ describe('TransactionService.summary — исключение ног перев�
       'TRANSFER_IN',
       'TRANSFER_OUT',
       'COGS',
+      'WRITE_OFF', // F4: списание — тоже неденежный (R2)
     ]);
   });
 

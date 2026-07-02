@@ -11,6 +11,7 @@ import {
   useUpdateWarehouseItem,
   useAdjustStock,
   useSetItemCost,
+  useWriteOffStock,
   useDeleteWarehouseItem,
 } from '@/hooks/useWarehouse';
 import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
@@ -242,8 +243,11 @@ function WarehouseItemForm({
   const update = useUpdateWarehouseItem(wsId);
   const adjust = useAdjustStock(wsId);
   const setCost = useSetItemCost(wsId);
+  const writeOff = useWriteOffStock(wsId);
   const del = useDeleteWarehouseItem(wsId);
   const [name, setName] = useState('');
+  const [woQty, setWoQty] = useState('');
+  const [woReason, setWoReason] = useState('');
   const [setCostValue, setSetCostValue] = useState('');
   const [setCostReason, setSetCostReason] = useState('');
   const [sku, setSku] = useState('');
@@ -275,6 +279,8 @@ function WarehouseItemForm({
     }
     setSetCostValue('');
     setSetCostReason('');
+    setWoQty('');
+    setWoReason('');
     setError(null);
   }, [initial, open]);
 
@@ -333,6 +339,30 @@ function WarehouseItemForm({
         reason: setCostReason.trim() || undefined,
       });
       toast.success('Себестоимость задана', { description: 'Применится к будущим продажам' });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  // F4: списание — FIFO-партии + неденежный убыток в P&L (кассу не двигает).
+  const onWriteOff = async () => {
+    if (!initial) return;
+    setError(null);
+    const qty = parseQty(woQty);
+    if (!qty) {
+      setError('Укажите корректное количество списания');
+      return;
+    }
+    if (!woReason.trim()) {
+      setError('Укажите причину списания');
+      return;
+    }
+    try {
+      await writeOff.mutateAsync({ id: initial.id, qty, reason: woReason.trim() });
+      toast.success('Списано со склада', {
+        description: 'Убыток учтён в прибыли; деньги не двигались',
+      });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -436,6 +466,41 @@ function WarehouseItemForm({
                   Себестоимость не задана. Сначала заведите остаток (инвентаризация выше или закупка).
                 </div>
               ))}
+
+            {/* F4: списание — брак/порча/недостача. Партии уходят по FIFO,
+                убыток фиксируется в прибыли; касса не двигается. */}
+            {initial && Number(initial.qty) > 0 && (
+              <div className="space-y-2 rounded-md border border-border bg-secondary/40 p-3">
+                <div className="text-sm font-medium">Списание (брак / порча / недостача)</div>
+                <p className="text-xs text-muted-foreground">
+                  Списывает партии по FIFO и фиксирует убыток в прибыли. Деньги не двигаются —
+                  они ушли при закупке.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    inputMode="decimal"
+                    value={woQty}
+                    onChange={(e) => setWoQty(e.target.value)}
+                    placeholder={`Кол-во, ${initial.unit}`}
+                    aria-label="Количество списания"
+                  />
+                  <Input
+                    value={woReason}
+                    onChange={(e) => setWoReason(e.target.value)}
+                    placeholder="Причина (обязательно)"
+                    aria-label="Причина списания"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={writeOff.isPending || !woQty.trim() || !woReason.trim()}
+                  onClick={onWriteOff}
+                >
+                  {writeOff.isPending ? 'Списываю…' : 'Списать'}
+                </Button>
+              </div>
+            )}
 
             {initial && (
               <label className="flex items-center gap-2 text-sm">

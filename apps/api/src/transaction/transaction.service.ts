@@ -21,6 +21,7 @@ const SYSTEM_KINDS = new Set<TransactionKind>([
   'COGS',
   'PURCHASE',
   'SUPPLIER_REFUND',
+  'WRITE_OFF',
 ]);
 
 interface TransactionRow {

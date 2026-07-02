@@ -57,6 +57,18 @@ export const SetItemCostSchema = z.object({
 });
 export type SetItemCostDto = z.infer<typeof SetItemCostSchema>;
 
+/**
+ * Списание со склада (F4, решение #10): брак/порча/недостача.
+ * FIFO-списание лотов + НЕДЕНЕЖНАЯ проводка-убыток на фактическую стоимость.
+ */
+export const WriteOffSchema = z.object({
+  qty: z.string().regex(/^\d+(\.\d{1,3})?$/),
+  /// Причина обязательна (решение 10c: свободный текст) — потеря без причины
+  /// не даёт разобраться по журналу, что произошло.
+  reason: z.string().trim().min(1).max(500),
+});
+export type WriteOffDto = z.infer<typeof WriteOffSchema>;
+
 /** Возврат товара поставщику (B4б). */
 export const SupplierReturnSchema = z.object({
   returnQty: z.string().regex(/^\d+(\.\d{1,3})?$/),
