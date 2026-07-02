@@ -91,6 +91,14 @@ export default function ReceivablesReportPage() {
             <KpiCard label="0–30 дней" value={formatRub(data.buckets['0-30'])} tone="positive" />
             <KpiCard label="30–60 дней" value={formatRub(data.buckets['30-60'])} tone="warning" />
             <KpiCard label="60+ дней" value={formatRub(data.buckets['60+'])} tone="negative" />
+            {/* F2: просрочка по формальным графикам платежей (не по возрасту). */}
+            {data.overdueByPlanTotal !== '0.00' && (
+              <KpiCard
+                label="Просрочено по графику"
+                value={formatRub(data.overdueByPlanTotal)}
+                tone="negative"
+              />
+            )}
           </div>
         ) : null}
 
@@ -165,7 +173,14 @@ function FragmentRow({
         <td className="px-4 py-2 text-right tabular-nums text-destructive">
           {formatRub(client.buckets['60+'])}
         </td>
-        <td className="px-4 py-2 text-right font-medium tabular-nums">{formatRub(client.due)}</td>
+        <td className="px-4 py-2 text-right font-medium tabular-nums">
+          {formatRub(client.due)}
+          {client.overdueByPlan !== '0.00' && (
+            <div className="text-xs font-normal text-destructive">
+              просрочено {formatRub(client.overdueByPlan)}
+            </div>
+          )}
+        </td>
       </tr>
       {open &&
         client.orders.map((o) => (
@@ -174,6 +189,12 @@ function FragmentRow({
               № {o.number} · {fmtDate(o.createdAt)} · {o.ageDays} дн.
             </td>
             <td colSpan={3} className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">
+              {o.overdueByPlan && o.overdueByPlan !== '0.00' && (
+                <span className="mr-2 text-destructive">
+                  просрочено {formatRub(o.overdueByPlan)}
+                  {o.nextDueDate ? ` (срок ${fmtDate(o.nextDueDate)})` : ''}
+                </span>
+              )}
               оплачено {formatRub(o.paid)} из {formatRub(o.total)}
             </td>
             <td className={cn('px-4 py-1.5 text-right tabular-nums', BUCKET_TONE[o.bucket])}>
