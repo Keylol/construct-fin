@@ -212,7 +212,10 @@ export interface OrderListPage {
 export type TransactionKind =
   | 'ORDER_PAYMENT'
   | 'CAPITAL_IN'
+  | 'SUPPLIER_REFUND'
   | 'ORDER_REFUND'
+  | 'COGS'
+  | 'WRITE_OFF'
   | 'PURCHASE'
   | 'SALARY'
   | 'TAX'

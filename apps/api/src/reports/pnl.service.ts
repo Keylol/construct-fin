@@ -286,6 +286,7 @@ function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
     case 'ORDER_REFUND': // контр-выручка (type=EXPENSE «минус выручка»)
       return 'REVENUE';
     case 'COGS':
+    case 'WRITE_OFF': // потери запасов уменьшают валовую прибыль (F4, решение #10)
       return 'COGS';
     case 'PURCHASE': // закупка товара на склад
     case 'SUPPLIER_REFUND': // возврат от поставщика — контр-закупка (type=INCOME)
