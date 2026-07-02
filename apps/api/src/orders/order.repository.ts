@@ -77,7 +77,13 @@ export class OrderRepository {
       where: { id, workspaceId, deletedAt: null },
       include: {
         client: true,
-        items: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
+        items: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          // avgCost — для оценочной маржи открытых заказов (F1): до выдачи
+          // себестоимость складской строки оценивается текущей стоимостью остатка.
+          include: { warehouseItem: { select: { avgCost: true } } },
+        },
         transactions: {
           where: { deletedAt: null },
           orderBy: { date: 'desc' },

@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const CreateWarehouseItemSchema = z.object({
   name: z.string().trim().min(1).max(200),
   sku: z.string().trim().max(64).optional(),
+  /// Цвет — свободный текст (решение #1), на учёт не влияет.
+  color: z.string().trim().max(64).nullable().optional(),
   unit: z.string().trim().max(16).optional(),
   /// Начальный остаток (опционально) и его себестоимость.
   openingQty: z.string().regex(/^\d+(\.\d{1,3})?$/).optional(),
@@ -15,6 +17,7 @@ export type CreateWarehouseItemDto = z.infer<typeof CreateWarehouseItemSchema>;
 export const UpdateWarehouseItemSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   sku: z.string().trim().max(64).nullable().optional(),
+  color: z.string().trim().max(64).nullable().optional(),
   unit: z.string().trim().max(16).optional(),
   defaultSupplierId: z.string().cuid().nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
