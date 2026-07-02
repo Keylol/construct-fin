@@ -22,7 +22,7 @@ let tg = 800000n;
 
 beforeAll(() => {
   h = buildHarness();
-  svc = new ImportService(h.prisma as unknown as PrismaService);
+  svc = new ImportService(h.prisma as unknown as PrismaService, h.orders);
 });
 afterAll(async () => {
   await h.prisma.$disconnect();
@@ -220,5 +220,129 @@ describe('annotateTransferSuggestions: границы дат без spread (M11)
         annotateTransferSuggestions: (w: string, a: string, r: typeof rows) => Promise<void>;
       }).annotateTransferSuggestions(seed.workspaceId, seed.accountId, rows),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('F3 (5d): привязка импортной строки к заказу', () => {
+  async function makeClientOrder(total = '1000.00') {
+    const client = await h.prisma.counterparty.create({
+      data: { workspaceId: seed.workspaceId, name: 'Клиент Импортный', role: 'CLIENT' },
+    });
+    const order = await h.orders.create(seed.workspaceId, {
+      clientId: client.id,
+      items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
+    });
+    return { client, order };
+  }
+
+  it('INCOME-строка с orderId → ORDER_PAYMENT с клиентом заказа; оплата пересчитана', async () => {
+    const { client, order } = await makeClientOrder('1000.00');
+    await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        fileHash: 'FILE-ORD-1',
+        rows: [
+          {
+            date: '2026-06-01',
+            amount: '400.00',
+            type: 'INCOME',
+            description: 'Поступление по QR',
+            counterpartyName: 'БАНК ЭКВАЙЕР', // из выписки — НЕ клиент
+            categoryId: null,
+            orderId: order.id,
+            importHash: 'row-ord-1',
+            isDuplicate: false,
+          },
+        ],
+      }),
+    });
+
+    const tx = await h.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, orderId: order.id, deletedAt: null },
+    });
+    expect(tx.kind).toBe('ORDER_PAYMENT');
+    expect(tx.type).toBe('INCOME');
+    expect(tx.counterpartyId).toBe(client.id); // клиент заказа, не эквайер
+
+    const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(fresh.paidAmount.toFixed(2)).toBe('400.00');
+    expect(fresh.paymentStatus).toBe('PARTIAL');
+  });
+
+  it('EXPENSE-строка с orderId → 400', async () => {
+    const { order } = await makeClientOrder();
+    await expect(
+      svc.commit({
+        workspaceId: seed.workspaceId,
+        userId: seed.userId,
+        body: body({
+          fileHash: 'FILE-ORD-2',
+          rows: [
+            {
+              date: '2026-06-01',
+              amount: '100.00',
+              type: 'EXPENSE',
+              description: null,
+              counterpartyName: null,
+              categoryId: null,
+              orderId: order.id,
+              importHash: 'row-ord-2',
+              isDuplicate: false,
+            },
+          ],
+        }),
+      }),
+    ).rejects.toThrow('только приходную строку');
+  });
+
+  it('чужой/несуществующий заказ → 400; отменённый → 400', async () => {
+    await expect(
+      svc.commit({
+        workspaceId: seed.workspaceId,
+        userId: seed.userId,
+        body: body({
+          fileHash: 'FILE-ORD-3',
+          rows: [
+            {
+              date: '2026-06-01',
+              amount: '100.00',
+              type: 'INCOME',
+              description: null,
+              counterpartyName: null,
+              categoryId: null,
+              orderId: 'cme00000000000000000000zz',
+              importHash: 'row-ord-3',
+              isDuplicate: false,
+            },
+          ],
+        }),
+      }),
+    ).rejects.toThrow('Заказ не найден');
+
+    const { order } = await makeClientOrder();
+    await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
+    await expect(
+      svc.commit({
+        workspaceId: seed.workspaceId,
+        userId: seed.userId,
+        body: body({
+          fileHash: 'FILE-ORD-4',
+          rows: [
+            {
+              date: '2026-06-01',
+              amount: '100.00',
+              type: 'INCOME',
+              description: null,
+              counterpartyName: null,
+              categoryId: null,
+              orderId: order.id,
+              importHash: 'row-ord-4',
+              isDuplicate: false,
+            },
+          ],
+        }),
+      }),
+    ).rejects.toThrow('отменён');
   });
 });

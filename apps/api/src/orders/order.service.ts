@@ -31,6 +31,7 @@ import type {
   UpdateOrderDto,
   ListOrdersQuery,
   AddPaymentDto,
+  InstallmentPaymentDto,
   OrderItemInput,
   ReturnItemDto,
   SetScheduleDto,
@@ -306,6 +307,85 @@ export class OrderService {
         },
       });
       await this.syncPaymentState(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
+    });
+  }
+
+  /**
+   * F3 (решение #5): оплата через стороннюю рассрочку — gross, разово.
+   * Атомарно две проводки: ORDER_PAYMENT на ПОЛНУЮ сумму (закрывает дебиторку,
+   * выручка не занижается) + VARIABLE_COST на комиссию банка (стоимость
+   * финансирования — отдельный расход, привязан к заказу). Чистое движение по
+   * счёту = amount − fee = фактическое зачисление банка.
+   */
+  async addInstallmentPayment(
+    workspaceId: string,
+    orderId: string,
+    userId: string,
+    dto: InstallmentPaymentDto,
+  ) {
+    const amount = money(dto.amount);
+    const fee = money(dto.fee);
+    if (!gt(amount, '0')) {
+      throw new BadRequestException('Сумма оплаты должна быть положительной');
+    }
+    // Комиссия ≥ суммы делает платёж бессмысленным (нетто ≤ 0) — почти наверняка
+    // ошибка ввода; явный отказ вместо тихой порчи кэш-флоу.
+    if (!lt(fee, amount)) {
+      throw new BadRequestException('Комиссия должна быть меньше суммы оплаты');
+    }
+    const paymentDate = dto.date ? new Date(dto.date) : new Date();
+    await this.assertAccount(workspaceId, dto.accountId);
+
+    return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
+      if (order.status === 'CANCELLED') {
+        throw new BadRequestException('Заказ отменён');
+      }
+      await this.assertAccountTx(tx, workspaceId, dto.accountId); // TOCTOU
+      await tx.transaction.create({
+        data: {
+          workspaceId,
+          date: paymentDate,
+          amount,
+          type: 'INCOME',
+          kind: 'ORDER_PAYMENT',
+          accountId: dto.accountId,
+          orderId,
+          counterpartyId: order.clientId ?? null,
+          description: dto.description ?? `Оплата рассрочкой по заказу ${order.number}`,
+          createdById: userId,
+        },
+      });
+      if (gt(fee, '0')) {
+        await tx.transaction.create({
+          data: {
+            workspaceId,
+            date: paymentDate,
+            amount: fee,
+            type: 'EXPENSE',
+            kind: 'VARIABLE_COST',
+            accountId: dto.accountId,
+            orderId,
+            counterpartyId: order.clientId ?? null,
+            description: `Комиссия рассрочки по заказу ${order.number}`,
+            createdById: userId,
+          },
+        });
+      }
+      await this.syncPaymentState(workspaceId, orderId, tx);
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.installment',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          amount: amount.toFixed(2),
+          fee: fee.toFixed(2),
+        },
+      });
       return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
@@ -939,6 +1019,14 @@ export class OrderService {
       });
       return { ok: true };
     });
+  }
+
+  /**
+   * F3: публичный пересчёт оплаты для внешних доменов (импорт выписки создаёт
+   * ORDER_PAYMENT-проводки напрямую в своей транзакции).
+   */
+  recalcPaymentState(workspaceId: string, orderId: string, tx: TxClient) {
+    return this.syncPaymentState(workspaceId, orderId, tx);
   }
 
   /**

@@ -21,6 +21,7 @@ import {
   UpdateOrderSchema,
   ListOrdersQuerySchema,
   AddPaymentSchema,
+  InstallmentPaymentSchema,
   ReturnItemSchema,
   SetScheduleSchema,
   ShipItemSchema,
@@ -28,6 +29,7 @@ import {
   type UpdateOrderDto,
   type ListOrdersQuery,
   type AddPaymentDto,
+  type InstallmentPaymentDto,
   type ReturnItemDto,
   type SetScheduleDto,
   type ShipItemDto,
@@ -83,6 +85,17 @@ export class OrderController {
     @Body(new ZodPipe(AddPaymentSchema)) body: AddPaymentDto,
   ) {
     return this.service.addPayment(ws.workspaceId, id, ws.userId, body);
+  }
+
+  /** F3: оплата сторонней рассрочкой — gross (полная сумма + комиссия отдельно). */
+  @Post(':id/installment-payment')
+  @HttpCode(200)
+  addInstallmentPayment(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(InstallmentPaymentSchema)) body: InstallmentPaymentDto,
+  ) {
+    return this.service.addInstallmentPayment(ws.workspaceId, id, ws.userId, body);
   }
 
   @Put(':id/schedule')
