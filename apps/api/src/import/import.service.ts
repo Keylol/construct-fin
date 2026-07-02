@@ -7,6 +7,7 @@ import {
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrderService } from '../orders/order.service';
 import type { ImportSource } from '@construct/db';
 import { applyRules } from '../category-rule/matcher';
 import {
@@ -79,7 +80,11 @@ export function findTransferMatch(
 
 @Injectable()
 export class ImportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // F3: пересчёт оплаты заказов, к которым привязаны строки выписки.
+    private readonly orders: OrderService,
+  ) {}
 
   computeFileHash(buffer: Buffer): string {
     return createHash('sha256').update(buffer).digest('hex');
@@ -358,6 +363,21 @@ export class ImportService {
       throw new BadRequestException('Nothing to import — all rows are duplicates');
     }
 
+    // F3 (5d): привязка строк к заказам. Cross-tenant guard + валидация:
+    // привязывать можно только ПРИХОД (оплата заказа) и только к живому заказу.
+    const orderIds = Array.from(
+      new Set(rowsToImport.map((r) => r.orderId).filter((o): o is string => !!o)),
+    );
+    if (orderIds.length > 0) {
+      for (const r of rowsToImport) {
+        if (r.orderId && r.type !== 'INCOME') {
+          throw new BadRequestException(
+            'К заказу можно привязать только приходную строку (оплату)',
+          );
+        }
+      }
+    }
+
     // Дедуп контрагентов по lowercase-ключу, а НЕ по точному регистру: иначе
     // «Ромашка» и «РОМАШКА» из одного файла попадали бы в namesNeeded оба и
     // createMany завёл бы два отдельных контрагента (дубли пачкают отчёты
@@ -390,6 +410,30 @@ export class ImportService {
     for (const cp of existing) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
     return this.prisma.$transaction(async (tx) => {
+      // F3: валидация заказов ПОД транзакцией (TOCTOU — параллельная отмена
+      // между проверкой и вставкой), паттерн assertAccountTx.
+      const orderById = new Map<
+        string,
+        { clientId: string | null; status: string; number: string }
+      >();
+      if (orderIds.length > 0) {
+        const foundOrders = await tx.order.findMany({
+          where: { id: { in: orderIds }, workspaceId, deletedAt: null },
+          select: { id: true, clientId: true, status: true, number: true },
+        });
+        if (foundOrders.length !== orderIds.length) {
+          throw new BadRequestException('Заказ не найден в этом пространстве');
+        }
+        for (const o of foundOrders) {
+          if (o.status === 'CANCELLED') {
+            throw new BadRequestException(
+              `Заказ ${o.number} отменён — привязать оплату нельзя`,
+            );
+          }
+          orderById.set(o.id, o);
+        }
+      }
+
       // Защита от повторного импорта того же файла: внутри транзакции проверяем,
       // что батч с этим fileHash ещё не заводился (Фаза 4 п.18). Дополняет
       // строковый partial-unique по importHash (п.17): даёт понятный ранний отказ
@@ -440,22 +484,37 @@ export class ImportService {
       // на тысячи строк это тысячи round-trip → один батч). Partial-unique по
       // importHash остаётся: дубль внутри батча/повтор файла откатит транзакцию.
       await tx.transaction.createMany({
-        data: rowsToImport.map((r) => ({
-          workspaceId,
-          accountId: body.accountId,
-          date: new Date(r.date),
-          amount: r.amount,
-          type: r.type,
-          description: r.description,
-          counterpartyId: r.counterpartyName
-            ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
-            : null,
-          categoryId: r.categoryId,
-          importBatchId: batch.id,
-          importHash: r.importHash,
-          createdById: userId,
-        })),
+        data: rowsToImport.map((r) => {
+          // F3: привязанная строка — оплата заказа: kind=ORDER_PAYMENT, контрагент =
+          // клиент заказа КАК ЕСТЬ (включая null для заказа без клиента — семантика
+          // addPayment; банк/эквайер из выписки контрагентом оплаты не становится).
+          const order = r.orderId ? orderById.get(r.orderId) : undefined;
+          return {
+            workspaceId,
+            accountId: body.accountId,
+            date: new Date(r.date),
+            amount: r.amount,
+            type: r.type,
+            ...(order ? { kind: 'ORDER_PAYMENT' as const, orderId: r.orderId } : {}),
+            description: r.description,
+            counterpartyId: order
+              ? order.clientId
+              : r.counterpartyName
+                ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
+                : null,
+            categoryId: r.categoryId,
+            importBatchId: batch.id,
+            importHash: r.importHash,
+            createdById: userId,
+          };
+        }),
       });
+
+      // F3: у привязанных заказов пересчитываем оплату в ЭТОЙ ЖЕ транзакции —
+      // paidAmount/paymentStatus консистентны с созданными проводками.
+      for (const orderId of orderById.keys()) {
+        await this.orders.recalcPaymentState(workspaceId, orderId, tx);
+      }
 
       return {
         batchId: batch.id,

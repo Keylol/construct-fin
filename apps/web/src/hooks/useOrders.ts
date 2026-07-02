@@ -144,6 +144,34 @@ export function useAddOrderPayment(wsId: string) {
   });
 }
 
+/** F3: строка ввода оплаты рассрочкой (gross: полная сумма + комиссия банка). */
+export interface InstallmentPaymentInput {
+  amount: string;
+  fee: string;
+  accountId: string;
+  date?: string;
+  description?: string;
+}
+
+/**
+ * F3: оплата сторонней рассрочкой — ORDER_PAYMENT полной суммой + авто-комиссия
+ * VARIABLE_COST. Идемпотентный ключ — как у обычной оплаты (M18).
+ */
+export function useAddInstallmentPayment(wsId: string) {
+  const qc = useQueryClient();
+  const idemKey = useRef('');
+  return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
+    mutationFn: ({ id, ...input }: InstallmentPaymentInput & { id: string }) =>
+      api.post<Order>(`/workspaces/${wsId}/orders/${id}/installment-payment`, input, {
+        idempotencyKey: idemKey.current,
+      }),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
 /** F2: заменить график платежей целиком (пустой массив снимает график). */
 export function useSetOrderSchedule(wsId: string) {
   const qc = useQueryClient();

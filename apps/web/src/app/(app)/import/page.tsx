@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowRight, Check, History, Upload } from '@/components/ui/icons';
-import { formatRub } from '@construct/shared';
+import { formatRub, sub, toMoneyString } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -13,12 +13,13 @@ import { Badge } from '@/components/ui/Badge';
 import { FormField } from '@/components/ui/FormField';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useOrders } from '@/hooks/useOrders';
 import {
   rowToCommitRow,
   useImportCommit,
   useImportPreview,
 } from '@/hooks/useImport';
-import type { PreviewResult } from '@/lib/types';
+import type { Order, PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
 
 type Stage = 'upload' | 'preview' | 'done';
@@ -41,6 +42,8 @@ export default function ImportPage() {
   const [accountId, setAccountId] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
+  /** F3 (5d): привязки строк к заказам (rawIndex → orderId). */
+  const [orderLinks, setOrderLinks] = useState<Record<number, string>>({});
   const [batchResult, setBatchResult] = useState<{
     batchId: string;
     imported: number;
@@ -65,7 +68,9 @@ export default function ImportPage() {
 
   async function onCommit() {
     if (!preview || !wsId) return;
-    const rows = preview.rows.map((r) => rowToCommitRow(r, null));
+    const rows = preview.rows.map((r) =>
+      rowToCommitRow(r, null, orderLinks[r.rawIndex] ?? null),
+    );
     const result = await commitMut.mutateAsync({
       filename: preview.filename,
       fileHash: preview.fileHash,
@@ -83,6 +88,7 @@ export default function ImportPage() {
     setFile(null);
     setPreview(null);
     setBatchResult(null);
+    setOrderLinks({});
   }
 
   if (!wsId) {
@@ -183,9 +189,19 @@ export default function ImportPage() {
 
         {stage === 'preview' && preview && (
           <PreviewStage
+            wsId={wsId}
             preview={preview}
             skipDuplicates={skipDuplicates}
             onToggleSkipDuplicates={setSkipDuplicates}
+            orderLinks={orderLinks}
+            onLinkOrder={(rawIndex, orderId) =>
+              setOrderLinks((prev) => {
+                const next = { ...prev };
+                if (orderId) next[rawIndex] = orderId;
+                else delete next[rawIndex];
+                return next;
+              })
+            }
             onBack={reset}
             onCommit={onCommit}
             isCommitting={commitMut.isPending}
@@ -276,17 +292,23 @@ function Steps({ stage }: { stage: Stage }) {
 }
 
 function PreviewStage({
+  wsId,
   preview,
   skipDuplicates,
   onToggleSkipDuplicates,
+  orderLinks,
+  onLinkOrder,
   onBack,
   onCommit,
   isCommitting,
   commitError,
 }: {
+  wsId: string;
   preview: PreviewResult;
   skipDuplicates: boolean;
   onToggleSkipDuplicates: (v: boolean) => void;
+  orderLinks: Record<number, string>;
+  onLinkOrder: (rawIndex: number, orderId: string | null) => void;
   onBack: () => void;
   onCommit: () => void;
   isCommitting: boolean;
@@ -296,6 +318,20 @@ function PreviewStage({
   const willImport = skipDuplicates
     ? preview.rows.filter((r) => !r.isDuplicate).length
     : preview.rows.length;
+
+  // F3 (5d): открытые долги для привязки приходных строк. Номера заказа в
+  // назначении платежа обычно нет — выбор ручной, подсказка по совпадению суммы.
+  const ordersQuery = useOrders(wsId, { limit: 200 });
+  const unpaidOrders = useMemo<Order[]>(
+    () =>
+      (ordersQuery.data?.pages.flatMap((p) => p.items) ?? []).filter(
+        (o) =>
+          o.status !== 'CANCELLED' &&
+          (o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL'),
+      ),
+    [ordersQuery.data],
+  );
+  const dueOf = (o: Order) => sub(o.totalAmount, o.paidAmount);
 
   return (
     <div className="space-y-4">
@@ -320,6 +356,7 @@ function PreviewStage({
               <th className="px-3 py-2 font-medium">Тип</th>
               <th className="px-3 py-2 font-medium">Контрагент</th>
               <th className="px-3 py-2 font-medium">Описание</th>
+              <th className="px-3 py-2 font-medium">Заказ</th>
               <th className="px-3 py-2 font-medium">Флаг</th>
             </tr>
           </thead>
@@ -354,6 +391,32 @@ function PreviewStage({
                 </td>
                 <td className="max-w-[300px] truncate px-3 py-2" title={r.description ?? ''}>
                   {r.description ?? '—'}
+                </td>
+                {/* F3 (5d): привязка прихода к заказу — строка станет оплатой
+                    заказа (ORDER_PAYMENT). «✓» — долг совпадает с суммой строки. */}
+                <td className="px-3 py-2">
+                  {r.type === 'INCOME' && !r.isDuplicate ? (
+                    <Select
+                      value={orderLinks[r.rawIndex] ?? ''}
+                      onChange={(e) => onLinkOrder(r.rawIndex, e.target.value || null)}
+                      className="h-8 min-w-[180px] text-xs"
+                    >
+                      <option value="">—</option>
+                      {unpaidOrders.map((o) => {
+                        const due = dueOf(o);
+                        const match = due.eq(r.amount);
+                        return (
+                          <option key={o.id} value={o.id}>
+                            {match ? '✓ ' : ''}
+                            {o.number} · {o.client?.name ?? 'без клиента'} · долг{' '}
+                            {formatRub(toMoneyString(due))}
+                          </option>
+                        );
+                      })}
+                    </Select>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {r.isDuplicate && <Badge variant="muted">дубль</Badge>}

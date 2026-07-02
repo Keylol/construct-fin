@@ -17,6 +17,8 @@ export interface CommitRow {
   description: string | null;
   counterpartyName: string | null;
   categoryId: string | null;
+  /** F3 (5d): привязка строки к заказу — строка станет ORDER_PAYMENT. */
+  orderId?: string | null;
   importHash: string;
   isDuplicate: boolean;
 }
@@ -37,7 +39,11 @@ export interface PreviewInput {
   mapping?: ColumnMapping;
 }
 
-export function rowToCommitRow(r: PreviewRow, categoryId: string | null): CommitRow {
+export function rowToCommitRow(
+  r: PreviewRow,
+  categoryId: string | null,
+  orderId: string | null = null,
+): CommitRow {
   return {
     date: r.date,
     amount: r.amount,
@@ -45,6 +51,7 @@ export function rowToCommitRow(r: PreviewRow, categoryId: string | null): Commit
     description: r.description,
     counterpartyName: r.counterpartyName,
     categoryId,
+    orderId,
     importHash: r.importHash,
     isDuplicate: r.isDuplicate,
   };
