@@ -147,6 +147,34 @@ export interface OrderItem {
   margin?: OrderItemMargin;
 }
 
+/** F2: статус строки графика платежей (покрытие FIFO из paidAmount). */
+export type ScheduleEntryStatus = 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE';
+
+export interface OrderScheduleEntry {
+  id: string;
+  seq: number;
+  dueDate: string;
+  amount: string;
+  note: string | null;
+  covered: string;
+  remaining: string;
+  status: ScheduleEntryStatus;
+}
+
+export interface OrderScheduleSummary {
+  planned: string;
+  /** false → Σ строк ≠ итогу заказа (UI предупреждает). */
+  matchesTotal: boolean;
+  overdueAmount: string;
+  nextDueDate: string | null;
+  nextDueAmount: string | null;
+}
+
+export interface OrderSchedule {
+  entries: OrderScheduleEntry[];
+  summary: OrderScheduleSummary;
+}
+
 export interface Order {
   id: string;
   number: string;
@@ -170,6 +198,10 @@ export interface Order {
   _count?: { items: number };
   /** Есть в карточных ответах (get/мутации); в списке отсутствует. */
   margin?: OrderMarginSummary;
+  /** F2: график платежей — в карточных ответах; null, если графика нет. */
+  schedule?: OrderSchedule | null;
+  /** F2: сводка графика в элементах СПИСКА (бейдж просрочки); null — нет графика. */
+  scheduleSummary?: OrderScheduleSummary | null;
 }
 
 export interface OrderListPage {
@@ -435,12 +467,18 @@ export interface ReceivableOrder {
   total: string;
   paid: string;
   due: string;
+  /** F2: просрочено по графику платежей; null — графика нет. */
+  overdueByPlan: string | null;
+  /** F2: ближайший срок по графику (ISO); null — нет графика / всё погашено. */
+  nextDueDate: string | null;
 }
 
 export interface ReceivableClientRow {
   clientId: string | null;
   clientName: string;
   due: string;
+  /** F2: Σ просроченного по графикам заказов клиента. */
+  overdueByPlan: string;
   buckets: AgingBuckets;
   orders: ReceivableOrder[];
 }
@@ -448,6 +486,8 @@ export interface ReceivableClientRow {
 export interface ReceivablesReport {
   asOf: string;
   totalDue: string;
+  /** F2: Σ просроченного по графикам всех заказов выборки. */
+  overdueByPlanTotal: string;
   buckets: AgingBuckets;
   clients: ReceivableClientRow[];
 }
