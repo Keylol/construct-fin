@@ -67,6 +67,22 @@ export const AddPaymentSchema = z.object({
 });
 export type AddPaymentDto = z.infer<typeof AddPaymentSchema>;
 
+/**
+ * F3 (решение #5): оплата через стороннюю рассрочку — gross, разово.
+ * ORDER_PAYMENT на ПОЛНУЮ сумму + автоматический VARIABLE_COST на комиссию:
+ * выручка полная, стоимость финансирования отдельно, на счёт нетто.
+ */
+export const InstallmentPaymentSchema = z.object({
+  /// Полная сумма оплаты клиентом (вся выручка), > 0.
+  amount: MoneyString,
+  /// Комиссия банка рассрочки, ₽ (< amount; 0 допустим — вырожденный случай).
+  fee: NonNegativeMoneyString,
+  accountId: z.string().cuid(),
+  date: z.string().datetime().optional(),
+  description: z.string().max(500).optional(),
+});
+export type InstallmentPaymentDto = z.infer<typeof InstallmentPaymentSchema>;
+
 /** Строка графика платежей (F2, #8a). */
 export const ScheduleEntryInputSchema = z.object({
   dueDate: z.string().datetime(),
