@@ -57,12 +57,18 @@ export class OrderService {
    * ВСЕ ответы с заказом (get и каждую мутацию), чтобы UI никогда не считал
    * деньги в JS number (D4).
    */
-  private withMargin<
-    TItem extends MarginItemInput,
-    T extends { discountAmount: Prisma.Decimal; items?: TItem[] },
-  >(order: T): T & { items: (TItem & { margin: ItemMargin })[]; margin: OrderMarginSummary } {
-    const items = (order.items ?? []).map((it) => ({ ...it, margin: itemMargin(it) }));
-    return { ...order, items, margin: orderMargin(order.items ?? [], order.discountAmount) };
+  private withMargin<T extends { discountAmount: Prisma.Decimal; items?: MarginItemInput[] }>(
+    order: T,
+    // Omit обязателен: пересечение T & {items: …} НЕ перезаписало бы items из T
+    // (элементы читались бы старым типом без margin). Тип элемента выводим из
+    // самого T — отдельный дженерик под элемент TS не инферит из constraint.
+  ): Omit<T, 'items'> & {
+    items: (NonNullable<T['items']>[number] & { margin: ItemMargin })[];
+    margin: OrderMarginSummary;
+  } {
+    const src = (order.items ?? []) as NonNullable<T['items']>[number][];
+    const items = src.map((it) => ({ ...it, margin: itemMargin(it) }));
+    return { ...order, items, margin: orderMargin(src, order.discountAmount) };
   }
 
   /** Свежий заказ из БД + блок маржи — единый финал всех мутаций. */
