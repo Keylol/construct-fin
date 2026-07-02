@@ -1,7 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { D, add, sub, mul, gt, cost } from './money';
 import type { Numeric } from './money';
-import { InsufficientStockError } from './wavg';
 
 /**
  * Чистая FIFO-математика партионного склада — без БД, чтобы тестировать изолированно.
@@ -15,7 +14,18 @@ import { InsufficientStockError } from './wavg';
  * снимке (unitCost движения / unitCostAtSale), чтобы не копить ошибку округления по шагам.
  */
 
-export { InsufficientStockError };
+/** Нехватка остатка при списании. (Жил в wavg.ts до F0; WAVG-математика удалена.) */
+export class InsufficientStockError extends Error {
+  constructor(
+    public readonly available: Prisma.Decimal,
+    public readonly requested: Prisma.Decimal,
+  ) {
+    super(
+      `Недостаточно на складе: доступно ${available.toString()}, требуется ${requested.toString()}`,
+    );
+    this.name = 'InsufficientStockError';
+  }
+}
 
 /** Открытый лот, готовый к списанию. Список подаётся уже в FIFO-порядке. */
 export interface OpenLot {
