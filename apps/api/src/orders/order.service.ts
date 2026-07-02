@@ -318,7 +318,10 @@ export class OrderService {
       if (order.status === 'CANCELLED') {
         throw new BadRequestException('Заказ отменён');
       }
-      await tx.paymentScheduleEntry.deleteMany({ where: { orderId } });
+      // Replace-план целиком, hard-delete — как items в update() (строки графика
+      // не учётные записи; сам факт правки фиксируется в AuditLog ниже).
+      // workspaceId — защита в глубину поверх lockAndLoad (конвенция проекта).
+      await tx.paymentScheduleEntry.deleteMany({ where: { workspaceId, orderId } });
       if (dto.entries.length) {
         await tx.paymentScheduleEntry.createMany({
           data: dto.entries.map((e, i) => ({

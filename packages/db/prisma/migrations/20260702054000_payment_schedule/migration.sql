@@ -17,6 +17,9 @@ CREATE TABLE "PaymentScheduleEntry" (
     CONSTRAINT "PaymentScheduleEntry_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateIndex (seq уникален в заказе — инвариант FIFO-порядка)
+CREATE UNIQUE INDEX "PaymentScheduleEntry_orderId_seq_key" ON "PaymentScheduleEntry"("orderId", "seq");
+
 -- CreateIndex
 CREATE INDEX "PaymentScheduleEntry_workspaceId_orderId_idx" ON "PaymentScheduleEntry"("workspaceId", "orderId");
 

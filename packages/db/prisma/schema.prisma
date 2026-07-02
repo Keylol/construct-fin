@@ -317,6 +317,8 @@ model PaymentScheduleEntry {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  /// seq уникален в заказе: инвариант FIFO-порядка, защита от бага-дубля.
+  @@unique([orderId, seq])
   @@index([workspaceId, orderId])
   @@index([workspaceId, dueDate])
 }
