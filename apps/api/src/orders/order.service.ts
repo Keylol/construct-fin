@@ -74,6 +74,16 @@ export class OrderService {
   }
 
   /**
+   * F5 (#9): трассировка строк заказа до партий — из какой закупки взято,
+   * поставщик и счёт оплаты. Данные — складской net-леджер потреблений.
+   */
+  async trace(workspaceId: string, id: string) {
+    const order = await this.orders.findById(workspaceId, id);
+    if (!order) throw new NotFoundException('Order not found');
+    return this.warehouse.lotTraceForOrder(workspaceId, id);
+  }
+
+  /**
    * Расчётные блоки заказа — считает бэкенд, фронт только рисует (D4):
    *   • F1 (решение #4): маржа строк (margin на каждом item) и итога (margin);
    *   • F2 (#8a): график платежей (schedule) — FIFO-покрытие строк из

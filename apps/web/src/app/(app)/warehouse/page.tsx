@@ -12,6 +12,7 @@ import {
   useAdjustStock,
   useSetItemCost,
   useWriteOffStock,
+  useItemLots,
   useDeleteWarehouseItem,
 } from '@/hooks/useWarehouse';
 import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
@@ -245,6 +246,7 @@ function WarehouseItemForm({
   const setCost = useSetItemCost(wsId);
   const writeOff = useWriteOffStock(wsId);
   const del = useDeleteWarehouseItem(wsId);
+  const lots = useItemLots(wsId, open && initial ? initial.id : null);
   const [name, setName] = useState('');
   const [woQty, setWoQty] = useState('');
   const [woReason, setWoReason] = useState('');
@@ -466,6 +468,40 @@ function WarehouseItemForm({
                   Себестоимость не задана. Сначала заведите остаток (инвентаризация выше или закупка).
                 </div>
               ))}
+
+            {/* F5: открытые партии — «что лежит и откуда» (поставщик/счёт закупки). */}
+            {initial && (lots.data?.length ?? 0) > 0 && (
+              <div>
+                <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                  Партии на складе
+                </div>
+                <div className="overflow-hidden rounded-md border border-border">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {lots.data!.map((l) => (
+                        <tr key={l.id} className="border-b border-border last:border-0">
+                          <td className="px-3 py-1.5 tabular-nums">
+                            {new Date(l.receivedAt).toLocaleDateString('ru-RU')}
+                            {l.supplier && (
+                              <div className="text-xs text-muted-foreground">
+                                {l.supplier.name}
+                                {l.account ? ` · ${l.account.name}` : ''}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {Number(l.qtyRemaining)} из {Number(l.qtyInitial)} {initial.unit}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                            {formatRub(l.unitCost)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* F4: списание — брак/порча/недостача. Партии уходят по FIFO,
                 убыток фиксируется в прибыли; касса не двигается. */}

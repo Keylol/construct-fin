@@ -52,6 +52,12 @@ export class OrderController {
     return this.service.get(ws.workspaceId, id);
   }
 
+  /** F5: трассировка строк заказа до партий (поставщик/счёт закупки). */
+  @Get(':id/trace')
+  trace(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.trace(ws.workspaceId, id);
+  }
+
   @Post()
   create(
     @CurrentWorkspace() ws: WorkspaceContext,

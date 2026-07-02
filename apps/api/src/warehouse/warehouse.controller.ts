@@ -91,6 +91,11 @@ export class WarehouseController {
     return this.service.importCommit(ws.workspaceId, ws.userId, body.rows);
   }
 
+  @Get(':id/lots')
+  lots(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.openLots(ws.workspaceId, id);
+  }
+
   @Get(':id/movements')
   movements(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
     return this.service.listMovements(ws.workspaceId, id);
