@@ -22,8 +22,10 @@ export const TRANSFER_LEG_KINDS: TransactionKind[] = ['TRANSFER_IN', 'TRANSFER_O
  * маржи — деньги за товар ушли в момент закупки. Поэтому COGS НЕ должен влиять
  * на остаток счёта / денежный поток / сверку (R2). Исключается во ВСЕХ денежных
  * расчётах, но ОСТАЁТСЯ в P&L (там это легитимная себестоимость услуг).
+ * WRITE_OFF (F4, решение #10) — та же механика: потеря запаса бьёт по прибыли
+ * (бакет COGS в P&L), но деньги ушли при закупке — кассу не трогает.
  */
-export const NON_CASH_KINDS: TransactionKind[] = ['COGS'];
+export const NON_CASH_KINDS: TransactionKind[] = ['COGS', 'WRITE_OFF'];
 
 /** Исключаются из денежного расчёта по ОДНОМУ счёту (переводы — реальны для счёта). */
 export const NON_CASH_FOR_ACCOUNT: TransactionKind[] = [...NON_CASH_KINDS];

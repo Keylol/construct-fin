@@ -27,6 +27,7 @@ import {
   SupplierReturnSchema,
   WarehouseImportMappingSchema,
   WarehouseImportCommitSchema,
+  WriteOffSchema,
   type CreateWarehouseItemDto,
   type UpdateWarehouseItemDto,
   type ListWarehouseQuery,
@@ -34,6 +35,7 @@ import {
   type SetItemCostDto,
   type SupplierReturnDto,
   type WarehouseImportCommitDto,
+  type WriteOffDto,
 } from './warehouse.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -134,6 +136,16 @@ export class WarehouseController {
     @Body(new ZodPipe(SetItemCostSchema)) body: SetItemCostDto,
   ) {
     return this.service.setCost(ws.workspaceId, id, body, ws.userId);
+  }
+
+  @Post(':id/write-off')
+  @HttpCode(200)
+  writeOff(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(WriteOffSchema)) body: WriteOffDto,
+  ) {
+    return this.service.writeOff(ws.workspaceId, id, body, ws.userId);
   }
 
   @Post(':id/supplier-return')

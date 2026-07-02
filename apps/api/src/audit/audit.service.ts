@@ -21,6 +21,7 @@ export type AuditAction =
   | 'period.reopen'
   | 'purchase.register'
   | 'warehouse.supplier-return'
+  | 'warehouse.write-off'
   | 'transaction.update'
   | 'transaction.delete';
 
