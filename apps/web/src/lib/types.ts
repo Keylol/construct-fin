@@ -147,6 +147,46 @@ export interface OrderItem {
   margin?: OrderItemMargin;
 }
 
+/** F5: источник партии на складе. */
+export type StockLotSource =
+  | 'PURCHASE'
+  | 'OPENING'
+  | 'MIGRATION'
+  | 'ADJUSTMENT'
+  | 'RETURN_CUSTOMER';
+
+/** F5: ссылка на партию в трассировке (строка заказа → партии). */
+export interface TraceLotRef {
+  lotId: string;
+  qty: string;
+  unitCost: string;
+  receivedAt: string;
+  sourceType: StockLotSource;
+  supplier: { id: string; name: string } | null;
+  account: { id: string; name: string } | null;
+}
+
+export interface OrderItemTrace {
+  orderItemId: string;
+  lots: TraceLotRef[];
+}
+
+export interface OrderTrace {
+  items: OrderItemTrace[];
+}
+
+/** F5: открытая партия позиции склада. */
+export interface OpenLotView {
+  id: string;
+  receivedAt: string;
+  qtyInitial: string;
+  qtyRemaining: string;
+  unitCost: string;
+  sourceType: StockLotSource;
+  supplier: { id: string; name: string } | null;
+  account: { id: string; name: string } | null;
+}
+
 /** F2: статус строки графика платежей (покрытие FIFO из paidAmount). */
 export type ScheduleEntryStatus = 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE';
 
