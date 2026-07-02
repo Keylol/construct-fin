@@ -388,6 +388,10 @@ export class WarehouseService {
         qtyRemaining: { gt: 0 },
       },
       orderBy: [{ receivedAt: 'asc' }, { seq: 'asc' }],
+      // supplier/account без workspace-фильтра: инвариант ЗАПИСИ гарантирует
+      // принадлежность (закупка проверяет refs через assertSupplier/assertAccount,
+      // B1/B4) — лот не может ссылаться на чужой workspace. Паттерн как у
+      // include client в order.repository.
       include: {
         supplier: { select: { id: true, name: true } },
         account: { select: { id: true, name: true } },
@@ -421,6 +425,7 @@ export class WarehouseService {
 
     const cons = await this.prisma.lotConsumption.findMany({
       where: { workspaceId, orderItemId: { in: items.map((i) => i.id) } },
+      // Как в openLots: supplier/account гарантированы инвариантом записи (B1/B4).
       include: {
         lot: {
           include: {
