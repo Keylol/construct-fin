@@ -349,6 +349,8 @@ model WarehouseItem {
   /// SKU / артикул, человекочитаемый. Опционально.
   sku               String?
   name              String
+  /// Цвет комплектующего — свободный текст (решение #1). На учёт не влияет.
+  color             String?
   /// Единица измерения: «шт», «кг», «ч», «м».
   unit              String   @default("шт")
   /// DERIVED-КЭШ остатка. Истина — StockLot: qty == Σ open lot.qtyRemaining.

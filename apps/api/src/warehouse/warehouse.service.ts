@@ -79,6 +79,7 @@ export class WarehouseService {
         workspace: { connect: { id: workspaceId } },
         name: input.name,
         sku: input.sku ?? null,
+        color: input.color ?? null,
         unit: input.unit ?? 'шт',
         qty: D(0),
         avgCost: D(0),
@@ -99,6 +100,7 @@ export class WarehouseService {
           workspace: { connect: { id: workspaceId } },
           name: input.name,
           sku: input.sku ?? null,
+          color: input.color ?? null,
           unit: input.unit ?? 'шт',
           qty: D(0),
           avgCost: D(0),
@@ -121,6 +123,7 @@ export class WarehouseService {
     return this.repo.update(id, {
       name: input.name ?? undefined,
       sku: input.sku === undefined ? undefined : input.sku,
+      color: input.color === undefined ? undefined : input.color,
       unit: input.unit ?? undefined,
       note: input.note === undefined ? undefined : input.note,
       isArchived: input.isArchived ?? undefined,
