@@ -10,5 +10,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
   imports: [WarehouseModule],
   controllers: [OrderController],
   providers: [OrderService, OrderRepository, UnitOfWork, WorkspaceGuard],
+  // F3: импорт выписки привязывает строки к заказам и пересчитывает их оплату.
+  exports: [OrderService],
 })
 export class OrderModule {}

@@ -34,6 +34,8 @@ export const CommitRowSchema = z
     description: z.string().nullable(),
     counterpartyName: z.string().nullable(),
     categoryId: z.string().nullable(),
+    /// F3 (5d): привязка строки к заказу — строка станет ORDER_PAYMENT.
+    orderId: z.string().cuid().nullable().optional(),
     importHash: z.string().min(1),
     isDuplicate: z.boolean(),
   })
