@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -21,12 +22,14 @@ import {
   ListOrdersQuerySchema,
   AddPaymentSchema,
   ReturnItemSchema,
+  SetScheduleSchema,
   ShipItemSchema,
   type CreateOrderDto,
   type UpdateOrderDto,
   type ListOrdersQuery,
   type AddPaymentDto,
   type ReturnItemDto,
+  type SetScheduleDto,
   type ShipItemDto,
 } from './order.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
@@ -74,6 +77,15 @@ export class OrderController {
     @Body(new ZodPipe(AddPaymentSchema)) body: AddPaymentDto,
   ) {
     return this.service.addPayment(ws.workspaceId, id, ws.userId, body);
+  }
+
+  @Put(':id/schedule')
+  setSchedule(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(SetScheduleSchema)) body: SetScheduleDto,
+  ) {
+    return this.service.setSchedule(ws.workspaceId, id, ws.userId, body);
   }
 
   @Post(':id/ship')

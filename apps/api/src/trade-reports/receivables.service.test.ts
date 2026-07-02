@@ -18,6 +18,8 @@ function order(over: {
   createdAt: string;
   total: string;
   paid: string;
+  /** F2: строки графика платежей (id/seq/dueDate/amount/note). */
+  schedule?: { id: string; seq: number; dueDate: Date; amount: Prisma.Decimal; note: string | null }[];
 }) {
   return {
     id: over.id,
@@ -27,6 +29,7 @@ function order(over: {
     totalAmount: new Prisma.Decimal(over.total),
     paidAmount: new Prisma.Decimal(over.paid),
     client: over.clientName ? { name: over.clientName } : null,
+    schedule: over.schedule ?? [],
   };
 }
 
@@ -116,5 +119,31 @@ describe('ReceivablesService.build', () => {
     expect(arg.where.workspaceId).toBe('wsX');
     expect(arg.where.deletedAt).toBeNull();
     expect(arg.where.paymentStatus).toEqual({ in: ['UNPAID', 'PARTIAL'] });
+  });
+
+  it('F2: просрочка по графику — на заказ, клиента и общий итог; без графика null', async () => {
+    const { service } = buildService([
+      order({
+        id: '1',
+        clientId: 'c1',
+        clientName: 'Клиент',
+        createdAt: '2026-06-10',
+        total: '1000',
+        paid: '100',
+        schedule: [
+          // Просрочен к ASOF (2026-06-14): покрыт 100 из 300 → просрочено 200.
+          { id: 's1', seq: 1, dueDate: new Date('2026-06-12T00:00:00.000Z'), amount: new Prisma.Decimal('300'), note: null },
+          { id: 's2', seq: 2, dueDate: new Date('2026-07-20T00:00:00.000Z'), amount: new Prisma.Decimal('700'), note: null },
+        ],
+      }),
+      order({ id: '2', clientId: 'c1', clientName: 'Клиент', createdAt: '2026-06-10', total: '500', paid: '0' }),
+    ]);
+    const r = await service.build('ws1', ASOF);
+    expect(r.overdueByPlanTotal).toBe('200.00');
+    expect(r.clients[0]!.overdueByPlan).toBe('200.00');
+    const withPlan = r.clients[0]!.orders.find((o) => o.orderId === '1')!;
+    expect(withPlan.overdueByPlan).toBe('200.00');
+    expect(withPlan.nextDueDate).toBe('2026-06-12T00:00:00.000Z');
+    expect(r.clients[0]!.orders.find((o) => o.orderId === '2')!.overdueByPlan).toBeNull();
   });
 });

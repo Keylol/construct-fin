@@ -21,6 +21,11 @@ import {
   type MarginItemInput,
   type OrderMarginSummary,
 } from './order-margin';
+import {
+  scheduleView,
+  type ScheduleEntryRecord,
+  type ScheduleView,
+} from './payment-schedule';
 import type {
   CreateOrderDto,
   UpdateOrderDto,
@@ -28,6 +33,7 @@ import type {
   AddPaymentDto,
   OrderItemInput,
   ReturnItemDto,
+  SetScheduleDto,
   ShipItemDto,
 } from './order.dto';
 
@@ -41,41 +47,77 @@ export class OrderService {
     private readonly audit: AuditService,
   ) {}
 
-  list(workspaceId: string, query: ListOrdersQuery) {
-    return this.orders.list(workspaceId, query);
+  /**
+   * Список заказов + вычисленная сводка графика платежей на каждый (бейдж
+   * просрочки в таблице). Сырые строки графика наружу не отдаются.
+   */
+  async list(workspaceId: string, query: ListOrdersQuery) {
+    const page = await this.orders.list(workspaceId, query);
+    const asOf = new Date();
+    return {
+      ...page,
+      items: page.items.map((o) => {
+        const { schedule, ...rest } = o;
+        return {
+          ...rest,
+          scheduleSummary:
+            scheduleView(schedule ?? [], o.paidAmount, o.totalAmount, asOf)?.summary ?? null,
+        };
+      }),
+    };
   }
 
   async get(workspaceId: string, id: string) {
     const order = await this.orders.findById(workspaceId, id);
     if (!order) throw new NotFoundException('Order not found');
-    return this.withMargin(order);
+    return this.serializeOrder(order);
   }
 
   /**
-   * F1 (решение #4): маржа считается на бэкенде — каждая строка и итог заказа
-   * получают блок margin (Decimal-строки), фронт только рисует. Оборачивает
-   * ВСЕ ответы с заказом (get и каждую мутацию), чтобы UI никогда не считал
-   * деньги в JS number (D4).
+   * Расчётные блоки заказа — считает бэкенд, фронт только рисует (D4):
+   *   • F1 (решение #4): маржа строк (margin на каждом item) и итога (margin);
+   *   • F2 (#8a): график платежей (schedule) — FIFO-покрытие строк из
+   *     paidAmount, статусы и сводка просрочки; null, если графика нет.
+   * Оборачивает ВСЕ ответы с заказом (get и каждую мутацию).
    */
-  private withMargin<T extends { discountAmount: Prisma.Decimal; items?: MarginItemInput[] }>(
+  private serializeOrder<
+    T extends {
+      discountAmount: Prisma.Decimal;
+      paidAmount: Prisma.Decimal;
+      totalAmount: Prisma.Decimal;
+      items?: MarginItemInput[];
+      schedule?: ScheduleEntryRecord[];
+    },
+  >(
     order: T,
     // Omit обязателен: пересечение T & {items: …} НЕ перезаписало бы items из T
     // (элементы читались бы старым типом без margin). Тип элемента выводим из
     // самого T — отдельный дженерик под элемент TS не инферит из constraint.
-  ): Omit<T, 'items'> & {
+  ): Omit<T, 'items' | 'schedule'> & {
     items: (NonNullable<T['items']>[number] & { margin: ItemMargin })[];
     margin: OrderMarginSummary;
+    schedule: ScheduleView | null;
   } {
     const src = (order.items ?? []) as NonNullable<T['items']>[number][];
     const items = src.map((it) => ({ ...it, margin: itemMargin(it) }));
-    return { ...order, items, margin: orderMargin(src, order.discountAmount) };
+    return {
+      ...order,
+      items,
+      margin: orderMargin(src, order.discountAmount),
+      schedule: scheduleView(
+        order.schedule ?? [],
+        order.paidAmount,
+        order.totalAmount,
+        new Date(),
+      ),
+    };
   }
 
-  /** Свежий заказ из БД + блок маржи — единый финал всех мутаций. */
+  /** Свежий заказ из БД + расчётные блоки — единый финал всех мутаций. */
   private async freshWithMargin(workspaceId: string, id: string, tx?: TxClient) {
     const order = await this.orders.findById(workspaceId, id, tx);
     if (!order) throw new NotFoundException('Order not found');
-    return this.withMargin(order);
+    return this.serializeOrder(order);
   }
 
   /** Сумма позиций. */
@@ -137,7 +179,7 @@ export class OrderService {
               client: true,
             },
           });
-          return this.withMargin(created);
+          return this.serializeOrder(created);
         });
       } catch (e) {
         if (isNumberConflict(e) && attempt < MAX_ATTEMPTS) continue;
@@ -254,6 +296,55 @@ export class OrderService {
         },
       });
       await this.syncPaymentState(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
+    });
+  }
+
+  /**
+   * F2 (#8a): заменить график платежей заказа целиком (replace-all, как items
+   * в update). Пустой entries снимает график. График — план: Σ строк может
+   * расходиться с totalAmount (UI предупредит по summary.matchesTotal).
+   * Платежи к строкам не привязываются — покрытие выводится из paidAmount.
+   */
+  async setSchedule(
+    workspaceId: string,
+    orderId: string,
+    userId: string,
+    dto: SetScheduleDto,
+  ) {
+    return this.uow.run(async (tx) => {
+      // B2: лок — параллельные setSchedule/addPayment сериализуются.
+      const order = await this.lockAndLoad(tx, workspaceId, orderId);
+      if (order.status === 'CANCELLED') {
+        throw new BadRequestException('Заказ отменён');
+      }
+      await tx.paymentScheduleEntry.deleteMany({ where: { orderId } });
+      if (dto.entries.length) {
+        await tx.paymentScheduleEntry.createMany({
+          data: dto.entries.map((e, i) => ({
+            workspaceId,
+            orderId,
+            seq: i + 1,
+            dueDate: new Date(e.dueDate),
+            amount: new Prisma.Decimal(e.amount),
+            note: e.note ?? null,
+          })),
+        });
+      }
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.schedule',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          entries: dto.entries.length,
+          planned: dto.entries
+            .reduce((acc, e) => add(acc, e.amount), D(0))
+            .toFixed(2),
+        },
+      });
       return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
@@ -581,7 +672,7 @@ export class OrderService {
       if (order.status === 'CANCELLED') {
         throw new BadRequestException('Заказ отменён');
       }
-      if (order.status === 'DONE') return this.withMargin(order);
+      if (order.status === 'DONE') return this.serializeOrder(order);
 
       let manualCogs = D(0);
       // Сортировка по warehouseItemId ASC — единый лок-порядок партий (анти-deadlock).
@@ -671,7 +762,7 @@ export class OrderService {
   async cancel(workspaceId: string, orderId: string, userId: string) {
     return this.uow.run(async (tx) => {
       const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
-      if (order.status === 'CANCELLED') return this.withMargin(order);
+      if (order.status === 'CANCELLED') return this.serializeOrder(order);
       // Возвращаем отгруженное и для DONE, и для частично отгруженного OPEN.
       await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { scheduleView } from '../orders/payment-schedule';
 
 /**
  * Дебиторка (receivables): незакрытые долги клиентов по заказам.
@@ -38,12 +39,18 @@ export interface ReceivableOrder {
   total: string;
   paid: string;
   due: string;
+  /** F2: просрочено по графику платежей; null — графика нет. */
+  overdueByPlan: string | null;
+  /** F2: ближайший срок по графику (ISO); null — графика нет / всё погашено. */
+  nextDueDate: string | null;
 }
 
 export interface ReceivableClientRow {
   clientId: string | null;
   clientName: string;
   due: string;
+  /** F2: Σ просроченного по графикам заказов клиента. */
+  overdueByPlan: string;
   buckets: AgingBuckets;
   orders: ReceivableOrder[];
 }
@@ -51,6 +58,8 @@ export interface ReceivableClientRow {
 export interface ReceivablesReport {
   asOf: string;
   totalDue: string;
+  /** F2: Σ просроченного по графикам всех заказов выборки. */
+  overdueByPlanTotal: string;
   buckets: AgingBuckets;
   clients: ReceivableClientRow[];
 }
@@ -81,6 +90,7 @@ interface ClientAcc {
   clientId: string | null;
   clientName: string;
   due: Prisma.Decimal;
+  overdueByPlan: Prisma.Decimal;
   buckets: Record<AgingBucketKey, Prisma.Decimal>;
   orders: ReceivableOrder[];
 }
@@ -104,11 +114,17 @@ export class ReceivablesService {
         totalAmount: true,
         paidAmount: true,
         client: { select: { name: true } },
+        // F2: строки графика — для «просрочено по плану» (обычно 0–4 строки).
+        schedule: {
+          where: { deletedAt: null },
+          orderBy: [{ dueDate: 'asc' }, { seq: 'asc' }],
+        },
       },
     });
 
     const totalBuckets = emptyBuckets();
     let totalDue = new Prisma.Decimal(0);
+    let overdueByPlanTotal = new Prisma.Decimal(0);
     const byClient = new Map<string, ClientAcc>();
 
     for (const o of orders) {
@@ -123,8 +139,13 @@ export class ReceivablesService {
       const safeAge = ageDays < 0 ? 0 : ageDays;
       const bucket = bucketFor(safeAge);
 
+      // F2: просрочка по формальному графику (дополняет aging по возрасту).
+      const plan = scheduleView(o.schedule, paid, total, asOf);
+      const overdueByPlan = plan ? new Prisma.Decimal(plan.summary.overdueAmount) : null;
+
       totalDue = totalDue.plus(due);
       totalBuckets[bucket] = totalBuckets[bucket].plus(due);
+      if (overdueByPlan) overdueByPlanTotal = overdueByPlanTotal.plus(overdueByPlan);
 
       const key = o.clientId ?? ' __no_client__';
       const acc =
@@ -133,10 +154,12 @@ export class ReceivablesService {
           clientId: o.clientId,
           clientName: o.clientId ? o.client?.name ?? '—' : 'Без клиента',
           due: new Prisma.Decimal(0),
+          overdueByPlan: new Prisma.Decimal(0),
           buckets: emptyBuckets(),
           orders: [],
         } satisfies ClientAcc);
       acc.due = acc.due.plus(due);
+      if (overdueByPlan) acc.overdueByPlan = acc.overdueByPlan.plus(overdueByPlan);
       acc.buckets[bucket] = acc.buckets[bucket].plus(due);
       acc.orders.push({
         orderId: o.id,
@@ -147,6 +170,8 @@ export class ReceivablesService {
         total: total.toFixed(2),
         paid: paid.toFixed(2),
         due: due.toFixed(2),
+        overdueByPlan: overdueByPlan ? overdueByPlan.toFixed(2) : null,
+        nextDueDate: plan?.summary.nextDueDate ?? null,
       });
       byClient.set(key, acc);
     }
@@ -155,6 +180,7 @@ export class ReceivablesService {
       clientId: acc.clientId,
       clientName: acc.clientName,
       due: acc.due.toFixed(2),
+      overdueByPlan: acc.overdueByPlan.toFixed(2),
       buckets: freezeBuckets(acc.buckets),
       orders: acc.orders.sort((a, b) => b.ageDays - a.ageDays),
     }));
@@ -163,6 +189,7 @@ export class ReceivablesService {
     return {
       asOf: asOf.toISOString(),
       totalDue: totalDue.toFixed(2),
+      overdueByPlanTotal: overdueByPlanTotal.toFixed(2),
       buckets: freezeBuckets(totalBuckets),
       clients,
     };
