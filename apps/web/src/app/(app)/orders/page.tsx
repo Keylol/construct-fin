@@ -17,6 +17,7 @@ import {
   useCancelOrder,
   useReopenOrder,
   useSetOrderSchedule,
+  useOrderTrace,
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
@@ -699,6 +700,7 @@ function OrderDetailSheet({
   onEdit: (order: Order) => void;
 }) {
   const { data: order, isLoading } = useOrder(wsId, orderId);
+  const { data: trace } = useOrderTrace(wsId, orderId);
   const accounts = useAccounts(wsId);
   const addPayment = useAddOrderPayment(wsId);
   const finalize = useFinalizeOrder(wsId);
@@ -815,6 +817,40 @@ function OrderDetailSheet({
                     </tbody>
                   </table>
                 </div>
+
+                {/* F5: происхождение — из каких партий взято, поставщик и счёт
+                    закупки. Питается складским net-леджером; пусто до отгрузки. */}
+                {trace && trace.items.length > 0 && (
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                      Происхождение (партии)
+                    </div>
+                    <div className="space-y-1.5">
+                      {trace.items.map((ti) => {
+                        const line = (order.items ?? []).find((i) => i.id === ti.orderItemId);
+                        return (
+                          <div
+                            key={ti.orderItemId}
+                            className="rounded-md border border-border px-3 py-2 text-sm"
+                          >
+                            <div className="font-medium">{line?.name ?? 'Позиция'}</div>
+                            {ti.lots.map((l) => (
+                              <div
+                                key={l.lotId}
+                                className="text-xs text-muted-foreground tabular-nums"
+                              >
+                                {l.qty} × {formatRub(l.unitCost)} · от{' '}
+                                {DATE_FMT.format(new Date(l.receivedAt))}
+                                {l.supplier ? ` · ${l.supplier.name}` : ''}
+                                {l.account ? ` · ${l.account.name}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Totals */}
                 <div className="space-y-1 text-sm">

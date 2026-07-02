@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { WarehouseItem } from '@/lib/types';
+import type { OpenLotView, WarehouseItem } from '@/lib/types';
 
 export interface CreateWarehouseItemInput {
   name: string;
@@ -49,6 +49,16 @@ export function useStockValue(wsId: string | null) {
 function invalidate(qc: ReturnType<typeof useQueryClient>, wsId: string) {
   qc.invalidateQueries({ queryKey: ['warehouse', wsId] });
   qc.invalidateQueries({ queryKey: ['warehouse-stock-value', wsId] });
+  qc.invalidateQueries({ queryKey: ['warehouse-lots', wsId] });
+}
+
+/** F5: открытые партии позиции — «что лежит и откуда» (поставщик/счёт закупки). */
+export function useItemLots(wsId: string | null, itemId: string | null) {
+  return useQuery({
+    queryKey: ['warehouse-lots', wsId, itemId],
+    queryFn: () => api.get<OpenLotView[]>(`/workspaces/${wsId}/warehouse/${itemId}/lots`),
+    enabled: !!wsId && !!itemId,
+  });
 }
 
 export function useCreateWarehouseItem(wsId: string) {

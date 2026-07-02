@@ -8,7 +8,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
-import type { Order, OrderListPage, OrderStatus } from '@/lib/types';
+import type { Order, OrderListPage, OrderStatus, OrderTrace } from '@/lib/types';
 
 export interface OrderItemInput {
   warehouseItemId?: string | null;
@@ -79,6 +79,15 @@ export function useOrder(wsId: string | null, id: string | null) {
   return useQuery({
     queryKey: ['order', wsId, id],
     queryFn: () => api.get<Order>(`/workspaces/${wsId}/orders/${id}`),
+    enabled: !!wsId && !!id,
+  });
+}
+
+/** F5: трассировка строк заказа до партий (поставщик/счёт закупки). */
+export function useOrderTrace(wsId: string | null, id: string | null) {
+  return useQuery({
+    queryKey: ['order-trace', wsId, id],
+    queryFn: () => api.get<OrderTrace>(`/workspaces/${wsId}/orders/${id}/trace`),
     enabled: !!wsId && !!id,
   });
 }
