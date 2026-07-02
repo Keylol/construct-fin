@@ -24,6 +24,7 @@ import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { Badge, type BadgeProps } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -292,6 +293,7 @@ function OrderFormSheet({
 
   const [clientId, setClientId] = useState('');
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [discount, setDiscount] = useState('');
   const [items, setItems] = useState<OrderItemInput[]>([
     { name: '', qty: '1', unitPrice: '', unitCost: '' },
@@ -304,6 +306,7 @@ function OrderFormSheet({
     if (editing) {
       setClientId(editing.clientId ?? '');
       setTitle(editing.title ?? '');
+      setDescription(editing.description ?? '');
       setDiscount(Number(editing.discountAmount) > 0 ? String(Number(editing.discountAmount)) : '');
       setItems(
         (editing.items ?? []).map((it) => ({
@@ -317,32 +320,52 @@ function OrderFormSheet({
     } else {
       setClientId('');
       setTitle('');
+      setDescription('');
       setDiscount('');
       setItems([{ name: '', qty: '1', unitPrice: '', unitCost: '' }]);
     }
     setError(null);
   }, [open, editing]);
 
+  // Превью-итоги черновика через Decimal (не JS number, D4). Ввод свободный —
+  // невалидное значение считаем нулём, «жёсткая» валидация остаётся на сабмите.
+  const parseDraft = (s: string | null | undefined) => {
+    try {
+      return D((s ?? '').replace(/\s/g, '').replace(',', '.') || '0');
+    } catch {
+      return D(0);
+    }
+  };
   const subtotal = useMemo(
     () =>
-      items.reduce((acc, it) => {
-        const q = Number(it.qty) || 0;
-        const p = Number(it.unitPrice) || 0;
-        return acc + q * p;
-      }, 0),
+      items.reduce(
+        (acc, it) => add(acc, mul(parseDraft(it.qty), parseDraft(it.unitPrice))),
+        D(0),
+      ),
     [items],
   );
-  const costTotal = useMemo(
-    () =>
-      items.reduce((acc, it) => {
-        const q = Number(it.qty) || 0;
-        const c = Number(it.unitCost) || 0;
-        return acc + q * c;
-      }, 0),
-    [items],
-  );
-  const total = Math.max(0, subtotal - (Number(discount) || 0));
-  const estEarnings = total - costTotal;
+  // Себестоимость превью — как считает бэкенд (F1): ручная закупка, а для
+  // складской строки без неё — оценка по текущей стоимости остатка (avgCost).
+  const { costTotal, costIsEstimate } = useMemo(() => {
+    let acc = D(0);
+    let est = false;
+    for (const it of items) {
+      const whCost = it.warehouseItemId
+        ? warehouse.data?.find((w) => w.id === it.warehouseItemId)?.avgCost
+        : null;
+      const manual = it.unitCost ? parseDraft(it.unitCost) : null;
+      const cost = manual ?? (whCost != null ? D(whCost) : null);
+      if (cost == null) continue;
+      if (manual == null) est = true;
+      acc = add(acc, mul(parseDraft(it.qty), cost));
+    }
+    return { costTotal: acc, costIsEstimate: est };
+  }, [items, warehouse.data]);
+  const total = useMemo(() => {
+    const t = sub(subtotal, parseDraft(discount));
+    return t.gt(0) ? t : D(0);
+  }, [subtotal, discount]);
+  const estEarnings = sub(total, costTotal);
 
   const collectItems = (): OrderItemInput[] | null => {
     const cleaned: OrderItemInput[] = [];
@@ -373,6 +396,7 @@ function OrderFormSheet({
       await create.mutateAsync({
         clientId: clientId || null,
         title: title.trim() || undefined,
+        description: description.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
         items: cleaned,
       });
@@ -396,6 +420,7 @@ function OrderFormSheet({
         id: editing.id,
         clientId: clientId || null,
         title: title.trim() || null,
+        description: description.trim() || null,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : '0',
         items: cleaned,
       });
@@ -426,12 +451,21 @@ function OrderFormSheet({
               ))}
             </Select>
           </FormField>
-          <FormField label="Название / описание" htmlFor="o-title">
+          <FormField label="Название" htmlFor="o-title">
             <Input
               id="o-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="напр. «Сборка ПК для офиса»"
+            />
+          </FormField>
+          <FormField label="Комментарий" htmlFor="o-description">
+            <Textarea
+              id="o-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Детали заказа: договорённости, сроки, нюансы"
+              rows={3}
             />
           </FormField>
 
@@ -466,7 +500,8 @@ function OrderFormSheet({
                         .filter((w) => !w.isArchived)
                         .map((w) => (
                           <option key={w.id} value={w.id}>
-                            {w.name} (ост. {Number(w.qty)} {w.unit})
+                            {w.name}
+                            {w.color ? ` · ${w.color}` : ''} (ост. {Number(w.qty)} {w.unit})
                           </option>
                         ))}
                     </Select>
@@ -570,22 +605,27 @@ function OrderFormSheet({
           <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Сумма позиций</span>
-              <span className="tabular-nums">{formatRub(subtotal)}</span>
+              <span className="tabular-nums">{formatRub(toMoneyString(subtotal))}</span>
             </div>
-            {costTotal > 0 && (
+            {costTotal.gt(0) && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Себестоимость</span>
-                <span className="tabular-nums">{formatRub(costTotal)}</span>
+                <span className="text-muted-foreground">
+                  {costIsEstimate ? 'Себестоимость (оценка по складу)' : 'Себестоимость'}
+                </span>
+                <span className="tabular-nums">{formatRub(toMoneyString(costTotal))}</span>
               </div>
             )}
             <div className="flex justify-between font-semibold">
               <span>Итого к оплате</span>
-              <span className="tabular-nums">{formatRub(total)}</span>
+              <span className="tabular-nums">{formatRub(toMoneyString(total))}</span>
             </div>
-            {costTotal > 0 && (
+            {costTotal.gt(0) && (
               <div className="flex justify-between font-semibold text-success">
                 <span>Заработок (план)</span>
-                <span className="tabular-nums">{formatRub(estEarnings)}</span>
+                <span className="tabular-nums">
+                  {costIsEstimate ? '≈ ' : ''}
+                  {formatRub(toMoneyString(estEarnings))}
+                </span>
               </div>
             )}
           </div>
@@ -691,6 +731,11 @@ function OrderDetailSheet({
                 </div>
 
                 {order.title && <p className="text-sm">{order.title}</p>}
+                {order.description && (
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                    {order.description}
+                  </p>
+                )}
 
                 {/* Items */}
                 <div className="overflow-hidden rounded-md border border-border">
@@ -701,6 +746,7 @@ function OrderDetailSheet({
                         <th className="px-3 py-2 text-right font-medium">Кол-во</th>
                         <th className="px-3 py-2 text-right font-medium">Цена</th>
                         <th className="px-3 py-2 text-right font-medium">Сумма</th>
+                        <th className="px-3 py-2 text-right font-medium">Маржа</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -714,6 +760,23 @@ function OrderDetailSheet({
                           <td className="px-3 py-2 text-right tabular-nums">
                             {formatRub(it.lineTotal)}
                           </td>
+                          {/* Маржа строки — с бэкенда (netQty за вычетом возвратов);
+                              «≈» — себестоимость пока оценка по складу (до выдачи). */}
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {it.margin ? (
+                              <>
+                                <div>
+                                  {it.margin.costSource === 'estimate' && '≈ '}
+                                  {formatRub(it.margin.margin)}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {it.margin.marginPct}%
+                                </div>
+                              </>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -723,48 +786,56 @@ function OrderDetailSheet({
                 {/* Totals */}
                 <div className="space-y-1 text-sm">
                   <Row label="Сумма позиций" value={formatRub(order.subtotal)} />
-                  {Number(order.discountAmount) > 0 && (
+                  {D(order.discountAmount).gt(0) && (
                     <Row label="Скидка" value={`−${formatRub(order.discountAmount)}`} />
                   )}
                   <Row label="Итого" value={formatRub(order.totalAmount)} strong />
                   <Row
                     label="Оплачено"
                     value={formatRub(order.paidAmount)}
-                    tone={Number(order.paidAmount) >= Number(order.totalAmount) ? 'pos' : undefined}
+                    tone={D(order.paidAmount).gte(order.totalAmount) ? 'pos' : undefined}
                   />
                   <Row
                     label="Остаток"
-                    value={formatRub(Math.max(0, Number(order.totalAmount) - Number(order.paidAmount)))}
+                    value={formatRub(
+                      toMoneyString(
+                        (() => {
+                          const due = sub(order.totalAmount, order.paidAmount);
+                          return due.gt(0) ? due : D(0);
+                        })(),
+                      ),
+                    )}
                   />
                 </div>
 
-                {/* Доход / Расход / Прибыль. Расход (себестоимость) = unitCost
-                    (ручной) ?? WAVG-снапшот. Доход = фактически оплачено. */}
-                {(() => {
-                  // Деньги через shared-Decimal (НЕ JS number): иначе qty*cost и
-                  // оплата теряли бы копейку на больших суммах. Prisma.Decimal во
-                  // фронт-бандл не тащим — только shared-хелперы.
-                  const cost = (order.items ?? []).reduce((acc, it) => {
-                    const c = it.unitCost ?? it.unitCostAtSale;
-                    return c ? add(acc, mul(it.qty, c)) : acc;
-                  }, D(0));
-                  const income = D(order.paidAmount);
-                  if (cost.lte(0) && income.lte(0)) return null;
-                  const profit = sub(income, cost);
-                  const profitPct = income.gt(0) ? profit.div(income).times(100) : D(0);
-                  return (
+                {/* Маржа заказа — считает бэкенд (F1, решение #4): доход =
+                    реализация (totalAmount за вычетом возвратов), НЕ оплата.
+                    «Оценка по складу» — до выдачи себестоимость складских строк
+                    берётся по текущей стоимости остатка (avgCost). */}
+                {order.margin &&
+                  !(order.margin.revenue === '0.00' && order.margin.cogs === '0.00') && (
                     <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
-                      <Row label="Доход (оплачено)" value={formatRub(toMoneyString(income))} tone="pos" />
-                      <Row label="Расход (себестоимость)" value={formatRub(toMoneyString(cost))} />
+                      <Row
+                        label="Доход (реализация)"
+                        value={formatRub(order.margin.revenue)}
+                        tone="pos"
+                      />
+                      <Row
+                        label={
+                          order.margin.isEstimate
+                            ? 'Расход (себестоимость, оценка по складу)'
+                            : 'Расход (себестоимость)'
+                        }
+                        value={formatRub(order.margin.cogs)}
+                      />
                       <Row
                         label="Прибыль"
-                        value={`${formatRub(toMoneyString(profit))}${income.gt(0) ? ` · ${profitPct.toFixed(0)}%` : ''}`}
+                        value={`${order.margin.isEstimate ? '≈ ' : ''}${formatRub(order.margin.margin)} · ${order.margin.marginPct}%`}
                         strong
-                        tone={profit.gte(0) ? 'pos' : undefined}
+                        tone={D(order.margin.margin).gte(0) ? 'pos' : undefined}
                       />
                     </div>
-                  );
-                })()}
+                  )}
 
                 {/* Чеки / документы */}
                 <div>

@@ -73,6 +73,8 @@ export interface WarehouseItem {
   id: string;
   sku: string | null;
   name: string;
+  /** Цвет комплектующего — свободный текст, на учёт не влияет. */
+  color: string | null;
   unit: string;
   qty: string;
   avgCost: string;
@@ -110,6 +112,27 @@ export type OrderPaymentState =
   | 'OVERPAID'
   | 'REFUNDED';
 
+/** Источник себестоимости строки заказа (F1): факт / ручной ввод / оценка по складу. */
+export type OrderCostSource = 'actual' | 'manual' | 'estimate' | null;
+
+/** Маржа строки заказа — считает бэкенд (Decimal), фронт только рисует (D4). */
+export interface OrderItemMargin {
+  revenue: string;
+  cogs: string;
+  margin: string;
+  marginPct: string;
+  costSource: OrderCostSource;
+}
+
+/** Итог маржи заказа (база — totalAmount; возвраты по netQty). */
+export interface OrderMarginSummary {
+  revenue: string;
+  cogs: string;
+  margin: string;
+  marginPct: string;
+  isEstimate: boolean;
+}
+
 export interface OrderItem {
   id: string;
   warehouseItemId: string | null;
@@ -120,6 +143,8 @@ export interface OrderItem {
   unitCostAtSale: string | null;
   returnedQty: string;
   lineTotal: string;
+  /** Optional: старые ответы в кэше React Query могут быть без маржи. */
+  margin?: OrderItemMargin;
 }
 
 export interface Order {
@@ -143,6 +168,8 @@ export interface Order {
   transactions?: Transaction[];
   attachments?: AttachmentSummary[];
   _count?: { items: number };
+  /** Есть в карточных ответах (get/мутации); в списке отсутствует. */
+  margin?: OrderMarginSummary;
 }
 
 export interface OrderListPage {

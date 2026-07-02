@@ -7,6 +7,7 @@ import type { WarehouseItem } from '@/lib/types';
 export interface CreateWarehouseItemInput {
   name: string;
   sku?: string;
+  color?: string | null;
   unit?: string;
   openingQty?: string;
   openingCost?: string;
@@ -17,6 +18,7 @@ export interface CreateWarehouseItemInput {
 export interface UpdateWarehouseItemInput {
   name?: string;
   sku?: string | null;
+  color?: string | null;
   unit?: string;
   defaultSupplierId?: string | null;
   note?: string | null;

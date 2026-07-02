@@ -71,7 +71,11 @@ export default function WarehousePage() {
       cell: (i) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{i.name}</div>
-          {i.sku && <div className="truncate text-xs text-muted-foreground">{i.sku}</div>}
+          {(i.sku || i.color) && (
+            <div className="truncate text-xs text-muted-foreground">
+              {[i.sku, i.color].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
       ),
     },
@@ -243,6 +247,7 @@ function WarehouseItemForm({
   const [setCostValue, setSetCostValue] = useState('');
   const [setCostReason, setSetCostReason] = useState('');
   const [sku, setSku] = useState('');
+  const [color, setColor] = useState('');
   const [unit, setUnit] = useState('шт');
   const [openingQty, setOpeningQty] = useState('');
   const [openingCost, setOpeningCost] = useState('');
@@ -255,12 +260,14 @@ function WarehouseItemForm({
     if (initial) {
       setName(initial.name);
       setSku(initial.sku ?? '');
+      setColor(initial.color ?? '');
       setUnit(initial.unit);
       setIsArchived(initial.isArchived);
       setAdjustQty(String(Number(initial.qty)));
     } else {
       setName('');
       setSku('');
+      setColor('');
       setUnit('шт');
       setOpeningQty('');
       setOpeningCost('');
@@ -279,6 +286,7 @@ function WarehouseItemForm({
           id: initial.id,
           name: name.trim(),
           sku: sku.trim() || null,
+          color: color.trim() || null,
           unit: unit.trim() || 'шт',
           isArchived,
         });
@@ -291,6 +299,7 @@ function WarehouseItemForm({
         await create.mutateAsync({
           name: name.trim(),
           sku: sku.trim() || undefined,
+          color: color.trim() || undefined,
           unit: unit.trim() || undefined,
           openingQty: openingQty ? parseQty(openingQty) ?? undefined : undefined,
           openingCost: openingCost ? parseAmountInput(openingCost) ?? undefined : undefined,
@@ -352,6 +361,14 @@ function WarehouseItemForm({
                 <Input id="w-unit" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="шт" />
               </FormField>
             </div>
+            <FormField label="Цвет" htmlFor="w-color" hint="Свободный текст, на учёт не влияет">
+              <Input
+                id="w-color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                placeholder="напр. белый / RAL 9016"
+              />
+            </FormField>
 
             {!initial ? (
               <div className="grid grid-cols-2 gap-3">
