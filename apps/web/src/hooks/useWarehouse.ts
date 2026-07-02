@@ -91,6 +91,25 @@ export function useSetItemCost(wsId: string) {
   });
 }
 
+/**
+ * F4: списание со склада (брак/порча/недостача). FIFO-списание партий +
+ * неденежная проводка-убыток → трогает и склад, и P&L/ленту операций.
+ */
+export function useWriteOffStock(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, qty, reason }: { id: string; qty: string; reason: string }) =>
+      api.post<WarehouseItem>(`/workspaces/${wsId}/warehouse/${id}/write-off`, { qty, reason }),
+    onSuccess: () => {
+      invalidate(qc, wsId);
+      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}
+
 export function useDeleteWarehouseItem(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
