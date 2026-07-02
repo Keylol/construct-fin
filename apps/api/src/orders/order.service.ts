@@ -14,6 +14,13 @@ import { WarehouseService, NoConsumptionsError } from '../warehouse/warehouse.se
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
+import {
+  itemMargin,
+  orderMargin,
+  type ItemMargin,
+  type MarginItemInput,
+  type OrderMarginSummary,
+} from './order-margin';
 import type {
   CreateOrderDto,
   UpdateOrderDto,
@@ -41,7 +48,28 @@ export class OrderService {
   async get(workspaceId: string, id: string) {
     const order = await this.orders.findById(workspaceId, id);
     if (!order) throw new NotFoundException('Order not found');
-    return order;
+    return this.withMargin(order);
+  }
+
+  /**
+   * F1 (решение #4): маржа считается на бэкенде — каждая строка и итог заказа
+   * получают блок margin (Decimal-строки), фронт только рисует. Оборачивает
+   * ВСЕ ответы с заказом (get и каждую мутацию), чтобы UI никогда не считал
+   * деньги в JS number (D4).
+   */
+  private withMargin<
+    TItem extends MarginItemInput,
+    T extends { discountAmount: Prisma.Decimal; items?: TItem[] },
+  >(order: T): T & { items: (TItem & { margin: ItemMargin })[]; margin: OrderMarginSummary } {
+    const items = (order.items ?? []).map((it) => ({ ...it, margin: itemMargin(it) }));
+    return { ...order, items, margin: orderMargin(order.items ?? [], order.discountAmount) };
+  }
+
+  /** Свежий заказ из БД + блок маржи — единый финал всех мутаций. */
+  private async freshWithMargin(workspaceId: string, id: string, tx?: TxClient) {
+    const order = await this.orders.findById(workspaceId, id, tx);
+    if (!order) throw new NotFoundException('Order not found');
+    return this.withMargin(order);
   }
 
   /** Сумма позиций. */
@@ -72,7 +100,7 @@ export class OrderService {
       try {
         return await this.uow.run(async (tx) => {
           const number = await this.orders.nextNumber(workspaceId, tx);
-          return tx.order.create({
+          const created = await tx.order.create({
             data: {
               workspaceId,
               number,
@@ -97,8 +125,13 @@ export class OrderService {
                 })),
               },
             },
-            include: { items: true, client: true },
+            // avgCost — как в findById: маржа-оценка уже в ответе create (F1).
+            include: {
+              items: { include: { warehouseItem: { select: { avgCost: true } } } },
+              client: true,
+            },
           });
+          return this.withMargin(created);
         });
       } catch (e) {
         if (isNumberConflict(e) && attempt < MAX_ATTEMPTS) continue;
@@ -177,7 +210,7 @@ export class OrderService {
         },
       });
       await this.syncPaymentState(workspaceId, id, tx);
-      return this.orders.findById(workspaceId, id, tx);
+      return this.freshWithMargin(workspaceId, id, tx);
     });
   }
 
@@ -215,7 +248,7 @@ export class OrderService {
         },
       });
       await this.syncPaymentState(workspaceId, orderId, tx);
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
@@ -279,7 +312,7 @@ export class OrderService {
           shipQty: shipQty.toString(),
         },
       });
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
@@ -454,7 +487,7 @@ export class OrderService {
           refundAmount: refund.toFixed(2),
         },
       });
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
@@ -542,7 +575,7 @@ export class OrderService {
       if (order.status === 'CANCELLED') {
         throw new BadRequestException('Заказ отменён');
       }
-      if (order.status === 'DONE') return order;
+      if (order.status === 'DONE') return this.withMargin(order);
 
       let manualCogs = D(0);
       // Сортировка по warehouseItemId ASC — единый лок-порядок партий (анти-deadlock).
@@ -620,7 +653,7 @@ export class OrderService {
           manualCogs: manualCogs.toFixed(2),
         },
       });
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
@@ -632,7 +665,7 @@ export class OrderService {
   async cancel(workspaceId: string, orderId: string, userId: string) {
     return this.uow.run(async (tx) => {
       const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
-      if (order.status === 'CANCELLED') return order;
+      if (order.status === 'CANCELLED') return this.withMargin(order);
       // Возвращаем отгруженное и для DONE, и для частично отгруженного OPEN.
       await this.reverseFinalization(tx, workspaceId, order, userId);
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
@@ -644,7 +677,7 @@ export class OrderService {
         entityId: orderId,
         diff: { number: order.number, previousStatus: order.status },
       });
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
@@ -678,7 +711,7 @@ export class OrderService {
         entityId: orderId,
         diff: { number: order.number, previousStatus: order.status },
       });
-      return this.orders.findById(workspaceId, orderId, tx);
+      return this.freshWithMargin(workspaceId, orderId, tx);
     });
   }
 
