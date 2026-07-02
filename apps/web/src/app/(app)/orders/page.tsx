@@ -13,6 +13,7 @@ import {
   useCreateOrder,
   useUpdateOrder,
   useAddOrderPayment,
+  useAddInstallmentPayment,
   useFinalizeOrder,
   useCancelOrder,
   useReopenOrder,
@@ -703,6 +704,7 @@ function OrderDetailSheet({
   const { data: trace } = useOrderTrace(wsId, orderId);
   const accounts = useAccounts(wsId);
   const addPayment = useAddOrderPayment(wsId);
+  const addInstallment = useAddInstallmentPayment(wsId);
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
@@ -711,6 +713,8 @@ function OrderDetailSheet({
 
   const [payAmount, setPayAmount] = useState('');
   const [payAccount, setPayAccount] = useState('');
+  const [payInstallment, setPayInstallment] = useState(false);
+  const [payFee, setPayFee] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
   const [editSchedule, setEditSchedule] = useState(false);
@@ -729,9 +733,29 @@ function OrderDetailSheet({
       return;
     }
     try {
-      await addPayment.mutateAsync({ id: orderId, amount, accountId: payAccount });
+      if (payInstallment) {
+        // F3: рассрочка gross — полная сумма выручкой + комиссия банка расходом.
+        const fee = parseAmountInput(payFee || '0');
+        if (fee === null) {
+          setError('Некорректная комиссия');
+          return;
+        }
+        await addInstallment.mutateAsync({
+          id: orderId,
+          amount,
+          fee,
+          accountId: payAccount,
+        });
+        toast.success('Рассрочка оформлена', {
+          description: `Выручка ${formatRub(amount)}, комиссия ${formatRub(fee)}`,
+        });
+      } else {
+        await addPayment.mutateAsync({ id: orderId, amount, accountId: payAccount });
+        toast.success('Оплата добавлена');
+      }
       setPayAmount('');
-      toast.success('Оплата добавлена');
+      setPayFee('');
+      setPayInstallment(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
     }
@@ -1035,26 +1059,38 @@ function OrderDetailSheet({
                       Платежи
                     </div>
                     <div className="space-y-1">
-                      {order.transactions.map((t) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm"
-                        >
-                          <span className="text-muted-foreground">
-                            {DATE_FMT.format(new Date(t.date))} ·{' '}
-                            {t.kind === 'ORDER_REFUND' ? 'возврат' : 'оплата'}
-                          </span>
-                          <span
-                            className={cn(
-                              'tabular-nums',
-                              t.kind === 'ORDER_REFUND' ? 'text-destructive' : 'text-success',
-                            )}
+                      {/* Подпись и знак — по kind/type: помимо оплат тут живут
+                          возвраты, комиссия рассрочки (F3) и COGS услуг. */}
+                      {order.transactions.map((t) => {
+                        const label =
+                          t.kind === 'ORDER_REFUND'
+                            ? 'возврат'
+                            : t.kind === 'VARIABLE_COST'
+                              ? 'комиссия рассрочки'
+                              : t.kind === 'COGS'
+                                ? 'себестоимость'
+                                : 'оплата';
+                        const negative = t.type === 'EXPENSE';
+                        return (
+                          <div
+                            key={t.id}
+                            className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm"
                           >
-                            {t.kind === 'ORDER_REFUND' ? '−' : '+'}
-                            {formatRub(t.amount)}
-                          </span>
-                        </div>
-                      ))}
+                            <span className="text-muted-foreground">
+                              {DATE_FMT.format(new Date(t.date))} · {label}
+                            </span>
+                            <span
+                              className={cn(
+                                'tabular-nums',
+                                negative ? 'text-destructive' : 'text-success',
+                              )}
+                            >
+                              {negative ? '−' : '+'}
+                              {formatRub(t.amount)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1069,7 +1105,7 @@ function OrderDetailSheet({
                           inputMode="decimal"
                           value={payAmount}
                           onChange={(e) => setPayAmount(e.target.value)}
-                          placeholder="Сумма"
+                          placeholder={payInstallment ? 'Полная сумма' : 'Сумма'}
                         />
                       </div>
                       <div className="flex-1">
@@ -1084,10 +1120,50 @@ function OrderDetailSheet({
                             ))}
                         </Select>
                       </div>
-                      <Button onClick={onPay} disabled={addPayment.isPending}>
+                      <Button
+                        onClick={onPay}
+                        disabled={addPayment.isPending || addInstallment.isPending}
+                      >
                         Добавить
                       </Button>
                     </div>
+                    {/* F3: сторонняя рассрочка — gross. Полная сумма выручкой
+                        закрывает дебиторку, комиссия банка отдельным расходом. */}
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={payInstallment}
+                        onChange={(e) => setPayInstallment(e.target.checked)}
+                        className="h-4 w-4 rounded border-input accent-primary"
+                      />
+                      Рассрочка (сторонняя)
+                    </label>
+                    {payInstallment && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-32">
+                            <Input
+                              inputMode="decimal"
+                              value={payFee}
+                              onChange={(e) => setPayFee(e.target.value)}
+                              placeholder="Комиссия, ₽"
+                              aria-label="Комиссия банка рассрочки"
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {(() => {
+                              const a = parseAmountInput(payAmount || '');
+                              const f = parseAmountInput(payFee || '0');
+                              if (!a || f === null) return 'комиссия банка из договора';
+                              return `на счёт поступит ${formatRub(toMoneyString(sub(a, f)))}`;
+                            })()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          В выручку пойдёт полная сумма, комиссия — отдельным расходом по заказу.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
