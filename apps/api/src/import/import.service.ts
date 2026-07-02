@@ -368,10 +368,6 @@ export class ImportService {
     const orderIds = Array.from(
       new Set(rowsToImport.map((r) => r.orderId).filter((o): o is string => !!o)),
     );
-    const orderById = new Map<
-      string,
-      { clientId: string | null; status: string; number: string }
-    >();
     if (orderIds.length > 0) {
       for (const r of rowsToImport) {
         if (r.orderId && r.type !== 'INCOME') {
@@ -379,21 +375,6 @@ export class ImportService {
             'К заказу можно привязать только приходную строку (оплату)',
           );
         }
-      }
-      const foundOrders = await this.prisma.order.findMany({
-        where: { id: { in: orderIds }, workspaceId, deletedAt: null },
-        select: { id: true, clientId: true, status: true, number: true },
-      });
-      if (foundOrders.length !== orderIds.length) {
-        throw new BadRequestException('Заказ не найден в этом пространстве');
-      }
-      for (const o of foundOrders) {
-        if (o.status === 'CANCELLED') {
-          throw new BadRequestException(
-            `Заказ ${o.number} отменён — привязать оплату нельзя`,
-          );
-        }
-        orderById.set(o.id, o);
       }
     }
 
@@ -429,6 +410,30 @@ export class ImportService {
     for (const cp of existing) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
     return this.prisma.$transaction(async (tx) => {
+      // F3: валидация заказов ПОД транзакцией (TOCTOU — параллельная отмена
+      // между проверкой и вставкой), паттерн assertAccountTx.
+      const orderById = new Map<
+        string,
+        { clientId: string | null; status: string; number: string }
+      >();
+      if (orderIds.length > 0) {
+        const foundOrders = await tx.order.findMany({
+          where: { id: { in: orderIds }, workspaceId, deletedAt: null },
+          select: { id: true, clientId: true, status: true, number: true },
+        });
+        if (foundOrders.length !== orderIds.length) {
+          throw new BadRequestException('Заказ не найден в этом пространстве');
+        }
+        for (const o of foundOrders) {
+          if (o.status === 'CANCELLED') {
+            throw new BadRequestException(
+              `Заказ ${o.number} отменён — привязать оплату нельзя`,
+            );
+          }
+          orderById.set(o.id, o);
+        }
+      }
+
       // Защита от повторного импорта того же файла: внутри транзакции проверяем,
       // что батч с этим fileHash ещё не заводился (Фаза 4 п.18). Дополняет
       // строковый partial-unique по importHash (п.17): даёт понятный ранний отказ
@@ -481,7 +486,8 @@ export class ImportService {
       await tx.transaction.createMany({
         data: rowsToImport.map((r) => {
           // F3: привязанная строка — оплата заказа: kind=ORDER_PAYMENT, контрагент =
-          // клиент заказа (в выписке обычно банк/эквайер, а не клиент).
+          // клиент заказа КАК ЕСТЬ (включая null для заказа без клиента — семантика
+          // addPayment; банк/эквайер из выписки контрагентом оплаты не становится).
           const order = r.orderId ? orderById.get(r.orderId) : undefined;
           return {
             workspaceId,
@@ -491,7 +497,7 @@ export class ImportService {
             type: r.type,
             ...(order ? { kind: 'ORDER_PAYMENT' as const, orderId: r.orderId } : {}),
             description: r.description,
-            counterpartyId: order?.clientId
+            counterpartyId: order
               ? order.clientId
               : r.counterpartyName
                 ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
