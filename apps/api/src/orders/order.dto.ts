@@ -67,6 +67,23 @@ export const AddPaymentSchema = z.object({
 });
 export type AddPaymentDto = z.infer<typeof AddPaymentSchema>;
 
+/** Строка графика платежей (F2, #8a). */
+export const ScheduleEntryInputSchema = z.object({
+  dueDate: z.string().datetime(),
+  /// Строго положительная сумма с ≤2 знаками (нулевые строки бессмысленны).
+  amount: z
+    .string()
+    .regex(/^(?!0+(\.0{1,2})?$)\d+(\.\d{1,2})?$/, 'Сумма должна быть положительной'),
+  note: z.string().trim().max(500).optional(),
+});
+export type ScheduleEntryInput = z.infer<typeof ScheduleEntryInputSchema>;
+
+/** Замена графика платежей целиком; пустой массив снимает график. */
+export const SetScheduleSchema = z.object({
+  entries: z.array(ScheduleEntryInputSchema).max(50),
+});
+export type SetScheduleDto = z.infer<typeof SetScheduleSchema>;
+
 /** Частичная отгрузка позиции открытого заказа (списывает склад сразу). */
 export const ShipItemSchema = z.object({
   itemId: z.string().cuid(),

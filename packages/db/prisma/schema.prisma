@@ -60,6 +60,7 @@ model Workspace {
   warehouseItems  WarehouseItem[]
   purchases       Purchase[]
   attachments     Attachment[]
+  paymentSchedule PaymentScheduleEntry[]
   transfers       Transfer[]
   stockMovements  StockMovement[]
   balanceChecks   AccountBalanceCheck[]
@@ -269,6 +270,7 @@ model Order {
   items        OrderItem[]
   transactions Transaction[] @relation("OrderTransactions")
   attachments  Attachment[]
+  schedule     PaymentScheduleEntry[]
 
   // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
   // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
@@ -291,6 +293,34 @@ enum OrderPaymentState {
   PAID
   OVERPAID
   REFUNDED
+}
+
+// F2 (#8/8a): формальный график платежей заказа — план «суммы + даты».
+// План, не учёт: платежи НЕ привязываются к строкам — покрытие строк выводится
+// FIFO по (dueDate, seq) из Order.paidAmount (см. orders/payment-schedule.ts).
+// Σ строк МОЖЕТ расходиться с totalAmount — мягкое предупреждение в UI, не ошибка.
+model PaymentScheduleEntry {
+  id          String @id @default(cuid())
+  workspaceId String
+  orderId     String
+  /// Порядок строки — вторичный ключ FIFO-погашения (после dueDate).
+  seq         Int
+  /// Срок платежа; просрочка наступает после КОНЦА этого дня в поясе бизнеса (UTC+5).
+  dueDate     DateTime
+  amount      Decimal  @db.Decimal(14, 2)
+  note        String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  /// seq уникален в заказе: инвариант FIFO-порядка, защита от бага-дубля.
+  @@unique([orderId, seq])
+  @@index([workspaceId, orderId])
+  @@index([workspaceId, dueDate])
 }
 
 model OrderItem {
