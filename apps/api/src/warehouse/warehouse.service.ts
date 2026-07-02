@@ -374,6 +374,95 @@ export class WarehouseService {
   }
 
   /**
+   * F5 (#9, витрина): открытые партии позиции — «что лежит на складе и откуда».
+   * FIFO-порядок; поставщик и счёт оплаты закупки — из трассы лота (null для
+   * OPENING/MIGRATION/ADJUSTMENT-партий, где источника нет).
+   */
+  async openLots(workspaceId: string, itemId: string) {
+    await this.get(workspaceId, itemId); // 404 + workspace-изоляция
+    const lots = await this.prisma.stockLot.findMany({
+      where: {
+        workspaceId,
+        warehouseItemId: itemId,
+        deletedAt: null,
+        qtyRemaining: { gt: 0 },
+      },
+      orderBy: [{ receivedAt: 'asc' }, { seq: 'asc' }],
+      include: {
+        supplier: { select: { id: true, name: true } },
+        account: { select: { id: true, name: true } },
+      },
+    });
+    return lots.map((l) => ({
+      id: l.id,
+      receivedAt: l.receivedAt.toISOString(),
+      qtyInitial: l.qtyInitial.toString(),
+      qtyRemaining: l.qtyRemaining.toString(),
+      unitCost: l.unitCost.toString(),
+      sourceType: l.sourceType,
+      supplier: l.supplier,
+      account: l.account,
+    }));
+  }
+
+  /**
+   * F5 (#9): трассировка строк заказа до партий — «из какой закупки взято,
+   * кто поставщик, с какого счёта оплачено». Net-потребление по (строка, лот):
+   * Σ знакового LotConsumption.qty (CONSUME + / REVERSAL −); нулевые и
+   * отрицательные net (всё вернулось) не показываем. Цена — текущая цена
+   * партии (снимки исторических операций живут в марже, не здесь).
+   */
+  async lotTraceForOrder(workspaceId: string, orderId: string) {
+    const items = await this.prisma.orderItem.findMany({
+      where: { orderId, deletedAt: null, order: { workspaceId, deletedAt: null } },
+      select: { id: true },
+    });
+    if (!items.length) return { items: [] };
+
+    const cons = await this.prisma.lotConsumption.findMany({
+      where: { workspaceId, orderItemId: { in: items.map((i) => i.id) } },
+      include: {
+        lot: {
+          include: {
+            supplier: { select: { id: true, name: true } },
+            account: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    // net qty по (строка заказа, лот).
+    const byKey = new Map<
+      string,
+      { orderItemId: string; lot: (typeof cons)[number]['lot']; qty: Prisma.Decimal }
+    >();
+    for (const c of cons) {
+      const key = `${c.orderItemId}:${c.lotId}`;
+      const acc = byKey.get(key) ?? {
+        orderItemId: c.orderItemId!,
+        lot: c.lot,
+        qty: D(0),
+      };
+      acc.qty = add(acc.qty, c.qty);
+      byKey.set(key, acc);
+    }
+
+    const byItem = new Map<string, ReturnType<typeof toLotRef>[]>();
+    for (const { orderItemId, lot, qty } of byKey.values()) {
+      if (!gt(qty, '0')) continue; // полностью реверснуто — не показываем
+      const list = byItem.get(orderItemId) ?? [];
+      list.push(toLotRef(lot, qty));
+      byItem.set(orderItemId, list);
+    }
+    return {
+      items: Array.from(byItem.entries()).map(([orderItemId, lots]) => ({
+        orderItemId,
+        lots: lots.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)),
+      })),
+    };
+  }
+
+  /**
    * F4 (решение #10): списание со склада — брак/порча/недостача.
    * Атомарно: FIFO-списание лотов (StockMovement WRITE_OFF + LotConsumption)
    * и НЕДЕНЕЖНАЯ проводка-убыток Transaction(kind=WRITE_OFF, EXPENSE) на
@@ -1023,4 +1112,27 @@ export class WarehouseService {
         AND w."isArchived" = false`;
     return D(rows[0]?.total ?? '0').toFixed(2);
   }
+}
+
+/** F5: ссылка на партию для витрины трассировки (заказ/склад). */
+function toLotRef(
+  lot: {
+    id: string;
+    receivedAt: Date;
+    unitCost: Prisma.Decimal;
+    sourceType: string;
+    supplier: { id: string; name: string } | null;
+    account: { id: string; name: string } | null;
+  },
+  qty: Prisma.Decimal,
+) {
+  return {
+    lotId: lot.id,
+    qty: qty.toString(),
+    unitCost: lot.unitCost.toString(),
+    receivedAt: lot.receivedAt.toISOString(),
+    sourceType: lot.sourceType,
+    supplier: lot.supplier,
+    account: lot.account,
+  };
 }
