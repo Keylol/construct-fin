@@ -47,6 +47,12 @@ export class OrderRepository {
       include: {
         client: { select: { id: true, name: true } },
         _count: { select: { items: true } },
+        // Строки графика — для сводки просрочки в списке (бейдж). Обычно 0–4
+        // строки на заказ; entries наружу не отдаются, только summary.
+        schedule: {
+          where: { deletedAt: null },
+          orderBy: [{ dueDate: 'asc' }, { seq: 'asc' }],
+        },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
@@ -83,6 +89,10 @@ export class OrderRepository {
           // avgCost — для оценочной маржи открытых заказов (F1): до выдачи
           // себестоимость складской строки оценивается текущей стоимостью остатка.
           include: { warehouseItem: { select: { avgCost: true } } },
+        },
+        schedule: {
+          where: { deletedAt: null },
+          orderBy: [{ dueDate: 'asc' }, { seq: 'asc' }],
         },
         transactions: {
           where: { deletedAt: null },

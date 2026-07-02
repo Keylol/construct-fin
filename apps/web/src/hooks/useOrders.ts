@@ -43,6 +43,13 @@ export interface AddPaymentInput {
   description?: string;
 }
 
+/** F2: строка графика платежей (ввод). */
+export interface ScheduleEntryInput {
+  dueDate: string;
+  amount: string;
+  note?: string;
+}
+
 /**
  * Список заказов с курсор-пагинацией («Загрузить ещё»). Бэк отдаёт
  * { items, nextCursor }. queryKey содержит фильтры — их смена сбрасывает страницы.
@@ -124,6 +131,16 @@ export function useAddOrderPayment(wsId: string) {
       api.post<Order>(`/workspaces/${wsId}/orders/${id}/payments`, input, {
         idempotencyKey: idemKey.current,
       }),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
+/** F2: заменить график платежей целиком (пустой массив снимает график). */
+export function useSetOrderSchedule(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, entries }: { id: string; entries: ScheduleEntryInput[] }) =>
+      api.put<Order>(`/workspaces/${wsId}/orders/${id}/schedule`, { entries }),
     onSuccess: () => invalidate(qc, wsId),
   });
 }

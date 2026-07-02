@@ -16,11 +16,24 @@ import {
   useFinalizeOrder,
   useCancelOrder,
   useReopenOrder,
+  useSetOrderSchedule,
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
 } from '@/hooks/useOrders';
-import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
+import type {
+  Order,
+  OrderStatus,
+  OrderPaymentState,
+  ScheduleEntryStatus,
+} from '@/lib/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/Dialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -73,6 +86,19 @@ const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   month: '2-digit',
   year: 'numeric',
 });
+
+const SCHED_LABEL: Record<ScheduleEntryStatus, string> = {
+  PAID: 'Оплачен',
+  PARTIAL: 'Частично',
+  PENDING: 'Ожидается',
+  OVERDUE: 'Просрочен',
+};
+const SCHED_VARIANT: Record<ScheduleEntryStatus, BadgeProps['variant']> = {
+  PAID: 'success',
+  PARTIAL: 'outline',
+  PENDING: 'muted',
+  OVERDUE: 'destructive',
+};
 
 export default function OrdersPage() {
   const { current } = useCurrentWorkspace();
@@ -140,9 +166,15 @@ export default function OrdersPage() {
       key: 'payment',
       header: 'Оплата',
       cell: (o) => (
-        <Badge variant={PAY_VARIANT[o.paymentStatus]}>{PAY_LABEL[o.paymentStatus]}</Badge>
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant={PAY_VARIANT[o.paymentStatus]}>{PAY_LABEL[o.paymentStatus]}</Badge>
+          {/* F2: платёж по графику пропущен — видно без открытия карточки. */}
+          {o.scheduleSummary && o.scheduleSummary.overdueAmount !== '0.00' && (
+            <Badge variant="destructive">просрочен</Badge>
+          )}
+        </div>
       ),
-      className: 'w-[130px]',
+      className: 'w-[150px]',
     },
     {
       key: 'paid',
@@ -679,6 +711,7 @@ function OrderDetailSheet({
   const [payAccount, setPayAccount] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
+  const [editSchedule, setEditSchedule] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onPay = async () => {
@@ -836,6 +869,80 @@ function OrderDetailSheet({
                       />
                     </div>
                   )}
+
+                {/* График платежей (F2): план «суммы + даты», покрытие строк
+                    считает бэкенд FIFO из paidAmount — здесь только рисуем. */}
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                      График платежей
+                    </div>
+                    {order.status !== 'CANCELLED' && (
+                      <Button variant="ghost" size="sm" onClick={() => setEditSchedule(true)}>
+                        {order.schedule ? 'Изменить' : 'Задать'}
+                      </Button>
+                    )}
+                  </div>
+                  {order.schedule ? (
+                    <div className="space-y-1.5">
+                      {!order.schedule.summary.matchesTotal && (
+                        <p className="text-xs text-amber-600">
+                          Сумма графика {formatRub(order.schedule.summary.planned)} не сходится
+                          с итогом заказа {formatRub(order.totalAmount)}.
+                        </p>
+                      )}
+                      <div className="overflow-hidden rounded-md border border-border">
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {order.schedule.entries.map((e) => (
+                              <tr key={e.id} className="border-b border-border last:border-0">
+                                <td className="px-3 py-1.5 tabular-nums">
+                                  {DATE_FMT.format(new Date(e.dueDate))}
+                                  {e.note && (
+                                    <div className="text-xs text-muted-foreground">{e.note}</div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">
+                                  {formatRub(e.amount)}
+                                  {e.status !== 'PAID' && e.covered !== '0.00' && (
+                                    <div className="text-xs text-muted-foreground">
+                                      осталось {formatRub(e.remaining)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="w-[110px] px-3 py-1.5 text-right">
+                                  <Badge variant={SCHED_VARIANT[e.status]}>
+                                    {SCHED_LABEL[e.status]}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {order.schedule.summary.overdueAmount !== '0.00' && (
+                          <Row
+                            label="Просрочено"
+                            value={formatRub(order.schedule.summary.overdueAmount)}
+                            tone="neg"
+                            strong
+                          />
+                        )}
+                        {order.schedule.summary.nextDueDate && (
+                          <Row
+                            label="Следующий платёж"
+                            value={`${DATE_FMT.format(new Date(order.schedule.summary.nextDueDate))} · ${formatRub(order.schedule.summary.nextDueAmount ?? '0')}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Не задан — оплата в свободном порядке.
+                    </p>
+                  )}
+                </div>
 
                 {/* Чеки / документы */}
                 <div>
@@ -1027,7 +1134,201 @@ function OrderDetailSheet({
         }}
         loading={deleteAtt.isPending}
       />
+
+      {order && (
+        <ScheduleDialog
+          wsId={wsId}
+          order={order}
+          open={editSchedule}
+          onClose={() => setEditSchedule(false)}
+        />
+      )}
     </>
+  );
+}
+
+// ─────────────────────────── Schedule editor (F2) ───────────────────────────
+
+interface ScheduleRowDraft {
+  dueDate: string; // yyyy-mm-dd
+  amount: string;
+  note: string;
+}
+
+function ScheduleDialog({
+  wsId,
+  order,
+  open,
+  onClose,
+}: {
+  wsId: string;
+  order: Order;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const setSchedule = useSetOrderSchedule(wsId);
+  const [rows, setRows] = useState<ScheduleRowDraft[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setRows(
+      order.schedule?.entries.map((e) => ({
+        dueDate: e.dueDate.slice(0, 10),
+        amount: e.amount,
+        note: e.note ?? '',
+      })) ?? [{ dueDate: new Date().toISOString().slice(0, 10), amount: '', note: '' }],
+    );
+    setError(null);
+  }, [open, order]);
+
+  // Σ-превью черновика через Decimal (введённое сравнивается с итогом заказа).
+  const planned = rows.reduce((acc, r) => {
+    const p = r.amount ? parseAmountInput(r.amount) : null;
+    return p ? add(acc, p) : acc;
+  }, D(0));
+  const matches = planned.eq(D(order.totalAmount));
+
+  const collect = (): { dueDate: string; amount: string; note?: string }[] | null => {
+    const entries: { dueDate: string; amount: string; note?: string }[] = [];
+    for (const r of rows) {
+      if (!r.dueDate && !r.amount) continue; // полностью пустую строку молча пропускаем
+      const amount = parseAmountInput(r.amount);
+      if (!r.dueDate || !amount || D(amount).lte(0)) {
+        setError('В каждой строке нужны дата и положительная сумма');
+        return null;
+      }
+      entries.push({
+        dueDate: new Date(r.dueDate).toISOString(),
+        amount,
+        note: r.note.trim() || undefined,
+      });
+    }
+    return entries;
+  };
+
+  const save = async () => {
+    setError(null);
+    const entries = collect();
+    if (!entries) return;
+    try {
+      await setSchedule.mutateAsync({ id: order.id, entries });
+      toast.success(entries.length ? 'График сохранён' : 'График убран');
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  const clear = async () => {
+    setError(null);
+    try {
+      await setSchedule.mutateAsync({ id: order.id, entries: [] });
+      toast.success('График убран');
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>График платежей · {order.number}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={r.dueDate}
+                onChange={(e) =>
+                  setRows((arr) =>
+                    arr.map((x, j) => (j === i ? { ...x, dueDate: e.target.value } : x)),
+                  )
+                }
+                className="w-[150px]"
+              />
+              <Input
+                inputMode="decimal"
+                placeholder="Сумма"
+                value={r.amount}
+                onChange={(e) =>
+                  setRows((arr) =>
+                    arr.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                  )
+                }
+                className="w-[120px]"
+              />
+              <Input
+                placeholder="Заметка"
+                value={r.note}
+                onChange={(e) =>
+                  setRows((arr) =>
+                    arr.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)),
+                  )
+                }
+                className="flex-1"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setRows((arr) => arr.filter((_, j) => j !== i))}
+                aria-label="Удалить строку"
+                disabled={rows.length === 1}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setRows((arr) => [
+                ...arr,
+                { dueDate: new Date().toISOString().slice(0, 10), amount: '', note: '' },
+              ])
+            }
+          >
+            <Plus className="h-3.5 w-3.5" /> Платёж
+          </Button>
+
+          <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
+            <Row label="Сумма графика" value={formatRub(toMoneyString(planned))} />
+            <Row label="Итог заказа" value={formatRub(order.totalAmount)} />
+            {!matches && planned.gt(0) && (
+              <p className="text-xs text-amber-600">
+                Суммы не сходятся — график сохранится, но карточка будет предупреждать.
+              </p>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          {order.schedule && (
+            <Button
+              variant="ghost"
+              className="text-destructive sm:mr-auto"
+              onClick={clear}
+              disabled={setSchedule.isPending}
+            >
+              Убрать график
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose} disabled={setSchedule.isPending}>
+            Отмена
+          </Button>
+          <Button onClick={save} disabled={setSchedule.isPending}>
+            {setSchedule.isPending ? 'Сохраняю…' : 'Сохранить'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1040,7 +1341,7 @@ function Row({
   label: string;
   value: string;
   strong?: boolean;
-  tone?: 'pos';
+  tone?: 'pos' | 'neg';
 }) {
   return (
     <div className="flex justify-between">
@@ -1050,6 +1351,7 @@ function Row({
           'tabular-nums',
           strong && 'font-semibold',
           tone === 'pos' && 'text-success',
+          tone === 'neg' && 'text-destructive',
         )}
       >
         {value}
