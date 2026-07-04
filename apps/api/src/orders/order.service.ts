@@ -14,7 +14,7 @@ import { WarehouseService, NoConsumptionsError } from '../warehouse/warehouse.se
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
-import { endOfDay } from '../reports/period';
+import { assertNotFuture } from '../reports/period';
 import {
   itemMargin,
   orderMargin,
@@ -1110,19 +1110,6 @@ export function resolvePaymentState(
   if (lt(paid, total)) return 'PARTIAL';
   if (gt(paid, total)) return 'OVERPAID';
   return 'PAID';
-}
-
-/**
- * DE4: дата денежной операции не может быть в будущем. «Сегодня» — конец
- * текущих суток в поясе бизнеса (UTC+5), чтобы «сегодняшняя» дата в любом
- * часовом поясе клиента не отсекалась. Прошлое разрешено (бэкдейт вчерашнего
- * платежа — норма); будущее — почти всегда опечатка, которая сажает проводку
- * в ещё не наступивший период отчёта.
- */
-function assertNotFuture(date: Date, label: string): void {
-  if (date.getTime() > endOfDay(new Date()).getTime()) {
-    throw new BadRequestException(`${label} не может быть в будущем`);
-  }
 }
 
 /** Хелпер: пересчёт total при изменении только скидки. */

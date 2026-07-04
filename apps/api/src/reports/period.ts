@@ -107,6 +107,19 @@ export function endOfDay(date: Date): Date {
   return tzInstant(p.y, p.mo, p.d, 23, 59, 59, 999);
 }
 
+/**
+ * DE4: дата денежной операции не может быть в будущем. «Сегодня» — конец
+ * текущих суток в поясе бизнеса (UTC+5), чтобы «сегодняшняя» дата в любом
+ * часовом поясе клиента не отсекалась. Прошлое разрешено (бэкдейт вчерашнего
+ * платежа/закупки — норма); будущее — почти всегда опечатка, сажающая проводку
+ * в ещё не наступивший период отчёта. Бросает BadRequestException (400).
+ */
+export function assertNotFuture(date: Date, label: string): void {
+  if (date.getTime() > endOfDay(new Date()).getTime()) {
+    throw new BadRequestException(`${label} не может быть в будущем`);
+  }
+}
+
 function startOfMonth(year: number, month: number): Date {
   return tzInstant(year, month, 1, 0, 0, 0, 0);
 }
