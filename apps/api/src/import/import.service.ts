@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
 import { AuditService } from '../audit/audit.service';
 import type { ImportSource } from '@construct/db';
-import { applyRules } from '../category-rule/matcher';
+import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
 import {
   detectSourceByFilename,
   parseAlfaXlsx,
@@ -178,10 +178,25 @@ export class ImportService {
     const cpByLcName = new Map<string, string>();
     for (const cp of existingCps) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
-    const rules = await this.prisma.categoryRule.findMany({
-      where: { workspaceId: opts.workspaceId, isActive: true, deletedAt: null },
-      select: { keyword: true, categoryId: true, priority: true, category: { select: { kind: true } } },
+    // Подсказки категории при импорте теперь даёт единый движок правил (Rule),
+    // а не старый CategoryRule/matcher (deprecated). Грузим один раз применимые к
+    // импорту активные правила, дальше гоняем чистый движок per-row.
+    const ruleRows = await this.prisma.rule.findMany({
+      where: {
+        workspaceId: opts.workspaceId,
+        isActive: true,
+        deletedAt: null,
+        appliesTo: { in: ['IMPORT', 'BOTH'] },
+      },
+      select: { id: true, name: true, priority: true, conditions: true, actions: true },
     });
+    const rules = ruleRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      priority: r.priority,
+      conditions: r.conditions as unknown as RuleCondition[],
+      actions: r.actions as unknown as RuleAction[],
+    }));
 
     const previewRows: PreviewRow[] = [];
     let invalidCount = 0;
@@ -199,19 +214,17 @@ export class ImportService {
         counterpartyName: r.counterpartyName,
         description: r.description,
       });
-      const suggestedCategoryId = applyRules(
-        rules.map((rule) => ({
-          keyword: rule.keyword,
-          categoryId: rule.categoryId,
-          priority: rule.priority,
-          kind: rule.category.kind,
-        })),
-        {
-          description: r.description,
-          counterpartyName: r.counterpartyName,
-          kind: r.type,
-        },
-      );
+      // Движок отдаёт полную подсказку (категория/контрагент/счёт); импорт-превью
+      // использует только категорию — контрагент резолвится по имени отдельно
+      // (cpByLcName), счёт задаётся выбором пользователя. source='IMPORT' сужает
+      // правила и включает условие SOURCE_EQUALS.
+      const suggestion = applyRules(rules, {
+        description: r.description,
+        counterpartyName: r.counterpartyName,
+        type: r.type,
+        source: 'IMPORT',
+      });
+      const suggestedCategoryId = suggestion.categoryId ?? null;
       previewRows.push({
         rawIndex: r.rawIndex,
         date: r.date.toISOString(),

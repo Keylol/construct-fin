@@ -1,3 +1,11 @@
+/**
+ * @deprecated Заменён движком правил (apps/api/src/rule/engine.ts). Импорт теперь
+ * берёт подсказки категории из единого движка Rule (см. import.service.ts), а
+ * исторические CategoryRule перенесены в Rule миграцией
+ * 20260704130000_migrate_category_rules_to_rules. Файл сохранён как справочный/для
+ * существующих тестов CategoryRuleService; в проде путь мёртв. Удалить отдельным
+ * cleanup-PR после обкатки движка.
+ */
 export interface MatchableRule {
   keyword: string;
   categoryId: string;
