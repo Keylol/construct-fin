@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Paperclip, Trash2, X } from '@/components/ui/icons';
-import type { TxType, Account, Category, Counterparty } from '@/lib/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Paperclip, Sparkles, Trash2, X } from '@/components/ui/icons';
+import type { TxType, Account, Category, Counterparty, RuleSuggestion } from '@/lib/types';
 import {
   useCreateTransaction,
   useDeleteTransaction,
@@ -14,6 +14,7 @@ import {
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
+import { useRules, useRuleSuggest } from '@/hooks/useRules';
 import {
   Sheet,
   SheetBody,
@@ -51,6 +52,8 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const del = useDeleteTransaction(wsId);
   const upload = useUploadAttachment(wsId);
   const removeAtt = useDeleteAttachment(wsId);
+  const rules = useRules(wsId);
+  const suggest = useRuleSuggest(wsId);
 
   const [type, setType] = useState<TxType>('EXPENSE');
   const [amount, setAmount] = useState('');
@@ -61,6 +64,11 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  // Подсказка движка правил (только при создании): что подставить + какие правила
+  // сработали. dismissed прячет баннер до следующей смены набора сработавших правил.
+  const [suggestion, setSuggestion] = useState<RuleSuggestion | null>(null);
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
+  const lastSigRef = useRef('');
 
   useEffect(() => {
     if (!open) return;
@@ -82,13 +90,104 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
       setDescription('');
     }
     setError(null);
+    setSuggestion(null);
+    setSuggestDismissed(false);
+    lastSigRef.current = '';
   }, [open, existing.data, isEdit, accounts.data]);
+
+  // Подсказки движка правил — только при создании (в режиме правки не навязываем
+  // перезапись). Debounced: ждём паузу в наборе, затем POST /rules/suggest.
+  useEffect(() => {
+    if (!open || isEdit || !wsId) {
+      setSuggestion(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      const normalized = parseAmountInput(amount);
+      suggest({
+        description: description.trim() || null,
+        counterpartyId: counterpartyId || null,
+        accountId: accountId || null,
+        amount: normalized || null,
+        type,
+        source: 'MANUAL',
+      })
+        .then((s) => {
+          if (cancelled) return;
+          const sig = s.matchedRuleIds.slice().sort().join(',');
+          // Новый набор сработавших правил → снова показываем баннер.
+          if (sig !== lastSigRef.current) {
+            lastSigRef.current = sig;
+            setSuggestDismissed(false);
+          }
+          setSuggestion(s.matchedRuleIds.length ? s : null);
+        })
+        .catch(() => {
+          /* подсказка необязательна — молча игнорируем сбой */
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [open, isEdit, wsId, description, counterpartyId, accountId, amount, type, suggest]);
 
   const cats = type === 'INCOME' ? incomeCats.data ?? [] : expenseCats.data ?? [];
   const rootCats = cats.filter((c) => c.parentId === null && !c.isArchived);
   const childCats = (parentId: string) =>
     cats.filter((c) => c.parentId === parentId && !c.isArchived);
   const selectedCat = cats.find((c) => c.id === categoryId);
+
+  // ─── Подсказка правил: имена сработавших правил + поля, отличные от текущих ───
+  const ruleNames = useMemo(() => {
+    if (!suggestion) return [] as string[];
+    return suggestion.matchedRuleIds
+      .map((id) => rules.data?.find((r) => r.id === id)?.name)
+      .filter((n): n is string => !!n);
+  }, [suggestion, rules.data]);
+
+  const cpById = (id: string) => (counterparties.data ?? []).find((c) => c.id === id)?.name;
+  const accById = (id: string) => (accounts.data ?? []).find((a) => a.id === id)?.name;
+
+  const suggestionItems = useMemo(() => {
+    if (!suggestion) return [] as { key: string; label: string }[];
+    const items: { key: string; label: string }[] = [];
+    // Категорию подсказываем, только если она подходит текущему типу (есть в списке
+    // cats) — иначе её нельзя выбрать в форме и бэкенд отверг бы разный kind.
+    if (
+      suggestion.categoryId &&
+      suggestion.categoryId !== categoryId &&
+      cats.some((c) => c.id === suggestion.categoryId)
+    ) {
+      items.push({
+        key: 'cat',
+        label: `Категория → ${cats.find((c) => c.id === suggestion.categoryId)?.name ?? '—'}`,
+      });
+    }
+    if (suggestion.counterpartyId && suggestion.counterpartyId !== counterpartyId) {
+      items.push({ key: 'cp', label: `Контрагент → ${cpById(suggestion.counterpartyId) ?? '—'}` });
+    }
+    if (suggestion.accountId && suggestion.accountId !== accountId) {
+      items.push({ key: 'acc', label: `Счёт → ${accById(suggestion.accountId) ?? '—'}` });
+    }
+    return items;
+    // cpById/accById пересоздаются каждый рендер, но их реальные входы —
+    // counterparties.data/accounts.data — уже в зависимостях; отключаем правило,
+    // чтобы не тянуть нестабильные функции в deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion, categoryId, counterpartyId, accountId, cats, counterparties.data, accounts.data]);
+
+  const showSuggestion = !isEdit && !suggestDismissed && suggestionItems.length > 0;
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    if (suggestion.categoryId && cats.some((c) => c.id === suggestion.categoryId))
+      setCategoryId(suggestion.categoryId);
+    if (suggestion.counterpartyId) setCounterpartyId(suggestion.counterpartyId);
+    if (suggestion.accountId) setAccountId(suggestion.accountId);
+    setSuggestDismissed(true);
+  };
 
   const onSave = async () => {
     setError(null);
@@ -158,6 +257,38 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
           </SheetHeader>
 
           <SheetBody className="space-y-4">
+            {showSuggestion && (
+              <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="flex-1 text-sm">
+                    <div className="font-medium">
+                      {ruleNames.length
+                        ? `Правило «${ruleNames.join('», «')}» предлагает:`
+                        : 'Правило предлагает:'}
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                      {suggestionItems.map((it) => (
+                        <li key={it.key}>{it.label}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestDismissed(true)}
+                    aria-label="Скрыть подсказку"
+                    className="text-muted-foreground transition-colors hover:opacity-80"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="button" size="sm" variant="secondary" onClick={applySuggestion}>
+                    <Check className="h-3.5 w-3.5" /> Применить
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {/* C16: смена типа сбрасывает категорию — иначе в payload осталась бы
                   stale-категория прежнего типа (расходная на доходе), которую

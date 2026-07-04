@@ -31,6 +31,7 @@ export {
   Scales as Scale,
   Search,
   ShoppingCart,
+  MagicWand as Sparkles,
   Tag,
   TrashCan as Trash2,
   Delivery as Truck,

@@ -375,6 +375,56 @@ export interface CategoryRule {
   category?: { id: string; name: string; kind: CategoryKind };
 }
 
+// ──────────── Движок правил (Rule) ────────────
+// Обобщение CategoryRule до «условие → действие». Зеркалит фиксированный словарь
+// бэкенда (apps/api/src/rule/rule.dto.ts + engine.ts). Только подсказки.
+
+export type RuleConditionType =
+  | 'DESCRIPTION_CONTAINS'
+  | 'COUNTERPARTY_EQUALS'
+  | 'ACCOUNT_EQUALS'
+  | 'TYPE_EQUALS'
+  | 'AMOUNT_RANGE'
+  | 'SOURCE_EQUALS';
+
+export type RuleCondition =
+  | { type: 'DESCRIPTION_CONTAINS'; value: string }
+  | { type: 'COUNTERPARTY_EQUALS'; counterpartyId: string }
+  | { type: 'ACCOUNT_EQUALS'; accountId: string }
+  | { type: 'TYPE_EQUALS'; value: TxType }
+  | { type: 'AMOUNT_RANGE'; min?: string | null; max?: string | null }
+  | { type: 'SOURCE_EQUALS'; value: 'IMPORT' | 'MANUAL' };
+
+export type RuleActionType = 'SET_CATEGORY' | 'SET_COUNTERPARTY' | 'SET_ACCOUNT';
+
+export type RuleAction =
+  | { type: 'SET_CATEGORY'; categoryId: string }
+  | { type: 'SET_COUNTERPARTY'; counterpartyId: string }
+  | { type: 'SET_ACCOUNT'; accountId: string };
+
+export type RuleAppliesTo = 'IMPORT' | 'MANUAL' | 'BOTH';
+
+export interface Rule {
+  id: string;
+  workspaceId: string;
+  name: string;
+  priority: number;
+  isActive: boolean;
+  appliesTo: RuleAppliesTo;
+  conditions: RuleCondition[];
+  actions: RuleAction[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Ответ POST /rules/suggest: что подставить + какие правила сработали. */
+export interface RuleSuggestion {
+  categoryId?: string;
+  counterpartyId?: string;
+  accountId?: string;
+  matchedRuleIds: string[];
+}
+
 // ──────────── Reports ────────────
 
 export type PeriodPreset =

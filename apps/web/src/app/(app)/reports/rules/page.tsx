@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Filter, X, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -20,26 +20,104 @@ import {
 } from '@/components/ui/Sheet';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCategories } from '@/hooks/useCategories';
+import { useCounterparties } from '@/hooks/useCounterparties';
+import { useAccounts } from '@/hooks/useAccounts';
 import {
-  useCategoryRules,
-  useCreateCategoryRule,
-  useDeleteCategoryRule,
-  useUpdateCategoryRule,
-} from '@/hooks/useCategoryRules';
-import type { CategoryRule } from '@/lib/types';
+  useRules,
+  useCreateRule,
+  useUpdateRule,
+  useDeleteRule,
+  type CreateRuleInput,
+} from '@/hooks/useRules';
+import type {
+  Rule,
+  RuleAction,
+  RuleActionType,
+  RuleAppliesTo,
+  RuleCondition,
+  RuleConditionType,
+  Account,
+  Category,
+  Counterparty,
+} from '@/lib/types';
 
-export default function CategoryRulesPage() {
+const CONDITION_LABELS: Record<RuleConditionType, string> = {
+  DESCRIPTION_CONTAINS: 'Описание содержит',
+  COUNTERPARTY_EQUALS: 'Контрагент — это',
+  ACCOUNT_EQUALS: 'Счёт — это',
+  TYPE_EQUALS: 'Тип операции',
+  AMOUNT_RANGE: 'Сумма в диапазоне',
+  SOURCE_EQUALS: 'Источник',
+};
+
+const ACTION_LABELS: Record<RuleActionType, string> = {
+  SET_CATEGORY: 'Поставить категорию',
+  SET_COUNTERPARTY: 'Поставить контрагента',
+  SET_ACCOUNT: 'Поставить счёт',
+};
+
+const APPLIES_TO_LABELS: Record<RuleAppliesTo, string> = {
+  IMPORT: 'Импорт',
+  MANUAL: 'Ручной ввод',
+  BOTH: 'Везде',
+};
+
+function defaultCondition(type: RuleConditionType): RuleCondition {
+  switch (type) {
+    case 'DESCRIPTION_CONTAINS':
+      return { type, value: '' };
+    case 'COUNTERPARTY_EQUALS':
+      return { type, counterpartyId: '' };
+    case 'ACCOUNT_EQUALS':
+      return { type, accountId: '' };
+    case 'TYPE_EQUALS':
+      return { type, value: 'EXPENSE' };
+    case 'AMOUNT_RANGE':
+      return { type, min: '', max: '' };
+    case 'SOURCE_EQUALS':
+      return { type, value: 'IMPORT' };
+  }
+}
+
+function defaultAction(type: RuleActionType): RuleAction {
+  switch (type) {
+    case 'SET_CATEGORY':
+      return { type, categoryId: '' };
+    case 'SET_COUNTERPARTY':
+      return { type, counterpartyId: '' };
+    case 'SET_ACCOUNT':
+      return { type, accountId: '' };
+  }
+}
+
+export default function RulesPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
-  const rules = useCategoryRules(wsId, true);
+  const rules = useRules(wsId);
   const categories = useCategories(wsId);
-  const createMut = useCreateCategoryRule(wsId ?? '');
-  const updateMut = useUpdateCategoryRule(wsId ?? '');
-  const deleteMut = useDeleteCategoryRule(wsId ?? '');
+  const counterparties = useCounterparties(wsId);
+  const accounts = useAccounts(wsId);
+  const createMut = useCreateRule(wsId ?? '');
+  const updateMut = useUpdateRule(wsId ?? '');
+  const deleteMut = useDeleteRule(wsId ?? '');
 
-  const [editing, setEditing] = useState<CategoryRule | null>(null);
+  const [editing, setEditing] = useState<Rule | null>(null);
   const [open, setOpen] = useState(false);
-  const [delTarget, setDelTarget] = useState<CategoryRule | null>(null);
+  const [delTarget, setDelTarget] = useState<Rule | null>(null);
+
+  // Справочники id→имя для человекочитаемой сводки условий/действий в таблице.
+  const catName = useMemo(
+    () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+    [categories.data],
+  );
+  const cpName = useMemo(
+    () => new Map((counterparties.data ?? []).map((c) => [c.id, c.name])),
+    [counterparties.data],
+  );
+  const accName = useMemo(
+    () => new Map((accounts.data ?? []).map((a) => [a.id, a.name])),
+    [accounts.data],
+  );
 
   if (!wsId) {
     return (
@@ -57,21 +135,70 @@ export default function CategoryRulesPage() {
     setEditing(null);
     setOpen(true);
   }
-  function openEdit(r: CategoryRule) {
+  function openEdit(r: Rule) {
     setEditing(r);
     setOpen(true);
   }
 
-  const columns: Column<CategoryRule>[] = [
+  function describeCondition(c: RuleCondition): string {
+    switch (c.type) {
+      case 'DESCRIPTION_CONTAINS':
+        return `описание содержит «${c.value}»`;
+      case 'COUNTERPARTY_EQUALS':
+        return `контрагент = ${cpName.get(c.counterpartyId) ?? '—'}`;
+      case 'ACCOUNT_EQUALS':
+        return `счёт = ${accName.get(c.accountId) ?? '—'}`;
+      case 'TYPE_EQUALS':
+        return c.value === 'INCOME' ? 'тип = доход' : 'тип = расход';
+      case 'AMOUNT_RANGE': {
+        const parts: string[] = [];
+        if (c.min != null && c.min !== '') parts.push(`от ${c.min}`);
+        if (c.max != null && c.max !== '') parts.push(`до ${c.max}`);
+        return `сумма ${parts.join(' ') || '—'}`;
+      }
+      case 'SOURCE_EQUALS':
+        return c.value === 'IMPORT' ? 'источник = импорт' : 'источник = ручной';
+    }
+  }
+
+  function describeAction(a: RuleAction): string {
+    switch (a.type) {
+      case 'SET_CATEGORY':
+        return `категория → ${catName.get(a.categoryId) ?? '—'}`;
+      case 'SET_COUNTERPARTY':
+        return `контрагент → ${cpName.get(a.counterpartyId) ?? '—'}`;
+      case 'SET_ACCOUNT':
+        return `счёт → ${accName.get(a.accountId) ?? '—'}`;
+    }
+  }
+
+  const columns: Column<Rule>[] = [
     {
-      key: 'keyword',
-      header: 'Ключевое слово',
-      cell: (r) => <span className="font-medium">{r.keyword}</span>,
+      key: 'name',
+      header: 'Правило',
+      cell: (r) => (
+        <div className="space-y-0.5">
+          <div className="font-medium">{r.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {r.conditions.map(describeCondition).join(' И ')}
+          </div>
+        </div>
+      ),
     },
     {
-      key: 'category',
-      header: 'Категория',
-      cell: (r) => <span className="text-muted-foreground">{r.category?.name ?? '—'}</span>,
+      key: 'actions-summary',
+      header: 'Действие',
+      cell: (r) => (
+        <span className="text-sm text-muted-foreground">
+          {r.actions.map(describeAction).join(', ')}
+        </span>
+      ),
+    },
+    {
+      key: 'appliesTo',
+      header: 'Где',
+      cell: (r) => <Badge variant="outline">{APPLIES_TO_LABELS[r.appliesTo]}</Badge>,
+      className: 'w-[120px]',
     },
     {
       key: 'priority',
@@ -92,9 +219,7 @@ export default function CategoryRulesPage() {
           <input
             type="checkbox"
             checked={r.isActive}
-            onChange={(e) =>
-              updateMut.mutate({ id: r.id, isActive: e.target.checked })
-            }
+            onChange={(e) => updateMut.mutate({ id: r.id, isActive: e.target.checked })}
             className="h-4 w-4 rounded border-input accent-primary"
           />
           {r.isActive ? (
@@ -135,9 +260,10 @@ export default function CategoryRulesPage() {
       <div className="border-b border-border bg-background px-6 py-3">
         <div className="flex items-center justify-between gap-3">
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Если описание или контрагент содержит ключевое слово, при импорте
-            автоматически предлагается категория. Сравнение без учёта регистра,
-            побеждает правило с большим приоритетом.
+            Правило срабатывает, когда выполнены <strong>все</strong> его условия, и
+            подсказывает, что подставить — категорию, контрагента или счёт. Работает
+            при импорте и/или ручном вводе; правило с большим приоритетом применяется
+            первым. Ничего не двигает автоматически — вы подтверждаете подсказку.
           </p>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> Новое правило
@@ -151,11 +277,12 @@ export default function CategoryRulesPage() {
           columns={columns}
           rowKey={(r) => r.id}
           loading={rules.isLoading}
+          onRowClick={openEdit}
           empty={
             <EmptyState
               icon={Filter}
               title="Правил пока нет"
-              hint="Создайте правило, чтобы при импорте автоматически проставлять категорию."
+              hint="Создайте правило, чтобы автоматически предлагать категорию/контрагента при импорте и вводе."
               action={
                 <Button onClick={openCreate}>
                   <Plus className="h-4 w-4" /> Новое правило
@@ -165,9 +292,12 @@ export default function CategoryRulesPage() {
           }
           mobileCards={(r) => (
             <div className="space-y-0.5">
-              <div className="font-medium">{r.keyword}</div>
+              <div className="font-medium">{r.name}</div>
               <div className="text-xs text-muted-foreground">
-                {r.category?.name ?? '—'} · приоритет {r.priority}
+                {r.conditions.map(describeCondition).join(' И ')}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {r.actions.map(describeAction).join(', ')} · {APPLIES_TO_LABELS[r.appliesTo]}
               </div>
             </div>
           )}
@@ -179,6 +309,9 @@ export default function CategoryRulesPage() {
         onClose={() => setOpen(false)}
         editing={editing}
         categories={categories.data ?? []}
+        counterparties={counterparties.data ?? []}
+        accounts={accounts.data ?? []}
+        submitting={createMut.isPending || updateMut.isPending}
         onSubmit={async (input) => {
           if (editing) await updateMut.mutateAsync({ id: editing.id, ...input });
           else await createMut.mutateAsync(input);
@@ -189,7 +322,7 @@ export default function CategoryRulesPage() {
       <ConfirmDialog
         open={!!delTarget}
         onOpenChange={(o) => !o && setDelTarget(null)}
-        title={`Удалить правило «${delTarget?.keyword ?? ''}»?`}
+        title={`Удалить правило «${delTarget?.name ?? ''}»?`}
         confirmText="Удалить"
         onConfirm={async () => {
           if (delTarget) await deleteMut.mutateAsync(delTarget.id);
@@ -206,104 +339,248 @@ function RuleFormDialog({
   onClose,
   editing,
   categories,
+  counterparties,
+  accounts,
+  submitting,
   onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
-  editing: CategoryRule | null;
-  categories: { id: string; name: string; kind: string }[];
-  onSubmit: (input: {
-    keyword: string;
-    categoryId: string;
-    priority: number;
-    isActive: boolean;
-  }) => Promise<void>;
+  editing: Rule | null;
+  categories: Category[];
+  counterparties: Counterparty[];
+  accounts: Account[];
+  submitting: boolean;
+  onSubmit: (input: CreateRuleInput) => Promise<void>;
 }) {
-  const [keyword, setKeyword] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  const [name, setName] = useState('');
+  const [appliesTo, setAppliesTo] = useState<RuleAppliesTo>('BOTH');
   const [priority, setPriority] = useState(0);
   const [isActive, setIsActive] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [conditions, setConditions] = useState<RuleCondition[]>([
+    { type: 'DESCRIPTION_CONTAINS', value: '' },
+  ]);
+  const [actions, setActions] = useState<RuleAction[]>([
+    { type: 'SET_CATEGORY', categoryId: '' },
+  ]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setError(null);
     if (editing) {
-      setKeyword(editing.keyword);
-      setCategoryId(editing.categoryId);
+      setName(editing.name);
+      setAppliesTo(editing.appliesTo);
       setPriority(editing.priority);
       setIsActive(editing.isActive);
+      // Копии, чтобы правки формы не мутировали кэш query.
+      setConditions(editing.conditions.map((c) => ({ ...c })));
+      setActions(editing.actions.map((a) => ({ ...a })));
     } else {
-      setKeyword('');
-      setCategoryId(categories[0]?.id ?? '');
+      setName('');
+      setAppliesTo('BOTH');
       setPriority(0);
       setIsActive(true);
+      setConditions([{ type: 'DESCRIPTION_CONTAINS', value: '' }]);
+      setActions([{ type: 'SET_CATEGORY', categoryId: '' }]);
     }
-  }, [open, editing, categories]);
+  }, [open, editing]);
+
+  const rootCatsByKind = (kind: 'INCOME' | 'EXPENSE') =>
+    categories.filter((c) => c.kind === kind && !c.isArchived);
+  const activeCps = counterparties.filter((c) => !c.isArchived);
+  const activeAccounts = accounts.filter((a) => !a.isArchived);
+
+  function setCondition(i: number, c: RuleCondition) {
+    setConditions((prev) => prev.map((x, idx) => (idx === i ? c : x)));
+  }
+  function setAction(i: number, a: RuleAction) {
+    setActions((prev) => prev.map((x, idx) => (idx === i ? a : x)));
+  }
+
+  function validate(): string | null {
+    if (!name.trim()) return 'Укажите название правила';
+    if (conditions.length === 0) return 'Добавьте хотя бы одно условие';
+    if (actions.length === 0) return 'Добавьте хотя бы одно действие';
+    for (const c of conditions) {
+      if (c.type === 'DESCRIPTION_CONTAINS' && !c.value.trim())
+        return 'Заполните текст в условии «Описание содержит»';
+      if (c.type === 'COUNTERPARTY_EQUALS' && !c.counterpartyId)
+        return 'Выберите контрагента в условии';
+      if (c.type === 'ACCOUNT_EQUALS' && !c.accountId) return 'Выберите счёт в условии';
+      if (c.type === 'AMOUNT_RANGE') {
+        const hasMin = c.min != null && c.min !== '';
+        const hasMax = c.max != null && c.max !== '';
+        if (!hasMin && !hasMax) return 'В диапазоне суммы укажите «от» или «до»';
+        if (hasMin && Number.isNaN(Number(c.min))) return 'Сумма «от» указана некорректно';
+        if (hasMax && Number.isNaN(Number(c.max))) return 'Сумма «до» указана некорректно';
+        // Зеркалим серверную проверку (rule.dto.ts): сравнение по модулю, |от| ≤ |до|.
+        // Ловим здесь, иначе пользователь получил бы невнятную 400 вместо подсказки.
+        if (hasMin && hasMax && Math.abs(Number(c.min)) > Math.abs(Number(c.max)))
+          return 'В диапазоне суммы: |от| должно быть ≤ |до|';
+      }
+    }
+    for (const a of actions) {
+      if (a.type === 'SET_CATEGORY' && !a.categoryId) return 'Выберите категорию в действии';
+      if (a.type === 'SET_COUNTERPARTY' && !a.counterpartyId)
+        return 'Выберите контрагента в действии';
+      if (a.type === 'SET_ACCOUNT' && !a.accountId) return 'Выберите счёт в действии';
+    }
+    return null;
+  }
+
+  // Нормализация перед отправкой: пустые границы AMOUNT_RANGE → undefined.
+  function normalizeConditions(): RuleCondition[] {
+    return conditions.map((c) =>
+      c.type === 'AMOUNT_RANGE'
+        ? {
+            type: 'AMOUNT_RANGE',
+            min: c.min && c.min !== '' ? c.min : undefined,
+            max: c.max && c.max !== '' ? c.max : undefined,
+          }
+        : c,
+    );
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = validate();
+    if (v) {
+      setError(v);
+      return;
+    }
+    setError(null);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        appliesTo,
+        priority,
+        isActive,
+        conditions: normalizeConditions(),
+        actions,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения');
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-md">
+      <SheetContent side="right" hideClose className="sm:max-w-lg">
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>{editing ? 'Изменить правило' : 'Новое правило'}</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
         </SheetHeader>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!keyword.trim() || !categoryId) return;
-            setBusy(true);
-            try {
-              await onSubmit({
-                keyword: keyword.trim(),
-                categoryId,
-                priority,
-                isActive,
-              });
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <SheetBody className="space-y-4">
-            <FormField label="Ключевое слово" htmlFor="keyword" required>
+        <form onSubmit={handleSubmit}>
+          <SheetBody className="space-y-5">
+            <FormField label="Название" htmlFor="rule-name" required>
               <Input
-                id="keyword"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="например, starbucks"
+                id="rule-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="например, «Продукты в офис»"
                 required
               />
             </FormField>
-            <FormField label="Категория" htmlFor="categoryId" required>
-              <Select
-                id="categoryId"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                required
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Где применять" htmlFor="rule-applies">
+                <Select
+                  id="rule-applies"
+                  value={appliesTo}
+                  onChange={(e) => setAppliesTo(e.target.value as RuleAppliesTo)}
+                >
+                  <option value="BOTH">Везде</option>
+                  <option value="IMPORT">Только импорт</option>
+                  <option value="MANUAL">Только ручной ввод</option>
+                </Select>
+              </FormField>
+              <FormField
+                label="Приоритет"
+                htmlFor="rule-priority"
+                hint="Больше — срабатывает раньше."
               >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField
-              label="Приоритет"
-              htmlFor="priority"
-              hint="Больше приоритет — выше шансы сработать первым."
-            >
-              <Input
-                id="priority"
-                type="number"
-                min={0}
-                max={1000}
-                value={priority}
-                onChange={(e) => setPriority(Number(e.target.value))}
-              />
-            </FormField>
+                <Input
+                  id="rule-priority"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={priority}
+                  onChange={(e) => setPriority(Number(e.target.value))}
+                />
+              </FormField>
+            </div>
+
+            {/* ─── Условия (И) ─── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Если (все условия)</span>
+                <span className="text-xs text-muted-foreground">до 10</span>
+              </div>
+              {conditions.map((c, i) => (
+                <ConditionRow
+                  key={i}
+                  condition={c}
+                  counterparties={activeCps}
+                  accounts={activeAccounts}
+                  onChange={(next) => setCondition(i, next)}
+                  onRemove={
+                    conditions.length > 1
+                      ? () => setConditions((prev) => prev.filter((_, idx) => idx !== i))
+                      : undefined
+                  }
+                />
+              ))}
+              {conditions.length < 10 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    setConditions((prev) => [...prev, defaultCondition('DESCRIPTION_CONTAINS')])
+                  }
+                >
+                  <Plus className="h-3.5 w-3.5" /> Условие
+                </Button>
+              )}
+            </div>
+
+            {/* ─── Действия ─── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">То подставить</span>
+                <span className="text-xs text-muted-foreground">до 5</span>
+              </div>
+              {actions.map((a, i) => (
+                <ActionRow
+                  key={i}
+                  action={a}
+                  categories={categories}
+                  counterparties={activeCps}
+                  accounts={activeAccounts}
+                  rootCatsByKind={rootCatsByKind}
+                  onChange={(next) => setAction(i, next)}
+                  onRemove={
+                    actions.length > 1
+                      ? () => setActions((prev) => prev.filter((_, idx) => idx !== i))
+                      : undefined
+                  }
+                />
+              ))}
+              {actions.length < 5 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setActions((prev) => [...prev, defaultAction('SET_CATEGORY')])}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Действие
+                </Button>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -313,17 +590,248 @@ function RuleFormDialog({
               />
               Активно
             </label>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button type="submit" disabled={busy}>
-              {busy ? 'Сохраняю…' : 'Сохранить'}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Сохраняю…' : 'Сохранить'}
             </Button>
           </SheetFooter>
         </form>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ConditionRow({
+  condition,
+  counterparties,
+  accounts,
+  onChange,
+  onRemove,
+}: {
+  condition: RuleCondition;
+  counterparties: Counterparty[];
+  accounts: Account[];
+  onChange: (c: RuleCondition) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border bg-background p-2">
+      <div className="flex-1 space-y-2">
+        <Select
+          value={condition.type}
+          onChange={(e) => onChange(defaultCondition(e.target.value as RuleConditionType))}
+          aria-label="Тип условия"
+        >
+          {(Object.keys(CONDITION_LABELS) as RuleConditionType[]).map((t) => (
+            <option key={t} value={t}>
+              {CONDITION_LABELS[t]}
+            </option>
+          ))}
+        </Select>
+
+        {condition.type === 'DESCRIPTION_CONTAINS' && (
+          <Input
+            value={condition.value}
+            onChange={(e) => onChange({ type: 'DESCRIPTION_CONTAINS', value: e.target.value })}
+            placeholder="подстрока в описании/контрагенте"
+          />
+        )}
+        {condition.type === 'COUNTERPARTY_EQUALS' && (
+          <Select
+            value={condition.counterpartyId}
+            onChange={(e) =>
+              onChange({ type: 'COUNTERPARTY_EQUALS', counterpartyId: e.target.value })
+            }
+          >
+            <option value="" disabled>
+              — Выберите контрагента —
+            </option>
+            {counterparties.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        {condition.type === 'ACCOUNT_EQUALS' && (
+          <Select
+            value={condition.accountId}
+            onChange={(e) => onChange({ type: 'ACCOUNT_EQUALS', accountId: e.target.value })}
+          >
+            <option value="" disabled>
+              — Выберите счёт —
+            </option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        {condition.type === 'TYPE_EQUALS' && (
+          <Select
+            value={condition.value}
+            onChange={(e) =>
+              onChange({ type: 'TYPE_EQUALS', value: e.target.value as 'INCOME' | 'EXPENSE' })
+            }
+          >
+            <option value="EXPENSE">Расход</option>
+            <option value="INCOME">Доход</option>
+          </Select>
+        )}
+        {condition.type === 'AMOUNT_RANGE' && (
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              inputMode="decimal"
+              value={condition.min ?? ''}
+              onChange={(e) =>
+                onChange({ type: 'AMOUNT_RANGE', min: e.target.value, max: condition.max })
+              }
+              placeholder="от"
+            />
+            <Input
+              inputMode="decimal"
+              value={condition.max ?? ''}
+              onChange={(e) =>
+                onChange({ type: 'AMOUNT_RANGE', min: condition.min, max: e.target.value })
+              }
+              placeholder="до"
+            />
+          </div>
+        )}
+        {condition.type === 'SOURCE_EQUALS' && (
+          <Select
+            value={condition.value}
+            onChange={(e) =>
+              onChange({ type: 'SOURCE_EQUALS', value: e.target.value as 'IMPORT' | 'MANUAL' })
+            }
+          >
+            <option value="IMPORT">Импорт</option>
+            <option value="MANUAL">Ручной ввод</option>
+          </Select>
+        )}
+      </div>
+      {onRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          aria-label="Убрать условие"
+          className="text-muted-foreground"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ActionRow({
+  action,
+  categories,
+  counterparties,
+  accounts,
+  rootCatsByKind,
+  onChange,
+  onRemove,
+}: {
+  action: RuleAction;
+  categories: Category[];
+  counterparties: Counterparty[];
+  accounts: Account[];
+  rootCatsByKind: (kind: 'INCOME' | 'EXPENSE') => Category[];
+  onChange: (a: RuleAction) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border bg-background p-2">
+      <div className="flex-1 space-y-2">
+        <Select
+          value={action.type}
+          onChange={(e) => onChange(defaultAction(e.target.value as RuleActionType))}
+          aria-label="Тип действия"
+        >
+          {(Object.keys(ACTION_LABELS) as RuleActionType[]).map((t) => (
+            <option key={t} value={t}>
+              {ACTION_LABELS[t]}
+            </option>
+          ))}
+        </Select>
+
+        {action.type === 'SET_CATEGORY' && (
+          <Select
+            value={action.categoryId}
+            onChange={(e) => onChange({ type: 'SET_CATEGORY', categoryId: e.target.value })}
+          >
+            <option value="" disabled>
+              — Выберите категорию —
+            </option>
+            <optgroup label="Расходы">
+              {rootCatsByKind('EXPENSE').map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Доходы">
+              {rootCatsByKind('INCOME').map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          </Select>
+        )}
+        {action.type === 'SET_COUNTERPARTY' && (
+          <Select
+            value={action.counterpartyId}
+            onChange={(e) => onChange({ type: 'SET_COUNTERPARTY', counterpartyId: e.target.value })}
+          >
+            <option value="" disabled>
+              — Выберите контрагента —
+            </option>
+            {counterparties.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        {action.type === 'SET_ACCOUNT' && (
+          <Select
+            value={action.accountId}
+            onChange={(e) => onChange({ type: 'SET_ACCOUNT', accountId: e.target.value })}
+          >
+            <option value="" disabled>
+              — Выберите счёт —
+            </option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </div>
+      {onRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          aria-label="Убрать действие"
+          className="text-muted-foreground"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
   );
 }
