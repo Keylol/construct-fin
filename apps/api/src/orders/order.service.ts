@@ -1116,13 +1116,20 @@ export class OrderService {
   }
 
   /**
-   * Пересчитывает paidAmount = Σ(ORDER_PAYMENT) − Σ(ORDER_REFUND) и
-   * paymentStatus относительно totalAmount. Вызывается внутри UoW.
+   * Пересчитывает paidAmount = Σ(ORDER_PAYMENT) − Σ(ORDER_REFUND) и paymentStatus.
+   * DE1: статус считается относительно ЧИСТОЙ выручки (netRevenue = totalAmount −
+   * стоимость возвращённых единиц), а не сырого totalAmount. Иначе возврат товара
+   * (RMA) ронял paidAmount на рефанд, total оставался прежним → заказ фантомно
+   * «недоплачен» (PARTIAL/UNPAID) и висел в дебиторке. totalAmount НЕ трогаем
+   * (решение блица), меняем только базу статуса. Вызывается внутри UoW.
    */
   private async syncPaymentState(workspaceId: string, orderId: string, tx: TxClient) {
     const order = await tx.order.findFirstOrThrow({
       where: { id: orderId },
-      select: { totalAmount: true },
+      select: {
+        totalAmount: true,
+        items: { where: { deletedAt: null }, select: { returnedQty: true, unitPrice: true } },
+      },
     });
     const grouped = await tx.transaction.groupBy({
       by: ['kind'],
@@ -1137,11 +1144,17 @@ export class OrderService {
     const paidIn = grouped.find((g) => g.kind === 'ORDER_PAYMENT')?._sum.amount ?? D(0);
     const refunded = grouped.find((g) => g.kind === 'ORDER_REFUND')?._sum.amount ?? D(0);
     const paid = money(sub(paidIn, refunded));
-    const total = order.totalAmount;
+
+    // DE1: чистая выручка = total − Σ(returnedQty · unitPrice), clamp на 0.
+    const returnedValue = order.items.reduce(
+      (accVal, it) => add(accVal, mul(it.returnedQty, it.unitPrice)),
+      D(0),
+    );
+    const netRevenue = money(Prisma.Decimal.max(sub(order.totalAmount, returnedValue), D(0)));
 
     await tx.order.update({
       where: { id: orderId },
-      data: { paidAmount: paid, paymentStatus: resolvePaymentState(paid, total) },
+      data: { paidAmount: paid, paymentStatus: resolvePaymentState(paid, netRevenue) },
     });
   }
 }

@@ -16,6 +16,8 @@ function item(over: {
   unitCost?: string | null;
   returnedQty?: string;
   clientId?: string | null;
+  orderId?: string;
+  discountAmount?: string;
 }) {
   return {
     name: over.name,
@@ -24,7 +26,12 @@ function item(over: {
     unitPrice: new Prisma.Decimal(over.unitPrice),
     unitCostAtSale: over.unitCostAtSale === null ? null : new Prisma.Decimal(over.unitCostAtSale),
     unitCost: over.unitCost == null ? null : new Prisma.Decimal(over.unitCost),
-    order: { clientId: over.clientId ?? null },
+    // IJ1: order теперь несёт id (дедуп скидки) и discountAmount.
+    order: {
+      id: over.orderId ?? 'o-default',
+      clientId: over.clientId ?? null,
+      discountAmount: new Prisma.Decimal(over.discountAmount ?? '0'),
+    },
   };
 }
 

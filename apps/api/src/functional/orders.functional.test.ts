@@ -584,10 +584,12 @@ describe('Функциональные мутации: заказы (orders)', (
     expect(refund.amount.toFixed(2)).toBe('1000.00');
     expect(refund.counterpartyId).toBe(cl);
 
-    // paidAmount = 5000 − 1000 = 4000 → PARTIAL.
+    // paidAmount = 5000 − 1000 = 4000. DE1: статус по чистой выручке — вернули
+    // 2×500=1000, netRevenue = 5000 − 1000 = 4000 = paid → PAID (клиент оплатил
+    // ровно то, что оставил; фантомного PARTIAL нет).
     const row = await H.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(row.paidAmount.toFixed(2)).toBe('4000.00');
-    expect(row.paymentStatus).toBe('PARTIAL');
+    expect(row.paymentStatus).toBe('PAID');
     const dbItem = await H.prisma.orderItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(num(dbItem.returnedQty)).toBe(2);
   });
