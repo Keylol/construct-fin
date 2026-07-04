@@ -31,6 +31,8 @@ export interface ResolvedPeriods {
 // process.env.TZ — детерминированно в любом окружении и в тестах.
 const TZ_OFFSET_MIN = 5 * 60;
 const OFFSET_MS = TZ_OFFSET_MIN * 60_000;
+/** IJ12: максимальная ширина кастомного диапазона отчёта — 5 лет. */
+const MAX_PERIOD_MS = 5 * 366 * 24 * 60 * 60 * 1000;
 
 interface TzParts {
   y: number;
@@ -175,6 +177,11 @@ export function resolvePeriod(input: PeriodInput, now: Date = new Date()): Perio
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException('Период: дата начала позже даты конца');
     }
+    // IJ12: ширина ограничена — иначе O(месяцев) слайсов и многомегабайтный JSON
+    // на аутентифицированном GET без троттлинга (перф/DoS-соседство).
+    if (to.getTime() - from.getTime() > MAX_PERIOD_MS) {
+      throw new BadRequestException('Период слишком широкий (максимум 5 лет)');
+    }
     return { from, to };
   }
   return resolvePreset('this-month', now);
@@ -215,6 +222,11 @@ export function resolveComparison(
     // M2 (симметрично resolvePeriod): инвертированный диапазон сравнения → ошибка.
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException('Период сравнения: дата начала позже даты конца');
+    }
+    // IJ12 (симметрично resolvePeriod): ширина сравнения тоже ограничена — иначе
+    // DoS через compareFrom/compareTo в обход лимита primary-периода.
+    if (to.getTime() - from.getTime() > MAX_PERIOD_MS) {
+      throw new BadRequestException('Период сравнения слишком широкий (максимум 5 лет)');
     }
     return { from, to };
   }

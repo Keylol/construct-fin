@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { scheduleView } from '../orders/payment-schedule';
+import { startOfDay } from '../reports/period';
 
 /**
  * Дебиторка (receivables): незакрытые долги клиентов по заказам.
@@ -148,7 +149,13 @@ export class ReceivablesService {
       // (защита от рассинхрона кэша paidAmount).
       if (due.lessThanOrEqualTo(0)) continue;
 
-      const ageDays = Math.floor((asOf.getTime() - o.createdAt.getTime()) / DAY_MS);
+      // IJ8: возраст по КАЛЕНДАРНЫМ суткам пояса бизнеса (обе даты к началу дня),
+      // а не по elapsed-ms от instant. Иначе заказ «ровно 30 дней назад в 14:00»
+      // из-за разницы во времени суток мог попасть не в ту корзину (off-by-one на
+      // границах 30/60).
+      const ageDays = Math.floor(
+        (startOfDay(asOf).getTime() - startOfDay(o.createdAt).getTime()) / DAY_MS,
+      );
       const safeAge = ageDays < 0 ? 0 : ageDays;
       const bucket = bucketFor(safeAge);
 
