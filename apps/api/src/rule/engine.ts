@@ -99,7 +99,11 @@ function ruleMatches(rule: RuleDef, ctx: RuleContext): boolean {
  * (более приоритетное) правило — остальные для этого поля игнорируются.
  */
 export function applyRules(rules: RuleDef[], ctx: RuleContext): RuleSuggestion {
-  const ordered = [...rules].sort((a, b) => b.priority - a.priority);
+  // priority desc; при равном priority — по id (детерминизм между сессиями,
+  // не зависит от порядка выборки из БД).
+  const ordered = [...rules].sort(
+    (a, b) => b.priority - a.priority || a.id.localeCompare(b.id),
+  );
   const out: RuleSuggestion = { matchedRuleIds: [] };
   for (const rule of ordered) {
     if (!ruleMatches(rule, ctx)) continue;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { D } from '../common/money';
 
 /**
  * Валидированный словарь условий/действий движка правил (Блок 1). Zod — ЕДИНСТВЕННЫЙ
@@ -26,7 +27,14 @@ export const RuleConditionSchema = z.union([
       max: moneyString.nullish(),
     })
     // Хотя бы одна граница — иначе условие бессмысленно (матчит любую сумму).
-    .refine((c) => c.min != null || c.max != null, 'AMOUNT_RANGE: нужна min или max'),
+    .refine((c) => c.min != null || c.max != null, 'AMOUNT_RANGE: нужна min или max')
+    // Движок сравнивает по модулю (суммы в приложении положительны, знак несёт
+    // type). Требуем |min| ≤ |max|, иначе инвертированный диапазон тихо не матчит.
+    .refine(
+      (c) =>
+        c.min == null || c.max == null || D(c.min).abs().lessThanOrEqualTo(D(c.max).abs()),
+      'AMOUNT_RANGE: |min| должен быть ≤ |max|',
+    ),
   z.object({ type: z.literal('SOURCE_EQUALS'), value: z.enum(['IMPORT', 'MANUAL']) }),
 ]);
 

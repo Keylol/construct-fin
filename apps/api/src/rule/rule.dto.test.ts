@@ -48,4 +48,12 @@ describe('CreateRuleSchema — валидация словаря', () => {
     expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: 'abc' }).success).toBe(false);
     expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '10.999' }).success).toBe(false);
   });
+
+  it('инвертированный диапазон |min|>|max| отвергается (иначе тихо не матчит)', () => {
+    expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '5000', max: '1000' }).success).toBe(false);
+    // Отрицательные границы по модулю тоже инвертированы (|−5000| > |−1000|).
+    expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '-5000', max: '-1000' }).success).toBe(false);
+    // Корректный: |min| ≤ |max|.
+    expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '1000', max: '5000' }).success).toBe(true);
+  });
 });
