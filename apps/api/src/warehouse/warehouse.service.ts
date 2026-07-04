@@ -119,7 +119,15 @@ export class WarehouseService {
   }
 
   async update(workspaceId: string, id: string, input: UpdateWarehouseItemDto) {
-    await this.get(workspaceId, id);
+    const item = await this.get(workspaceId, id);
+    // F2: архивация позиции с ненулевым остатком прятала бы его стоимость из
+    // stock-value (отчёт исключает архивные), при этом продажи/закупки по ней
+    // продолжали бы работать. Архивируем только пустую позицию.
+    if (input.isArchived === true && !item.isArchived && gt(item.qty, '0')) {
+      throw new BadRequestException(
+        `Нельзя архивировать позицию с остатком ${item.qty.toString()} — сначала спишите или продайте остаток`,
+      );
+    }
     await this.assertSupplier(workspaceId, input.defaultSupplierId);
     return this.repo.update(id, {
       name: input.name ?? undefined,
@@ -139,7 +147,15 @@ export class WarehouseService {
   }
 
   async remove(workspaceId: string, id: string) {
-    await this.get(workspaceId, id);
+    const item = await this.get(workspaceId, id);
+    // F1: удалять позицию с ненулевым остатком нельзя — её стоимость тихо
+    // исчезла бы из stock-value/отчётов без движения и следа, а открытые заказы
+    // со ссылкой на неё стали бы незакрываемыми. Сначала обнулить остаток.
+    if (gt(item.qty, '0')) {
+      throw new BadRequestException(
+        `Нельзя удалить позицию с остатком ${item.qty.toString()} — сначала спишите или продайте остаток`,
+      );
+    }
     await this.repo.softDelete(id);
     return { ok: true };
   }

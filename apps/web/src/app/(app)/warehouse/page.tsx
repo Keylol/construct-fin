@@ -261,6 +261,9 @@ function WarehouseItemForm({
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  // F1/F2: позицию с остатком нельзя удалять/архивировать (бэкенд вернёт 400).
+  // qty — количество, не деньги → Number допустим (N-19 про деньги).
+  const hasStock = initial ? Number(initial.qty) > 0 : false;
 
   useEffect(() => {
     if (initial) {
@@ -539,21 +542,39 @@ function WarehouseItemForm({
             )}
 
             {initial && (
-              <label className="flex items-center gap-2 text-sm">
+              <label
+                className={`flex items-center gap-2 text-sm${
+                  hasStock && !isArchived ? ' cursor-not-allowed opacity-60' : ''
+                }`}
+              >
                 <input
                   type="checkbox"
                   checked={isArchived}
+                  // F2: архивировать позицию с остатком нельзя (стоимость исчезла
+                  // бы из отчётов). Разрешаем только разархивацию.
+                  disabled={hasStock && !isArchived}
                   onChange={(e) => setIsArchived(e.target.checked)}
                   className="h-4 w-4 rounded border-input accent-primary"
                 />
                 В архиве
+                {hasStock && !isArchived && (
+                  <span className="text-xs text-muted-foreground">— сначала спишите остаток</span>
+                )}
               </label>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             {initial && (
-              <Button variant="destructive" onClick={() => setConfirmDel(true)} className="sm:mr-auto">
+              <Button
+                variant="destructive"
+                // F1: удалить позицию с остатком нельзя — кнопка задизейблена
+                // (иначе клик молча провалился бы через ConfirmDialog, K9).
+                onClick={() => setConfirmDel(true)}
+                disabled={hasStock}
+                title={hasStock ? 'Сначала спишите или продайте остаток' : undefined}
+                className="sm:mr-auto"
+              >
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
