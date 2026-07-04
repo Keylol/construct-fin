@@ -46,7 +46,7 @@ const QUICK_NAV: QuickNav[] = [
   { href: '/categories', label: 'Категории', icon: Tag },
   { href: '/counterparties', label: 'Контрагенты', icon: Users },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, hint: 'P&L, Cash flow' },
-  { href: '/reports/rules', label: 'Правила категоризации', icon: Filter },
+  { href: '/reports/rules', label: 'Правила', icon: Filter, hint: 'подсказки категорий/контрагентов' },
 ];
 
 export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPaletteProps) {
