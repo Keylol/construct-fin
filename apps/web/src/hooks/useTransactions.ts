@@ -1,12 +1,13 @@
 'use client';
 
+import { useRef } from 'react';
 import {
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type {
   Transaction,
   TransactionWithAttachments,
@@ -111,9 +112,16 @@ export function useTransactionSummary(
 
 export function useCreateTransaction(wsId: string) {
   const qc = useQueryClient();
+  // C6: денежный POST — ключ идемпотентности против двойного сабмита формы.
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: (input: CreateTransactionInput) =>
-      api.post<Transaction>(`/workspaces/${wsId}/transactions`, input),
+      api.post<Transaction>(`/workspaces/${wsId}/transactions`, input, {
+        idempotencyKey: idemKey.current,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
       qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
