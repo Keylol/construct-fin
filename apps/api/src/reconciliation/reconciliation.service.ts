@@ -172,6 +172,10 @@ export class ReconciliationService {
         accountId,
         deletedAt: null,
         date: { ...(since ? { gt: since } : {}), lte: asOf },
+        // C3: тот же kind-фильтр, что и в computedBalance — иначе неденежные
+        // COGS/WRITE_OFF (вкл. отрицательные сторно) попадают в хвост несведённых,
+        // и его net не сходится с дельтой книжного баланса (ложное расхождение).
+        kind: { notIn: NON_CASH_FOR_ACCOUNT },
       },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       select: { id: true, date: true, type: true, kind: true, amount: true, description: true },

@@ -275,6 +275,10 @@ export interface Transaction {
   categoryId: string | null;
   counterpartyId: string | null;
   orderId: string | null;
+  /** C1: null у ручной строки; задан у ноги перевода/комиссии. */
+  transferGroupId: string | null;
+  /** C1: false → строка порождена доменом, правится только через свой раздел. */
+  editable: boolean;
   description: string | null;
   createdAt: string;
   updatedAt: string;

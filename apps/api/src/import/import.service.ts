@@ -347,10 +347,20 @@ export class ImportService {
     if (categoryIds.length > 0) {
       const found = await this.prisma.category.findMany({
         where: { id: { in: categoryIds }, workspaceId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, kind: true },
       });
       if (found.length !== categoryIds.length) {
         throw new BadRequestException('Категория не найдена в этом пространстве');
+      }
+      // C16: категория расхода не должна попадать на приходную строку (и наоборот)
+      // — иначе операция уедет в чужой бакет P&L. Сверяем построчно по kind↔type.
+      const kindById = new Map(found.map((c) => [c.id, c.kind]));
+      for (const r of body.rows) {
+        if (r.categoryId && kindById.get(r.categoryId) !== r.type) {
+          throw new BadRequestException(
+            `Строка «${r.description ?? r.amount}»: категория не соответствует типу операции (${r.type})`,
+          );
+        }
       }
     }
 
