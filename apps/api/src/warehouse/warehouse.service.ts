@@ -893,6 +893,75 @@ export class WarehouseService {
    * refund попадает в бакет PURCHASES (гасит расход закупок), variance с лотовой
    * стоимостью естественен в cash-basis (реш. #2 блица) — отдельной проводки нет.
    */
+  /**
+   * GH9 (Волна 2, обратимость): откат прихода закупки для НЕТРОНУТЫХ партий.
+   * Партия «нетронута», если из неё не было ни одного потребления (LotConsumption)
+   * и остаток равен приходу — тогда её можно убрать целиком (soft-delete) без
+   * нарушения FIFO/леджера. Если хоть одна единица уже продана/списана — откат
+   * невозможен (400): нельзя «развести» ушедший товар (для этого — возврат
+   * поставщику). Пишет реверс-движение ADJUSTMENT на каждую позицию и
+   * пересчитывает кэши qty/avgCost. Вызывается из PurchaseService.voidPurchase
+   * внутри его UoW; позиции лочатся FOR UPDATE (сериализация с продажами/закупками).
+   */
+  async voidPurchaseLots(
+    tx: TxClient,
+    workspaceId: string,
+    lineIds: string[],
+    itemIds: string[],
+    userId: string,
+  ): Promise<void> {
+    for (const itemId of itemIds) {
+      await this.repo.lockForUpdate(tx, workspaceId, itemId);
+    }
+    const lots = await tx.stockLot.findMany({
+      where: { workspaceId, purchaseLineId: { in: lineIds }, deletedAt: null },
+    });
+    const lotIds = lots.map((l) => l.id);
+    if (lotIds.length > 0) {
+      // workspaceId в WHERE — защита в глубину поверх того, что lotIds уже
+      // отфильтрованы по ws (конвенция проекта: изоляция явная в каждом запросе).
+      const consumed = await tx.lotConsumption.count({
+        where: { workspaceId, lotId: { in: lotIds } },
+      });
+      if (consumed > 0) {
+        throw new BadRequestException(
+          'Нельзя отменить закупку: товар из её партий уже продан или списан — оформите возврат поставщику',
+        );
+      }
+      // Защита в глубину: остаток обязан равняться приходу (партия нетронута).
+      for (const l of lots) {
+        if (!l.qtyRemaining.equals(l.qtyInitial)) {
+          throw new BadRequestException('Нельзя отменить закупку: остаток одной из партий изменён');
+        }
+      }
+      await tx.stockLot.updateMany({
+        where: { id: { in: lotIds }, workspaceId },
+        data: { deletedAt: new Date() },
+      });
+    }
+    // Реверс-движение (ADJUSTMENT) и пересчёт кэшей — по каждой позиции.
+    for (const itemId of itemIds) {
+      const removed = lots
+        .filter((l) => l.warehouseItemId === itemId)
+        .reduce((acc, l) => add(acc, l.qtyInitial), D(0));
+      await this.recomputeCaches(tx, workspaceId, itemId);
+      const item = await this.repo.findById(workspaceId, itemId, tx);
+      await this.repo.recordMovement(
+        {
+          workspaceId,
+          warehouseItemId: itemId,
+          type: 'ADJUSTMENT',
+          qtyDelta: roundQty(removed.negated()),
+          qtyAfter: item?.qty ?? D(0),
+          reason: 'Отмена закупки',
+          refType: 'Purchase',
+          createdById: userId,
+        },
+        tx,
+      );
+    }
+  }
+
   async supplierReturn(
     workspaceId: string,
     itemId: string,

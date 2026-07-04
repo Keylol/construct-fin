@@ -155,6 +155,52 @@ export class PurchaseService {
     });
   }
 
+  /**
+   * GH9 (Волна 2): отменить закупку целиком, если её партии НЕ тронуты (ничего
+   * не продано/списано из них). Реверсирует склад (soft-delete нетронутых партий +
+   * пересчёт qty/avgCost + ADJUSTMENT-движение), soft-удаляет PURCHASE-проводку и
+   * документ. Всё в одном UoW; позиции лочатся FOR UPDATE. Если хоть одна единица
+   * ушла — 400 (нужен возврат поставщику, а не отмена).
+   */
+  async voidPurchase(workspaceId: string, purchaseId: string, userId: string) {
+    return this.uow.run(async (tx) => {
+      const purchase = await tx.purchase.findFirst({
+        where: { id: purchaseId, workspaceId, deletedAt: null },
+        include: { lines: true },
+      });
+      if (!purchase) throw new NotFoundException('Закупка не найдена или уже отменена');
+
+      const lineIds = purchase.lines.map((l) => l.id);
+      // Уникальные позиции в детерминированном порядке — анти-deadlock (как register).
+      const itemIds = [...new Set(purchase.lines.map((l) => l.warehouseItemId))].sort();
+
+      // Реверс склада (бросает 400, если партии тронуты).
+      await this.warehouse.voidPurchaseLots(tx, workspaceId, lineIds, itemIds, userId);
+
+      // Деньги: soft-delete расхода PURCHASE.
+      await tx.transaction.update({
+        where: { id: purchase.transactionId },
+        data: { deletedAt: new Date() },
+      });
+      // Документ закупки.
+      await tx.purchase.update({
+        where: { id: purchaseId },
+        data: { deletedAt: new Date() },
+      });
+
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'purchase.void',
+        entityType: 'Purchase',
+        entityId: purchaseId,
+        diff: { linesCount: lineIds.length, itemsCount: itemIds.length },
+      });
+
+      return { ok: true };
+    });
+  }
+
   /** Счёт и поставщик закупки обязаны принадлежать этому workspace (cross-tenant). */
   private async assertRefs(
     workspaceId: string,
