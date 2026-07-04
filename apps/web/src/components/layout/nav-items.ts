@@ -11,6 +11,7 @@ import {
   UserRound,
   Package,
   Truck,
+  ShoppingCart,
   History,
   ArrowLeftRight,
   Scale,
@@ -37,6 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
+      { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
       { href: '/transfers', label: 'Переводы', icon: ArrowLeftRight },
       { href: '/import', label: 'Импорт', icon: Upload },
     ],

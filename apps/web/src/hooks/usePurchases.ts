@@ -31,6 +31,28 @@ export function usePurchases(wsId: string | null, supplierId?: string) {
   });
 }
 
+/** GH9: отменить закупку (только нетронутые партии). */
+export function useVoidPurchase(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (purchaseId: string) =>
+      api.del<{ ok: boolean }>(`/workspaces/${wsId}/purchases/${purchaseId}`),
+    onSuccess: () => {
+      // Тот же набор кэшей, что и создание закупки — склад/деньги/отчёты.
+      qc.invalidateQueries({ queryKey: ['purchases', wsId] });
+      qc.invalidateQueries({ queryKey: ['warehouse', wsId] });
+      qc.invalidateQueries({ queryKey: ['warehouse-stock-value', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['trade-reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['accounts', wsId] });
+    },
+  });
+}
+
 export function useCreatePurchase(wsId: string) {
   const qc = useQueryClient();
   // M18: ключ фиксируется один раз на операцию в onMutate (см. useOrders) —
