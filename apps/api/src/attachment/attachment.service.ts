@@ -70,6 +70,24 @@ export class AttachmentService {
       where: { id: attachmentId, workspaceId },
     });
     if (!att) throw new NotFoundException('Attachment not found');
+    // DE6: вложение недоступно, если его родитель soft-удалён (заказ отменён/удалён
+    // или операция удалена). FK-cascade при soft-delete не срабатывает, поэтому
+    // строка висит — проверяем живость родителя явно, иначе чек можно скачать по
+    // прямой ссылке после удаления заказа/операции.
+    if (att.orderId) {
+      const alive = await this.prisma.order.findFirst({
+        where: { id: att.orderId, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!alive) throw new NotFoundException('Attachment not found');
+    }
+    if (att.transactionId) {
+      const alive = await this.prisma.transaction.findFirst({
+        where: { id: att.transactionId, workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!alive) throw new NotFoundException('Attachment not found');
+    }
     if (!existsSync(att.storagePath)) throw new NotFoundException('File missing on disk');
     const buffer = await fs.readFile(att.storagePath);
     return { buffer, filename: att.filename, mimeType: att.mimeType };
