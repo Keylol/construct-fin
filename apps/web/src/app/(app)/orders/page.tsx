@@ -1074,9 +1074,14 @@ function OrderDetailSheet({
                                 ? 'себестоимость'
                                 : 'оплата';
                         const negative = t.type === 'EXPENSE';
-                        // C2: платёж/возврат/комиссию можно удалить (ошибочный ввод);
-                        // себестоимость (COGS) — нет (управляется отменой заказа).
-                        const deletable = t.kind !== 'COGS';
+                        // C2: удаляемы ровно те kind, что разрешает бэкенд
+                        // (DELETABLE_PAYMENT_KINDS) — платёж/возврат/комиссия;
+                        // себестоимость (COGS) управляется отменой заказа.
+                        // Разрешено на любом статусе (коррекция ошибки).
+                        const deletable =
+                          t.kind === 'ORDER_PAYMENT' ||
+                          t.kind === 'ORDER_REFUND' ||
+                          t.kind === 'VARIABLE_COST';
                         return (
                           <div
                             key={t.id}
@@ -1095,7 +1100,7 @@ function OrderDetailSheet({
                                 {negative ? '−' : '+'}
                                 {formatRub(t.amount)}
                               </span>
-                              {deletable && order.status !== 'CANCELLED' && (
+                              {deletable && (
                                 <button
                                   type="button"
                                   onClick={() => setConfirmDeletePayment(t.id)}

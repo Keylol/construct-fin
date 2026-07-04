@@ -115,4 +115,20 @@ describe('C2: удаление оплаты заказа', () => {
       h.orders.deletePayment(seed.workspaceId, order.id, 'cme00000000000000000000zz', seed.userId),
     ).rejects.toThrow(/не найдена/);
   });
+
+  it('удаление ошибочной оплаты работает и на ОТМЕНЁННОМ заказе (коррекция)', async () => {
+    const order = await makeOrder('1000.00');
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '5000.00',
+      accountId: seed.accountId,
+    });
+    const tx = await h.prisma.transaction.findFirstOrThrow({
+      where: { orderId: order.id, kind: 'ORDER_PAYMENT', deletedAt: null },
+    });
+    await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
+    // Отмена оставляет платежи; ошибочный удаляем и на CANCELLED.
+    const after = await h.orders.deletePayment(seed.workspaceId, order.id, tx.id, seed.userId);
+    expect(after.paidAmount.toFixed(2)).toBe('0.00');
+    expect(after.status).toBe('CANCELLED');
+  });
 });
