@@ -83,7 +83,7 @@ export class RuleService {
     const rules = await this.prisma.rule.findMany({
       where: { workspaceId, deletedAt: null, isActive: true, appliesTo: { in: scope } },
     });
-    return applyRules(
+    const suggestion = applyRules(
       rules.map((r) => ({
         id: r.id,
         name: r.name,
@@ -101,6 +101,50 @@ export class RuleService {
         source: input.source,
       },
     );
+    // Правило переживает soft-delete сущности, на которую ссылается (ссылки в JSON
+    // валидируются только при create/update, cascade нет). Отсеиваем «мёртвые»
+    // подсказки — иначе фронт подставит удалённую категорию/контрагента/счёт, и
+    // сохранение упадёт с невнятной ошибкой «не найдено в workspace».
+    return this.pruneDeadRefs(workspaceId, suggestion);
+  }
+
+  private async pruneDeadRefs(
+    workspaceId: string,
+    s: RuleSuggestion,
+  ): Promise<RuleSuggestion> {
+    const checks: Promise<void>[] = [];
+    if (s.categoryId) {
+      const id = s.categoryId;
+      checks.push(
+        this.prisma.category
+          .count({ where: { id, workspaceId, deletedAt: null } })
+          .then((n) => {
+            if (n === 0) delete s.categoryId;
+          }),
+      );
+    }
+    if (s.counterpartyId) {
+      const id = s.counterpartyId;
+      checks.push(
+        this.prisma.counterparty
+          .count({ where: { id, workspaceId, deletedAt: null } })
+          .then((n) => {
+            if (n === 0) delete s.counterpartyId;
+          }),
+      );
+    }
+    if (s.accountId) {
+      const id = s.accountId;
+      checks.push(
+        this.prisma.account
+          .count({ where: { id, workspaceId, deletedAt: null } })
+          .then((n) => {
+            if (n === 0) delete s.accountId;
+          }),
+      );
+    }
+    await Promise.all(checks);
+    return s;
   }
 
   /**

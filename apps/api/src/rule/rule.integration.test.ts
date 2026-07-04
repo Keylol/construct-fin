@@ -183,6 +183,25 @@ describe('RuleService: suggest', () => {
     expect((await svc.suggest(seed.workspaceId, { source: 'MANUAL', amount: '500', type: 'EXPENSE' })).counterpartyId).toBeUndefined();
   });
 
+  it('suggest отсеивает мёртвую ссылку: категория удалена после создания правила', async () => {
+    const categoryId = await makeCategory();
+    await svc.create(seed.workspaceId, {
+      name: 'аренда',
+      priority: 0,
+      isActive: true,
+      appliesTo: 'BOTH',
+      conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'аренд' }],
+      actions: [{ type: 'SET_CATEGORY', categoryId }],
+    });
+    // Пока категория жива — подсказка есть.
+    expect((await svc.suggest(seed.workspaceId, { source: 'MANUAL', description: 'аренда' })).categoryId).toBe(categoryId);
+    // Soft-delete категории (правило про неё не знает — cascade нет).
+    await h.prisma.category.update({ where: { id: categoryId }, data: { deletedAt: new Date() } });
+    // Подсказка НЕ должна содержать мёртвый id (иначе сохранение упадёт невнятно).
+    const s = await svc.suggest(seed.workspaceId, { source: 'MANUAL', description: 'аренда' });
+    expect(s.categoryId).toBeUndefined();
+  });
+
   it('кросс-тенант изоляция suggest: чужие правила не применяются', async () => {
     const other = await seedBase(h.prisma, tg + 800000n);
     const otherCat = await h.prisma.category.create({
