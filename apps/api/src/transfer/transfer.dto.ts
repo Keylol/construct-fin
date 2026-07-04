@@ -1,12 +1,9 @@
 import { z } from 'zod';
+import { isoDate } from '../common/iso-date';
 
 const moneyString = z
   .string()
   .regex(/^-?\d+(\.\d{1,2})?$/, 'must be a decimal with up to 2 fraction digits');
-
-const isoDate = z
-  .string()
-  .refine((s) => !Number.isNaN(Date.parse(s)), 'invalid ISO date');
 
 const cuid = z.string().cuid();
 
