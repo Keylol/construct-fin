@@ -1061,9 +1061,23 @@ export class OrderService {
       // Вернуть склад (DONE или частичный OPEN) и сторнировать COGS.
       await this.reverseFinalization(tx, workspaceId, order, userId);
       // Сторнируем все связанные операции (оплаты/возвраты), чтобы не висели в P&L.
+      // txIds собираем ДО soft-delete — нужны для чистки вложений, привязанных к
+      // платёжным операциям заказа (transactionId-linked, не orderId-linked).
+      const orderTxs = await tx.transaction.findMany({
+        where: { workspaceId, orderId },
+        select: { id: true },
+      });
+      const orderTxIds = orderTxs.map((t) => t.id);
       await tx.transaction.updateMany({
         where: { workspaceId, orderId, deletedAt: null },
         data: { deletedAt: new Date() },
+      });
+      // DE6: снимаем ВСЕ вложения заказа (чеки) — и привязанные к заказу, и к его
+      // платёжным операциям. Иначе строки висят на удалённом заказе (FK-cascade при
+      // soft-delete не срабатывает), а download отдавал бы их по прямой ссылке.
+      // Файлы content-addressed/дедуп per-workspace — физический GC орфанов = follow-up.
+      await tx.attachment.deleteMany({
+        where: { workspaceId, OR: [{ orderId }, { transactionId: { in: orderTxIds } }] },
       });
       await tx.order.update({ where: { id: orderId }, data: { deletedAt: new Date() } });
       await this.audit.record(tx, {
