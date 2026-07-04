@@ -110,8 +110,10 @@ describe('Функциональные мутации: склад (warehouse)', 
 
   it('PATCH /warehouse/:id → 200 и обновляет поля в БД', async () => {
     const ws = seed.workspaceId;
+    // qty:0 — архивация с остатком теперь запрещена (F2), а тест проверяет
+    // обновление полей включая isArchived.
     const item = await H.prisma.warehouseItem.create({
-      data: { workspaceId: ws, name: 'Старое', unit: 'шт', qty: '5', avgCost: '10' },
+      data: { workspaceId: ws, name: 'Старое', unit: 'шт', qty: '0', avgCost: '0' },
     });
     const res = await H.inject({
       method: 'PATCH',
@@ -124,9 +126,9 @@ describe('Функциональные мутации: склад (warehouse)', 
     expect(row.name).toBe('Новое');
     expect(row.unit).toBe('кг');
     expect(row.isArchived).toBe(true);
-    // qty/avgCost не передавались и через update не двигаются.
-    expect(row.qty.toString()).toBe('5');
-    expect(row.avgCost.toString()).toBe('10');
+    // qty/avgCost не передавались и через update не двигаются (фикстура 0/0).
+    expect(row.qty.toString()).toBe('0');
+    expect(row.avgCost.toString()).toBe('0');
   });
 
   it('DELETE /warehouse/:id → 200 и помечает запись soft-deleted (deletedAt)', async () => {
