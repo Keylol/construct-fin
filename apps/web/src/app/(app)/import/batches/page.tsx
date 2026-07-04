@@ -1,14 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { Upload, History } from '@/components/ui/icons';
+import { Upload, History, RotateCcw } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
-import { useImportBatches } from '@/hooks/useImport';
+import { useImportBatches, useRevertImportBatch } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
 
 const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
@@ -31,6 +33,8 @@ export default function ImportBatchesPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const batches = useImportBatches(wsId);
+  const revert = useRevertImportBatch(wsId ?? '');
+  const [confirmRevert, setConfirmRevert] = useState<ImportBatch | null>(null);
 
   if (!wsId) {
     return (
@@ -105,6 +109,24 @@ export default function ImportBatchesPage() {
         ),
       className: 'w-[110px]',
     },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      // GH8: откат доступен только для активного импорта.
+      cell: (b) =>
+        b.deletedAt ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmRevert(b)}
+            title="Отменить импорт"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Отменить
+          </Button>
+        ),
+      className: 'w-[130px]',
+    },
   ];
 
   return (
@@ -162,6 +184,25 @@ export default function ImportBatchesPage() {
           )}
         />
       </div>
+
+      <ConfirmDialog
+        open={confirmRevert !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRevert(null);
+        }}
+        title="Отменить импорт?"
+        description={
+          confirmRevert
+            ? `Все ${confirmRevert.rowsImported} операций из «${confirmRevert.filename}» будут удалены, оплаты привязанных заказов пересчитаны. Файл можно будет импортировать заново.`
+            : ''
+        }
+        confirmText="Отменить импорт"
+        onConfirm={async () => {
+          if (confirmRevert) await revert.mutateAsync(confirmRevert.id);
+          setConfirmRevert(null);
+        }}
+        loading={revert.isPending}
+      />
     </>
   );
 }

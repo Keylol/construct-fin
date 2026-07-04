@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
+import { AuditService } from '../audit/audit.service';
 import type { ImportSource } from '@construct/db';
 import { applyRules } from '../category-rule/matcher';
 import {
@@ -84,6 +85,8 @@ export class ImportService {
     private readonly prisma: PrismaService,
     // F3: пересчёт оплаты заказов, к которым привязаны строки выписки.
     private readonly orders: OrderService,
+    // GH8/AB6: аудит отката импорта.
+    private readonly audit: AuditService,
   ) {}
 
   computeFileHash(buffer: Buffer): string {
@@ -550,6 +553,67 @@ export class ImportService {
         deletedAt: true,
         user: { select: { firstName: true, username: true } },
       },
+    });
+  }
+
+  /**
+   * GH8 (Волна 2, обратимость): откат импортированной выписки целиком. Раньше
+   * ошибочный импорт (не тот файл / не тот счёт / не те привязки к заказам) нельзя
+   * было отменить одним действием — только вручную по проводке, а привязанные
+   * оплаты заказов оставались призрачными. Теперь soft-delete всех проводок батча
+   * + soft-delete самого батча + ПЕРЕИГРОВКА recalcPaymentState затронутых
+   * заказов (paidAmount/статус возвращаются к состоянию до импорта). Всё в одной
+   * транзакции — либо весь откат, либо ничего.
+   *
+   * После отката partial-unique по importHash/fileHash (WHERE deletedAt IS NULL)
+   * освобождается → тот же файл можно импортировать заново.
+   */
+  async revertBatch(workspaceId: string, batchId: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.importBatch.findFirst({
+        where: { id: batchId, workspaceId, deletedAt: null },
+        select: { id: true, filename: true, rowsImported: true },
+      });
+      if (!batch) throw new NotFoundException('Импорт не найден или уже отменён');
+
+      // Затронутые заказы — до soft-delete (после проводки станут deletedAt и
+      // из выборки выпадут). Только привязанные оплаты (orderId != null).
+      const linked = await tx.transaction.findMany({
+        where: { workspaceId, importBatchId: batchId, deletedAt: null, orderId: { not: null } },
+        select: { orderId: true },
+        distinct: ['orderId'],
+      });
+      const orderIds = linked.map((t) => t.orderId).filter((x): x is string => !!x);
+
+      const del = await tx.transaction.updateMany({
+        where: { workspaceId, importBatchId: batchId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+
+      await tx.importBatch.update({
+        where: { id: batchId },
+        data: { deletedAt: new Date() },
+      });
+
+      // Переигровка оплаты заказов — после того как их импортные проводки скрыты.
+      for (const orderId of orderIds) {
+        await this.orders.recalcPaymentState(workspaceId, orderId, tx);
+      }
+
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'import.revert',
+        entityType: 'ImportBatch',
+        entityId: batchId,
+        diff: {
+          filename: batch.filename,
+          reverted: del.count,
+          ordersRecalced: orderIds.length,
+        },
+      });
+
+      return { reverted: del.count, ordersRecalced: orderIds.length };
     });
   }
 }

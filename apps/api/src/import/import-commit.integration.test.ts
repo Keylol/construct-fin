@@ -22,7 +22,7 @@ let tg = 800000n;
 
 beforeAll(() => {
   h = buildHarness();
-  svc = new ImportService(h.prisma as unknown as PrismaService, h.orders);
+  svc = new ImportService(h.prisma as unknown as PrismaService, h.orders, h.audit);
 });
 afterAll(async () => {
   await h.prisma.$disconnect();
