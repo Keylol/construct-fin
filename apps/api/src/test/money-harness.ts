@@ -53,6 +53,7 @@ export type Harness = {
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
+  audit: AuditService;
 };
 
 export function buildHarness(): Harness {
@@ -77,7 +78,7 @@ export function buildHarness(): Harness {
   const tradeReceivables = new ReceivablesService(prisma);
   const cashflow = new CashflowService(prisma);
   const transactions = new TransactionService(prisma, audit);
-  const importSvc = new ImportService(prisma, orders);
+  const importSvc = new ImportService(prisma, orders, audit);
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
@@ -99,6 +100,7 @@ export function buildHarness(): Harness {
     accounts,
     categories,
     counterparties,
+    audit,
   };
 }
 
