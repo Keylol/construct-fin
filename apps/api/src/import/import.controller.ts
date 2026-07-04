@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  Param,
   Post,
   Query,
   Req,
@@ -97,5 +100,16 @@ export class ImportController {
   @Get('batches')
   list(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.service.listBatches(ws.workspaceId);
+  }
+
+  /** GH8: откат импортированной выписки (soft-delete батча + проводок + пересчёт оплат). */
+  @Delete('batches/:id')
+  @HttpCode(200)
+  revert(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.service.revertBatch(ws.workspaceId, id, user.sub);
   }
 }

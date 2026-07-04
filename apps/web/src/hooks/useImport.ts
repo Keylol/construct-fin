@@ -112,3 +112,26 @@ export function useImportBatches(wsId: string | null) {
     enabled: !!wsId,
   });
 }
+
+/** GH8: откат импорта — soft-delete батча/проводок + пересчёт оплат заказов. */
+export function useRevertImportBatch(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: string) =>
+      api.del<{ reverted: number; ordersRecalced: number }>(
+        `/workspaces/${wsId}/import/batches/${batchId}`,
+      ),
+    onSuccess: () => {
+      // Тот же набор кэшей, что и импорт — операции массово исчезают.
+      qc.invalidateQueries({ queryKey: ['import-batches', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-infinite', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions-summary', wsId] });
+      qc.invalidateQueries({ queryKey: ['orders', wsId] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['trade-reports'] });
+      qc.invalidateQueries({ queryKey: ['reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['accounts', wsId] });
+    },
+  });
+}
