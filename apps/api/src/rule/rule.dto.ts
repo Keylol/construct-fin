@@ -58,3 +58,15 @@ export type CreateRuleDto = z.infer<typeof CreateRuleSchema>;
 
 export const UpdateRuleSchema = CreateRuleSchema.partial();
 export type UpdateRuleDto = z.infer<typeof UpdateRuleSchema>;
+
+/** Контекст для подсказок: частично заполненная форма операции / строка импорта. */
+export const SuggestSchema = z.object({
+  description: z.string().max(500).nullish(),
+  counterpartyId: cuid.nullish(),
+  counterpartyName: z.string().max(200).nullish(),
+  accountId: cuid.nullish(),
+  amount: moneyString.nullish(),
+  type: z.enum(['INCOME', 'EXPENSE']).nullish(),
+  source: z.enum(['IMPORT', 'MANUAL']),
+});
+export type SuggestDto = z.infer<typeof SuggestSchema>;
