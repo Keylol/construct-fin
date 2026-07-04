@@ -11,6 +11,7 @@ import {
   type OpenLot,
 } from '../common/fifo';
 import { D, qty as roundQty, cost as roundCost, money, gt, sub, add } from '../common/money';
+import { assertNotFuture } from '../reports/period';
 import { AuditService } from '../audit/audit.service';
 import { parseGenericXlsx } from '../import/parsers';
 import type {
@@ -909,6 +910,7 @@ export class WarehouseService {
       if (!gt(returnQty, '0')) {
         throw new BadRequestException('returnQty должен быть положительным');
       }
+      assertNotFuture(dto.date ? new Date(dto.date) : new Date(), 'Дата возврата поставщику'); // DE4
       // Доступность по ИТОГОВОМУ остатку позиции (не по лотам поставщика) — реш. #1:
       // при достаточном item.qty не блокируем (нет ложного 400 на мультипоставщиковом стоке).
       if (gt(returnQty, item.qty)) {
@@ -961,6 +963,22 @@ export class WarehouseService {
         }
         throw e;
       }
+
+      // F6: возврат поставщику — денежная операция, аудируем (раньше не писался,
+      // в отличие от write-off/supplier-return-соседей).
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'warehouse.supplier-return',
+        entityType: 'WarehouseItem',
+        entityId: itemId,
+        diff: {
+          name: item.name,
+          returnQty: returnQty.toString(),
+          refund: refund.toFixed(2),
+          supplierId: dto.supplierId ?? item.defaultSupplierId ?? null,
+        },
+      });
 
       return this.repo.findById(workspaceId, itemId, tx);
     });
