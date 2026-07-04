@@ -401,6 +401,7 @@ export interface CategoryBreakdown {
 export type ReportBucket =
   | 'REVENUE'
   | 'COGS'
+  | 'PURCHASES'
   | 'FIXED'
   | 'VARIABLE'
   | 'TAX'
