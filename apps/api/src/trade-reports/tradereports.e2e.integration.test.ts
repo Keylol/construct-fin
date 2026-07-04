@@ -673,4 +673,45 @@ describe('Trade Reports E2E · Волна 3 согласованность (IJ1,
     // Только живой OPEN-долг 700; CANCELLED 5000 исключён.
     expect(num(rep.totalDue)).toBe(700);
   });
+
+  it('DE1/ревью: возврат при просроченном графике — overdueByPlan не превышает due', async () => {
+    const asOf = new Date('2026-06-01T00:00:00.000Z');
+    orderSeq += 1;
+    // total 2000, график 2×1000 (обе просрочены), оплачено 500, вернули 1×1000.
+    // Старый due=1500, overdue=1500. Возврат: netRevenue=1000, due=500.
+    // Без капа overdueByPlan(1500) > due(500) — невозможное состояние.
+    await h.prisma.order.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        number: `REC-PLAN-${orderSeq}`,
+        status: 'DONE',
+        paymentStatus: 'PARTIAL',
+        subtotal: new Prisma.Decimal('2000'),
+        totalAmount: new Prisma.Decimal('2000'),
+        paidAmount: new Prisma.Decimal('500'),
+        createdAt: daysAgo(40, asOf.getTime()),
+        items: {
+          create: [
+            {
+              name: 'Товар',
+              qty: new Prisma.Decimal('2'),
+              returnedQty: new Prisma.Decimal('1'),
+              unitPrice: new Prisma.Decimal('1000'),
+              lineTotal: new Prisma.Decimal('2000'),
+            },
+          ],
+        },
+        schedule: {
+          create: [
+            { workspaceId: seed.workspaceId, seq: 1, dueDate: daysAgo(30, asOf.getTime()), amount: new Prisma.Decimal('1000') },
+            { workspaceId: seed.workspaceId, seq: 2, dueDate: daysAgo(15, asOf.getTime()), amount: new Prisma.Decimal('1000') },
+          ],
+        },
+      },
+    });
+    const rep = await h.tradeReceivables.build(seed.workspaceId, asOf);
+    // due = netRevenue(1000) − paid(500) = 500; overdueByPlan капнут по due.
+    expect(num(rep.totalDue)).toBe(500);
+    expect(Number(rep.overdueByPlanTotal)).toBeLessThanOrEqual(Number(rep.totalDue));
+  });
 });

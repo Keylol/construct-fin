@@ -152,9 +152,14 @@ export class ReceivablesService {
       const safeAge = ageDays < 0 ? 0 : ageDays;
       const bucket = bucketFor(safeAge);
 
-      // F2: просрочка по формальному графику против чистой выручки (не сырого total).
-      const plan = scheduleView(o.schedule, paid, netRevenue, asOf);
-      const overdueByPlan = plan ? new Prisma.Decimal(plan.summary.overdueAmount) : null;
+      // F2: график — согласованный план против ИСХОДНОГО total (возврат его не
+      // перекраивает; matchesTotal остаётся верным). Показанную просрочку капим по
+      // фактическому долгу due (после возвратов), чтобы overdueByPlan ≤ due —
+      // иначе «просрочено по плану» превысило бы реальный остаток (DE1/ревью).
+      const plan = scheduleView(o.schedule, paid, total, asOf);
+      const overdueByPlan = plan
+        ? Prisma.Decimal.min(new Prisma.Decimal(plan.summary.overdueAmount), due)
+        : null;
 
       totalDue = totalDue.plus(due);
       totalBuckets[bucket] = totalBuckets[bucket].plus(due);
