@@ -55,6 +55,7 @@ model Workspace {
   transactions    Transaction[]
   importBatches   ImportBatch[]
   categoryRules   CategoryRule[]
+  rules           Rule[]
   auditLogs       AuditLog[]
   orders          Order[]
   warehouseItems  WarehouseItem[]
@@ -838,6 +839,30 @@ model CategoryRule {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   category  Category  @relation(fields: [categoryId], references: [id])
+
+  @@index([workspaceId, isActive, priority])
+  @@index([workspaceId, deletedAt])
+}
+
+/// Движок правил (конфигурируемость Блок 1): обобщение CategoryRule до
+/// «условие → действие». conditions/actions — JSON из фиксированного zod-словаря
+/// (см. rule.dto.ts); id категорий/контрагентов/счетов внутри JSON проверяются на
+/// принадлежность workspace в сервисе (FK внутри JSON не enforce-ится, это норма
+/// для rule-движка). Только ПОДСКАЗКИ — деньги не двигает.
+model Rule {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  priority    Int       @default(0)
+  isActive    Boolean   @default(true)
+  appliesTo   String    @default("BOTH") /// IMPORT | MANUAL | BOTH
+  conditions  Json /// RuleCondition[]
+  actions     Json /// RuleAction[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, isActive, priority])
   @@index([workspaceId, deletedAt])

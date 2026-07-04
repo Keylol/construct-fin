@@ -15,6 +15,7 @@ import { TransferModule } from './transfer/transfer.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { ImportModule } from './import/import.module';
 import { CategoryRuleModule } from './category-rule/category-rule.module';
+import { RuleModule } from './rule/rule.module';
 import { ReportsModule } from './reports/reports.module';
 import { TradeReportsModule } from './trade-reports/trade-reports.module';
 import { OrderModule } from './orders/order.module';
@@ -47,6 +48,7 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
     AttachmentModule,
     ImportModule,
     CategoryRuleModule,
+    RuleModule,
     ReportsModule,
     TradeReportsModule,
     OrderModule,
