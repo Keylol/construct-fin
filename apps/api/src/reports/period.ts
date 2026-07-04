@@ -223,6 +223,11 @@ export function resolveComparison(
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException('Период сравнения: дата начала позже даты конца');
     }
+    // IJ12 (симметрично resolvePeriod): ширина сравнения тоже ограничена — иначе
+    // DoS через compareFrom/compareTo в обход лимита primary-периода.
+    if (to.getTime() - from.getTime() > MAX_PERIOD_MS) {
+      throw new BadRequestException('Период сравнения слишком широкий (максимум 5 лет)');
+    }
     return { from, to };
   }
   if (input.mode === 'yoy') {
