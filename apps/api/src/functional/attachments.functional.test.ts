@@ -261,6 +261,64 @@ describe('Функциональные мутации: вложения (attachm
     expect(await H.prisma.attachment.findUnique({ where: { id: att.id } })).not.toBeNull();
   });
 
+  it('DE6: вложение без родителя не отдаётся (защита в глубину) → 404', async () => {
+    const ws = seed.workspaceId;
+    const att = await H.prisma.attachment.create({
+      data: {
+        workspaceId: ws,
+        // ни orderId, ни transactionId — состояние, недостижимое через API.
+        filename: 'orphan.png',
+        mimeType: 'image/png',
+        size: 10,
+        storagePath: '/nonexistent/orphan.png',
+        hash: `orphan-${tg}`,
+      },
+    });
+    const res = await H.inject({
+      method: 'GET',
+      url: `/workspaces/${ws}/attachments/${att.id}/download`,
+      token,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('DE6: удаление заказа чистит и вложения его платёжных операций (transactionId)', async () => {
+    const ws = seed.workspaceId;
+    // Заказ с позицией + оплата → создаётся ORDER_PAYMENT-операция с orderId.
+    const order = await H.prisma.order.create({
+      data: {
+        workspaceId: ws,
+        number: `ORD-PAY-${tg}`,
+        items: { create: { name: 'Товар', qty: '1', unitPrice: '1000', lineTotal: '1000' } },
+      },
+    });
+    await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/orders/${order.id}/payments`,
+      token,
+      payload: { amount: '1000', accountId: seed.accountId },
+    });
+    const payTx = await H.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: ws, orderId: order.id, kind: 'ORDER_PAYMENT' },
+    });
+    // Чек привязан к ОПЕРАЦИИ (transactionId, orderId=null у вложения).
+    const att = await H.prisma.attachment.create({
+      data: {
+        workspaceId: ws,
+        transactionId: payTx.id,
+        filename: 'pay-receipt.png',
+        mimeType: 'image/png',
+        size: 10,
+        storagePath: '/nonexistent/pay.png',
+        hash: `pay-${tg}`,
+      },
+    });
+    // Удаляем заказ → его платёжные операции soft-deleted, их вложения сняты.
+    const del = await H.inject({ method: 'DELETE', url: `/workspaces/${ws}/orders/${order.id}`, token });
+    expect(del.statusCode).toBe(200);
+    expect(await H.prisma.attachment.findUnique({ where: { id: att.id } })).toBeNull();
+  });
+
   it('негатив: 401 без токена и 403 к чужому workspace', async () => {
     const ws = seed.workspaceId;
     const txId = await seedTransaction();
