@@ -98,6 +98,17 @@ export class OrderController {
     return this.service.addInstallmentPayment(ws.workspaceId, id, ws.userId, body);
   }
 
+  /** C2: доменное удаление ошибочной оплаты/возврата/комиссии заказа. */
+  @Delete(':id/payments/:txId')
+  @HttpCode(200)
+  deletePayment(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Param('txId') txId: string,
+  ) {
+    return this.service.deletePayment(ws.workspaceId, id, txId, ws.userId);
+  }
+
   @Put(':id/schedule')
   setSchedule(
     @CurrentWorkspace() ws: WorkspaceContext,

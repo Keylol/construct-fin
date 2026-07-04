@@ -182,6 +182,16 @@ export function useSetOrderSchedule(wsId: string) {
   });
 }
 
+/** C2: удалить ошибочную денежную операцию заказа (платёж/возврат/комиссию). */
+export function useDeleteOrderPayment(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, txId }: { id: string; txId: string }) =>
+      api.del<Order>(`/workspaces/${wsId}/orders/${id}/payments/${txId}`),
+    onSuccess: () => invalidate(qc, wsId),
+  });
+}
+
 export function useFinalizeOrder(wsId: string) {
   const qc = useQueryClient();
   // M18: см. useAddOrderPayment — ключ стабилен на время операции (retry не задвоит).
