@@ -43,6 +43,12 @@ async function bootstrap() {
   // стектрейсов. HttpException проходят без изменений — контракт ответов сохранён.
   app.useGlobalFilters(new AllExceptionsFilter(app.get(HttpAdapterHost)));
 
+  // L7 (наблюдаемость): graceful shutdown. Nest ловит SIGTERM/SIGINT (docker stop
+  // при каждом релизе), закрывает Fastify-сервер (перестаёт принимать, дожидается
+  // in-flight запросов) и вызывает OnModuleDestroy-хуки (PrismaService.$disconnect).
+  // Без этого рестарт рвёт активные запросы и оставляет висящие коннекты к БД.
+  app.enableShutdownHooks();
+
   const port = Number(process.env.API_PORT ?? 4000);
   const host = process.env.API_HOST ?? '0.0.0.0';
 
