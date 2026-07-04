@@ -186,7 +186,7 @@ describe('P&L отчёт (по данным)', () => {
     expect(report.comparison).toBeNull();
   });
 
-  it('CAPITAL вычитается из net, но входит в grossProfit', async () => {
+  it('IJ3: CAPITAL исключён из headline Доход/Расход, net и grossProfit (виден только в bucket)', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     const capInCat = await makeCategory('Вложение', 'INCOME', 'CAPITAL');
     const capOutCat = await makeCategory('Изъятие', 'EXPENSE', 'CAPITAL');
@@ -203,15 +203,58 @@ describe('P&L отчёт (по данным)', () => {
     });
     const t = report.primary.totals;
 
-    // Сырые income/expense включают CAPITAL.
-    expect(t.income).toBe('28000.00'); // 8000 + 20000
-    expect(t.expense).toBe('5000.00');
-    // grossProfit считается от операционного дохода (без CAPITAL) минус COGS(0).
-    expect(t.grossProfit).toBe('8000.00');
-    // net = операц.доход(8000) − операц.расход(0) — оба CAPITAL вычтены.
+    // IJ3: headline Доход/Расход БЕЗ CAPITAL → Доход − Расход === net тождественно.
+    expect(t.income).toBe('8000.00'); // только операционный доход
+    expect(t.expense).toBe('0.00'); // CAPITAL_OUT исключён
+    expect(t.grossProfit).toBe('8000.00'); // выручка(8000) − COGS(0)
     expect(t.net).toBe('8000.00');
+    // Проверка тождества Доход − Расход = net.
+    expect(Number(t.income) - Number(t.expense)).toBe(Number(t.net));
+    // CAPITAL по-прежнему виден в разбивке по бакетам.
     expect(bucketOf(t, 'CAPITAL').income).toBe('20000.00');
     expect(bucketOf(t, 'CAPITAL').expense).toBe('5000.00');
+  });
+
+  it('IJ2: grossProfit = чистая выручка − COGS (возврат поставщику не выручка, возврат клиенту вычтен)', async () => {
+    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
+    // Выручка 10000, возврат клиенту 2000 (ORDER_REFUND), возврат поставщику 1500
+    // (SUPPLIER_REFUND, бакет PURCHASES), COGS 3000.
+    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat });
+    await tx({ amount: '2000', type: 'EXPENSE', kind: 'ORDER_REFUND', date: d2025(4) });
+    await tx({ amount: '1500', type: 'INCOME', kind: 'SUPPLIER_REFUND', date: d2025(4) });
+    await tx({ amount: '3000', type: 'EXPENSE', kind: 'COGS', date: d2025(4) });
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const t = report.primary.totals;
+    // grossProfit = (10000 − 2000) − 3000 = 5000. Раньше было бы 10000+1500−3000=8500.
+    expect(t.grossProfit).toBe('5000.00');
+  });
+
+  it('F5: WRITE_OFF вне операционного net, но в grossProfit', async () => {
+    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
+    // Выручка 10000, COGS 0, потеря склада WRITE_OFF 1500 (неденежная).
+    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat });
+    await tx({ amount: '1500', type: 'EXPENSE', kind: 'WRITE_OFF', date: d2025(4) });
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const t = report.primary.totals;
+    // net не трогает WRITE_OFF (деньги ушли при закупке): 10000 − 0.
+    expect(t.net).toBe('10000.00');
+    // grossProfit уменьшен потерей (бакет COGS): 10000 − 1500.
+    expect(t.grossProfit).toBe('8500.00');
+    // headline Расход не включает WRITE_OFF (тождество Доход − Расход = net).
+    expect(t.expense).toBe('0.00');
+    expect(Number(t.income) - Number(t.expense)).toBe(Number(t.net));
   });
 
   it('groupBy=month режет на месячные слайсы; groupBy=quarter — на квартальные', async () => {
