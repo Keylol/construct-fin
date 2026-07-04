@@ -361,20 +361,6 @@ export interface ImportBatch {
   user: { firstName: string | null; username: string | null };
 }
 
-// ──────────── Category rules ────────────
-
-export interface CategoryRule {
-  id: string;
-  workspaceId: string;
-  keyword: string;
-  categoryId: string;
-  priority: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  category?: { id: string; name: string; kind: CategoryKind };
-}
-
 // ──────────── Движок правил (Rule) ────────────
 // Обобщение CategoryRule до «условие → действие». Зеркалит фиксированный словарь
 // бэкенда (apps/api/src/rule/rule.dto.ts + engine.ts). Только подсказки.

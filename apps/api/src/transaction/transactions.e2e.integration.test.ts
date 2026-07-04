@@ -21,20 +21,16 @@ import {
   type Harness,
   type Seed,
 } from '../test/money-harness';
-import { CategoryRuleService } from '../category-rule/category-rule.service';
-import type { PrismaService } from '../prisma/prisma.service';
 import type { CommitBody, CommitRow } from '../import/import.dto';
 
 const num = (v: unknown): number => Number(String(v));
 
 let h: Harness;
-let rules: CategoryRuleService;
 let seed: Seed;
 let tg = 1100000n;
 
 beforeAll(() => {
   h = buildHarness();
-  rules = new CategoryRuleService(h.prisma as unknown as PrismaService);
 });
 afterAll(async () => {
   await h.prisma.$disconnect();
@@ -790,78 +786,6 @@ describe('Импорт: listBatches (ImportService.listBatches)', () => {
     expect(list[1]!.filename).toBe('a.csv');
     expect(list[1]!.deletedAt).not.toBeNull();
     expect(list[0]!.user.firstName).toBe('Test');
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 10. Правила автокатегоризации: CRUD
-// ─────────────────────────────────────────────────────────────────────────────
-describe('Category rules: CRUD (CategoryRuleService)', () => {
-  it('create с дефолтами priority=0/isActive=true и проверкой категории', async () => {
-    const cat = await makeCategory('Такси', 'EXPENSE');
-    const r = await rules.create(seed.workspaceId, { keyword: 'яндекс', categoryId: cat });
-    expect(r.priority).toBe(0);
-    expect(r.isActive).toBe(true);
-    expect(r.category.id).toBe(cat);
-    expect(r.category.kind).toBe('EXPENSE');
-  });
-
-  it('create с категорией из чужого workspace → BadRequest', async () => {
-    const other = await seedBase(h.prisma, tg + 600000n);
-    const otherCat = await h.categories.create(other.workspaceId, { name: 'Чужая', kind: 'EXPENSE', isFixedCost: false });
-    await expect(
-      rules.create(seed.workspaceId, { keyword: 'x', categoryId: otherCat.id }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('list по умолчанию скрывает неактивные; includeInactive показывает; сортировка priority DESC, keyword ASC', async () => {
-    const cat = await makeCategory('Категория', 'EXPENSE');
-    await rules.create(seed.workspaceId, { keyword: 'low', categoryId: cat, priority: 1 });
-    await rules.create(seed.workspaceId, { keyword: 'high', categoryId: cat, priority: 10 });
-    const inactive = await rules.create(seed.workspaceId, { keyword: 'off', categoryId: cat, isActive: false });
-
-    const active = await rules.list(seed.workspaceId, { includeInactive: false });
-    expect(active.map((r) => r.keyword)).toEqual(['high', 'low']);
-
-    const all = await rules.list(seed.workspaceId, { includeInactive: true });
-    expect(all.map((r) => r.id)).toContain(inactive.id);
-  });
-
-  it('update меняет keyword/priority; смена категории на чужую → BadRequest', async () => {
-    const cat = await makeCategory('Категория', 'EXPENSE');
-    const r = await rules.create(seed.workspaceId, { keyword: 'old', categoryId: cat, priority: 1 });
-    const upd = await rules.update(seed.workspaceId, r.id, { keyword: 'new', priority: 5 });
-    expect(upd.keyword).toBe('new');
-    expect(upd.priority).toBe(5);
-
-    await expect(
-      rules.update(seed.workspaceId, r.id, { categoryId: 'cat-not-exist' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('update несуществующего правила → NotFound', async () => {
-    await expect(
-      rules.update(seed.workspaceId, 'rule-not-exist', { keyword: 'x' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it('softDelete: deletedAt+isActive=false, после — исчезает из активного списка', async () => {
-    const cat = await makeCategory('Категория', 'EXPENSE');
-    const r = await rules.create(seed.workspaceId, { keyword: 'del', categoryId: cat });
-    await rules.softDelete(seed.workspaceId, r.id);
-
-    const row = await h.prisma.categoryRule.findUniqueOrThrow({ where: { id: r.id } });
-    expect(row.deletedAt).not.toBeNull();
-    expect(row.isActive).toBe(false);
-
-    const active = await rules.list(seed.workspaceId, { includeInactive: true });
-    expect(active.map((x) => x.id)).not.toContain(r.id); // includeInactive не показывает удалённые
-  });
-
-  it('softDelete несуществующего → NotFound', async () => {
-    await expect(rules.softDelete(seed.workspaceId, 'rule-not-exist')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
   });
 });
 

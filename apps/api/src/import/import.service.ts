@@ -178,9 +178,9 @@ export class ImportService {
     const cpByLcName = new Map<string, string>();
     for (const cp of existingCps) cpByLcName.set(cp.name.toLowerCase(), cp.id);
 
-    // Подсказки категории при импорте теперь даёт единый движок правил (Rule),
-    // а не старый CategoryRule/matcher (deprecated). Грузим один раз применимые к
-    // импорту активные правила, дальше гоняем чистый движок per-row.
+    // Подсказки категории при импорте даёт единый движок правил (Rule). Грузим
+    // один раз применимые к импорту активные правила, дальше гоняем чистый
+    // движок per-row.
     const ruleRows = await this.prisma.rule.findMany({
       where: {
         workspaceId: opts.workspaceId,
