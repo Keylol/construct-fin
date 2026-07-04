@@ -8,7 +8,6 @@
  * НЕ дублирует existingCoverage:
  *  - account.service.test.ts (unit: Account.class propagation)
  *  - category.dto.test.ts (unit: bucket enum)
- *  - category-rule/matcher.test.ts (unit: keyword matching)
  * Здесь — именно DB-backed специфика CRUD/иерархии/фильтров/soft-delete/гвардов.
  *
  * Уникальный диапазон telegramId: 1000000n.
