@@ -252,8 +252,8 @@ describe('Оплата (addPayment) — гварды и состояние REFUN
     ).rejects.toThrow();
   });
 
-  it('возврат больше оплаты даёт отрицательный paid → статус REFUNDED', async () => {
-    // Услуга: продано 1 за 1000, оплачено 1000, закрыто, затем RMA с refund 1000+сбор.
+  it('DE5: возврат больше собранного отклоняется (paidAmount не уходит в минус)', async () => {
+    // Услуга: продано 1 за 1000, оплачено 1000, закрыто, затем RMA с refund > собранного.
     const order = await h.orders.create(seed.workspaceId, {
       items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
@@ -263,15 +263,76 @@ describe('Оплата (addPayment) — гварды и состояние REFUN
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     const oi = await itemOf(order.id);
-    // refund 1200 > оплата 1000 → paid = −200 → REFUNDED
+    // refund 1200 > собранное 1000 → 400 (кап DE5), paidAmount остаётся 1000.
+    await expect(
+      h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+        itemId: oi.id,
+        returnQty: '1',
+        refundAmount: '1200',
+        accountId: seed.accountId,
+      }),
+    ).rejects.toThrow(/превышает собранную сумму/);
+    const after = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(after.paidAmount.toFixed(2)).toBe('1000.00');
+    expect(after.paymentStatus).toBe('PAID');
+  });
+
+  it('DE5: возврат ровно собранного проходит (paidAmount → 0)', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    const oi = await itemOf(order.id);
     const updated = await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
       itemId: oi.id,
       returnQty: '1',
-      refundAmount: '1200',
+      refundAmount: '1000',
       accountId: seed.accountId,
     });
-    expect(num(updated!.paidAmount)).toBe(-200);
-    expect(updated!.paymentStatus).toBe('REFUNDED');
+    expect(num(updated!.paidAmount)).toBe(0);
+  });
+});
+
+describe('DE3/DE4: guard\'ы суммы и даты оплаты', () => {
+  it('DE3: отрицательная/нулевая оплата отклоняется', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+    });
+    for (const bad of ['-15000', '0']) {
+      await expect(
+        h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+          amount: bad,
+          accountId: seed.accountId,
+        }),
+      ).rejects.toThrow(/положительной/);
+    }
+    const after = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(after.paymentStatus).toBe('UNPAID');
+  });
+
+  it('DE4: будущая дата оплаты отклоняется, прошлая — проходит', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+    });
+    await expect(
+      h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+        amount: '500',
+        accountId: seed.accountId,
+        date: '2099-01-01T00:00:00.000Z',
+      }),
+    ).rejects.toThrow(/будущем/);
+    // Прошлая дата — норма (бэкдейт вчерашнего платежа).
+    await expect(
+      h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+        amount: '500',
+        accountId: seed.accountId,
+        date: '2026-01-01T00:00:00.000Z',
+      }),
+    ).resolves.toBeTruthy();
   });
 });
 
