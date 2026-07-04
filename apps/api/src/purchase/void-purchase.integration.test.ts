@@ -115,6 +115,60 @@ describe('GH9: отмена закупки', () => {
     ).rejects.toThrow(/не найдена|уже отменена/);
   });
 
+  it('откат возвращает деньги на счёт и обнуляет stock-value (г)', async () => {
+    const a = await item('Деталь G');
+    const purchase = await h.purchases.register(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-05-01T00:00:00.000Z',
+      lines: [{ warehouseItemId: a, qty: '10', unitPrice: '100' }],
+    });
+    // Закупка на 1000 → stock-value 1000, расход по счёту 1000.
+    expect(await h.warehouse.stockValue(seed.workspaceId)).toBe('1000.00');
+    const spentBefore = await h.prisma.transaction.aggregate({
+      where: { workspaceId: seed.workspaceId, accountId: seed.accountId, deletedAt: null },
+      _sum: { amount: true },
+    });
+    expect(spentBefore._sum.amount?.toFixed(2)).toBe('1000.00');
+
+    await h.purchases.voidPurchase(seed.workspaceId, purchase.id, seed.userId);
+
+    // Деньги вернулись (проводка исключена), склад обнулён.
+    expect(await h.warehouse.stockValue(seed.workspaceId)).toBe('0.00');
+    const spentAfter = await h.prisma.transaction.aggregate({
+      where: { workspaceId: seed.workspaceId, accountId: seed.accountId, deletedAt: null },
+      _sum: { amount: true },
+    });
+    expect(Number(spentAfter._sum.amount ?? 0)).toBe(0);
+  });
+
+  it('товар продан и ПОЛНОСТЬЮ возвращён (qtyRemaining==qtyInitial, но есть потребление) → 400 (б)', async () => {
+    const a = await item('Деталь H');
+    const purchase = await h.purchases.register(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-05-01T00:00:00.000Z',
+      lines: [{ warehouseItemId: a, qty: '10', unitPrice: '100' }],
+    });
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Деталь H', qty: '5', unitPrice: '200', warehouseItemId: a }],
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+    // Возврат всех 5 → qtyRemaining партии восстановлен до 10 (==qtyInitial), но
+    // LotConsumption имеет CONSUME+REVERSAL (count>0) → отмена всё равно запрещена.
+    // refund 0 — нужен только возврат товара (реверс потребления партии), без денег
+    // (заказ не оплачивался; DE5 иначе кап-нёт возврат по собранному).
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '5',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    expect(await qtyOf(a)).toBe('10.000');
+    await expect(
+      h.purchases.voidPurchase(seed.workspaceId, purchase.id, seed.userId),
+    ).rejects.toThrow(/продан|списан|возврат поставщику/);
+  });
+
   it('после частичного возврата поставщику остаток изменён → отмена запрещена', async () => {
     const a = await item('Деталь F');
     const purchase = await h.purchases.register(seed.workspaceId, seed.userId, {

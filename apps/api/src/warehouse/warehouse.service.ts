@@ -918,7 +918,11 @@ export class WarehouseService {
     });
     const lotIds = lots.map((l) => l.id);
     if (lotIds.length > 0) {
-      const consumed = await tx.lotConsumption.count({ where: { lotId: { in: lotIds } } });
+      // workspaceId в WHERE — защита в глубину поверх того, что lotIds уже
+      // отфильтрованы по ws (конвенция проекта: изоляция явная в каждом запросе).
+      const consumed = await tx.lotConsumption.count({
+        where: { workspaceId, lotId: { in: lotIds } },
+      });
       if (consumed > 0) {
         throw new BadRequestException(
           'Нельзя отменить закупку: товар из её партий уже продан или списан — оформите возврат поставщику',
@@ -931,7 +935,7 @@ export class WarehouseService {
         }
       }
       await tx.stockLot.updateMany({
-        where: { id: { in: lotIds } },
+        where: { id: { in: lotIds }, workspaceId },
         data: { deletedAt: new Date() },
       });
     }
