@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
@@ -44,5 +46,12 @@ export class PurchaseController {
     @Body(new ZodPipe(CreatePurchaseSchema)) body: CreatePurchaseDto,
   ) {
     return this.service.register(ws.workspaceId, ws.userId, body);
+  }
+
+  /** GH9: отменить закупку (только если её партии не тронуты). */
+  @Delete(':id')
+  @HttpCode(200)
+  void(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.voidPurchase(ws.workspaceId, id, ws.userId);
   }
 }
