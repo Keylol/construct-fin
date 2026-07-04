@@ -14,6 +14,7 @@ import { WarehouseService, NoConsumptionsError } from '../warehouse/warehouse.se
 import { AuditService } from '../audit/audit.service';
 import { OrderRepository } from './order.repository';
 import { add, sub, mul, money, gt, lt, isZero, D } from '../common/money';
+import { endOfDay } from '../reports/period';
 import {
   itemMargin,
   orderMargin,
@@ -280,7 +281,14 @@ export class OrderService {
     userId: string,
     dto: AddPaymentDto,
   ) {
+    // DE3: оплата строго положительна. MoneyString в DTO допускает знак (нужен
+    // для сторно), поэтому «−15000»/«0» отсекаем здесь — иначе paidAmount ушёл бы
+    // в минус и заказ получил фейковый статус REFUNDED без единого возврата.
+    if (!gt(money(dto.amount), '0')) {
+      throw new BadRequestException('Сумма оплаты должна быть положительной');
+    }
     const paymentDate = dto.date ? new Date(dto.date) : new Date();
+    assertNotFuture(paymentDate, 'Дата оплаты'); // DE4
     // B1: счёт обязан принадлежать этому workspace — иначе платёж сел бы на чужой
     // счёт (утечка изоляции + порча кэш-флоу). Внешний ref — до tx.
     await this.assertAccount(workspaceId, dto.accountId);
@@ -335,6 +343,7 @@ export class OrderService {
       throw new BadRequestException('Комиссия должна быть меньше суммы оплаты');
     }
     const paymentDate = dto.date ? new Date(dto.date) : new Date();
+    assertNotFuture(paymentDate, 'Дата оплаты'); // DE4
     await this.assertAccount(workspaceId, dto.accountId);
 
     return this.uow.run(async (tx) => {
@@ -549,6 +558,7 @@ export class OrderService {
     await this.assertAccount(workspaceId, dto.accountId);
 
     const refundDate = dto.date ? new Date(dto.date) : new Date();
+    assertNotFuture(refundDate, 'Дата возврата'); // DE4
 
     return this.uow.run(async (tx) => {
       // B2: лок + свежее чтение — два параллельных возврата по одной позиции
@@ -556,6 +566,14 @@ export class OrderService {
       const order = await this.lockAndLoad(tx, workspaceId, orderId);
       if (order.status !== 'DONE') {
         throw new BadRequestException('Возврат возможен только по закрытому (DONE) заказу');
+      }
+      // DE5: нельзя вернуть денег больше, чем сейчас собрано по заказу
+      // (paidAmount = Σ оплат − Σ возвратов). Иначе paidAmount ушёл бы в минус
+      // и заказ получил бы фейковый REFUNDED. Кап по фактически собранному.
+      if (gt(refund, order.paidAmount)) {
+        throw new BadRequestException(
+          `Возврат ${refund.toFixed(2)} превышает собранную сумму ${order.paidAmount.toFixed(2)} — уменьшите сумму возврата`,
+        );
       }
       const item = (order.items ?? []).find((i) => i.id === dto.itemId);
       if (!item) throw new NotFoundException('Позиция заказа не найдена');
@@ -1092,6 +1110,19 @@ export function resolvePaymentState(
   if (lt(paid, total)) return 'PARTIAL';
   if (gt(paid, total)) return 'OVERPAID';
   return 'PAID';
+}
+
+/**
+ * DE4: дата денежной операции не может быть в будущем. «Сегодня» — конец
+ * текущих суток в поясе бизнеса (UTC+5), чтобы «сегодняшняя» дата в любом
+ * часовом поясе клиента не отсекалась. Прошлое разрешено (бэкдейт вчерашнего
+ * платежа — норма); будущее — почти всегда опечатка, которая сажает проводку
+ * в ещё не наступивший период отчёта.
+ */
+function assertNotFuture(date: Date, label: string): void {
+  if (date.getTime() > endOfDay(new Date()).getTime()) {
+    throw new BadRequestException(`${label} не может быть в будущем`);
+  }
 }
 
 /** Хелпер: пересчёт total при изменении только скидки. */
