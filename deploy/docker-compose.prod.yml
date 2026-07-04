@@ -72,6 +72,14 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     networks: [internal]
+    # L3 (наблюдаемость): у web появился healthcheck, чтобы авто-откат деплоя мог
+    # его дренировать (web_healthy() в deploy.yml). Проба GET /login → 200 (страница
+    # входа отдаётся без auth; node гарантированно в standalone-образе Next).
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/login',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
 
   # Бэкап Postgres: pg_dump по расписанию + ротация. Файлы лежат в /backups
   # внутри контейнера, на хосте — в named volume `backups`. Чтобы достать
