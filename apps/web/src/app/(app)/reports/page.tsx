@@ -34,6 +34,7 @@ import { CHART_SEMANTIC } from '@/lib/chart';
 const BUCKET_LABEL: Record<ReportBucket, string> = {
   REVENUE: 'Выручка',
   COGS: 'Себестоимость',
+  PURCHASES: 'Закупки', // IJ10: бакет закупок склада — раньше рендерился без названия
   FIXED: 'Постоянные',
   VARIABLE: 'Переменные',
   TAX: 'Налоги',
@@ -134,9 +135,12 @@ export default function PnlReportPage() {
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : totals ? (
           <>
+            {/* IJ11: на P&L показываем ОПЕРАЦИОННЫЕ доход/расход (без капитала
+                собственника и неденежных списаний) — иначе одинаковый ярлык
+                «Расходы» с дашбордом (кэш-поток) давал разные суммы за период. */}
             <div className="stagger grid gap-4 sm:grid-cols-3">
-              <KpiCard label="Доходы" value={formatRub(totals.income)} tone="positive" />
-              <KpiCard label="Расходы" value={formatRub(totals.expense)} tone="negative" />
+              <KpiCard label="Операционные доходы" value={formatRub(totals.income)} tone="positive" />
+              <KpiCard label="Операционные расходы" value={formatRub(totals.expense)} tone="negative" />
               <KpiCard
                 label="Чистая прибыль"
                 value={formatRub(totals.net)}
