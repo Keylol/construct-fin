@@ -159,9 +159,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
 
           <SheetBody className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
+              {/* C16: смена типа сбрасывает категорию — иначе в payload осталась бы
+                  stale-категория прежнего типа (расходная на доходе), которую
+                  бэкенд теперь отвергает 400. Список категорий и так фильтруется
+                  по type, но state categoryId нужно занулить явно. */}
               <button
                 type="button"
-                onClick={() => setType('EXPENSE')}
+                onClick={() => {
+                  setType('EXPENSE');
+                  setCategoryId('');
+                }}
                 className={cn(
                   'flex h-9 items-center justify-center rounded-md border text-sm font-medium transition-colors',
                   type === 'EXPENSE'
@@ -173,7 +180,10 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
               </button>
               <button
                 type="button"
-                onClick={() => setType('INCOME')}
+                onClick={() => {
+                  setType('INCOME');
+                  setCategoryId('');
+                }}
                 className={cn(
                   'flex h-9 items-center justify-center rounded-md border text-sm font-medium transition-colors',
                   type === 'INCOME'

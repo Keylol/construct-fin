@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { toast } from '@/components/ui/Toaster';
 import {
   TransactionFilters,
   type ActiveFilters,
@@ -207,7 +208,21 @@ export default function TransactionsPage() {
           data={txRows}
           columns={columns}
           rowKey={(t) => t.id}
-          onRowClick={(t) => setEditingId(t.id)}
+          onRowClick={(t) => {
+            // C1: доменные строки (ноги перевода/комиссия, оплаты заказа) через
+            // этот экран не правятся — направляем в их раздел вместо 400 на сохранении.
+            if (!t.editable) {
+              toast.info(
+                t.transferGroupId
+                  ? 'Операция перевода — правится в разделе «Переводы»'
+                  : t.orderId
+                    ? 'Операция по заказу — правится в карточке заказа'
+                    : 'Автоматическая операция — правится в своём разделе',
+              );
+              return;
+            }
+            setEditingId(t.id);
+          }}
           loading={txs.isLoading}
           empty={
             <EmptyState
