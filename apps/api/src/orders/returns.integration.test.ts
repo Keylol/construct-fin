@@ -74,14 +74,16 @@ describe('RMA: частичный возврат складской позици
     });
     expect(mv).not.toBeNull();
     expect(num(mv!.qtyDelta)).toBe(2);
-    // ORDER_REFUND создан, оплата пересчитана: 2500 - 1000 = 1500 → PARTIAL
+    // ORDER_REFUND создан, оплата пересчитана: 2500 - 1000 = 1500.
+    // DE1: статус по чистой выручке — вернули 2×500=1000, netRevenue=1500=paid → PAID
+    // (клиент оплатил ровно то, что оставил; фантомного долга нет).
     const refund = await h.prisma.transaction.findFirstOrThrow({
       where: { workspaceId: seed.workspaceId, orderId: order.id, kind: 'ORDER_REFUND' },
     });
     expect(refund.type).toBe('EXPENSE');
     expect(num(refund.amount)).toBe(1000);
     expect(num(updated!.paidAmount)).toBe(1500);
-    expect(updated!.paymentStatus).toBe('PARTIAL');
+    expect(updated!.paymentStatus).toBe('PAID');
   });
 
   it('возврат без денег (refundAmount=0): склад+returnedQty, без ORDER_REFUND', async () => {
@@ -101,8 +103,10 @@ describe('RMA: частичный возврат складской позици
       where: { workspaceId: seed.workspaceId, orderId: order.id, kind: 'ORDER_REFUND' },
     });
     expect(refundCount).toBe(0);
-    // оплата не изменилась (полная)
-    expect(updated!.paymentStatus).toBe('PAID');
+    // DE1: возврат без рефанда — paid остался полным (2500), но netRevenue упал
+    // (вернули 1×500 → 2000). paid > netRevenue → OVERPAID: мы должны клиенту
+    // (неотрефандённый возврат = переплата), верный сигнал вместо фантомного PAID.
+    expect(updated!.paymentStatus).toBe('OVERPAID');
   });
 
   it('накопительные частичные возвраты; нельзя вернуть больше проданного', async () => {
@@ -181,7 +185,8 @@ describe('RMA: частичный возврат складской позици
     });
     expect(num(refund.amount)).toBe(1000);
     expect(num(updated!.paidAmount)).toBe(1000); // 2000 - 1000
-    expect(updated!.paymentStatus).toBe('PARTIAL');
+    // DE1: netRevenue = 2000 − возврат 1000 = 1000 = paid → PAID (не фантомный PARTIAL).
+    expect(updated!.paymentStatus).toBe('PAID');
   });
 
   it('гварды: returnQty=0 и отрицательный refund отклоняются', async () => {
