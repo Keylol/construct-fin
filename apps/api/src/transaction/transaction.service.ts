@@ -15,6 +15,29 @@ import type {
 // Системные kind заводятся ТОЛЬКО доменными сервисами (заказ/закупка) и связаны
 // с инвариантами заказа/склада. Их правка/удаление через дженерик transaction-API
 // запрещены (Фаза 3 п.16) — менять только через соответствующий домен.
+/** C1: строка порождена доменом (перевод / заказ-закупка-склад) — не для generic-API. */
+type DomainSignals = {
+  kind: TransactionKind;
+  transferGroupId: string | null;
+  orderId: string | null;
+};
+function isDomainOwned(t: DomainSignals): boolean {
+  return !!t.transferGroupId || !!t.orderId || SYSTEM_KINDS.has(t.kind);
+}
+function assertGenericEditable(t: DomainSignals, verb: string): void {
+  if (t.transferGroupId) {
+    throw new BadRequestException(`Операция перевода ${verb} только через раздел «Переводы»`);
+  }
+  if (t.orderId) {
+    throw new BadRequestException(`Операция по заказу ${verb} только через карточку заказа`);
+  }
+  if (SYSTEM_KINDS.has(t.kind)) {
+    throw new BadRequestException(
+      `Операция ${t.kind} создана автоматически и ${verb} только через свой домен (заказ/закупка/склад)`,
+    );
+  }
+}
+
 const SYSTEM_KINDS = new Set<TransactionKind>([
   'ORDER_PAYMENT',
   'ORDER_REFUND',
@@ -29,9 +52,12 @@ interface TransactionRow {
   date: Date;
   amount: Prisma.Decimal;
   type: 'INCOME' | 'EXPENSE';
+  kind: TransactionKind;
   accountId: string;
   categoryId: string | null;
   counterpartyId: string | null;
+  orderId: string | null;
+  transferGroupId: string | null;
   description: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -109,7 +135,7 @@ export class TransactionService {
   }
 
   async create(workspaceId: string, createdById: string, input: CreateTransactionDto) {
-    await this.validateRefs(workspaceId, input);
+    await this.validateRefs(workspaceId, { ...input, type: input.type });
     const created = await this.prisma.transaction.create({
       data: {
         workspaceId,
@@ -138,12 +164,8 @@ export class TransactionService {
     });
     if (!existing) throw new NotFoundException('Transaction not found');
 
-    // п.16: системную транзакцию через дженерик-endpoint менять нельзя.
-    if (SYSTEM_KINDS.has(existing.kind)) {
-      throw new BadRequestException(
-        `Транзакция ${existing.kind} создана автоматически и правится только через заказ/закупку`,
-      );
-    }
+    // C1/п.16: доменную строку (система/перевод/заказ) generic-API не правит.
+    assertGenericEditable(existing, 'правится');
 
     // Соответствие kind↔type против ИТОГОВОГО type (kind/type могут меняться по
     // отдельности). existing.kind у несистемной всегда из ручного whitelist.
@@ -155,12 +177,20 @@ export class TransactionService {
       );
     }
 
-    if (input.accountId || input.categoryId !== undefined || input.counterpartyId !== undefined) {
+    // C16: перепроверяем refs если меняется счёт/категория/контрагент ИЛИ тип
+    // (смена только type при неизменной категории тоже может нарушить kind↔type).
+    if (
+      input.accountId ||
+      input.categoryId !== undefined ||
+      input.counterpartyId !== undefined ||
+      input.type !== undefined
+    ) {
       await this.validateRefs(workspaceId, {
         accountId: input.accountId ?? existing.accountId,
         categoryId: input.categoryId === undefined ? existing.categoryId : input.categoryId,
         counterpartyId:
           input.counterpartyId === undefined ? existing.counterpartyId : input.counterpartyId,
+        type: finalType,
       });
     }
 
@@ -207,13 +237,9 @@ export class TransactionService {
     });
     if (!existing) throw new NotFoundException('Transaction not found');
 
-    // п.16: системную транзакцию удалять через дженерик-endpoint нельзя — это
-    // рассинхронит заказ/склад. Удаление идёт через домен (отмена заказа и т.п.).
-    if (SYSTEM_KINDS.has(existing.kind)) {
-      throw new BadRequestException(
-        `Транзакция ${existing.kind} создана автоматически и удаляется только через заказ/закупку`,
-      );
-    }
+    // C1/п.16: доменную строку (система/перевод/заказ) generic-API не удаляет —
+    // это рассинхронит парность перевода / оплату заказа / склад.
+    assertGenericEditable(existing, 'удаляется');
 
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.audit.record(undefined, {
@@ -271,7 +297,13 @@ export class TransactionService {
 
   private async validateRefs(
     workspaceId: string,
-    refs: { accountId: string; categoryId?: string | null; counterpartyId?: string | null },
+    refs: {
+      accountId: string;
+      categoryId?: string | null;
+      counterpartyId?: string | null;
+      /** C16: итоговый тип операции — для сверки с Category.kind. */
+      type?: 'INCOME' | 'EXPENSE';
+    },
   ): Promise<void> {
     const account = await this.prisma.account.findFirst({
       where: { id: refs.accountId, workspaceId, deletedAt: null },
@@ -282,9 +314,16 @@ export class TransactionService {
     if (refs.categoryId) {
       const cat = await this.prisma.category.findFirst({
         where: { id: refs.categoryId, workspaceId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, kind: true },
       });
       if (!cat) throw new BadRequestException('Category not found in this workspace');
+      // C16: расход нельзя вешать на доходную категорию (и наоборот) — иначе
+      // операция уедет в чужой бакет P&L и исказит разбивки by-category.
+      if (refs.type && cat.kind !== refs.type) {
+        throw new BadRequestException(
+          `Категория предназначена для ${cat.kind === 'INCOME' ? 'доходов' : 'расходов'}, а операция — ${refs.type === 'INCOME' ? 'доход' : 'расход'}`,
+        );
+      }
     }
     if (refs.counterpartyId) {
       const cp = await this.prisma.counterparty.findFirst({
@@ -301,9 +340,16 @@ export class TransactionService {
       date: t.date.toISOString(),
       amount: t.amount.toFixed(2),
       type: t.type,
+      // C18: отдаём kind и доменные привязки, чтобы фронт мог отличить
+      // системную/доменную строку от ручной и прятать кнопки правки/удаления.
+      kind: t.kind,
       accountId: t.accountId,
       categoryId: t.categoryId,
       counterpartyId: t.counterpartyId,
+      orderId: t.orderId,
+      transferGroupId: t.transferGroupId,
+      // C1: строку нельзя править generic-API, если она порождена доменом.
+      editable: !isDomainOwned(t),
       description: t.description,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
