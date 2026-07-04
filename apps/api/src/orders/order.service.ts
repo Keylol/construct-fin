@@ -1092,6 +1092,16 @@ export class OrderService {
   }
 
   /**
+   * GH8: дать внешнему домену (откат импорта) взять тот же строчный лок заказа
+   * (FOR UPDATE), что и addPayment/deletePayment. Без него пересчёт оплаты при
+   * откате гоняется с параллельной оплатой того же заказа (last-writer-wins по
+   * paidAmount). Брать ДО пересчёта; заказы лочить в детерминированном порядке.
+   */
+  lockForUpdate(tx: TxClient, workspaceId: string, orderId: string): Promise<void> {
+    return this.orders.lockForUpdate(tx, workspaceId, orderId);
+  }
+
+  /**
    * Пересчитывает paidAmount = Σ(ORDER_PAYMENT) − Σ(ORDER_REFUND) и
    * paymentStatus относительно totalAmount. Вызывается внутри UoW.
    */
