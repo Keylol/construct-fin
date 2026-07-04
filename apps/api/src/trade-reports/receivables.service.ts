@@ -104,6 +104,9 @@ export class ReceivablesService {
       where: {
         workspaceId,
         deletedAt: null,
+        // DE2: отменённые заказы (CANCELLED) — не дебиторка, даже если статус
+        // оплаты остался UNPAID/PARTIAL. Иначе фантомный долг вечно стареет в 60+.
+        status: { notIn: ['CANCELLED'] },
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
       },
       select: {
@@ -114,6 +117,8 @@ export class ReceivablesService {
         totalAmount: true,
         paidAmount: true,
         client: { select: { name: true } },
+        // DE1: строки — для чистой выручки (total − стоимость возвратов).
+        items: { where: { deletedAt: null }, select: { returnedQty: true, unitPrice: true } },
         // F2: строки графика — для «просрочено по плану» (обычно 0–4 строки).
         schedule: {
           where: { deletedAt: null },
@@ -130,7 +135,15 @@ export class ReceivablesService {
     for (const o of orders) {
       const total = new Prisma.Decimal(o.totalAmount);
       const paid = new Prisma.Decimal(o.paidAmount);
-      const due = total.minus(paid);
+      // DE1: долг по ЧИСТОЙ выручке (total − стоимость возвращённых единиц), не по
+      // сырому total. Возврат товара уменьшает и paid (рефанд), и netRevenue —
+      // фантомный долг из RMA исчезает. clamp на 0.
+      const returnedValue = o.items.reduce(
+        (acc, it) => acc.plus(new Prisma.Decimal(it.returnedQty).times(it.unitPrice)),
+        new Prisma.Decimal(0),
+      );
+      const netRevenue = Prisma.Decimal.max(total.minus(returnedValue), new Prisma.Decimal(0));
+      const due = netRevenue.minus(paid);
       // Отрицательный/нулевой долг по заказу не считаем дебиторкой
       // (защита от рассинхрона кэша paidAmount).
       if (due.lessThanOrEqualTo(0)) continue;
@@ -139,8 +152,8 @@ export class ReceivablesService {
       const safeAge = ageDays < 0 ? 0 : ageDays;
       const bucket = bucketFor(safeAge);
 
-      // F2: просрочка по формальному графику (дополняет aging по возрасту).
-      const plan = scheduleView(o.schedule, paid, total, asOf);
+      // F2: просрочка по формальному графику против чистой выручки (не сырого total).
+      const plan = scheduleView(o.schedule, paid, netRevenue, asOf);
       const overdueByPlan = plan ? new Prisma.Decimal(plan.summary.overdueAmount) : null;
 
       totalDue = totalDue.plus(due);

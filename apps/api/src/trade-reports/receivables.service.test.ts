@@ -20,6 +20,8 @@ function order(over: {
   paid: string;
   /** F2: строки графика платежей (id/seq/dueDate/amount/note). */
   schedule?: { id: string; seq: number; dueDate: Date; amount: Prisma.Decimal; note: string | null }[];
+  /** DE1: возвращённые единицы позиций (для чистой выручки). */
+  items?: { returnedQty: string; unitPrice: string }[];
 }) {
   return {
     id: over.id,
@@ -29,6 +31,11 @@ function order(over: {
     totalAmount: new Prisma.Decimal(over.total),
     paidAmount: new Prisma.Decimal(over.paid),
     client: over.clientName ? { name: over.clientName } : null,
+    // DE1: netRevenue = total − Σ(returnedQty·unitPrice); по умолчанию нет возвратов.
+    items: (over.items ?? []).map((it) => ({
+      returnedQty: new Prisma.Decimal(it.returnedQty),
+      unitPrice: new Prisma.Decimal(it.unitPrice),
+    })),
     schedule: over.schedule ?? [],
   };
 }

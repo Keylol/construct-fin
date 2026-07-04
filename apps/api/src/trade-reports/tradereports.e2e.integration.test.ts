@@ -579,3 +579,98 @@ describe('Trade Reports E2E · Receivables with Aging', () => {
     expect(num(rep.totalDue)).toBe(300);
   });
 });
+
+describe('Trade Reports E2E · Волна 3 согласованность (IJ1, DE1, DE2)', () => {
+  it('IJ1: маржа by-client вычитает скидку заказа из выручки', async () => {
+    const clientId = await makeClient('ООО Скидка');
+    // Заказ: 10 × 1000 = 10000, скидка 1000 → выручка должна быть 9000.
+    orderSeq += 1;
+    await h.prisma.order.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        number: `ORD-DISC-${orderSeq}`,
+        clientId,
+        status: 'DONE',
+        paymentStatus: 'PAID',
+        closedAt: new Date(),
+        subtotal: new Prisma.Decimal('10000'),
+        discountAmount: new Prisma.Decimal('1000'),
+        totalAmount: new Prisma.Decimal('9000'),
+        items: {
+          create: [
+            {
+              name: 'Товар',
+              qty: new Prisma.Decimal('10'),
+              unitPrice: new Prisma.Decimal('1000'),
+              unitCostAtSale: new Prisma.Decimal('600'),
+              lineTotal: new Prisma.Decimal('10000'),
+            },
+          ],
+        },
+      },
+    });
+    const rep = await h.tradeMargin.byClient(seed.workspaceId);
+    const row = rep.rows.find((r) => r.key === clientId)!;
+    // Выручка 10000 − скидка 1000 = 9000; COGS 10×600=6000; маржа 3000.
+    expect(row.revenue).toBe('9000.00');
+    expect(row.cogs).toBe('6000.00');
+    expect(row.margin).toBe('3000.00');
+    expect(rep.totals.revenue).toBe('9000.00');
+  });
+
+  it('DE1: возврат товара не создаёт фантомный долг в дебиторке', async () => {
+    const asOf = new Date('2026-06-01T00:00:00.000Z');
+    orderSeq += 1;
+    // Заказ 2000 (2×1000), оплачен полностью, вернули 1 единицу (стоимость 1000).
+    // paidAmount упал бы до 1000 (рефанд), но netRevenue = 2000 − 1000 = 1000.
+    // Старая формула: due = 2000 − 1000 = 1000 (фантом). Новая: 1000 − 1000 = 0.
+    await h.prisma.order.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        number: `REC-RMA-${orderSeq}`,
+        status: 'DONE',
+        paymentStatus: 'PARTIAL', // статус-кэш «недоплачен» (фантом до пересчёта)
+        subtotal: new Prisma.Decimal('2000'),
+        totalAmount: new Prisma.Decimal('2000'),
+        paidAmount: new Prisma.Decimal('1000'),
+        createdAt: daysAgo(5, asOf.getTime()),
+        items: {
+          create: [
+            {
+              name: 'Товар',
+              qty: new Prisma.Decimal('2'),
+              returnedQty: new Prisma.Decimal('1'), // 1 возвращена
+              unitPrice: new Prisma.Decimal('1000'),
+              lineTotal: new Prisma.Decimal('2000'),
+            },
+          ],
+        },
+      },
+    });
+    const rep = await h.tradeReceivables.build(seed.workspaceId, asOf);
+    // netRevenue 1000 − paid 1000 = 0 → долга нет (фантом исчез).
+    expect(num(rep.totalDue)).toBe(0);
+  });
+
+  it('DE2: отменённый заказ (CANCELLED) не висит в дебиторке', async () => {
+    const asOf = new Date('2026-06-01T00:00:00.000Z');
+    await makeReceivableOrder({
+      total: '5000',
+      paid: '0',
+      paymentStatus: 'UNPAID',
+      status: 'CANCELLED',
+      createdAt: daysAgo(90, asOf.getTime()),
+    });
+    // Плюс живой долг для контроля.
+    await makeReceivableOrder({
+      total: '700',
+      paid: '0',
+      paymentStatus: 'UNPAID',
+      status: 'OPEN',
+      createdAt: daysAgo(3, asOf.getTime()),
+    });
+    const rep = await h.tradeReceivables.build(seed.workspaceId, asOf);
+    // Только живой OPEN-долг 700; CANCELLED 5000 исключён.
+    expect(num(rep.totalDue)).toBe(700);
+  });
+});
