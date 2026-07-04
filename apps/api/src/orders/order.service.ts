@@ -1065,6 +1065,11 @@ export class OrderService {
         where: { workspaceId, orderId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
+      // DE6: снимаем вложения заказа (чеки) — иначе строки висят на удалённом
+      // заказе (FK-cascade при soft-delete не срабатывает), а download отдавал бы
+      // их по прямой ссылке. Файлы content-addressed и дедуплены per-workspace —
+      // физический GC орфанов вынесен в follow-up; доступ закрыт и guard'ом download.
+      await tx.attachment.deleteMany({ where: { workspaceId, orderId } });
       await tx.order.update({ where: { id: orderId }, data: { deletedAt: new Date() } });
       await this.audit.record(tx, {
         workspaceId,
