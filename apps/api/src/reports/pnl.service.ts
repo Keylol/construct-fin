@@ -148,7 +148,6 @@ export class PnlService {
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
     let totalCogs = new Prisma.Decimal(0);
-    let totalCapital = new Prisma.Decimal(0);
     const totalsByCat = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
     const totalsByBucket = newBucketMap();
 
@@ -164,7 +163,7 @@ export class PnlService {
 
       let income = new Prisma.Decimal(0);
       let expense = new Prisma.Decimal(0);
-      let capital = new Prisma.Decimal(0);
+      let writeOff = new Prisma.Decimal(0); // F5: неденежные потери склада отдельно
       const catMap = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
       const bucketMap = newBucketMap();
 
@@ -211,7 +210,10 @@ export class PnlService {
           bEntry.expense = bEntry.expense.plus(amount);
           tEntry.expense = tEntry.expense.plus(amount);
         }
-        if (bucket === 'CAPITAL') capital = capital.plus(amount);
+        // F5: WRITE_OFF — неденежная потеря (деньги ушли при закупке PURCHASE);
+        // копим отдельно, чтобы исключить из операционного net, но оставить в
+        // grossProfit через бакет COGS.
+        if (g.kind === 'WRITE_OFF') writeOff = writeOff.plus(amount);
       }
 
       // Себестоимость за период — это расходная часть бакета COGS (единый
@@ -219,37 +221,46 @@ export class PnlService {
       // момент finalize заказа, складские товары — в момент PURCHASE).
       const cogs = bucketMap.get('COGS')!.expense;
 
-      totalIncome = totalIncome.plus(income);
-      totalExpense = totalExpense.plus(expense);
-      totalCapital = totalCapital.plus(capital);
-      totalCogs = totalCogs.plus(cogs);
+      // IJ2: grossProfit = чистая выручка − себестоимость. REVENUE.net нетит
+      // ORDER_PAYMENT против ORDER_REFUND; SUPPLIER_REFUND (бакет PURCHASES) сюда
+      // НЕ попадает. Раньше было operatingIncome − cogs → возврат поставщику
+      // прибавлялся как выручка, возврат клиенту не вычитался («прибыль из воздуха»).
+      const revenueNet = bucketMap.get('REVENUE')!.income.minus(bucketMap.get('REVENUE')!.expense);
+      const grossProfit = revenueNet.minus(cogs);
 
-      // P&L net: доход − расход без CAPITAL (вложения/изъятия собственника
-      // не операционные). CAPITAL income / CAPITAL expense оба вычитаем.
+      // IJ3+F5: headline Доход/Расход и net согласованы. Доход/Расход БЕЗ CAPITAL
+      // (вложения/изъятия собственника не операционные — «CAPITAL из headline») и
+      // БЕЗ неденежного WRITE_OFF (F5: деньги ушли при закупке, потеря видна только
+      // в grossProfit). Тогда Доход − Расход === net тождественно.
       const capitalIncome = bucketMap.get('CAPITAL')!.income;
       const capitalExpense = bucketMap.get('CAPITAL')!.expense;
-      const operatingIncome = income.minus(capitalIncome);
-      const operatingExpense = expense.minus(capitalExpense);
-      const net = operatingIncome.minus(operatingExpense);
+      const opIncome = income.minus(capitalIncome);
+      const opExpense = expense.minus(capitalExpense).minus(writeOff);
+      const net = opIncome.minus(opExpense);
+
+      totalIncome = totalIncome.plus(opIncome);
+      totalExpense = totalExpense.plus(opExpense);
+      totalCogs = totalCogs.plus(cogs);
 
       buckets.push({
         label: slice.label,
         from: slice.from.toISOString(),
         to: slice.to.toISOString(),
-        income: income.toFixed(2),
-        expense: expense.toFixed(2),
+        income: opIncome.toFixed(2),
+        expense: opExpense.toFixed(2),
         cogs: cogs.toFixed(2),
-        grossProfit: operatingIncome.minus(cogs).toFixed(2),
+        grossProfit: grossProfit.toFixed(2),
         net: net.toFixed(2),
         byCategory: buildBreakdown(catMap, nameById),
         byBucket: buildBucketBreakdown(bucketMap),
       });
     }
 
-    const totalCapIncome = totalsByBucket.get('CAPITAL')!.income;
-    const totalCapExpense = totalsByBucket.get('CAPITAL')!.expense;
-    const totalOpIncome = totalIncome.minus(totalCapIncome);
-    const totalOpExpense = totalExpense.minus(totalCapExpense);
+    // totalIncome/totalExpense уже операционные (Σ opIncome/opExpense — без CAPITAL,
+    // без WRITE_OFF). grossProfit по итогам — из нетто-выручки бакета REVENUE.
+    const totalRevenueNet = totalsByBucket
+      .get('REVENUE')!
+      .income.minus(totalsByBucket.get('REVENUE')!.expense);
 
     return {
       period: { from: period.from.toISOString(), to: period.to.toISOString() },
@@ -261,8 +272,8 @@ export class PnlService {
         income: totalIncome.toFixed(2),
         expense: totalExpense.toFixed(2),
         cogs: totalCogs.toFixed(2),
-        grossProfit: totalOpIncome.minus(totalCogs).toFixed(2),
-        net: totalOpIncome.minus(totalOpExpense).toFixed(2),
+        grossProfit: totalRevenueNet.minus(totalCogs).toFixed(2),
+        net: totalIncome.minus(totalExpense).toFixed(2),
         byCategory: buildBreakdown(totalsByCat, nameById),
         byBucket: buildBucketBreakdown(totalsByBucket),
       },
