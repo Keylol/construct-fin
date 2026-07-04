@@ -40,9 +40,12 @@ export class ReconciliationService {
     // чужой/несуществующий, а не молчаливый пустой список). Запрос всё равно
     // scoped по workspaceId, так что утечки нет и без этого — это для ясности.
     if (accountId) await this.assertAccount(workspaceId, accountId);
+    // IJ13: снимки append-only растут бесконечно — отдаём последние 200 (по дате
+    // desc), а не всю историю одним ответом (в отличие от transactions с курсором).
     const checks = await this.prisma.accountBalanceCheck.findMany({
       where: { workspaceId, ...(accountId ? { accountId } : {}) },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      take: 200,
     });
     return checks.map((c) => this.serializeCheck(c));
   }

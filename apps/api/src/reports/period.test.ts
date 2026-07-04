@@ -109,6 +109,24 @@ describe('resolveComparison', () => {
     expect(c!.to.toISOString()).toBe(prevMonth.to.toISOString()); // 30 апр (полный месяц, не «N дней до»)
   });
 
+  it('IJ5: primary=prev-month + prev → полный ПРЕДПРОШЛЫЙ месяц (весь март), не кривое окно', () => {
+    const prevMonthPrimary = resolvePreset('prev-month', NOW); // апрель
+    const c = resolveComparison(prevMonthPrimary, { mode: 'prev', preset: 'prev-month' }, NOW);
+    const march = resolvePeriod({ from: '2026-03-01', to: '2026-03-31' }, NOW);
+    // Раньше by-length fallback давал [31 мар, 30 апр] (лишний день, не тот месяц).
+    expect(c!.from.toISOString()).toBe(march.from.toISOString()); // 1 мар
+    expect(c!.to.toISOString()).toBe(march.to.toISOString()); // 31 мар (полный месяц)
+  });
+
+  it('IJ5: primary=prev-quarter + prev → полный предыдущий квартал (границы кварталов уважены)', () => {
+    const prevQ = resolvePreset('prev-quarter', NOW); // Q1 2026 (янв-мар)
+    const c = resolveComparison(prevQ, { mode: 'prev', preset: 'prev-quarter' }, NOW);
+    // Предыдущий квартал перед Q1 2026 = Q4 2025 (окт-дек), конец = 31 дек.
+    const q4 = resolvePeriod({ from: '2025-10-01', to: '2025-12-31' }, NOW);
+    expect(c!.from.toISOString()).toBe(q4.from.toISOString()); // 1 окт 2025
+    expect(c!.to.toISOString()).toBe(q4.to.toISOString()); // 31 дек 2025
+  });
+
   it('yoy: то же окно на год назад (1 мая 2025 в UTC+5)', () => {
     const c = resolveComparison(primary, { mode: 'yoy' });
     expect(c!.from.toISOString()).toBe('2025-04-30T19:00:00.000Z');
