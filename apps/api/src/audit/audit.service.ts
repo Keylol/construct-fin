@@ -10,6 +10,7 @@ import type { TxClient } from '../common/unit-of-work';
 export type AuditAction =
   | 'order.finalize'
   | 'order.installment'
+  | 'order.payment-delete'
   | 'order.cancel'
   | 'order.reopen'
   | 'order.restore'
