@@ -14,6 +14,7 @@ import {
   useUpdateOrder,
   useAddOrderPayment,
   useAddInstallmentPayment,
+  useDeleteOrderPayment,
   useFinalizeOrder,
   useCancelOrder,
   useReopenOrder,
@@ -705,6 +706,7 @@ function OrderDetailSheet({
   const accounts = useAccounts(wsId);
   const addPayment = useAddOrderPayment(wsId);
   const addInstallment = useAddInstallmentPayment(wsId);
+  const deletePayment = useDeleteOrderPayment(wsId);
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
@@ -717,6 +719,7 @@ function OrderDetailSheet({
   const [payFee, setPayFee] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
+  const [confirmDeletePayment, setConfirmDeletePayment] = useState<string | null>(null);
   const [editSchedule, setEditSchedule] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1071,23 +1074,43 @@ function OrderDetailSheet({
                                 ? 'себестоимость'
                                 : 'оплата';
                         const negative = t.type === 'EXPENSE';
+                        // C2: удаляемы ровно те kind, что разрешает бэкенд
+                        // (DELETABLE_PAYMENT_KINDS) — платёж/возврат/комиссия;
+                        // себестоимость (COGS) управляется отменой заказа.
+                        // Разрешено на любом статусе (коррекция ошибки).
+                        const deletable =
+                          t.kind === 'ORDER_PAYMENT' ||
+                          t.kind === 'ORDER_REFUND' ||
+                          t.kind === 'VARIABLE_COST';
                         return (
                           <div
                             key={t.id}
-                            className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm"
+                            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
                           >
                             <span className="text-muted-foreground">
                               {DATE_FMT.format(new Date(t.date))} · {label}
                             </span>
-                            <span
-                              className={cn(
-                                'tabular-nums',
-                                negative ? 'text-destructive' : 'text-success',
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  'tabular-nums',
+                                  negative ? 'text-destructive' : 'text-success',
+                                )}
+                              >
+                                {negative ? '−' : '+'}
+                                {formatRub(t.amount)}
+                              </span>
+                              {deletable && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeletePayment(t.id)}
+                                  aria-label="Удалить операцию"
+                                  className="text-muted-foreground transition-colors hover:text-destructive"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
                               )}
-                            >
-                              {negative ? '−' : '+'}
-                              {formatRub(t.amount)}
-                            </span>
+                            </div>
                           </div>
                         );
                       })}
@@ -1245,6 +1268,23 @@ function OrderDetailSheet({
           setConfirmDeleteAtt(null);
         }}
         loading={deleteAtt.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmDeletePayment !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeletePayment(null);
+        }}
+        title="Удалить операцию?"
+        description="Ошибочный платёж/возврат/комиссия будет удалён, оплата по заказу пересчитается. Если деньги фактически вернули клиенту — оформите отдельную расходную операцию."
+        confirmText="Удалить"
+        onConfirm={async () => {
+          if (order && confirmDeletePayment) {
+            await deletePayment.mutateAsync({ id: order.id, txId: confirmDeletePayment });
+          }
+          setConfirmDeletePayment(null);
+        }}
+        loading={deletePayment.isPending}
       />
 
       {order && (

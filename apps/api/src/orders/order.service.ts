@@ -320,6 +320,50 @@ export class OrderService {
   }
 
   /**
+   * C2 (Волна 2, обратимость): доменное удаление ошибочной денежной операции
+   * заказа. Раньше ошибочный/неверно привязанный платёж нельзя было ни исправить,
+   * ни удалить (SYSTEM_KINDS-барьер в generic-API без контр-пути) → paidAmount и
+   * сверка портились навсегда. Теперь soft-delete проводки ПОД локом B2 +
+   * пересчёт paidAmount + аудит.
+   *
+   * Удаляемы: ORDER_PAYMENT / ORDER_REFUND / VARIABLE_COST (комиссия рассрочки).
+   * COGS НЕ удаляется через этот путь — себестоимость привязана к складу и
+   * управляется отменой/переоткрытием заказа (иначе рассинхрон маржи/P&L).
+   * Физический возврат денег клиенту при ошибочном платеже оформляется отдельной
+   * расходной операцией (решение блица 2026-07-04).
+   */
+  async deletePayment(workspaceId: string, orderId: string, txId: string, userId: string) {
+    return this.uow.run(async (tx) => {
+      const order = await this.lockAndLoad(tx, workspaceId, orderId); // B2
+      const payment = await tx.transaction.findFirst({
+        where: { id: txId, workspaceId, orderId, deletedAt: null },
+      });
+      if (!payment) throw new NotFoundException('Операция по заказу не найдена');
+      if (!DELETABLE_PAYMENT_KINDS.has(payment.kind)) {
+        throw new BadRequestException(
+          'Удалить можно только платёж, возврат или комиссию — себестоимость управляется отменой/переоткрытием заказа',
+        );
+      }
+      await tx.transaction.update({ where: { id: txId }, data: { deletedAt: new Date() } });
+      await this.syncPaymentState(workspaceId, orderId, tx);
+      await this.audit.record(tx, {
+        workspaceId,
+        actorId: userId,
+        action: 'order.payment-delete',
+        entityType: 'Order',
+        entityId: orderId,
+        diff: {
+          number: order.number,
+          txId,
+          kind: payment.kind,
+          amount: payment.amount.toFixed(2),
+        },
+      });
+      return this.freshWithMargin(workspaceId, orderId, tx);
+    });
+  }
+
+  /**
    * F3 (решение #5): оплата через стороннюю рассрочку — gross, разово.
    * Атомарно две проводки: ORDER_PAYMENT на ПОЛНУЮ сумму (закрывает дебиторку,
    * выручка не занижается) + VARIABLE_COST на комиссию банка (стоимость
@@ -1111,6 +1155,13 @@ export function resolvePaymentState(
   if (gt(paid, total)) return 'OVERPAID';
   return 'PAID';
 }
+
+/** C2: kind'ы денежных операций заказа, удаляемых через deletePayment (не COGS). */
+const DELETABLE_PAYMENT_KINDS = new Set<string>([
+  'ORDER_PAYMENT',
+  'ORDER_REFUND',
+  'VARIABLE_COST',
+]);
 
 /** Хелпер: пересчёт total при изменении только скидки. */
 function recomputeWithDiscount(
