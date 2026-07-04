@@ -195,12 +195,21 @@ export interface ComparisonInput {
   preset?: PeriodPreset;
 }
 
-/** this-* пресет → соответствующий prev-* (для календарного сравнения 'prev'). */
-const PREV_OF: Partial<Record<PeriodPreset, PeriodPreset>> = {
-  'this-month': 'prev-month',
-  'this-quarter': 'prev-quarter',
-  'this-year': 'prev-year',
-  ytd: 'prev-year',
+/**
+ * IJ5: календарная гранулярность пресета в месяцах — для КАЛЕНДАРНОГО prev.
+ * Раньше был PREV_OF (this-* → prev-*), но он не покрывал prev-month/quarter/year
+ * КАК PRIMARY (их предлагает PeriodPicker) → они падали в by-length fallback,
+ * дававший окно, не совпадающее с границами месяца (у месяцев разное число дней).
+ * Теперь prev-период считается арифметикой месяцев для ЛЮБОГО календарного пресета.
+ */
+const CAL_PREV_MONTHS: Partial<Record<PeriodPreset, number>> = {
+  'this-month': 1,
+  'prev-month': 1,
+  'this-quarter': 3,
+  'prev-quarter': 3,
+  'this-year': 12,
+  'prev-year': 12,
+  ytd: 12,
 };
 
 /**
@@ -240,10 +249,21 @@ export function resolveComparison(
     };
   }
   // prev
-  if (input.preset && PREV_OF[input.preset]) {
-    return resolvePreset(PREV_OF[input.preset]!, now);
+  // IJ5: для календарных пресетов — предыдущий КАЛЕНДАРНЫЙ период, собранный из
+  // компонент (а не сдвигом миллисекунд): начало = 1-е число (месяц − N), конец =
+  // последний день месяца, предшествующего primary (tzInstant(y, mo, 0) = день 0
+  // месяца mo = последний день mo−1). Корректно для month/quarter/year и для
+  // prev-* как primary; уважает разное число дней в месяцах.
+  const nMonths = input.preset ? CAL_PREV_MONTHS[input.preset] : undefined;
+  if (nMonths) {
+    const p = tzParts(primary.from);
+    return {
+      from: tzInstant(p.y, p.mo - nMonths, 1, 0, 0, 0, 0),
+      to: tzInstant(p.y, p.mo, 0, 23, 59, 59, 999),
+    };
   }
-  // По длине: диапазон такой же длины, заканчивающийся прямо перед primary.from.
+  // По длине: диапазон такой же длины, заканчивающийся прямо перед primary.from
+  // (для last-30d/90d и кастома — периодов без календарной гранулярности).
   const lengthMs = primary.to.getTime() - primary.from.getTime();
   const to = new Date(primary.from.getTime() - 1);
   const from = new Date(to.getTime() - lengthMs);
