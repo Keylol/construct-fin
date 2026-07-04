@@ -3,10 +3,20 @@
 
 name: construct-v6
 
+# L4 (наблюдаемость): ротация docker json-логов. Без неё неротируемые логи
+# заполняют единственный диск VPS (класс сегодняшнего падения — disk-full был
+# невидим). 10 МБ × 5 файлов на сервис ⇒ потолок ~50 МБ/сервис, ~200 МБ на все.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     # Ресурсные лимиты (Фаза 1 п.6) — VPS 2 ГБ. При OOM Docker убивает один
     # контейнер (поднимет restart), а не валит весь хост. Сумма лимитов
     # 512+512+384+128 = 1536 МБ, ~512 МБ остаётся хосту + nginx.
@@ -28,6 +38,7 @@ services:
   api:
     image: ${API_IMAGE:-ghcr.io/keylol/construct-v6-api:latest}
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 512m
     depends_on:
       postgres:
@@ -36,7 +47,13 @@ services:
       NODE_ENV: production
       API_PORT: 4000
       API_HOST: 0.0.0.0
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # L8 (наблюдаемость): явный размер пула Prisma. Было без параметров → пул по
+      # умолчанию (num_cpu*2+1) на стоковом Postgres. connection_limit=10 держит
+      # соединения в рамках (Postgres 512 МБ), pool_timeout=20 — ждать свободное
+      # соединение 20с, иначе явная ошибка вместо бесконечного зависания под нагрузкой.
+      # statement_timeout НЕ здесь: этот URL общий с миграциями (одноразовый
+      # контейнер, PR 4.2) — таймаут убил бы долгую миграцию. Вынесен в отд. заход.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connection_limit=10&pool_timeout=20
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
@@ -60,6 +77,7 @@ services:
   web:
     image: ${WEB_IMAGE:-ghcr.io/keylol/construct-v6-web:latest}
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 384m
     depends_on:
       api:
@@ -93,6 +111,7 @@ services:
   backup:
     image: prodrigestivill/postgres-backup-local:16
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 128m
     depends_on:
       postgres:
