@@ -537,7 +537,19 @@ describe('Импорт: preview полный цикл (ImportService.preview)', 
 
   it('применяет активное правило категоризации (по подстроке description/counterparty)', async () => {
     const foodCat = await makeCategory('Продукты', 'EXPENSE');
-    await rules.create(seed.workspaceId, { keyword: 'продукты', categoryId: foodCat, priority: 10 });
+    // Импорт теперь берёт подсказку из движка Rule (не CategoryRule): условие
+    // DESCRIPTION_CONTAINS → действие SET_CATEGORY, appliesTo=IMPORT.
+    await h.prisma.rule.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        name: 'продукты',
+        priority: 10,
+        isActive: true,
+        appliesTo: 'IMPORT',
+        conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'продукты' }],
+        actions: [{ type: 'SET_CATEGORY', categoryId: foodCat }],
+      },
+    });
 
     const res = await h.importSvc.preview({
       workspaceId: seed.workspaceId,
