@@ -72,6 +72,14 @@ describe('resolvePeriod', () => {
   it('M2: инвертированный диапазон (from > to) → ошибка', () => {
     expect(() => resolvePeriod({ from: '2026-02-15', to: '2026-01-15' }, NOW)).toThrow();
   });
+
+  it('IJ12: диапазон шире 5 лет → ошибка', () => {
+    expect(() => resolvePeriod({ from: '2018-01-01', to: '2026-01-01' }, NOW)).toThrow(/широкий/);
+  });
+
+  it('IJ12: диапазон ровно ~5 лет проходит', () => {
+    expect(() => resolvePeriod({ from: '2022-01-01', to: '2026-06-01' }, NOW)).not.toThrow();
+  });
 });
 
 describe('resolveComparison', () => {
