@@ -1,7 +1,8 @@
 'use client';
 
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type { Transfer } from '@/lib/types';
 
 export interface CreateTransferInput {
@@ -23,9 +24,17 @@ export function useTransfers(wsId: string | null) {
 
 export function useCreateTransfer(wsId: string) {
   const qc = useQueryClient();
+  // C6: денежный POST — ключ идемпотентности фиксируется раз на операцию
+  // (onMutate), чтобы двойной сабмит/ретрай не задвоил перевод и его комиссию.
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: (input: CreateTransferInput) =>
-      api.post<Transfer>(`/workspaces/${wsId}/transfers`, input),
+      api.post<Transfer>(`/workspaces/${wsId}/transfers`, input, {
+        idempotencyKey: idemKey.current,
+      }),
     onSuccess: () => {
       // Перевод создаёт ноги-транзакции (+ комиссию) и двигает остатки счетов —
       // гасим все связанные кэши (по образцу useOrders/usePurchases): лента,

@@ -1,7 +1,8 @@
 'use client';
 
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, newIdempotencyKey } from '@/lib/api';
 import type { OpenLotView, WarehouseItem } from '@/lib/types';
 
 export interface CreateWarehouseItemInput {
@@ -107,9 +108,17 @@ export function useSetItemCost(wsId: string) {
  */
 export function useWriteOffStock(wsId: string) {
   const qc = useQueryClient();
+  // F6: денежный POST (списание + проводка-убыток) — ключ идемпотентности, чтобы
+  // ретрай не задвоил списание склада и проводку.
+  const idemKey = useRef('');
   return useMutation({
+    onMutate: () => {
+      idemKey.current = newIdempotencyKey();
+    },
     mutationFn: ({ id, qty, reason }: { id: string; qty: string; reason: string }) =>
-      api.post<WarehouseItem>(`/workspaces/${wsId}/warehouse/${id}/write-off`, { qty, reason }),
+      api.post<WarehouseItem>(`/workspaces/${wsId}/warehouse/${id}/write-off`, { qty, reason }, {
+        idempotencyKey: idemKey.current,
+      }),
     onSuccess: () => {
       invalidate(qc, wsId);
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
