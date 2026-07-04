@@ -5,6 +5,7 @@ import { UnitOfWork } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { AuditService } from '../audit/audit.service';
 import { add, mul, money } from '../common/money';
+import { assertNotFuture } from '../reports/period';
 import type { CreatePurchaseDto, ListPurchasesQuery } from './purchase.dto';
 
 @Injectable()
@@ -66,6 +67,7 @@ export class PurchaseService {
     );
 
     const purchaseDate = dto.date ? new Date(dto.date) : new Date();
+    assertNotFuture(purchaseDate, 'Дата закупки'); // DE4
 
     // Cross-tenant guard: счёт списания и поставщик из тела запроса обязаны
     // принадлежать этому workspace. Без проверки расход PURCHASE сел бы на чужой
