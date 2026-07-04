@@ -111,6 +111,18 @@ jobs:
               return 1
             }
 
+            # L3: web тоже в health-gate отката. Без этого сломанный web-образ
+            # (api жив, но фронт не поднялся) уезжал в прод и откатом не покрывался.
+            # Требует healthcheck у web-сервиса в compose (GET /login → 200).
+            web_healthy() {
+              for i in $(seq 1 30); do
+                s=$(docker inspect --format '{{.State.Health.Status}}' construct-v6-web-1 2>/dev/null || echo "?")
+                [ "$s" = "healthy" ] && { echo "web healthy after ${i}*4s"; return 0; }
+                sleep 4
+              done
+              return 1
+            }
+
             rollback() {
               echo "::error::Деплой нездоров ($1) — откат на предыдущие образы"
               if [ -n "$PREV_API" ] && [ -n "$PREV_WEB" ]; then
@@ -129,26 +141,44 @@ jobs:
 
             set -e
             echo "--- pull ---"; $DC pull
-            echo "--- up -d ---"; $DC up -d
             set +e
 
-            echo "--- wait healthy (после up) ---"
-            api_healthy || rollback "api не стал healthy"
+            # L1: migrate ДО up -d. Раньше был порядок up -d → migrate, из-за чего
+            # НОВЫЙ код запускался на СТАРОЙ схеме и до миграции отдавал 4xx (join к
+            # ещё-несуществующей таблице — уже ловили на F0/schedule/write_off).
+            # Файлы миграций вшиты в ОБРАЗ, поэтому старый работающий контейнер их не
+            # содержит — применяем ОДНОРАЗОВЫМ контейнером нового образа (docker
+            # compose run --rm --no-deps: postgres уже поднят, порты не публикуются,
+            # конфликта с работающим api:4000 нет). Пока идёт миграция, СТАРЫЙ код ещё
+            # обслуживает трафик на новой (аддитивной) схеме — правило проекта:
+            # миграции аддитивны, старый код их терпит. Затем up -d перекатывает код
+            # на уже мигрированную схему → окна «новый код на старой схеме» больше нет.
 
             echo "--- pre-migrate snapshot ---"
             # ⚠️ </dev/null ОБЯЗАТЕЛЕН: exec -T без редиректа отдаёт процессу stdin
             # SSH-heredoc → /backup.sh съедал остаток heredoc (включая migrate).
-            $DC exec -T backup /backup.sh </dev/null || rollback "снапшот БД упал"
-            echo "--- migrate ---"
-            $DC exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy" </dev/null \
-              || rollback "миграция упала"
+            # Провал ДО переключения кода → просто abort: прод остаётся на старой
+            # рабочей версии, образы не тронуты, откатывать нечего.
+            $DC exec -T backup /backup.sh </dev/null \
+              || { echo "::error::снапшот БД упал (код НЕ переключён, прод на старой версии)"; exit 1; }
 
-            echo "--- health re-check после миграции ---"
-            # Тот же проб, что и docker healthcheck (node гарантированно в образе;
-            # wget/curl не закладываемся). Ловит случай: миграция применилась, но
-            # новый код не обслуживает /health на мигрированной схеме.
+            echo "--- migrate (одноразовый контейнер нового образа, до up -d) ---"
+            $DC run --rm --no-deps -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy" </dev/null \
+              || { echo "::error::миграция упала (код НЕ переключён, прод на старой версии; неуспешная миграция транзакционно откачена, снапшот снят выше)"; exit 1; }
+
+            echo "--- up -d (новый код на уже мигрированной схеме) ---"; $DC up -d
+
+            echo "--- wait api healthy ---"
+            api_healthy || rollback "api не стал healthy"
+            echo "--- wait web healthy (L3) ---"
+            web_healthy || rollback "web не стал healthy"
+
+            echo "--- health re-check (проба самой БД через /health) ---"
+            # Тот же проб, что docker healthcheck (node гарантированно в образе).
+            # С honest-health (L2, PR 4.1): /health=503 при мёртвой БД → ловит и
+            # отказ БД, и код, не обслуживающий /health на мигрированной схеме.
             $DC exec -T api node -e "require('http').get('http://localhost:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))" </dev/null \
-              || rollback "/health не 200 после миграции"
+              || rollback "/health не 200 после деплоя"
 
             echo "--- final status ---"; $DC ps --format "{{.Name}} {{.Status}}"
             echo "--- prune dangling ---"; docker image prune -f >/dev/null
