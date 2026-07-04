@@ -81,12 +81,25 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # Нужен для синка compose на VPS: /srv/construct-v6 — НЕ git-репо (просто
+      # файлы), а деплой раньше тянул только образы. Из-за этого правки compose
+      # (healthcheck'и, ротация логов, пул) жили в репо, но не на проде → up -d
+      # создавал контейнеры по СТАРОМУ compose (напр. web без healthcheck →
+      # web_healthy() в gate вечно ждал и валил деплой откатом).
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 195.133.1.13 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync compose to VPS (config-sync ДО up -d)
+        run: |
+          scp -i ~/.ssh/deploy_key deploy/docker-compose.prod.yml \
+            root@195.133.1.13:/srv/construct-v6/deploy/docker-compose.prod.yml
 
       - name: Pull, restart, migrate (с авто-откатом, E2)
         run: |
