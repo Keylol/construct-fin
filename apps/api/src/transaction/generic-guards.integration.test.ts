@@ -94,7 +94,7 @@ describe('C1: доменные строки нельзя трогать generic-
 
 describe('C16: категория ↔ тип операции', () => {
   async function makeCategory(kind: 'INCOME' | 'EXPENSE') {
-    return h.categories.create(seed.workspaceId, { name: `cat-${kind}`, kind });
+    return h.categories.create(seed.workspaceId, { name: `cat-${kind}`, kind, isFixedCost: false });
   }
 
   it('расход на доходную категорию → 400 (create)', async () => {
