@@ -130,4 +130,42 @@ describe('GH8: откат импорта', () => {
       svc.revertBatch(seed.workspaceId, 'cme00000000000000000000zz', seed.userId),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('гонка: откат + параллельная оплата — ручной платёж не теряется (FOR UPDATE)', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+    });
+    // Импортная оплата 600, привязанная к заказу.
+    const res = await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        fileHash: 'FILE-RACE',
+        rows: [
+          {
+            date: '2026-05-01',
+            amount: '600.00',
+            type: 'INCOME',
+            description: 'импорт-оплата',
+            counterpartyName: null,
+            categoryId: null,
+            importHash: 'race-1',
+            isDuplicate: false,
+            orderId: order.id,
+          },
+        ],
+      }),
+    });
+    // Откат импорта и ручная оплата 400 — параллельно. Лок сериализует: что бы ни
+    // закоммитилось первым, импортные 600 уходят, ручные 400 остаются → paidAmount=400.
+    await Promise.all([
+      svc.revertBatch(seed.workspaceId, res.batchId, seed.userId),
+      h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+        amount: '400.00',
+        accountId: seed.accountId,
+      }),
+    ]);
+    const ord = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(ord.paidAmount.toFixed(2)).toBe('400.00');
+  });
 });

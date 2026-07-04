@@ -569,51 +569,64 @@ export class ImportService {
    * освобождается → тот же файл можно импортировать заново.
    */
   async revertBatch(workspaceId: string, batchId: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const batch = await tx.importBatch.findFirst({
-        where: { id: batchId, workspaceId, deletedAt: null },
-        select: { id: true, filename: true, rowsImported: true },
-      });
-      if (!batch) throw new NotFoundException('Импорт не найден или уже отменён');
+    return this.prisma.$transaction(
+      async (tx) => {
+        const batch = await tx.importBatch.findFirst({
+          where: { id: batchId, workspaceId, deletedAt: null },
+          select: { id: true, filename: true, rowsImported: true },
+        });
+        if (!batch) throw new NotFoundException('Импорт не найден или уже отменён');
 
-      // Затронутые заказы — до soft-delete (после проводки станут deletedAt и
-      // из выборки выпадут). Только привязанные оплаты (orderId != null).
-      const linked = await tx.transaction.findMany({
-        where: { workspaceId, importBatchId: batchId, deletedAt: null, orderId: { not: null } },
-        select: { orderId: true },
-        distinct: ['orderId'],
-      });
-      const orderIds = linked.map((t) => t.orderId).filter((x): x is string => !!x);
+        // Затронутые заказы — до soft-delete (после проводки станут deletedAt и
+        // из выборки выпадут). Только привязанные оплаты (orderId != null).
+        const linked = await tx.transaction.findMany({
+          where: { workspaceId, importBatchId: batchId, deletedAt: null, orderId: { not: null } },
+          select: { orderId: true },
+          distinct: ['orderId'],
+        });
+        const orderIds = linked
+          .map((t) => t.orderId)
+          .filter((x): x is string => !!x)
+          .sort(); // детерминированный порядок локов — анти-deadlock между двумя откатами
 
-      const del = await tx.transaction.updateMany({
-        where: { workspaceId, importBatchId: batchId, deletedAt: null },
-        data: { deletedAt: new Date() },
-      });
+        // Лок заказов FOR UPDATE ДО пересчёта — сериализует откат с параллельной
+        // addPayment/deletePayment того же заказа (иначе last-writer-wins по paidAmount).
+        for (const orderId of orderIds) {
+          await this.orders.lockForUpdate(tx, workspaceId, orderId);
+        }
 
-      await tx.importBatch.update({
-        where: { id: batchId },
-        data: { deletedAt: new Date() },
-      });
+        const del = await tx.transaction.updateMany({
+          where: { workspaceId, importBatchId: batchId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
 
-      // Переигровка оплаты заказов — после того как их импортные проводки скрыты.
-      for (const orderId of orderIds) {
-        await this.orders.recalcPaymentState(workspaceId, orderId, tx);
-      }
+        await tx.importBatch.update({
+          where: { id: batchId },
+          data: { deletedAt: new Date() },
+        });
 
-      await this.audit.record(tx, {
-        workspaceId,
-        actorId: userId,
-        action: 'import.revert',
-        entityType: 'ImportBatch',
-        entityId: batchId,
-        diff: {
-          filename: batch.filename,
-          reverted: del.count,
-          ordersRecalced: orderIds.length,
-        },
-      });
+        // Переигровка оплаты заказов — после того как их импортные проводки скрыты.
+        for (const orderId of orderIds) {
+          await this.orders.recalcPaymentState(workspaceId, orderId, tx);
+        }
 
-      return { reverted: del.count, ordersRecalced: orderIds.length };
-    });
+        await this.audit.record(tx, {
+          workspaceId,
+          actorId: userId,
+          action: 'import.revert',
+          entityType: 'ImportBatch',
+          entityId: batchId,
+          diff: {
+            filename: batch.filename,
+            reverted: del.count,
+            ordersRecalced: orderIds.length,
+          },
+        });
+
+        return { reverted: del.count, ordersRecalced: orderIds.length };
+      },
+      // Как UoW.run: откат может лочить несколько заказов — дефолтных 5с мало под нагрузкой.
+      { timeout: 15000 },
+    );
   }
 }
