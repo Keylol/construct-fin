@@ -257,6 +257,32 @@ describe('P&L отчёт (по данным)', () => {
     expect(Number(t.income) - Number(t.expense)).toBe(Number(t.net));
   });
 
+  it('IJ6: primary и comparison — хронологические равные массивы бакетов (совмещение по индексу позиционно)', async () => {
+    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
+    // Primary: май+июнь; comparison: март+апрель (предыдущие 2 месяца).
+    await tx({ amount: '1000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat }); // май
+    await tx({ amount: '2000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(5), categoryId: revCat }); // июнь
+    await tx({ amount: '100', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2), categoryId: revCat }); // март
+    await tx({ amount: '200', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(3), categoryId: revCat }); // апрель
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: resolvePeriod({ from: '2025-05-01', to: '2025-06-30' }),
+      comparison: resolvePeriod({ from: '2025-03-01', to: '2025-04-30' }),
+      groupBy: 'month',
+    });
+    // Оба массива — 2 слайса в хронологическом порядке, равной длины.
+    expect(report.primary.buckets.map((b) => b.label)).toEqual(['2025-05', '2025-06']);
+    expect(report.comparison!.buckets.map((b) => b.label)).toEqual(['2025-03', '2025-04']);
+    expect(report.primary.buckets.length).toBe(report.comparison!.buckets.length);
+    // Совмещение по индексу = позиционное (1-й месяц периода ↔ 1-й месяц сравнения):
+    // index 0: май(1000) ↔ март(100); index 1: июнь(2000) ↔ апрель(200).
+    expect(report.primary.buckets[0]!.income).toBe('1000.00');
+    expect(report.comparison!.buckets[0]!.income).toBe('100.00');
+    expect(report.primary.buckets[1]!.income).toBe('2000.00');
+    expect(report.comparison!.buckets[1]!.income).toBe('200.00');
+  });
+
   it('groupBy=month режет на месячные слайсы; groupBy=quarter — на квартальные', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     await tx({ amount: '1000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(0), categoryId: revCat }); // Q1
