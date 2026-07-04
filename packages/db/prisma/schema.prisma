@@ -54,7 +54,6 @@ model Workspace {
   counterparties  Counterparty[]
   transactions    Transaction[]
   importBatches   ImportBatch[]
-  categoryRules   CategoryRule[]
   rules           Rule[]
   auditLogs       AuditLog[]
   orders          Order[]
@@ -158,7 +157,6 @@ model Category {
   parent       Category?      @relation("CategoryTree", fields: [parentId], references: [id])
   children     Category[]     @relation("CategoryTree")
   transactions Transaction[]
-  rules        CategoryRule[]
 
   @@index([workspaceId, kind, parentId])
   @@index([workspaceId, bucket])
@@ -825,24 +823,6 @@ enum ImportSource {
 }
 
 // ───────────────────────────── Category rules (auto-mapping) ─────────────────
-
-model CategoryRule {
-  id          String    @id @default(cuid())
-  workspaceId String
-  keyword     String
-  categoryId  String
-  priority    Int       @default(0)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category  Category  @relation(fields: [categoryId], references: [id])
-
-  @@index([workspaceId, isActive, priority])
-  @@index([workspaceId, deletedAt])
-}
 
 /// Движок правил (конфигурируемость Блок 1): обобщение CategoryRule до
 /// «условие → действие». conditions/actions — JSON из фиксированного zod-словаря
