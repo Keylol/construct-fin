@@ -148,8 +148,6 @@ export class PnlService {
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
     let totalCogs = new Prisma.Decimal(0);
-    let totalWriteOff = new Prisma.Decimal(0);
-    let totalCapital = new Prisma.Decimal(0);
     const totalsByCat = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
     const totalsByBucket = newBucketMap();
 
@@ -165,7 +163,6 @@ export class PnlService {
 
       let income = new Prisma.Decimal(0);
       let expense = new Prisma.Decimal(0);
-      let capital = new Prisma.Decimal(0);
       let writeOff = new Prisma.Decimal(0); // F5: неденежные потери склада отдельно
       const catMap = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
       const bucketMap = newBucketMap();
@@ -213,7 +210,6 @@ export class PnlService {
           bEntry.expense = bEntry.expense.plus(amount);
           tEntry.expense = tEntry.expense.plus(amount);
         }
-        if (bucket === 'CAPITAL') capital = capital.plus(amount);
         // F5: WRITE_OFF — неденежная потеря (деньги ушли при закупке PURCHASE);
         // копим отдельно, чтобы исключить из операционного net, но оставить в
         // grossProfit через бакет COGS.
@@ -244,9 +240,7 @@ export class PnlService {
 
       totalIncome = totalIncome.plus(opIncome);
       totalExpense = totalExpense.plus(opExpense);
-      totalCapital = totalCapital.plus(capital);
       totalCogs = totalCogs.plus(cogs);
-      totalWriteOff = totalWriteOff.plus(writeOff);
 
       buckets.push({
         label: slice.label,
