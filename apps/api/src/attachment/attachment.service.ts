@@ -74,6 +74,9 @@ export class AttachmentService {
     // или операция удалена). FK-cascade при soft-delete не срабатывает, поэтому
     // строка висит — проверяем живость родителя явно, иначе чек можно скачать по
     // прямой ссылке после удаления заказа/операции.
+    // Защита в глубину: вложение без родителя (не создаётся через API) не отдаём —
+    // безопасный дефолт для security-пути отдачи файла.
+    if (!att.orderId && !att.transactionId) throw new NotFoundException('Attachment not found');
     if (att.orderId) {
       const alive = await this.prisma.order.findFirst({
         where: { id: att.orderId, workspaceId, deletedAt: null },
