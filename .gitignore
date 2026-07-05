@@ -57,6 +57,9 @@ data/uploads/
 # Локальные resume-заметки сессий (генерит save)
 CLAUDE.local.md
 
+# Локальный конфиг Claude Code агента (allowlist прав — держим локально)
+.claude/
+
 # Локальные данные/выгрузки/бэкапы вне репо
 backups/
 /data/
