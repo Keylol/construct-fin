@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
@@ -12,6 +13,7 @@ import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/repo
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
+import { txDrilldownHref } from '@/lib/tx-filters';
 
 export default function CounterpartiesReportPage() {
   const ws = useCurrentWorkspace();
@@ -79,7 +81,25 @@ export default function CounterpartiesReportPage() {
               <tbody>
                 {query.data.rows.map((r) => (
                   <tr key={r.id ?? 'none'} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2">{r.name}</td>
+                    <td className="px-4 py-2">
+                      {r.id !== null ? (
+                        <Link
+                          href={
+                            txDrilldownHref({
+                              counterpartyId: r.id,
+                              from: query.data!.period.from,
+                              to: query.data!.period.to,
+                              type: type === 'ALL' ? undefined : type,
+                            }) as Parameters<typeof Link>[0]['href']
+                          }
+                          className="cursor-pointer hover:text-foreground hover:underline"
+                        >
+                          {r.name}
+                        </Link>
+                      ) : (
+                        r.name
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums">{r.count}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-success">
                       {formatRub(r.income)}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { cn } from '@/lib/cn';
 
 type Tone = 'neutral' | 'positive' | 'negative' | 'warning';
@@ -9,6 +10,11 @@ interface KpiCardProps {
   hint?: ReactNode;
   tone?: Tone;
   className?: string;
+  /**
+   * Если задан — вся карточка становится ссылкой (next/link) и получает
+   * hover/focus-аффорданс «кликабельно». Без href ведёт себя как обычная плитка.
+   */
+  href?: string;
 }
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -25,14 +31,9 @@ const TONE_ACCENT: Record<Tone, string> = {
   warning: 'bg-warning',
 };
 
-export function KpiCard({ label, value, hint, tone = 'neutral', className }: KpiCardProps) {
-  return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-md border border-border bg-card p-4',
-        className,
-      )}
-    >
+export function KpiCard({ label, value, hint, tone = 'neutral', className, href }: KpiCardProps) {
+  const body = (
+    <>
       {tone !== 'neutral' && (
         <span className={cn('absolute inset-x-0 top-0 h-0.5', TONE_ACCENT[tone])} aria-hidden />
       )}
@@ -41,6 +42,26 @@ export function KpiCard({ label, value, hint, tone = 'neutral', className }: Kpi
       </div>
       <div className={cn('num mt-2.5 text-2xl font-semibold', TONE_TEXT[tone])}>{value}</div>
       {hint && <div className="mt-1.5 text-xs text-muted-foreground">{hint}</div>}
-    </div>
+    </>
   );
+
+  const base = 'relative block overflow-hidden rounded-md border border-border bg-card p-4';
+
+  if (href) {
+    return (
+      <Link
+        href={href as Parameters<typeof Link>[0]['href']}
+        className={cn(
+          base,
+          'transition-all hover:-translate-y-0.5 hover:border-ring hover:shadow-sm ' +
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          className,
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className={cn(base, className)}>{body}</div>;
 }

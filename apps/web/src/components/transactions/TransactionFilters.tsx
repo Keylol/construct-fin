@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, RotateCcw } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -48,6 +48,13 @@ export function TransactionFilters({
   const [customTo, setCustomTo] = useState<string>(
     active.range.to ? toLocalDateInput(active.range.to) : '',
   );
+
+  // Синк полей дат при ВНЕШНЕЙ смене диапазона (заезд из URL/drill-down, сброс).
+  // Ввод в сами инпуты round-trip'ит через range → значение не меняется, цикла нет.
+  useEffect(() => {
+    setCustomFrom(active.range.from ? toLocalDateInput(active.range.from) : '');
+    setCustomTo(active.range.to ? toLocalDateInput(active.range.to) : '');
+  }, [active.range.from, active.range.to]);
 
   // Категории для комбобокса: та же иерархия групп, что в TransactionFormDialog —
   // заголовок = «kind · родитель», внутри «(общая)» + подкатегории. Список уже

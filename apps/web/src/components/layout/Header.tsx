@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, Search, ChevronRight } from '@/components/ui/icons';
+import { usePathname, useRouter } from 'next/navigation';
+import * as PopoverPrimitive from '@radix-ui/react-popover';
+import { Menu, Search, ChevronRight, ChevronDown, Plus } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
 import { Sheet, SheetContent } from '@/components/ui/Sheet';
@@ -12,6 +13,57 @@ import { Button } from '@/components/ui/Button';
 
 interface HeaderProps {
   onCommandOpen: () => void;
+}
+
+// Глобальное «+ Создать»: открывает форму создания на нужной странице через ?new=1
+// (страницы читают его на маунте). Один клик из любого экрана.
+const CREATE_ACTIONS: { label: string; href: string }[] = [
+  { label: 'Операция', href: '/transactions?new=1' },
+  { label: 'Заказ', href: '/orders?new=1' },
+  { label: 'Закупка', href: '/purchases?new=1' },
+  { label: 'Клиент', href: '/clients?new=1' },
+];
+
+function CreateMenu() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <Button size="sm" className="gap-1">
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Создать</span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-80" />
+        </Button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          align="end"
+          sideOffset={6}
+          className={cn(
+            'z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-card p-1 shadow-md',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+            'motion-reduce:animate-none',
+          )}
+        >
+          {CREATE_ACTIONS.map((a) => (
+            <button
+              key={a.href}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                router.push(a.href as Parameters<typeof router.push>[0]);
+              }}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary"
+            >
+              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+              {a.label}
+            </button>
+          ))}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
 }
 
 export function Header({ onCommandOpen }: HeaderProps) {
@@ -82,6 +134,9 @@ export function Header({ onCommandOpen }: HeaderProps) {
         </ol>
       </nav>
 
+      {/* Глобальное создание */}
+      <CreateMenu />
+
       {/* Command palette trigger */}
       <button
         type="button"
@@ -138,8 +193,11 @@ function buildBreadcrumbs(pathname: string): CrumbItem[] {
   return parts.map((part, i) => {
     const href = '/' + parts.slice(0, i + 1).join('/');
     const known = NAV_ITEMS.find((n) => n.href === href);
+    // Динамический сегмент-cuid (карточка сущности) не показываем сырым id —
+    // сама карточка выводит имя в своём заголовке.
+    const isId = /^c[a-z0-9]{20,}$/i.test(part) || /^[0-9a-f-]{20,}$/i.test(part);
     return {
-      label: known?.label ?? LABELS[part] ?? part,
+      label: known?.label ?? LABELS[part] ?? (isId ? 'Карточка' : part),
       href: i < parts.length - 1 ? href : undefined,
     };
   });
