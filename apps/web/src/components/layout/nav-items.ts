@@ -29,18 +29,23 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+// Группировка по частоте (решение №18 блица 07-12): ежедневные экраны —
+// первым блоком без подписи, реже используемое — группами ниже.
 export const NAV_GROUPS: NavGroup[] = [
   {
-    items: [{ href: '/dashboard', label: 'Главная', icon: Home }],
+    items: [
+      { href: '/dashboard', label: 'Главная', icon: Home },
+      { href: '/orders', label: 'Заказы', icon: ClipboardList },
+      { href: '/transactions', label: 'Операции', icon: Receipt },
+      { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
+    ],
   },
   {
     label: 'Учёт',
     items: [
-      { href: '/orders', label: 'Заказы', icon: ClipboardList },
-      { href: '/transactions', label: 'Операции', icon: Receipt },
-      { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
       { href: '/transfers', label: 'Переводы', icon: ArrowLeftRight },
       { href: '/import', label: 'Импорт', icon: Upload },
+      { href: '/reconciliation', label: 'Сверка', icon: Scale },
     ],
   },
   {
@@ -59,7 +64,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/reports', label: 'Отчёты', icon: BarChart3 },
       { href: '/reports/rules', label: 'Правила', icon: Filter },
-      { href: '/reconciliation', label: 'Сверка', icon: Scale },
       { href: '/audit', label: 'Аудит', icon: History },
     ],
   },
