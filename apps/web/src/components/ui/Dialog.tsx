@@ -21,6 +21,7 @@ export const DialogOverlay = React.forwardRef<
         'fixed inset-0 z-50 bg-foreground/40',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
+        'motion-reduce:animate-none',
         className,
       )}
       {...props}
@@ -39,10 +40,12 @@ export const DialogContent = React.forwardRef<
         ref={ref}
         className={cn(
           'fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
+          'max-h-[90dvh] overflow-y-auto',
           'gap-4 border border-border bg-card p-6 shadow-lg sm:rounded-lg',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
           'data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
+          'motion-reduce:animate-none',
           className,
         )}
         {...props}

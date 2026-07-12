@@ -285,7 +285,7 @@ function CategoryForm({
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>
               {initial ? 'Редактировать категорию' : 'Новая категория'}
@@ -294,6 +294,14 @@ function CategoryForm({
               <X className="h-4 w-4" />
             </Button>
           </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             <FormField label="Название" htmlFor="cat-name" required>
               <Input
@@ -348,6 +356,7 @@ function CategoryForm({
           <SheetFooter>
             {initial && (
               <Button
+                type="button"
                 variant="destructive"
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
@@ -355,13 +364,18 @@ function CategoryForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button onClick={onSave} disabled={!name.trim()}>
+            <Button
+              type="submit"
+              loading={create.isPending || update.isPending}
+              disabled={!name.trim()}
+            >
               Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
       <ConfirmDialog

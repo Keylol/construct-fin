@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
 import type { OpenLotView, WarehouseItem } from '@/lib/types';
 
@@ -36,6 +36,8 @@ export function useWarehouse(wsId: string | null, search?: string, includeArchiv
       return api.get<WarehouseItem[]>(`/workspaces/${wsId}/warehouse?${p.toString()}`);
     },
     enabled: !!wsId,
+    // Смена поиска не «моргает» пустой таблицей — держим прошлые данные.
+    placeholderData: keepPreviousData,
   });
 }
 

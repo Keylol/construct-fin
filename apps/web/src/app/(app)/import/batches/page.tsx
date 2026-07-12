@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useImportBatches, useRevertImportBatch } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
+import { formatDateTime } from '@/lib/dates';
 
 const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
   ALFA_XLSX: 'Альфа xlsx',
@@ -20,14 +21,6 @@ const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
   GENERIC_CSV: 'CSV',
   GENERIC_XLSX: 'Excel',
 };
-
-const DT_FMT = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
 
 export default function ImportBatchesPage() {
   const ws = useCurrentWorkspace();
@@ -55,10 +48,9 @@ export default function ImportBatchesPage() {
     {
       key: 'createdAt',
       header: 'Дата',
-      sortable: true,
       cell: (b) => (
         <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-          {DT_FMT.format(new Date(b.createdAt))}
+          {formatDateTime(b.createdAt)}
         </span>
       ),
       className: 'w-[160px]',
@@ -153,6 +145,8 @@ export default function ImportBatchesPage() {
           columns={columns}
           rowKey={(b) => b.id}
           loading={batches.isLoading}
+          error={batches.error}
+          onRetry={() => batches.refetch()}
           empty={
             <EmptyState
               icon={History}
@@ -176,7 +170,7 @@ export default function ImportBatchesPage() {
                 )}
               </div>
               <div className="text-xs text-muted-foreground tabular-nums">
-                {DT_FMT.format(new Date(b.createdAt))} · {SOURCE_LABEL[b.source]} ·
+                {formatDateTime(b.createdAt)} · {SOURCE_LABEL[b.source]} ·
                 {' '}
                 {b.rowsImported} операций
               </div>

@@ -5,6 +5,7 @@ import { History } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAudit } from '@/hooks/useAudit';
 import type { AuditEntry } from '@/lib/types';
+import { formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -32,17 +33,6 @@ function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, variant: 'muted' as const };
 }
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function hasDiff(diff: unknown): diff is Record<string, unknown> {
   return !!diff && typeof diff === 'object' && Object.keys(diff as object).length > 0;
 }
@@ -61,7 +51,7 @@ export default function AuditPage() {
       key: 'createdAt',
       header: 'Время',
       className: 'whitespace-nowrap text-muted-foreground',
-      cell: (r) => formatWhen(r.createdAt),
+      cell: (r) => formatDateTime(r.createdAt),
     },
     {
       key: 'action',
@@ -116,6 +106,8 @@ export default function AuditPage() {
           columns={columns}
           rowKey={(r) => r.id}
           loading={query.isLoading}
+          error={query.error}
+          onRetry={() => query.refetch()}
           empty={
             <EmptyState
               icon={History}

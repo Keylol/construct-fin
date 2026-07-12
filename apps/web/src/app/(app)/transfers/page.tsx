@@ -12,6 +12,7 @@ import {
   type CreateTransferInput,
 } from '@/hooks/useTransfers';
 import type { Account, Transfer } from '@/lib/types';
+import { formatDate } from '@/lib/dates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -28,14 +29,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/Sheet';
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
 
 export default function TransfersPage() {
   const { current } = useCurrentWorkspace();
@@ -73,8 +66,7 @@ export default function TransfersPage() {
     {
       key: 'date',
       header: 'Дата',
-      sortable: true,
-      cell: (t) => <span className="tabular-nums">{fmtDate(t.date)}</span>,
+      cell: (t) => <span className="tabular-nums">{formatDate(t.date)}</span>,
       className: 'w-[120px]',
     },
     {
@@ -92,7 +84,6 @@ export default function TransfersPage() {
       key: 'amount',
       header: 'Сумма',
       align: 'right',
-      sortable: true,
       cell: (t) => <span className="tabular-nums">{formatRub(t.amount)}</span>,
       className: 'w-[140px]',
     },
@@ -147,6 +138,8 @@ export default function TransfersPage() {
           columns={columns}
           rowKey={(t) => t.id}
           loading={transfers.isLoading}
+          error={transfers.error}
+          onRetry={() => transfers.refetch()}
           empty={
             <EmptyState
               icon={ArrowLeftRight}
@@ -166,7 +159,7 @@ export default function TransfersPage() {
                   {acc(t.fromAccountId)} → {acc(t.toAccountId)}
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                  {fmtDate(t.date)}
+                  {formatDate(t.date)}
                   {Number(t.fee) > 0 && ` · комиссия ${formatRub(t.fee)}`}
                 </div>
               </div>
@@ -259,13 +252,21 @@ function TransferForm({
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-md">
+      <SheetContent side="right" hideClose>
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>Новый перевод</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
         </SheetHeader>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onSave();
+          }}
+        >
         <SheetBody className="space-y-4">
           <FormField label="Со счёта" htmlFor="tr-from" required>
             <Select
@@ -336,13 +337,14 @@ function TransferForm({
           {error && <p className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={onSave} disabled={!canSave}>
-            {create.isPending ? 'Создаю…' : 'Создать'}
+          <Button type="submit" loading={create.isPending} disabled={!canSave}>
+            Создать
           </Button>
         </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   );

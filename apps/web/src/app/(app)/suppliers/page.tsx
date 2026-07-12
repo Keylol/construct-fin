@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Truck, Search, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   useCounterparties,
   useCreateCounterparty,
@@ -33,7 +34,9 @@ export default function SuppliersPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
-  const list = useCounterparties(wsId, search || undefined, false, 'SUPPLIER');
+  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
+  const debouncedSearch = useDebouncedValue(search);
+  const list = useCounterparties(wsId, debouncedSearch || undefined, false, 'SUPPLIER');
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -52,7 +55,6 @@ export default function SuppliersPage() {
     {
       key: 'name',
       header: 'Название',
-      sortable: true,
       cell: (c) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{c.name}</div>
@@ -111,6 +113,8 @@ export default function SuppliersPage() {
           rowKey={(c) => c.id}
           onRowClick={(c) => setEditing(c)}
           loading={list.isLoading}
+          error={list.error}
+          onRetry={() => list.refetch()}
           empty={
             <EmptyState
               icon={Truck}
@@ -221,13 +225,21 @@ function SupplierForm({
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>{initial ? 'Редактировать поставщика' : 'Новый поставщик'}</SheetTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
           </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             <FormField label="Название" htmlFor="s-name" required>
               <Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -261,17 +273,27 @@ function SupplierForm({
           </SheetBody>
           <SheetFooter>
             {initial && (
-              <Button variant="destructive" onClick={() => setConfirmDel(true)} className="sm:mr-auto">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setConfirmDel(true)}
+                className="sm:mr-auto"
+              >
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button onClick={onSave} disabled={!name.trim()}>
+            <Button
+              type="submit"
+              loading={create.isPending || update.isPending}
+              disabled={!name.trim()}
+            >
               Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
       <ConfirmDialog

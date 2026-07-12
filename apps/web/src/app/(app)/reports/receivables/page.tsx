@@ -13,20 +13,13 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useReceivables } from '@/hooks/useTradeReports';
 import type { AgingBucketKey } from '@/lib/types';
 import { cn } from '@/lib/cn';
+import { formatDate } from '@/lib/dates';
 
 const BUCKET_TONE: Record<AgingBucketKey, string> = {
   '0-30': 'text-foreground',
   '30-60': 'text-warning',
   '60+': 'text-destructive',
 };
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
 
 export default function ReceivablesReportPage() {
   const ws = useCurrentWorkspace();
@@ -186,13 +179,13 @@ function FragmentRow({
         client.orders.map((o) => (
           <tr key={o.orderId} className="border-b border-border bg-secondary/20 text-xs last:border-0">
             <td className="py-1.5 pl-10 pr-4 text-muted-foreground">
-              № {o.number} · {fmtDate(o.createdAt)} · {o.ageDays} дн.
+              № {o.number} · {formatDate(o.createdAt)} · {o.ageDays} дн.
             </td>
             <td colSpan={3} className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">
               {o.overdueByPlan && o.overdueByPlan !== '0.00' && (
                 <span className="mr-2 text-destructive">
                   просрочено {formatRub(o.overdueByPlan)}
-                  {o.nextDueDate ? ` (срок ${fmtDate(o.nextDueDate)})` : ''}
+                  {o.nextDueDate ? ` (срок ${formatDate(o.nextDueDate)})` : ''}
                 </span>
               )}
               оплачено {formatRub(o.paid)} из {formatRub(o.total)}

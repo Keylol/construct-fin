@@ -12,6 +12,8 @@ const PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: 'this-month', label: 'Этот месяц' },
   { value: 'prev-month', label: 'Прошлый месяц' },
   { value: 'this-quarter', label: 'Этот квартал' },
+  { value: 'prev-quarter', label: 'Прошлый квартал' },
+  { value: 'this-year', label: 'Этот год' },
   { value: 'ytd', label: 'С начала года' },
   { value: 'prev-year', label: 'Прошлый год' },
   { value: 'last-30d', label: '30 дней' },
@@ -56,36 +58,33 @@ export function PeriodPicker({ value, onChange }: PeriodPickerProps) {
           <option value="custom">Свой диапазон…</option>
         </Select>
       </label>
-      <label className="flex flex-col text-xs text-muted-foreground">
-        <span className="pb-1">С</span>
-        <Input
-          type="date"
-          value={value.mode === 'custom' ? value.from : ''}
-          onChange={(e) =>
-            onChange({
-              mode: 'custom',
-              from: e.target.value,
-              to: value.mode === 'custom' ? value.to : e.target.value,
-            })
-          }
-          className="h-9 w-[150px]"
-        />
-      </label>
-      <label className="flex flex-col text-xs text-muted-foreground">
-        <span className="pb-1">По</span>
-        <Input
-          type="date"
-          value={value.mode === 'custom' ? value.to : ''}
-          onChange={(e) =>
-            onChange({
-              mode: 'custom',
-              from: value.mode === 'custom' ? value.from : e.target.value,
-              to: e.target.value,
-            })
-          }
-          className="h-9 w-[150px]"
-        />
-      </label>
+      {/* Поля дат показываем только для «Свой диапазон…» — при пресете они пустые и лишь шумят. */}
+      {value.mode === 'custom' && (
+        <>
+          <label className="flex flex-col text-xs text-muted-foreground">
+            <span className="pb-1">С</span>
+            <Input
+              type="date"
+              value={value.from}
+              onChange={(e) =>
+                onChange({ mode: 'custom', from: e.target.value, to: value.to })
+              }
+              className="h-9 w-[150px]"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-muted-foreground">
+            <span className="pb-1">По</span>
+            <Input
+              type="date"
+              value={value.to}
+              onChange={(e) =>
+                onChange({ mode: 'custom', from: value.from, to: e.target.value })
+              }
+              className="h-9 w-[150px]"
+            />
+          </label>
+        </>
+      )}
     </div>
   );
 }
