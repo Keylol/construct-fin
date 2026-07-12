@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TxClient } from '../common/unit-of-work';
+import { businessYear } from '../reports/period';
 
 /**
  * Репозиторий заказов. Инкапсулирует все запросы к таблицам Order/OrderItem.
@@ -116,7 +117,10 @@ export class OrderRepository {
    * ретрай в OrderService.create.
    */
   async nextNumber(workspaceId: string, tx?: TxClient): Promise<string> {
-    const year = new Date().getFullYear();
+    // L12: год в поясе бизнеса (UTC+5), а НЕ server-local getFullYear() — иначе на
+    // сервере в UTC на стыке года ~5 часов номер уехал бы в прошлый год (ORD-2026-…
+    // вместо ORD-2027-0001). businessYear единый для всех год-зависимых номеров.
+    const year = businessYear();
     const prefix = `ORD-${year}-`;
     const rows = await this.db(tx).$queryRaw<{ seq: number }[]>`
       SELECT COALESCE(MAX(CAST(substring(number FROM '[0-9]+$') AS INTEGER)), 0) AS seq
