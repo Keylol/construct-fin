@@ -3,51 +3,29 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Home,
-  Receipt,
-  Wallet,
-  Tag,
-  Users,
-  Upload,
-  BarChart3,
-  Filter,
-  ClipboardList,
-  UserRound,
-  Package,
-  Truck,
-} from '@/components/ui/icons';
-import {
   CommandPalette,
   CommandGroup,
   CommandItem,
 } from '@/components/ui/CommandPalette';
+import { NAV_ITEMS } from '@/components/layout/nav-items';
 
 interface GlobalCommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-interface QuickNav {
-  href: string;
-  label: string;
-  icon: typeof Home;
-  hint?: string;
-}
+/** Доп. подсказки к пунктам палитры (справа, приглушённым) — по href из NAV_ITEMS. */
+const HINTS: Record<string, string> = {
+  '/dashboard': 'Сводка месяца',
+  '/orders': 'Продажи клиентам',
+  '/transactions': 'Список доходов/расходов',
+  '/warehouse': 'Остатки, закупки',
+  '/reports': 'P&L, Cash flow',
+  '/reports/rules': 'подсказки категорий/контрагентов',
+};
 
-const QUICK_NAV: QuickNav[] = [
-  { href: '/dashboard', label: 'Главная', icon: Home, hint: 'Сводка месяца' },
-  { href: '/orders', label: 'Заказы', icon: ClipboardList, hint: 'Продажи клиентам' },
-  { href: '/transactions', label: 'Операции', icon: Receipt, hint: 'Список доходов/расходов' },
-  { href: '/import', label: 'Импорт выписки', icon: Upload },
-  { href: '/clients', label: 'Клиенты', icon: UserRound },
-  { href: '/suppliers', label: 'Поставщики', icon: Truck },
-  { href: '/warehouse', label: 'Склад', icon: Package, hint: 'Остатки, закупки' },
-  { href: '/accounts', label: 'Счета', icon: Wallet },
-  { href: '/categories', label: 'Категории', icon: Tag },
-  { href: '/counterparties', label: 'Контрагенты', icon: Users },
-  { href: '/reports', label: 'Отчёты', icon: BarChart3, hint: 'P&L, Cash flow' },
-  { href: '/reports/rules', label: 'Правила', icon: Filter, hint: 'подсказки категорий/контрагентов' },
-];
+/** Единый источник — NAV_GROUPS/NAV_ITEMS (nav-items.ts), палитра не отстаёт от меню. */
+const QUICK_NAV = NAV_ITEMS.map((n) => ({ ...n, hint: HINTS[n.href] }));
 
 export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPaletteProps) {
   const router = useRouter();

@@ -33,14 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/Sheet';
 import { cn } from '@/lib/cn';
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
+import { formatDate } from '@/lib/dates';
 
 export default function ReconciliationPage() {
   const { current } = useCurrentWorkspace();
@@ -146,7 +139,7 @@ export default function ReconciliationPage() {
               <KpiCard
                 label="Последний факт"
                 value={data.lastCheck ? formatRub(data.lastCheck.actualBalance) : '—'}
-                hint={data.lastCheck ? `на ${fmtDate(data.lastCheck.date)}` : 'снимков нет'}
+                hint={data.lastCheck ? `на ${formatDate(data.lastCheck.date)}` : 'снимков нет'}
               />
               <KpiCard
                 label="Расхождение (факт − расчёт)"
@@ -170,7 +163,7 @@ export default function ReconciliationPage() {
               <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
                 <h3 className="font-medium">
                   Операции после последнего снимка
-                  {data.unreconciled.since && ` (с ${fmtDate(data.unreconciled.since)})`}
+                  {data.unreconciled.since && ` (с ${formatDate(data.unreconciled.since)})`}
                 </h3>
                 <span className="text-xs text-muted-foreground">
                   {data.unreconciled.count} шт · сальдо{' '}
@@ -193,7 +186,7 @@ export default function ReconciliationPage() {
                   <tbody>
                     {data.unreconciled.operations.map((op) => (
                       <tr key={op.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-2 tabular-nums">{fmtDate(op.date)}</td>
+                        <td className="px-4 py-2 tabular-nums">{formatDate(op.date)}</td>
                         <td className="px-4 py-2 text-muted-foreground">
                           {op.description ?? '—'}
                         </td>
@@ -230,7 +223,7 @@ export default function ReconciliationPage() {
                   <tbody>
                     {checks.data.map((c) => (
                       <tr key={c.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-2 tabular-nums">{fmtDate(c.date)}</td>
+                        <td className="px-4 py-2 tabular-nums">{formatDate(c.date)}</td>
                         <td className="px-4 py-2 text-muted-foreground">{c.note ?? '—'}</td>
                         <td className="px-4 py-2 text-right font-medium tabular-nums">
                           {formatRub(c.actualBalance)}
@@ -330,13 +323,21 @@ function CheckForm({
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-md">
+      <SheetContent side="right" hideClose>
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>Зафиксировать остаток</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
         </SheetHeader>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onSave();
+          }}
+        >
         <SheetBody className="space-y-4">
           <FormField label="Дата" htmlFor="rc-date" required>
             <Input
@@ -367,13 +368,14 @@ function CheckForm({
           {error && <p className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={onSave} disabled={!canSave}>
-            {create.isPending ? 'Сохраняю…' : 'Сохранить'}
+          <Button type="submit" loading={create.isPending} disabled={!canSave}>
+            Сохранить
           </Button>
         </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   );

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Users, Search, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   useCounterparties,
   useCreateCounterparty,
@@ -33,7 +34,9 @@ export default function CounterpartiesPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
-  const list = useCounterparties(wsId, search || undefined);
+  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
+  const debouncedSearch = useDebouncedValue(search);
+  const list = useCounterparties(wsId, debouncedSearch || undefined);
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -56,7 +59,6 @@ export default function CounterpartiesPage() {
     {
       key: 'name',
       header: 'Имя / название',
-      sortable: true,
       cell: (c) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{c.name}</div>
@@ -117,6 +119,8 @@ export default function CounterpartiesPage() {
           rowKey={(c) => c.id}
           onRowClick={(c) => setEditing(c)}
           loading={list.isLoading}
+          error={list.error}
+          onRetry={() => list.refetch()}
           empty={
             <EmptyState
               icon={Users}
@@ -226,7 +230,7 @@ function CounterpartyForm({
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>
               {initial ? 'Редактировать контрагента' : 'Новый контрагент'}
@@ -235,6 +239,14 @@ function CounterpartyForm({
               <X className="h-4 w-4" />
             </Button>
           </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             <FormField label="Имя / название" htmlFor="cp-name" required>
               <Input
@@ -276,6 +288,7 @@ function CounterpartyForm({
           <SheetFooter>
             {initial && (
               <Button
+                type="button"
                 variant="destructive"
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
@@ -283,13 +296,18 @@ function CounterpartyForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button onClick={onSave} disabled={!name.trim()}>
+            <Button
+              type="submit"
+              loading={create.isPending || update.isPending}
+              disabled={!name.trim()}
+            >
               Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
       <ConfirmDialog

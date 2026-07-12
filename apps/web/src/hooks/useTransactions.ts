@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -66,6 +67,8 @@ export function useTransactions(wsId: string | null, filters: TransactionFilters
     queryFn: () =>
       api.get<TransactionListPage>(`/workspaces/${wsId}/transactions?${buildQS(filters)}`),
     enabled: !!wsId,
+    // Смена поиска/фильтров не «моргает» пустой таблицей — держим прошлые данные.
+    placeholderData: keepPreviousData,
   });
 }
 
