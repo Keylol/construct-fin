@@ -10,6 +10,9 @@ export function Toaster() {
   return (
     <Sonner
       position="bottom-right"
+      // На мобиле тосты поднимаются над FAB «+ Создать» (56px + отступ),
+      // чтобы не перекрывать кнопку и не прятать крестик закрытия под ней.
+      mobileOffset={{ bottom: 88 }}
       toastOptions={{
         classNames: {
           toast:

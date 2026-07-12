@@ -9,10 +9,19 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 interface SidebarProps {
   /** Called after a nav link is clicked — mobile drawer uses this to close. */
   onNavigate?: () => void;
+  /**
+   * rail — узкая рейка 64px с расхлопом по hover (десктоп, решение №17 блица:
+   * +176px рабочей области). full — полный сайдбар 240px (мобильный drawer).
+   */
+  variant?: 'full' | 'rail';
 }
 
-export function Sidebar({ onNavigate }: SidebarProps) {
+export function Sidebar({ onNavigate, variant = 'full' }: SidebarProps) {
   const pathname = usePathname();
+
+  if (variant === 'rail') {
+    return <RailSidebar pathname={pathname} />;
+  }
 
   return (
     <aside
@@ -45,43 +54,140 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                 </div>
               )}
               <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  // Active rule: exact match OR child route (with trailing slash boundary)
-                  // — except /reports must not light up for /reports/rules.
-                  const exact = pathname === item.href;
-                  const child =
-                    pathname?.startsWith(item.href + '/') && item.href !== '/reports';
-                  const active = exact || child;
-                  const Icon = item.icon;
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href as Parameters<typeof Link>[0]['href']}
-                        onClick={onNavigate}
-                        className={cn(
-                          'relative flex h-8 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors',
-                          active
-                            ? 'bg-accent font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-r before:bg-primary'
-                            : 'text-foreground/75 hover:bg-secondary hover:text-foreground',
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            'h-4 w-4 shrink-0',
-                            active ? 'text-primary' : 'text-muted-foreground',
-                          )}
-                          aria-hidden
-                        />
-                        <span className="truncate">{item.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                  />
+                ))}
               </ul>
             </div>
           );
         })}
       </nav>
     </aside>
+  );
+}
+
+/**
+ * Рейка 64px: иконки на месте, подписи проявляются при наведении — панель
+ * расширяется ОВЕРЛЕЕМ (absolute), контент страницы не дёргается.
+ */
+function RailSidebar({ pathname }: { pathname: string | null }) {
+  return (
+    <aside className="group/rail relative z-40 h-full w-16 shrink-0">
+      <div
+        className={cn(
+          'absolute inset-y-0 left-0 flex w-16 flex-col overflow-hidden border-r border-border bg-card',
+          'transition-[width,box-shadow] duration-200 ease-out',
+          'group-hover/rail:w-60 group-hover/rail:shadow-lg group-focus-within/rail:w-60',
+          'motion-reduce:transition-none',
+        )}
+      >
+        {/* Brand: иконка на фиксированном x, подпись проявляется */}
+        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[18px]">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+            C
+          </div>
+          <RailLabel className="text-sm font-semibold tracking-tight">Construct</RailLabel>
+        </div>
+
+        {/* Переключатель пространства — только в развёрнутом виде */}
+        <div className="hidden border-b border-border px-3 py-3 group-hover/rail:block group-focus-within/rail:block">
+          <WorkspaceSwitcher />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          {NAV_GROUPS.map((group, gi) => {
+            const isFirst = gi === 0;
+            return (
+              <div key={`${group.label ?? 'main'}-${gi}`} className={cn(!isFirst && 'mt-4')}>
+                {group.label && (
+                  <>
+                    {/* Свёрнуто: группу обозначает тонкая линия; развёрнуто — подпись */}
+                    <div className="mx-1 mb-2 border-t border-border group-hover/rail:hidden group-focus-within/rail:hidden" />
+                    <div className="hidden px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground group-hover/rail:block group-focus-within/rail:block">
+                      {group.label}
+                    </div>
+                  </>
+                )}
+                <ul className="space-y-0.5">
+                  {group.items.map((item) => (
+                    <NavLink key={item.href} item={item} pathname={pathname} rail />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
+      </div>
+    </aside>
+  );
+}
+
+function RailLabel({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        'whitespace-nowrap opacity-0 transition-opacity duration-150',
+        'group-hover/rail:opacity-100 group-focus-within/rail:opacity-100',
+        'motion-reduce:transition-none',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NavLink({
+  item,
+  pathname,
+  onNavigate,
+  rail,
+}: {
+  item: (typeof NAV_GROUPS)[number]['items'][number];
+  pathname: string | null;
+  onNavigate?: () => void;
+  rail?: boolean;
+}) {
+  // Active rule: exact match OR child route (with trailing slash boundary)
+  // — except /reports must not light up for /reports/rules.
+  const exact = pathname === item.href;
+  const child = pathname?.startsWith(item.href + '/') && item.href !== '/reports';
+  const active = exact || child;
+  const Icon = item.icon;
+  return (
+    <li>
+      <Link
+        href={item.href as Parameters<typeof Link>[0]['href']}
+        onClick={onNavigate}
+        title={rail ? item.label : undefined}
+        className={cn(
+          'relative flex h-8 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors',
+          active
+            ? 'bg-accent font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-r before:bg-primary'
+            : 'text-foreground/75 hover:bg-secondary hover:text-foreground',
+        )}
+      >
+        <Icon
+          className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')}
+          aria-hidden
+        />
+        {rail ? (
+          <RailLabel className="truncate">{item.label}</RailLabel>
+        ) : (
+          <span className="truncate">{item.label}</span>
+        )}
+      </Link>
+    </li>
   );
 }
