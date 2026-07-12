@@ -49,6 +49,8 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Combobox } from '@/components/ui/Combobox';
+import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import {
   Sheet,
   SheetBody,
@@ -337,6 +339,24 @@ function OrderFormSheet({
   // не выбрасывается молча — подсвечивается и блокирует сабмит.
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
   const [confirmClose, setConfirmClose] = useState(false);
+  // «+ Создать клиента» из комбобокса: null = закрыто, строка = префилл имени.
+  const [createClientQuery, setCreateClientQuery] = useState<string | null>(null);
+
+  // SKU со вторичной строкой (остаток, себестоимость) — для строк позиций.
+  const skuOptions = useMemo(
+    () =>
+      (warehouse.data ?? [])
+        .filter((w) => !w.isArchived)
+        .map((w) => ({
+          value: w.id,
+          label: w.color ? `${w.name} · ${w.color}` : w.name,
+          description: `ост. ${Number(w.qty)} ${w.unit}${
+            Number(w.avgCost) > 0 ? ` · себест. ${formatRub(w.avgCost)}` : ''
+          }`,
+          keywords: w.sku ? [w.sku] : undefined,
+        })),
+    [warehouse.data],
+  );
   // Снимок состояния на момент открытия — для guard «Закрыть без сохранения?».
   const initialSnap = useRef('');
 
@@ -580,14 +600,22 @@ function OrderFormSheet({
         >
         <SheetBody className="space-y-4">
           <FormField label="Клиент" htmlFor="o-client">
-            <Select id="o-client" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">— Без клиента —</option>
-              {(clients.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              id="o-client"
+              value={clientId}
+              onChange={setClientId}
+              options={(clients.data ?? []).map((c) => ({
+                value: c.id,
+                label: c.name,
+                description: c.contact ?? undefined,
+              }))}
+              placeholder="— Без клиента —"
+              searchPlaceholder="Имя или контакт…"
+              clearLabel="— Без клиента —"
+              recentKey={`${wsId}:client`}
+              onCreate={(q) => setCreateClientQuery(q)}
+              createLabel={(q) => `Создать клиента «${q}»`}
+            />
           </FormField>
           <FormField label="Название" htmlFor="o-title">
             <Input
@@ -621,28 +649,21 @@ function OrderFormSheet({
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <Select
+                    <Combobox
                       value={it.warehouseItemId ?? ''}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const item = warehouse.data?.find((w) => w.id === id);
+                      onChange={(v) => {
+                        const item = warehouse.data?.find((w) => w.id === v);
                         patchItem(i, {
-                          warehouseItemId: id || null,
+                          warehouseItemId: v || null,
                           ...(item ? { name: item.name } : {}),
                         });
                       }}
-                      className="h-8 text-xs"
-                    >
-                      <option value="">Услуга / без склада</option>
-                      {(warehouse.data ?? [])
-                        .filter((w) => !w.isArchived)
-                        .map((w) => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                            {w.color ? ` · ${w.color}` : ''} (ост. {Number(w.qty)} {w.unit})
-                          </option>
-                        ))}
-                    </Select>
+                      options={skuOptions}
+                      placeholder="Услуга / без склада"
+                      searchPlaceholder="Название, цвет или артикул…"
+                      clearLabel="Услуга / без склада"
+                      recentKey={`${wsId}:sku`}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -803,6 +824,14 @@ function OrderFormSheet({
         setConfirmClose(false);
         onClose();
       }}
+    />
+    <QuickCreateCounterpartyDialog
+      wsId={wsId}
+      role="CLIENT"
+      open={createClientQuery !== null}
+      initialName={createClientQuery ?? ''}
+      onOpenChange={(o) => !o && setCreateClientQuery(null)}
+      onCreated={setClientId}
     />
     </>
   );

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -304,6 +305,7 @@ export default function RulesPage() {
       </div>
 
       <RuleFormDialog
+        wsId={wsId}
         open={open}
         onClose={() => setOpen(false)}
         editing={editing}
@@ -334,6 +336,7 @@ export default function RulesPage() {
 }
 
 function RuleFormDialog({
+  wsId,
   open,
   onClose,
   editing,
@@ -343,6 +346,7 @@ function RuleFormDialog({
   submitting,
   onSubmit,
 }: {
+  wsId: string;
   open: boolean;
   onClose: () => void;
   editing: Rule | null;
@@ -385,10 +389,46 @@ function RuleFormDialog({
     }
   }, [open, editing]);
 
-  const rootCatsByKind = (kind: 'INCOME' | 'EXPENSE') =>
-    categories.filter((c) => c.kind === kind && !c.isArchived);
-  const activeCps = counterparties.filter((c) => !c.isArchived);
   const activeAccounts = accounts.filter((a) => !a.isArchived);
+
+  // Контрагенты для комбобокса — тот же паттерн, что в TransactionFormDialog:
+  // вторичная строка = контакт, поиск находит и по нему.
+  const counterpartyOptions = useMemo<ComboboxOption[]>(
+    () =>
+      counterparties
+        .filter((c) => !c.isArchived)
+        .map((c) => ({
+          value: c.id,
+          label: c.name,
+          description: c.contact ?? undefined,
+        })),
+    [counterparties],
+  );
+
+  // Категории для комбобокса: иерархия через группы — заголовок = «kind ·
+  // родитель», внутри «(общая)» + подкатегории. Здесь оба kind сразу (бывшие
+  // optgroup «Расходы»/«Доходы»), поэтому kind вынесен в заголовок группы.
+  const categoryOptions = useMemo<ComboboxOption[]>(() => {
+    const active = categories.filter((c) => !c.isArchived);
+    const forKind = (kind: 'INCOME' | 'EXPENSE', kindLabel: string) =>
+      active
+        .filter((c) => c.kind === kind && c.parentId === null)
+        .flatMap((root) => [
+          {
+            value: root.id,
+            label: `${root.name} (общая)`,
+            group: `${kindLabel} · ${root.name}`,
+          },
+          ...active
+            .filter((c) => c.parentId === root.id)
+            .map((child) => ({
+              value: child.id,
+              label: child.name,
+              group: `${kindLabel} · ${root.name}`,
+            })),
+        ]);
+    return [...forKind('EXPENSE', 'Расходы'), ...forKind('INCOME', 'Доходы')];
+  }, [categories]);
 
   function setCondition(i: number, c: RuleCondition) {
     setConditions((prev) => prev.map((x, idx) => (idx === i ? c : x)));
@@ -521,8 +561,9 @@ function RuleFormDialog({
               {conditions.map((c, i) => (
                 <ConditionRow
                   key={i}
+                  wsId={wsId}
                   condition={c}
-                  counterparties={activeCps}
+                  counterpartyOptions={counterpartyOptions}
                   accounts={activeAccounts}
                   onChange={(next) => setCondition(i, next)}
                   onRemove={
@@ -555,11 +596,11 @@ function RuleFormDialog({
               {actions.map((a, i) => (
                 <ActionRow
                   key={i}
+                  wsId={wsId}
                   action={a}
-                  categories={categories}
-                  counterparties={activeCps}
+                  categoryOptions={categoryOptions}
+                  counterpartyOptions={counterpartyOptions}
                   accounts={activeAccounts}
-                  rootCatsByKind={rootCatsByKind}
                   onChange={(next) => setAction(i, next)}
                   onRemove={
                     actions.length > 1
@@ -607,14 +648,16 @@ function RuleFormDialog({
 }
 
 function ConditionRow({
+  wsId,
   condition,
-  counterparties,
+  counterpartyOptions,
   accounts,
   onChange,
   onRemove,
 }: {
+  wsId: string;
   condition: RuleCondition;
-  counterparties: Counterparty[];
+  counterpartyOptions: ComboboxOption[];
   accounts: Account[];
   onChange: (c: RuleCondition) => void;
   onRemove?: () => void;
@@ -642,21 +685,14 @@ function ConditionRow({
           />
         )}
         {condition.type === 'COUNTERPARTY_EQUALS' && (
-          <Select
+          <Combobox
             value={condition.counterpartyId}
-            onChange={(e) =>
-              onChange({ type: 'COUNTERPARTY_EQUALS', counterpartyId: e.target.value })
-            }
-          >
-            <option value="" disabled>
-              — Выберите контрагента —
-            </option>
-            {counterparties.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+            onChange={(v) => onChange({ type: 'COUNTERPARTY_EQUALS', counterpartyId: v })}
+            options={counterpartyOptions}
+            placeholder="— Выберите контрагента —"
+            searchPlaceholder="Имя или контакт…"
+            recentKey={`${wsId}:counterparty`}
+          />
         )}
         {condition.type === 'ACCOUNT_EQUALS' && (
           <Select
@@ -733,19 +769,19 @@ function ConditionRow({
 }
 
 function ActionRow({
+  wsId,
   action,
-  categories,
-  counterparties,
+  categoryOptions,
+  counterpartyOptions,
   accounts,
-  rootCatsByKind,
   onChange,
   onRemove,
 }: {
+  wsId: string;
   action: RuleAction;
-  categories: Category[];
-  counterparties: Counterparty[];
+  categoryOptions: ComboboxOption[];
+  counterpartyOptions: ComboboxOption[];
   accounts: Account[];
-  rootCatsByKind: (kind: 'INCOME' | 'EXPENSE') => Category[];
   onChange: (a: RuleAction) => void;
   onRemove?: () => void;
 }) {
@@ -765,43 +801,23 @@ function ActionRow({
         </Select>
 
         {action.type === 'SET_CATEGORY' && (
-          <Select
+          <Combobox
             value={action.categoryId}
-            onChange={(e) => onChange({ type: 'SET_CATEGORY', categoryId: e.target.value })}
-          >
-            <option value="" disabled>
-              — Выберите категорию —
-            </option>
-            <optgroup label="Расходы">
-              {rootCatsByKind('EXPENSE').map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Доходы">
-              {rootCatsByKind('INCOME').map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </optgroup>
-          </Select>
+            onChange={(v) => onChange({ type: 'SET_CATEGORY', categoryId: v })}
+            options={categoryOptions}
+            placeholder="— Выберите категорию —"
+            searchPlaceholder="Название категории…"
+          />
         )}
         {action.type === 'SET_COUNTERPARTY' && (
-          <Select
+          <Combobox
             value={action.counterpartyId}
-            onChange={(e) => onChange({ type: 'SET_COUNTERPARTY', counterpartyId: e.target.value })}
-          >
-            <option value="" disabled>
-              — Выберите контрагента —
-            </option>
-            {counterparties.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+            onChange={(v) => onChange({ type: 'SET_COUNTERPARTY', counterpartyId: v })}
+            options={counterpartyOptions}
+            placeholder="— Выберите контрагента —"
+            searchPlaceholder="Имя или контакт…"
+            recentKey={`${wsId}:counterparty`}
+          />
         )}
         {action.type === 'SET_ACCOUNT' && (
           <Select

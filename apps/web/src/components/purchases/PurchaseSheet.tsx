@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
+import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import {
   Sheet,
   SheetBody,
@@ -52,6 +54,35 @@ export function PurchaseSheet({
   const [error, setError] = useState<string | null>(null);
   // Ошибки по строкам: индекс → текст. Невалидная строка не выбрасывается молча.
   const [lineErrors, setLineErrors] = useState<Record<number, string>>({});
+  // «+ Новый поставщик» из комбобокса: null = закрыто, строка = префилл имени.
+  const [createSupplierQuery, setCreateSupplierQuery] = useState<string | null>(null);
+
+  const supplierOptions = useMemo<ComboboxOption[]>(
+    () =>
+      (suppliers.data ?? []).map((s) => ({
+        value: s.id,
+        label: s.name,
+        description: s.contact ?? undefined,
+      })),
+    [suppliers.data],
+  );
+
+  // SKU со вторичной строкой: остаток и текущая себестоимость — выбор
+  // информированный, одноимённые позиции различимы по цвету/артикулу.
+  const skuOptions = useMemo<ComboboxOption[]>(
+    () =>
+      (warehouse.data ?? [])
+        .filter((w) => !w.isArchived)
+        .map((w) => ({
+          value: w.id,
+          label: w.color ? `${w.name} · ${w.color}` : w.name,
+          description: `ост. ${Number(w.qty)} ${w.unit}${
+            Number(w.avgCost) > 0 ? ` · себест. ${formatRub(w.avgCost)}` : ''
+          }`,
+          keywords: w.sku ? [w.sku] : undefined,
+        })),
+    [warehouse.data],
+  );
 
   useEffect(() => {
     if (open) {
@@ -154,18 +185,18 @@ export function PurchaseSheet({
           <SheetBody className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Поставщик" htmlFor="p-supplier">
-                <Select
+                <Combobox
                   id="p-supplier"
                   value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                >
-                  <option value="">— Не указан —</option>
-                  {(suppliers.data ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setSupplierId}
+                  options={supplierOptions}
+                  placeholder="— Не указан —"
+                  searchPlaceholder="Имя или контакт…"
+                  clearLabel="— Не указан —"
+                  recentKey={`${wsId}:supplier`}
+                  onCreate={(q) => setCreateSupplierQuery(q)}
+                  createLabel={(q) => `Создать поставщика «${q}»`}
+                />
               </FormField>
               <FormField
                 label="Счёт оплаты"
@@ -227,20 +258,15 @@ export function PurchaseSheet({
                   >
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
-                        <Select
+                        <Combobox
                           value={l.warehouseItemId}
-                          onChange={(e) => patchLine(i, { warehouseItemId: e.target.value })}
+                          onChange={(v) => patchLine(i, { warehouseItemId: v })}
+                          options={skuOptions}
+                          placeholder="— SKU —"
+                          searchPlaceholder="Название, цвет или артикул…"
+                          recentKey={`${wsId}:sku`}
                           aria-invalid={rowError ? true : undefined}
-                        >
-                          <option value="">— SKU —</option>
-                          {(warehouse.data ?? [])
-                            .filter((w) => !w.isArchived)
-                            .map((w) => (
-                              <option key={w.id} value={w.id}>
-                                {w.name}
-                              </option>
-                            ))}
-                        </Select>
+                        />
                       </div>
                       <div className="w-16">
                         <Input
@@ -321,6 +347,14 @@ export function PurchaseSheet({
           </SheetFooter>
         </form>
       </SheetContent>
+      <QuickCreateCounterpartyDialog
+        wsId={wsId}
+        role="SUPPLIER"
+        open={createSupplierQuery !== null}
+        initialName={createSupplierQuery ?? ''}
+        onOpenChange={(o) => !o && setCreateSupplierQuery(null)}
+        onCreated={setSupplierId}
+      />
     </Sheet>
   );
 }
