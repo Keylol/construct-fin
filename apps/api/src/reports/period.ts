@@ -46,6 +46,15 @@ function tzParts(date: Date): TzParts {
   return { y: shifted.getUTCFullYear(), mo: shifted.getUTCMonth(), d: shifted.getUTCDate() };
 }
 
+/**
+ * L12: календарный год момента в поясе бизнеса (UTC+5). Для номеров/последовательностей,
+ * привязанных к году (ORD-YYYY-NNNN). Сервер в контейнере обычно UTC — голый
+ * `new Date().getFullYear()` на стыке года ~5 часов вернул бы прошлый год.
+ */
+export function businessYear(at: Date = new Date()): number {
+  return tzParts(at).y;
+}
+
 /** Y/M/D + время суток момента в поясе бизнеса (UTC+5). */
 function tzPartsTime(date: Date) {
   const s = new Date(date.getTime() + OFFSET_MS);

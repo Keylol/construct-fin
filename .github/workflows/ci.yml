@@ -102,3 +102,25 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  # L11 (supply chain): скан уязвимостей зависимостей (Trivy). Отдельная job —
+  # гоняется параллельно тестам. Сейчас REPORT-ONLY (exit-code 0): печатает таблицу
+  # HIGH/CRITICAL fixable в лог, деплой НЕ блокирует. Чтобы сделать гейтом (упасть
+  # на найденных CVE) — поменять exit-code на '1'. ignore-unfixed: не шуметь по
+  # уязвимостям без доступного апдейта (base-alpine и пр.).
+  security-scan:
+    name: Security scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (deps CVEs)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+          format: table
