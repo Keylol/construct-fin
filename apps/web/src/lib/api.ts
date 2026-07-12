@@ -8,6 +8,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly body: unknown,
     message: string,
+    /** x-request-id ответа (L5): по нему бэкенд находит запрос в логах. */
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -44,6 +46,7 @@ async function request<T>(
       res.status,
       body,
       (body as { message?: string } | null)?.message ?? `HTTP ${res.status}`,
+      res.headers.get('x-request-id') ?? undefined,
     );
   }
   return body as T;

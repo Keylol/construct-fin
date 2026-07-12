@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, RotateCcw } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Button } from '@/components/ui/Button';
 import { FilterBar } from '@/components/ui/FilterBar';
 import type { TxType, Account, Category, Counterparty } from '@/lib/types';
@@ -46,6 +47,40 @@ export function TransactionFilters({
   );
   const [customTo, setCustomTo] = useState<string>(
     active.range.to ? toLocalDateInput(active.range.to) : '',
+  );
+
+  // Категории для комбобокса: та же иерархия групп, что в TransactionFormDialog —
+  // заголовок = «kind · родитель», внутри «(общая)» + подкатегории. Список уже
+  // без архивных (сервер), фильтр по isArchived не дублируем.
+  const categoryOptions = useMemo<ComboboxOption[]>(() => {
+    const forKind = (kind: 'INCOME' | 'EXPENSE', kindLabel: string) =>
+      categories
+        .filter((c) => c.kind === kind && c.parentId === null)
+        .flatMap((root) => [
+          {
+            value: root.id,
+            label: `${root.name} (общая)`,
+            group: `${kindLabel} · ${root.name}`,
+          },
+          ...categories
+            .filter((c) => c.parentId === root.id)
+            .map((child) => ({
+              value: child.id,
+              label: child.name,
+              group: `${kindLabel} · ${root.name}`,
+            })),
+        ]);
+    return [...forKind('EXPENSE', 'Расходы'), ...forKind('INCOME', 'Доходы')];
+  }, [categories]);
+
+  const counterpartyOptions = useMemo<ComboboxOption[]>(
+    () =>
+      counterparties.map((c) => ({
+        value: c.id,
+        label: c.name,
+        description: c.contact ?? undefined,
+      })),
+    [counterparties],
   );
 
   const setPeriod = (key: PeriodKey) => {
@@ -159,39 +194,33 @@ export function TransactionFilters({
         </Select>
       </FilterField>
       <FilterField label="Категория">
-        <Select
+        <Combobox
           value={active.categoryId ?? ''}
-          onChange={(e) =>
-            onChange({ ...active, categoryId: e.target.value || undefined })
+          onChange={(v) =>
+            onChange({ ...active, categoryId: v || undefined })
           }
+          options={categoryOptions}
+          placeholder="Все"
+          searchPlaceholder="Название категории…"
+          clearLabel="Все категории"
           className="h-9 w-[160px]"
-        >
-          <option value="">Все</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+        />
       </FilterField>
       <FilterField label="Контрагент">
-        <Select
+        <Combobox
           value={active.counterpartyId ?? ''}
-          onChange={(e) =>
+          onChange={(v) =>
             onChange({
               ...active,
-              counterpartyId: e.target.value || undefined,
+              counterpartyId: v || undefined,
             })
           }
+          options={counterpartyOptions}
+          placeholder="Все"
+          searchPlaceholder="Имя или контакт…"
+          clearLabel="Все контрагенты"
           className="h-9 w-[160px]"
-        >
-          <option value="">Все</option>
-          {counterparties.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+        />
       </FilterField>
 
       <Button variant="ghost" size="sm" onClick={reset} className="self-end">

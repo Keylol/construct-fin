@@ -29,6 +29,8 @@ import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
+import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import { cn } from '@/lib/cn';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import { parseAmountInput } from '@construct/shared';
@@ -64,6 +66,8 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  // «+ Создать контрагента» из комбобокса: null = закрыто, строка = префилл имени.
+  const [createCpQuery, setCreateCpQuery] = useState<string | null>(null);
   // Подсказка движка правил (только при создании): что подставить + какие правила
   // сработали. dismissed прячет баннер до следующей смены набора сработавших правил.
   const [suggestion, setSuggestion] = useState<RuleSuggestion | null>(null);
@@ -138,6 +142,35 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const childCats = (parentId: string) =>
     cats.filter((c) => c.parentId === parentId && !c.isArchived);
   const selectedCat = cats.find((c) => c.id === categoryId);
+
+  // Категории для комбобокса: иерархия через группы — заголовок = родитель,
+  // внутри «(общая)» + подкатегории. Поиск находит и родителя, и ребёнка.
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () =>
+      rootCats.flatMap((root: Category) => [
+        { value: root.id, label: `${root.name} (общая)`, group: root.name },
+        ...childCats(root.id).map((child: Category) => ({
+          value: child.id,
+          label: child.name,
+          group: root.name,
+        })),
+      ]),
+    // childCats — производная от cats; сами cats в зависимостях.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cats],
+  );
+
+  const counterpartyOptions = useMemo<ComboboxOption[]>(
+    () =>
+      (counterparties.data ?? [])
+        .filter((c: Counterparty) => !c.isArchived)
+        .map((c: Counterparty) => ({
+          value: c.id,
+          label: c.name,
+          description: c.contact ?? undefined,
+        })),
+    [counterparties.data],
+  );
 
   // ─── Подсказка правил: имена сработавших правил + поля, отличные от текущих ───
   const ruleNames = useMemo(() => {
@@ -375,23 +408,15 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             </FormField>
 
             <FormField label="Категория" htmlFor="tx-cat">
-              <Select
+              <Combobox
                 id="tx-cat"
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                <option value="">— Без категории —</option>
-                {rootCats.map((root: Category) => (
-                  <optgroup key={root.id} label={root.name}>
-                    <option value={root.id}>{root.name} (общая)</option>
-                    {childCats(root.id).map((child: Category) => (
-                      <option key={child.id} value={child.id}>
-                        {child.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </Select>
+                onChange={setCategoryId}
+                options={categoryOptions}
+                placeholder="— Без категории —"
+                searchPlaceholder="Название категории…"
+                clearLabel="— Без категории —"
+              />
               {selectedCat?.isFixedCost && (
                 <Badge variant="outline" className="mt-1">
                   Постоянная издержка
@@ -400,20 +425,18 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             </FormField>
 
             <FormField label="Контрагент" htmlFor="tx-cp">
-              <Select
+              <Combobox
                 id="tx-cp"
                 value={counterpartyId}
-                onChange={(e) => setCounterpartyId(e.target.value)}
-              >
-                <option value="">— Без контрагента —</option>
-                {(counterparties.data ?? [])
-                  .filter((c: Counterparty) => !c.isArchived)
-                  .map((c: Counterparty) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-              </Select>
+                onChange={setCounterpartyId}
+                options={counterpartyOptions}
+                placeholder="— Без контрагента —"
+                searchPlaceholder="Имя или контакт…"
+                clearLabel="— Без контрагента —"
+                recentKey={`${wsId}:counterparty`}
+                onCreate={(q) => setCreateCpQuery(q)}
+                createLabel={(q) => `Создать контрагента «${q}»`}
+              />
             </FormField>
 
             <FormField label="Описание" htmlFor="tx-desc">
@@ -512,6 +535,17 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
         confirmText="Удалить"
         onConfirm={onDelete}
         loading={del.isPending}
+      />
+
+      {/* Роль по контексту: расход — платим поставщику, доход — платит клиент.
+          Так запись не уходит в невидимый OTHER и видна в своём справочнике. */}
+      <QuickCreateCounterpartyDialog
+        wsId={wsId}
+        role={type === 'INCOME' ? 'CLIENT' : 'SUPPLIER'}
+        open={createCpQuery !== null}
+        initialName={createCpQuery ?? ''}
+        onOpenChange={(o) => !o && setCreateCpQuery(null)}
+        onCreated={setCounterpartyId}
       />
     </>
   );

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Badge } from '@/components/ui/Badge';
 import { FormField } from '@/components/ui/FormField';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -331,8 +332,6 @@ function PreviewStage({
       ),
     [ordersQuery.data],
   );
-  const dueOf = (o: Order) => sub(o.totalAmount, o.paidAmount);
-
   return (
     <div className="space-y-4">
       <Card>
@@ -396,24 +395,12 @@ function PreviewStage({
                     заказа (ORDER_PAYMENT). «✓» — долг совпадает с суммой строки. */}
                 <td className="px-3 py-2">
                   {r.type === 'INCOME' && !r.isDuplicate ? (
-                    <Select
+                    <OrderLinkCombobox
+                      orders={unpaidOrders}
+                      rowAmount={r.amount}
                       value={orderLinks[r.rawIndex] ?? ''}
-                      onChange={(e) => onLinkOrder(r.rawIndex, e.target.value || null)}
-                      className="h-8 min-w-[180px] text-xs"
-                    >
-                      <option value="">—</option>
-                      {unpaidOrders.map((o) => {
-                        const due = dueOf(o);
-                        const match = due.eq(r.amount);
-                        return (
-                          <option key={o.id} value={o.id}>
-                            {match ? '✓ ' : ''}
-                            {o.number} · {o.client?.name ?? 'без клиента'} · долг{' '}
-                            {formatRub(toMoneyString(due))}
-                          </option>
-                        );
-                      })}
-                    </Select>
+                      onChange={(orderId) => onLinkOrder(r.rawIndex, orderId)}
+                    />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -459,6 +446,49 @@ function PreviewStage({
         </div>
       </Card>
     </div>
+  );
+}
+
+/**
+ * F3 (5d): комбобокс привязки приходной строки к заказу. Options строятся
+ * per-строка (тот же паттерн, что SKU-строки в закупке), потому что метка
+ * «✓» — подсказка «долг совпадает с суммой строки» — зависит от суммы строки.
+ */
+function OrderLinkCombobox({
+  orders,
+  rowAmount,
+  value,
+  onChange,
+}: {
+  orders: Order[];
+  rowAmount: string;
+  value: string;
+  onChange: (orderId: string | null) => void;
+}) {
+  const options = useMemo<ComboboxOption[]>(
+    () =>
+      orders.map((o) => {
+        const due = sub(o.totalAmount, o.paidAmount);
+        const match = due.eq(rowAmount);
+        return {
+          value: o.id,
+          label: `${match ? '✓ ' : ''}${o.number}${o.title ? ` · ${o.title}` : ''}`,
+          description: `${o.client?.name ?? 'без клиента'} · долг ${formatRub(toMoneyString(due))}`,
+        };
+      }),
+    [orders, rowAmount],
+  );
+  return (
+    <Combobox
+      value={value}
+      onChange={(v) => onChange(v || null)}
+      options={options}
+      placeholder="—"
+      searchPlaceholder="Номер, название или клиент…"
+      clearLabel="— Без привязки —"
+      emptyLabel="Нет открытых долгов"
+      className="h-8 sm:h-8 min-w-[180px] text-xs"
+    />
   );
 }
 
