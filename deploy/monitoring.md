@@ -28,12 +28,24 @@ healthchecks.io — это «dead man's switch» (ждёт пинг ОТ нас)
 после успешного `/backup.sh` слать `curl -fsS https://hc-ping.com/<uuid>`; молчание
 > периода → алерт.
 
-## Связка со структурным логом
+## Связка со структурным логом (L5)
 
-С Фазы 1 п.7 API в проде пишет JSON-лог (pino, `logger` в `apps/api/src/main.ts`).
-Healthcheck-пинги (docker каждые 20s + внешний монитор) попадают в request-лог —
-если станет шумно, можно либо поднять `LOG_LEVEL=warn`, либо отключить
-request-логи для `/health` (follow-up; в конфиг-фазе не делаем).
+API в проде пишет единый JSON-лог на stdout через **nestjs-pino** (конфиг —
+`apps/api/src/common/logger.config.ts`): и request-логи Fastify, и логи Nest
+(`Logger.*`) в одном потоке. Каждый запрос несёт **`x-request-id`** — входящий
+уважается (можно проставить nginx'ом), иначе генерируется UUID; тот же id
+возвращается заголовком ответа. Любой **5xx** логируется с контекстом
+(`METHOD url → status [reqId=…]`) и полным стеком (`AllExceptionsFilter`) — по
+`x-request-id` из ответа находится вся история запроса в логе.
+
+Request-логи `/health` заглушены (`autoLogging.ignore`), чтобы health-пинги
+(docker каждые 20s + внешний монитор) не зашумляли лог; ошибки/5xx логируются
+всегда. Уровень — `LOG_LEVEL` (по умолчанию `info` в проде).
+
+**Форензика после инцидента:** логи собирает docker `json-file` с ротацией (L4,
+`docker-compose.prod.yml`). Достать: `docker compose logs api --tail=… | grep <reqId>`.
+Следующий шаг (вне этого PR) — L5-алертинг на error-rate/5xx и переживание логов
+между релизами (шиппинг во внешний сервис/volume).
 
 ## После активации заголовков безопасности (п.5)
 
