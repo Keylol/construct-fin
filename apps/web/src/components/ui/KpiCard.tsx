@@ -15,6 +15,11 @@ interface KpiCardProps {
    * hover/focus-аффорданс «кликабельно». Без href ведёт себя как обычная плитка.
    */
   href?: string;
+  /**
+   * display — «главная цифра» экрана (решение №7 блица): 2.25–2.75rem mono,
+   * видно через комнату. md — обычная плитка.
+   */
+  size?: 'md' | 'display';
 }
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -31,7 +36,15 @@ const TONE_ACCENT: Record<Tone, string> = {
   warning: 'bg-warning',
 };
 
-export function KpiCard({ label, value, hint, tone = 'neutral', className, href }: KpiCardProps) {
+export function KpiCard({
+  label,
+  value,
+  hint,
+  tone = 'neutral',
+  className,
+  href,
+  size = 'md',
+}: KpiCardProps) {
   const body = (
     <>
       {tone !== 'neutral' && (
@@ -40,12 +53,23 @@ export function KpiCard({ label, value, hint, tone = 'neutral', className, href 
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className={cn('num mt-2.5 text-2xl font-semibold', TONE_TEXT[tone])}>{value}</div>
+      <div
+        className={cn(
+          'num font-semibold',
+          size === 'display' ? 'mt-3 text-4xl sm:text-5xl' : 'mt-2.5 text-2xl',
+          TONE_TEXT[tone],
+        )}
+      >
+        {value}
+      </div>
       {hint && <div className="mt-1.5 text-xs text-muted-foreground">{hint}</div>}
     </>
   );
 
-  const base = 'relative block overflow-hidden rounded-md border border-border bg-card p-4';
+  const base = cn(
+    'relative block overflow-hidden rounded-md border border-border bg-card',
+    size === 'display' ? 'p-5' : 'p-4',
+  );
 
   if (href) {
     return (

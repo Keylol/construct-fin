@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/Sheet';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Badge } from '@/components/ui/Badge';
@@ -369,9 +370,8 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
 
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Сумма" htmlFor="tx-amount" required>
-                <Input
+                <MoneyInput
                   id="tx-amount"
-                  inputMode="decimal"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
