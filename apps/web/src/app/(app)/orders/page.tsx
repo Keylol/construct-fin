@@ -46,6 +46,8 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { Badge, type BadgeProps } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { StatusStamp } from '@/components/ui/StatusStamp';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -72,10 +74,12 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   DONE: 'Выполнен',
   CANCELLED: 'Отменён',
 };
-const STATUS_VARIANT: Record<OrderStatus, BadgeProps['variant']> = {
-  OPEN: 'default',
+// Тон точки/штампа (решение №15/№3): статус — вторичный сигнал, не пилюля.
+type StatusTone = 'success' | 'warning' | 'destructive' | 'muted' | 'primary';
+const STATUS_TONE: Record<OrderStatus, StatusTone> = {
+  OPEN: 'primary',
   DONE: 'success',
-  CANCELLED: 'destructive',
+  CANCELLED: 'muted',
 };
 const PAY_LABEL: Record<OrderPaymentState, string> = {
   UNPAID: 'Не оплачен',
@@ -84,11 +88,11 @@ const PAY_LABEL: Record<OrderPaymentState, string> = {
   OVERPAID: 'Переплата',
   REFUNDED: 'Возврат',
 };
-const PAY_VARIANT: Record<OrderPaymentState, BadgeProps['variant']> = {
+const PAY_TONE: Record<OrderPaymentState, StatusTone> = {
   UNPAID: 'muted',
-  PARTIAL: 'outline',
+  PARTIAL: 'warning',
   PAID: 'success',
-  OVERPAID: 'outline',
+  OVERPAID: 'warning',
   REFUNDED: 'destructive',
 };
 
@@ -120,6 +124,16 @@ export default function OrdersPage() {
     () => orders.data?.pages.flatMap((p) => p.items) ?? [],
     [orders.data],
   );
+  // Σ-итог списка (решение №28): по загруженным страницам, только Decimal.
+  const listTotals = useMemo(() => {
+    let paid = D(0);
+    let total = D(0);
+    for (const o of orderRows) {
+      paid = add(paid, D(o.paidAmount));
+      total = add(total, D(o.totalAmount));
+    }
+    return { paid: toMoneyString(paid), total: toMoneyString(total) };
+  }, [orderRows]);
 
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -167,7 +181,7 @@ export default function OrdersPage() {
       key: 'status',
       header: 'Статус',
       cell: (o) => (
-        <Badge variant={STATUS_VARIANT[o.status]}>{STATUS_LABEL[o.status]}</Badge>
+        <StatusDot tone={STATUS_TONE[o.status]} label={STATUS_LABEL[o.status]} />
       ),
       className: 'w-[120px]',
     },
@@ -175,11 +189,11 @@ export default function OrdersPage() {
       key: 'payment',
       header: 'Оплата',
       cell: (o) => (
-        <div className="flex flex-wrap items-center gap-1">
-          <Badge variant={PAY_VARIANT[o.paymentStatus]}>{PAY_LABEL[o.paymentStatus]}</Badge>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} />
           {/* F2: платёж по графику пропущен — видно без открытия карточки. */}
           {o.scheduleSummary && o.scheduleSummary.overdueAmount !== '0.00' && (
-            <Badge variant="destructive">просрочен</Badge>
+            <StatusDot tone="destructive" label="просрочен" />
           )}
         </div>
       ),
@@ -265,6 +279,11 @@ export default function OrdersPage() {
               }
             />
           }
+          footer={{
+            number: 'Итого по видимым',
+            paid: formatRub(listTotals.paid),
+            total: formatRub(listTotals.total),
+          }}
           mobileCards={(o) => (
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2">
@@ -273,8 +292,16 @@ export default function OrdersPage() {
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {o.client?.name ?? 'Без клиента'}
-                <Badge variant={STATUS_VARIANT[o.status]}>{STATUS_LABEL[o.status]}</Badge>
-                <Badge variant={PAY_VARIANT[o.paymentStatus]}>{PAY_LABEL[o.paymentStatus]}</Badge>
+                <StatusDot
+                  tone={STATUS_TONE[o.status]}
+                  label={STATUS_LABEL[o.status]}
+                  className="text-xs"
+                />
+                <StatusDot
+                  tone={PAY_TONE[o.paymentStatus]}
+                  label={PAY_LABEL[o.paymentStatus]}
+                  className="text-xs"
+                />
               </div>
             </div>
           )}
@@ -984,7 +1011,7 @@ function OrderFormSheet({
               {payMode === 'schedule' && (
                 <div className="space-y-3 rounded-md border border-border p-3">
                   <div className="space-y-1.5">
-                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                    <div className="text-sm font-medium">
                       Предоплата сейчас (если получена)
                     </div>
                     <div className="flex items-end gap-2">
@@ -1013,7 +1040,7 @@ function OrderFormSheet({
                   </div>
 
                   <div className="space-y-1.5">
-                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                    <div className="text-sm font-medium">
                       Остаток по датам
                     </div>
                     {scheduleRows.map((r, i) => (
@@ -1230,12 +1257,14 @@ function OrderDetailSheet({
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={STATUS_VARIANT[order.status]}>
-                    {STATUS_LABEL[order.status]}
-                  </Badge>
-                  <Badge variant={PAY_VARIANT[order.paymentStatus]}>
-                    {PAY_LABEL[order.paymentStatus]}
-                  </Badge>
+                  <StatusStamp
+                    tone={STATUS_TONE[order.status]}
+                    label={STATUS_LABEL[order.status]}
+                  />
+                  <StatusStamp
+                    tone={PAY_TONE[order.paymentStatus]}
+                    label={PAY_LABEL[order.paymentStatus]}
+                  />
                   {order.client && (
                     <span className="text-sm text-muted-foreground">· {order.client.name}</span>
                   )}
@@ -1511,7 +1540,7 @@ function OrderDetailSheet({
                 {/* Payments log */}
                 {order.transactions && order.transactions.length > 0 && (
                   <div>
-                    <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                    <div className="mb-1.5 text-sm font-semibold">
                       Платежи
                     </div>
                     <div className="space-y-1">
@@ -1576,7 +1605,7 @@ function OrderDetailSheet({
                   <TabsContent value="stock" className="space-y-5">
                 {trace && trace.items.length > 0 ? (
                   <div>
-                    <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                    <div className="mb-1.5 text-sm font-semibold">
                       Происхождение (партии)
                     </div>
                     <div className="space-y-1.5">
@@ -1616,7 +1645,7 @@ function OrderDetailSheet({
                   {/* ─────────────── Документы: чеки ─────────────── */}
                   <TabsContent value="docs" className="space-y-5">
                 <div>
-                  <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                  <div className="mb-1.5 text-sm font-semibold">
                     Чеки и документы
                   </div>
                   <div className="space-y-1.5">

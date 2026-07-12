@@ -26,10 +26,23 @@ import {
 } from '@/components/transactions/TransactionFilters';
 import { TransactionFormDialog } from '@/components/transactions/TransactionFormDialog';
 import { filtersToSearchParams, searchParamsToFilters } from '@/lib/tx-filters';
-import { formatRub } from '@construct/shared';
+import { D, add, sub, toMoneyString, formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
-import { formatDate } from '@/lib/dates';
+import { formatDate, formatDayLabel } from '@/lib/dates';
+
+/**
+ * Σ по строкам с учётом знака (доход +, расход −) — Decimal, без Number:
+ * итоги дня в заголовках групп и «Итого по видимым» в подвале (№27/№28).
+ */
+function sumSigned(rows: Transaction[]): string {
+  return toMoneyString(
+    rows.reduce(
+      (acc, t) => (t.type === 'INCOME' ? add(acc, t.amount) : sub(acc, t.amount)),
+      D(0),
+    ),
+  );
+}
 
 // useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function TransactionsPage() {
@@ -142,17 +155,8 @@ function TransactionsView() {
     );
   }
 
+  // Колонка «Дата» ушла в заголовки дневных групп (№27); в mobileCards дата остаётся.
   const columns: Column<Transaction>[] = [
-    {
-      key: 'date',
-      header: 'Дата',
-      cell: (t) => (
-        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-          {formatDate(t.date)}
-        </span>
-      ),
-      className: 'w-[110px]',
-    },
     {
       key: 'description',
       header: 'Описание',
@@ -244,6 +248,18 @@ function TransactionsView() {
           data={txRows}
           columns={columns}
           rowKey={(t) => t.id}
+          groupBy={(t) => formatDayLabel(t.date)}
+          renderGroupHeader={(key, rows) => (
+            <span className="flex items-center justify-between">
+              <span>{key}</span>
+              <span className="num">{formatRub(sumSigned(rows))}</span>
+            </span>
+          )}
+          footer={{
+            description: 'Итого по видимым',
+            // Σ по загруженным страницам infinite-пагинации — «по видимым» и есть.
+            amount: formatRub(sumSigned(txRows)),
+          }}
           onRowClick={(t) => {
             // C1: доменные строки (ноги перевода/комиссия, оплаты заказа) через
             // этот экран не правятся — направляем в их раздел вместо 400 на сохранении.
