@@ -140,9 +140,10 @@ export default function AccountsPage() {
         }
       />
       {totalMoney != null && (
-        <div className="flex items-baseline justify-between border-t border-border bg-card px-6 py-3">
+        <div className="flex items-baseline justify-between border-t border-border bg-card px-6 py-4">
           <span className="text-sm text-muted-foreground">Всего денег (активные счета)</span>
-          <span className="text-lg font-semibold tabular-nums">{formatRub(totalMoney)}</span>
+          {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
+          <span className="num text-3xl font-semibold sm:text-4xl">{formatRub(totalMoney)}</span>
         </div>
       )}
       <div className="bg-card border-t border-border">

@@ -44,8 +44,14 @@
   --warning-foreground: 0 0% 100%;
 
   --border: 213 30% 92%;
-  --input: 213 30% 90%;
+  /* Рамка полей заметно темнее декоративных границ: поле ввода — «окно»,
+     его контур должен читаться на sunken/background-поверхностях (ревью Д1). */
+  --input: 213 24% 82%;
   --ring: 209 60% 34%;
+
+  /* Третий уровень поверхности: «утопленные» зоны (фильтр-бары, футеры таблиц,
+     фон Sheet-панелей) — чуть темнее фона, глубина без теней. */
+  --surface-sunken: 214 30% 94%;
 
   --radius: 8px;
 }
@@ -60,6 +66,19 @@ body {
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Лёгкое зерно поверх всего интерфейса (решение №12 блица 07-12): убивает
+   стерильную плоскость, сознательно не считывается. Только fixed +
+   pointer-events-none (перф: никаких repaint на скролле). */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 html {
