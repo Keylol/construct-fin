@@ -204,7 +204,6 @@ export default function RulesPage() {
       key: 'priority',
       header: 'Приоритет',
       align: 'right',
-      sortable: true,
       cell: (r) => r.priority,
       className: 'w-[110px]',
     },
@@ -466,14 +465,14 @@ function RuleFormDialog({
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-lg">
+      <SheetContent side="right" hideClose size="xl">
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>{editing ? 'Изменить правило' : 'Новое правило'}</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
         </SheetHeader>
-        <form onSubmit={handleSubmit}>
+        <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={handleSubmit}>
           <SheetBody className="space-y-5">
             <FormField label="Название" htmlFor="rule-name" required>
               <Input
@@ -597,8 +596,8 @@ function RuleFormDialog({
             <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Сохраняю…' : 'Сохранить'}
+            <Button type="submit" loading={submitting}>
+              Сохранить
             </Button>
           </SheetFooter>
         </form>

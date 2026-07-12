@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Account, AccountType } from '@/lib/types';
+import type { Account, AccountType, CashflowReport } from '@/lib/types';
 
 export interface CreateAccountInput {
   name: string;
@@ -25,6 +25,33 @@ export function useAccounts(wsId: string | null, includeArchived = false) {
     queryFn: () =>
       api.get<Account[]>(`/workspaces/${wsId}/accounts?includeArchived=${includeArchived}`),
     enabled: !!wsId,
+  });
+}
+
+/**
+ * Текущие остатки по счетам: id → баланс (Decimal-строка). Считается бэкендом
+ * через ОДДС mode=byAccount (prior-история включена в серию, последний бакет =
+ * баланс на сегодня). Отдельного эндпоинта балансов нет — переиспользуем отчёт.
+ */
+export function useAccountBalances(wsId: string | null) {
+  return useQuery({
+    // Ключ под префиксом ['reports'] — мутации операций/переводов/закупок уже
+    // инвалидируют его, остатки обновятся сами.
+    queryKey: ['reports', 'account-balances', wsId],
+    queryFn: () =>
+      api.get<CashflowReport>(
+        `/workspaces/${wsId}/reports/cashflow?preset=this-month&mode=byAccount`,
+      ),
+    enabled: !!wsId,
+    select: (report) => {
+      const byId = new Map<string, string>();
+      for (const s of report.series) {
+        if (!s.accountId) continue;
+        const last = s.points[s.points.length - 1];
+        byId.set(s.accountId, last ? last.balance : s.openingBalance);
+      }
+      return byId;
+    },
   });
 }
 

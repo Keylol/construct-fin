@@ -15,9 +15,10 @@ import {
   useItemLots,
   useDeleteWarehouseItem,
 } from '@/hooks/useWarehouse';
-import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
-import { useCounterparties } from '@/hooks/useCounterparties';
-import { useAccounts } from '@/hooks/useAccounts';
+import { PurchaseSheet } from '@/components/purchases/PurchaseSheet';
+import { parseQty } from '@/lib/qty';
+import { formatDate } from '@/lib/dates';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { WarehouseItem } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -48,7 +49,9 @@ export default function WarehousePage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
-  const items = useWarehouse(wsId, search || undefined);
+  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
+  const debouncedSearch = useDebouncedValue(search);
+  const items = useWarehouse(wsId, debouncedSearch || undefined);
   const stockValue = useStockValue(wsId);
   const [editing, setEditing] = useState<WarehouseItem | null>(null);
   const [creating, setCreating] = useState(false);
@@ -69,7 +72,6 @@ export default function WarehousePage() {
     {
       key: 'name',
       header: 'Позиция',
-      sortable: true,
       cell: (i) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{i.name}</div>
@@ -85,7 +87,6 @@ export default function WarehousePage() {
       key: 'qty',
       header: 'Остаток',
       align: 'right',
-      sortable: true,
       cell: (i) => (
         <span className="tabular-nums">
           {Number(i.qty)} <span className="text-muted-foreground">{i.unit}</span>
@@ -186,6 +187,8 @@ export default function WarehousePage() {
           rowKey={(i) => i.id}
           onRowClick={(i) => setEditing(i)}
           loading={items.isLoading}
+          error={items.error}
+          onRetry={() => void items.refetch()}
           empty={
             <EmptyState
               icon={Package}
@@ -261,6 +264,7 @@ function WarehouseItemForm({
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmWo, setConfirmWo] = useState(false);
   // F1/F2: позицию с остатком нельзя удалять/архивировать (бэкенд вернёт 400).
   // qty — количество, не деньги → Number допустим (N-19 про деньги).
   const hasStock = initial ? Number(initial.qty) > 0 : false;
@@ -377,13 +381,21 @@ function WarehouseItemForm({
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>{initial ? 'Позиция склада' : 'Новая позиция'}</SheetTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
           </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             <FormField label="Название" htmlFor="w-name" required>
               <Input id="w-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -457,6 +469,7 @@ function WarehouseItemForm({
                     />
                   </div>
                   <Button
+                    type="button"
                     size="sm"
                     variant="secondary"
                     disabled={setCost.isPending || !setCostValue.trim()}
@@ -484,7 +497,7 @@ function WarehouseItemForm({
                       {lots.data!.map((l) => (
                         <tr key={l.id} className="border-b border-border last:border-0">
                           <td className="px-3 py-1.5 tabular-nums">
-                            {new Date(l.receivedAt).toLocaleDateString('ru-RU')}
+                            {formatDate(l.receivedAt)}
                             {l.supplier && (
                               <div className="text-xs text-muted-foreground">
                                 {l.supplier.name}
@@ -531,12 +544,14 @@ function WarehouseItemForm({
                   />
                 </div>
                 <Button
+                  type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={writeOff.isPending || !woQty.trim() || !woReason.trim()}
-                  onClick={onWriteOff}
+                  disabled={!woQty.trim() || !woReason.trim()}
+                  loading={writeOff.isPending}
+                  onClick={() => setConfirmWo(true)}
                 >
-                  {writeOff.isPending ? 'Списываю…' : 'Списать'}
+                  Списать
                 </Button>
               </div>
             )}
@@ -567,6 +582,7 @@ function WarehouseItemForm({
           <SheetFooter>
             {initial && (
               <Button
+                type="button"
                 variant="destructive"
                 // F1: удалить позицию с остатком нельзя — кнопка задизейблена
                 // (иначе клик молча провалился бы через ConfirmDialog, K9).
@@ -578,13 +594,18 @@ function WarehouseItemForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
-            <Button onClick={onSave} disabled={!name.trim()}>
+            <Button
+              type="submit"
+              loading={create.isPending || update.isPending || adjust.isPending}
+              disabled={!name.trim()}
+            >
               Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
       <ConfirmDialog
@@ -596,200 +617,16 @@ function WarehouseItemForm({
         onConfirm={onDelete}
         loading={del.isPending}
       />
+      {/* Списание необратимо влияет на прибыль — подтверждаем явно. */}
+      <ConfirmDialog
+        open={confirmWo}
+        onOpenChange={setConfirmWo}
+        title={`Списать ${woQty.trim()} ${initial?.unit ?? ''} «${initial?.name ?? ''}»?`}
+        description={`Причина: ${woReason.trim() || '—'}. Партии уйдут по FIFO, убыток зафиксируется в прибыли. Деньги не двигаются.`}
+        confirmText="Списать"
+        onConfirm={onWriteOff}
+        loading={writeOff.isPending}
+      />
     </>
   );
-}
-
-function PurchaseSheet({
-  wsId,
-  open,
-  onClose,
-}: {
-  wsId: string;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const suppliers = useCounterparties(wsId, undefined, false, 'SUPPLIER');
-  const accounts = useAccounts(wsId);
-  const warehouse = useWarehouse(wsId);
-  const createPurchase = useCreatePurchase(wsId);
-
-  const [supplierId, setSupplierId] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [note, setNote] = useState('');
-  const [lines, setLines] = useState<PurchaseLineInput[]>([
-    { warehouseItemId: '', qty: '1', unitPrice: '' },
-  ]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setSupplierId('');
-      setAccountId('');
-      setNote('');
-      setLines([{ warehouseItemId: '', qty: '1', unitPrice: '' }]);
-      setError(null);
-    }
-  }, [open]);
-
-  const total = useMemo(
-    () => lines.reduce((acc, l) => acc + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0),
-    [lines],
-  );
-
-  const submit = async () => {
-    setError(null);
-    if (!accountId) {
-      setError('Выберите счёт');
-      return;
-    }
-    const cleaned = lines
-      .filter((l) => l.warehouseItemId && l.unitPrice)
-      .map((l) => {
-        const price = parseAmountInput(l.unitPrice);
-        const q = parseQty(l.qty);
-        return price && q ? { warehouseItemId: l.warehouseItemId, qty: q, unitPrice: price } : null;
-      })
-      .filter((x): x is PurchaseLineInput => x !== null);
-    if (cleaned.length === 0) {
-      setError('Добавьте хотя бы одну позицию: SKU + количество + цена');
-      return;
-    }
-    try {
-      await createPurchase.mutateAsync({
-        accountId,
-        supplierId: supplierId || null,
-        note: note.trim() || undefined,
-        lines: cleaned,
-      });
-      toast.success('Закупка проведена', { description: 'Склад и себестоимость обновлены' });
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка');
-    }
-  };
-
-  return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-lg">
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Закупка на склад</SheetTitle>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-            <X className="h-4 w-4" />
-          </Button>
-        </SheetHeader>
-        <SheetBody className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Поставщик" htmlFor="p-supplier">
-              <Select id="p-supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">— Не указан —</option>
-                {(suppliers.data ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField label="Счёт оплаты" htmlFor="p-account" required>
-              <Select id="p-account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                <option value="">— Счёт —</option>
-                {(accounts.data ?? [])
-                  .filter((a) => !a.isArchived)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-              </Select>
-            </FormField>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Позиции закупки</div>
-            {lines.map((l, i) => (
-              <div key={i} className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Select
-                    value={l.warehouseItemId}
-                    onChange={(e) =>
-                      setLines((arr) => arr.map((x, j) => (j === i ? { ...x, warehouseItemId: e.target.value } : x)))
-                    }
-                  >
-                    <option value="">— SKU —</option>
-                    {(warehouse.data ?? [])
-                      .filter((w) => !w.isArchived)
-                      .map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name}
-                        </option>
-                      ))}
-                  </Select>
-                </div>
-                <div className="w-16">
-                  <Input
-                    inputMode="decimal"
-                    value={l.qty}
-                    onChange={(e) => setLines((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))}
-                    placeholder="Кол."
-                  />
-                </div>
-                <div className="w-28">
-                  <Input
-                    inputMode="decimal"
-                    value={l.unitPrice}
-                    onChange={(e) => setLines((arr) => arr.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)))}
-                    placeholder="Цена"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setLines((arr) => arr.filter((_, j) => j !== i))}
-                  disabled={lines.length === 1}
-                  aria-label="Удалить"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLines((arr) => [...arr, { warehouseItemId: '', qty: '1', unitPrice: '' }])}
-            >
-              <Plus className="h-3.5 w-3.5" /> Позиция
-            </Button>
-          </div>
-
-          <FormField label="Примечание" htmlFor="p-note">
-            <Input id="p-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Накладная №…" />
-          </FormField>
-
-          <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
-            <div className="flex justify-between font-semibold">
-              <span>Сумма закупки</span>
-              <span className="tabular-nums">{formatRub(total)}</span>
-            </div>
-          </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </SheetBody>
-        <SheetFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
-          <Button onClick={submit} disabled={createPurchase.isPending}>
-            {createPurchase.isPending ? 'Провожу…' : 'Провести закупку'}
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-/** Нормализует ввод количества → строка с ≤3 знаками или null. */
-function parseQty(input: string): string | null {
-  const cleaned = input.replace(/\s/g, '').replace(',', '.');
-  if (!/^\d+(\.\d{1,3})?$/.test(cleaned)) return null;
-  return cleaned;
 }
