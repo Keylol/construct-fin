@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
@@ -10,6 +10,9 @@ import { NAV_ITEMS } from './nav-items';
 import { Sheet, SheetContent } from '@/components/ui/Sheet';
 import { Sidebar } from './Sidebar';
 import { Button } from '@/components/ui/Button';
+import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useAccounts, useAccountBalances } from '@/hooks/useAccounts';
+import { formatRub, D, add, toMoneyString } from '@construct/shared';
 
 interface HeaderProps {
   onCommandOpen: () => void;
@@ -24,6 +27,30 @@ const CREATE_ACTIONS: { label: string; href: string }[] = [
   { label: 'Клиент', href: '/clients?new=1' },
 ];
 
+function CreateActionsContent({ onPick }: { onPick: (href: string) => void }) {
+  return (
+    <>
+      {CREATE_ACTIONS.map((a) => (
+        <button
+          key={a.href}
+          type="button"
+          onClick={() => onPick(a.href)}
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary"
+        >
+          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+          {a.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+const CREATE_POPOVER_CLASSES = cn(
+  'z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-card p-1 shadow-md',
+  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+  'motion-reduce:animate-none',
+);
+
 function CreateMenu() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -37,32 +64,94 @@ function CreateMenu() {
         </Button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          align="end"
-          sideOffset={6}
-          className={cn(
-            'z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-card p-1 shadow-md',
-            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
-            'motion-reduce:animate-none',
-          )}
-        >
-          {CREATE_ACTIONS.map((a) => (
-            <button
-              key={a.href}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                router.push(a.href as Parameters<typeof router.push>[0]);
-              }}
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary"
-            >
-              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-              {a.label}
-            </button>
-          ))}
+        <PopoverPrimitive.Content align="end" sideOffset={6} className={CREATE_POPOVER_CLASSES}>
+          <CreateActionsContent
+            onPick={(href) => {
+              setOpen(false);
+              router.push(href as Parameters<typeof router.push>[0]);
+            }}
+          />
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
+  );
+}
+
+/** FAB на мобиле (решение №20): палец не тянется к хедеру — «+» справа-снизу. */
+function CreateFab() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Создать"
+          className={cn(
+            'fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center md:hidden',
+            'rounded-full bg-primary text-primary-foreground shadow-lg',
+            'transition-transform active:scale-95 motion-reduce:transition-none',
+          )}
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side="top"
+          align="end"
+          sideOffset={10}
+          className={CREATE_POPOVER_CLASSES}
+        >
+          <CreateActionsContent
+            onPick={(href) => {
+              setOpen(false);
+              router.push(href as Parameters<typeof router.push>[0]);
+            }}
+          />
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
+/**
+ * «Всего денег» в хедере (решение №19): главный вопрос владельца виден из
+ * любого экрана. Сумма активных счетов; клик — на /accounts.
+ */
+function HeaderCash() {
+  const { current } = useCurrentWorkspace();
+  const wsId = current?.id ?? null;
+  const accounts = useAccounts(wsId);
+  const balances = useAccountBalances(wsId);
+
+  const total = useMemo(() => {
+    if (!accounts.data || !balances.data) return null;
+    let acc = D(0);
+    for (const a of accounts.data) {
+      if (a.isArchived) continue;
+      const b = balances.data.get(a.id);
+      if (b != null) acc = add(acc, D(b));
+    }
+    return toMoneyString(acc);
+  }, [accounts.data, balances.data]);
+
+  if (total == null) return null;
+
+  return (
+    <Link
+      href="/accounts"
+      title="Всего денег на счетах — открыть"
+      className={cn(
+        'hidden h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5 sm:flex',
+        'transition-colors hover:border-ring',
+      )}
+    >
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Касса
+      </span>
+      <span className="num text-sm font-semibold">{formatRub(total)}</span>
+    </Link>
   );
 }
 
@@ -134,8 +223,12 @@ export function Header({ onCommandOpen }: HeaderProps) {
         </ol>
       </nav>
 
+      {/* Касса — всего денег на счетах */}
+      <HeaderCash />
+
       {/* Глобальное создание */}
       <CreateMenu />
+      <CreateFab />
 
       {/* Command palette trigger */}
       <button
