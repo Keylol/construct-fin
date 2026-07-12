@@ -24,6 +24,7 @@ import {
   useUploadOrderAttachment,
   useDeleteOrderAttachment,
   type OrderItemInput,
+  type ScheduleEntryInput,
 } from '@/hooks/useOrders';
 import type {
   Order,
@@ -44,6 +45,7 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { Badge, type BadgeProps } from '@/components/ui/Badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
@@ -51,6 +53,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Combobox } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
+import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import {
   Sheet,
   SheetBody,
@@ -324,8 +327,11 @@ function OrderFormSheet({
   const isEdit = !!editing;
   const clients = useCounterparties(wsId, undefined, false, 'CLIENT');
   const warehouse = useWarehouse(wsId);
+  const accounts = useAccounts(wsId);
   const create = useCreateOrder(wsId);
   const update = useUpdateOrder(wsId);
+  const setSchedule = useSetOrderSchedule(wsId);
+  const addPayment = useAddOrderPayment(wsId);
 
   const [clientId, setClientId] = useState('');
   const [title, setTitle] = useState('');
@@ -341,6 +347,24 @@ function OrderFormSheet({
   const [confirmClose, setConfirmClose] = useState(false);
   // «+ Создать клиента» из комбобокса: null = закрыто, строка = префилл имени.
   const [createClientQuery, setCreateClientQuery] = useState<string | null>(null);
+
+  // ── План оплаты (только при СОЗДАНИИ; в правке платежи/график — в детали) ──
+  // 'none' — без оплаты, 'full' — оплата сразу 100%, 'schedule' — свой график.
+  // Предоплата = реальные деньги сейчас (решение владельца): пишется платежом.
+  const [payMode, setPayMode] = useState<'none' | 'full' | 'schedule'>('none');
+  const [prepayAmount, setPrepayAmount] = useState('');
+  const [prepayAccount, setPrepayAccount] = useState('');
+  const [payAccountFull, setPayAccountFull] = useState('');
+  const [scheduleRows, setScheduleRows] = useState<{ dueDate: string; amount: string }[]>([]);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const accountOptions = useMemo(
+    () =>
+      (accounts.data ?? [])
+        .filter((a) => !a.isArchived)
+        .map((a) => ({ value: a.id, label: a.name })),
+    [accounts.data],
+  );
 
   // SKU со вторичной строкой (остаток, себестоимость) — для строк позиций.
   const skuOptions = useMemo(
@@ -417,9 +441,19 @@ function OrderFormSheet({
     }
     setError(null);
     setItemErrors({});
+    // Сброс плана оплаты.
+    setPayMode('none');
+    setPrepayAmount('');
+    setPrepayAccount('');
+    setPayAccountFull('');
+    setScheduleRows([]);
+    setPayError(null);
   }, [open, editing]);
 
-  const isDirty = snapOf(clientId, title, description, discount, items) !== initialSnap.current;
+  const isDirty =
+    snapOf(clientId, title, description, discount, items) !== initialSnap.current ||
+    // Незакрытый план оплаты при создании — тоже несохранённое состояние.
+    (!isEdit && payMode !== 'none');
 
   // Закрытие через guard: заполненная форма не стирается молча по Esc/оверлею.
   const requestClose = () => {
@@ -522,8 +556,67 @@ function OrderFormSheet({
     return { ok: true, items: cleaned };
   };
 
+  // Σ плана: предоплата сейчас + сумма графика остатка. Сверяется с итогом заказа.
+  const prepayDraft = payMode === 'full' ? total : parseDraft(prepayAmount);
+  const scheduleDraft = scheduleRows.reduce((acc, r) => add(acc, parseDraft(r.amount)), D(0));
+  const planTotal = add(prepayDraft, scheduleDraft);
+  const planMatchesTotal = planTotal.eq(total);
+
+  // Валидация плана оплаты (только при создании). Возвращает шаги для оркестрации
+  // или ошибку. Предоплата = реальные деньги сейчас → требует счёт.
+  const collectPaymentPlan = ():
+    | { ok: true; prepay: { amount: string; accountId: string } | null; schedule: ScheduleEntryInput[] }
+    | { ok: false; error: string } => {
+    if (payMode === 'none') return { ok: true, prepay: null, schedule: [] };
+
+    const todayIso = fromLocalDateInput(toLocalDateInput(new Date()));
+
+    if (payMode === 'full') {
+      if (!total.gt(0)) return { ok: false, error: 'Сумма заказа — 0, оплачивать нечего' };
+      if (!payAccountFull) return { ok: false, error: 'Выберите счёт для оплаты' };
+      const amount = toMoneyString(total);
+      return {
+        ok: true,
+        prepay: { amount, accountId: payAccountFull },
+        // График не нужен — заказ оплачен полностью.
+        schedule: [],
+      };
+    }
+
+    // payMode === 'schedule': предоплата (опц.) + строки остатка.
+    let prepay: { amount: string; accountId: string } | null = null;
+    const entries: ScheduleEntryInput[] = [];
+
+    const prepayVal = parseAmountInput(prepayAmount);
+    if (prepayAmount.trim() && !prepayVal) {
+      return { ok: false, error: 'Сумма предоплаты указана некорректно' };
+    }
+    if (prepayVal && D(prepayVal).gt(0)) {
+      if (!prepayAccount) return { ok: false, error: 'Выберите счёт для предоплаты' };
+      prepay = { amount: prepayVal, accountId: prepayAccount };
+      // Предоплата — первая строка графика (срок сегодня), чтобы FIFO-покрытие
+      // и сверка с итогом сходились.
+      entries.push({ dueDate: todayIso, amount: prepayVal, note: 'Предоплата' });
+    }
+
+    for (const r of scheduleRows) {
+      if (!r.dueDate && !r.amount.trim()) continue;
+      const amount = parseAmountInput(r.amount);
+      if (!r.dueDate || !amount || D(amount).lte(0)) {
+        return { ok: false, error: 'В каждой строке графика нужны дата и положительная сумма' };
+      }
+      entries.push({ dueDate: fromLocalDateInput(r.dueDate), amount });
+    }
+
+    if (!prepay && entries.length === 0) {
+      return { ok: false, error: 'Добавьте предоплату или строки графика (или выберите «Без оплаты»)' };
+    }
+    return { ok: true, prepay, schedule: entries };
+  };
+
   const submitCreate = async () => {
     setError(null);
+    setPayError(null);
     const collected = collectItems();
     if (!collected.ok) {
       setItemErrors(collected.errors);
@@ -535,15 +628,43 @@ function OrderFormSheet({
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
     }
+    const plan = collectPaymentPlan();
+    if (!plan.ok) {
+      setPayError(plan.error);
+      return;
+    }
     try {
-      await create.mutateAsync({
+      const order = await create.mutateAsync({
         clientId: clientId || null,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
         items: cleaned,
       });
-      toast.success('Заказ создан');
+      // Заказ создан. Дальнейшие шаги оплаты — необязательные и восстановимые:
+      // при сбое заказ НЕ теряется, сообщаем «внесите вручную в карточке».
+      try {
+        if (plan.schedule.length > 0) {
+          await setSchedule.mutateAsync({ id: order.id, entries: plan.schedule });
+        }
+        if (plan.prepay) {
+          await addPayment.mutateAsync({
+            id: order.id,
+            // Для «оплата 100%» берём авторитетную сумму созданного заказа
+            // (бэкенд считает total из позиций/скидки) — платёж копейка-в-копейку.
+            amount: payMode === 'full' ? order.totalAmount : plan.prepay.amount,
+            accountId: plan.prepay.accountId,
+          });
+        }
+        toast.success('Заказ создан', {
+          description:
+            plan.prepay || plan.schedule.length ? 'План оплаты сохранён' : undefined,
+        });
+      } catch (payErr) {
+        toast.warning('Заказ создан, но оплату записать не удалось', {
+          description: `${payErr instanceof Error ? payErr.message : 'Ошибка'}. Внесите оплату вручную в карточке заказа.`,
+        });
+      }
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -637,9 +758,19 @@ function OrderFormSheet({
 
           <div className="space-y-3">
             <div className="text-sm font-medium">Позиции</div>
+            {/* Постоянные заголовки колонок числовой строки — вместо угадывания
+                по плейсхолдерам. Скрыты на узком экране (там подписи в placeholder). */}
+            <div className="hidden items-center gap-2 px-3 text-xs font-medium uppercase text-muted-foreground sm:flex">
+              <div className="flex-1">Наименование</div>
+              <div className="w-16">Кол-во</div>
+              <div className="w-24">Цена прод.</div>
+              <div className="w-24">Закупка</div>
+              <div className="w-24 text-right">Сумма</div>
+            </div>
             {items.map((it, i) => {
               const wh = warehouse.data?.find((w) => w.id === it.warehouseItemId);
               const rowError = itemErrors[i];
+              const lineSum = mul(parseDraft(it.qty), parseDraft(it.unitPrice));
               return (
                 <div
                   key={i}
@@ -687,7 +818,7 @@ function OrderFormSheet({
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
-                    <div className="w-14">
+                    <div className="w-16">
                       <Input
                         inputMode="decimal"
                         value={it.qty}
@@ -713,6 +844,12 @@ function OrderFormSheet({
                         placeholder="Закупка"
                         aria-invalid={rowError ? true : undefined}
                       />
+                    </div>
+                    {/* Сумма строки qty×цена — только чтение, видно вклад позиции. */}
+                    <div className="flex h-10 w-24 items-center justify-end text-sm tabular-nums sm:h-9">
+                      {lineSum.gt(0) ? formatRub(toMoneyString(lineSum)) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </div>
                   </div>
                   {rowError && (
@@ -787,6 +924,163 @@ function OrderFormSheet({
             )}
           </div>
 
+          {/* План оплаты — только при создании. В правке платежи/график живут
+              в карточке заказа (вкладка «Оплата»). */}
+          {!isEdit && (
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Оплата</div>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['none', 'Без оплаты'],
+                    ['full', 'Оплата сразу 100%'],
+                    ['schedule', 'Свой график'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setPayMode(mode);
+                      setPayError(null);
+                      // При переходе в «Свой график» — одна пустая строка остатка.
+                      if (mode === 'schedule' && scheduleRows.length === 0) {
+                        setScheduleRows([{ dueDate: '', amount: '' }]);
+                      }
+                    }}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                      payMode === mode
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input bg-background text-foreground hover:bg-secondary',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {payMode === 'full' && (
+                <div className="space-y-1.5">
+                  <FormField label="Счёт зачисления" htmlFor="o-pay-full" required>
+                    <Combobox
+                      id="o-pay-full"
+                      value={payAccountFull}
+                      onChange={setPayAccountFull}
+                      options={accountOptions}
+                      placeholder="— Счёт —"
+                      searchPlaceholder="Счёт…"
+                    />
+                  </FormField>
+                  <p className="text-xs text-muted-foreground">
+                    Запишем платёж на всю сумму {formatRub(toMoneyString(total))} сегодня.
+                  </p>
+                </div>
+              )}
+
+              {payMode === 'schedule' && (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                      Предоплата сейчас (если получена)
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="w-32">
+                        <Input
+                          inputMode="decimal"
+                          value={prepayAmount}
+                          onChange={(e) => setPrepayAmount(e.target.value)}
+                          placeholder="Сумма, ₽"
+                          aria-label="Сумма предоплаты"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Combobox
+                          value={prepayAccount}
+                          onChange={setPrepayAccount}
+                          options={accountOptions}
+                          placeholder="— Счёт —"
+                          searchPlaceholder="Счёт…"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Реальный платёж сегодня. Оставь пустым, если предоплаты нет.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                      Остаток по датам
+                    </div>
+                    {scheduleRows.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={r.dueDate}
+                          onChange={(e) =>
+                            setScheduleRows((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, dueDate: e.target.value } : x)),
+                            )
+                          }
+                          className="w-[150px]"
+                        />
+                        <Input
+                          inputMode="decimal"
+                          value={r.amount}
+                          onChange={(e) =>
+                            setScheduleRows((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                            )
+                          }
+                          placeholder="Сумма, ₽"
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setScheduleRows((arr) => arr.filter((_, j) => j !== i))
+                          }
+                          aria-label="Удалить строку"
+                          disabled={scheduleRows.length === 1}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setScheduleRows((arr) => [...arr, { dueDate: '', amount: '' }])
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Дата
+                    </Button>
+                  </div>
+
+                  {/* Σ плана vs итог — предупреждение, а не блокировка. */}
+                  <div className="flex justify-between border-t border-border pt-2 text-sm">
+                    <span className="text-muted-foreground">План (предоплата + остаток)</span>
+                    <span className={cn('tabular-nums', !planMatchesTotal && 'text-amber-600')}>
+                      {formatRub(toMoneyString(planTotal))} из {formatRub(toMoneyString(total))}
+                    </span>
+                  </div>
+                  {!planMatchesTotal && planTotal.gt(0) && (
+                    <p className="text-xs text-amber-600">
+                      План не сходится с итогом заказа — проверь суммы (можно сохранить как есть).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {payError && <p className="text-sm text-destructive">{payError}</p>}
+            </div>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
@@ -805,7 +1099,10 @@ function OrderFormSheet({
               </Button>
             </>
           ) : (
-            <Button type="submit" loading={create.isPending}>
+            <Button
+              type="submit"
+              loading={create.isPending || setSchedule.isPending || addPayment.isPending}
+            >
               Создать заказ
             </Button>
           )}
@@ -851,7 +1148,7 @@ function OrderDetailSheet({
   onEdit: (order: Order) => void;
 }) {
   const { data: order, isLoading } = useOrder(wsId, orderId);
-  const { data: trace } = useOrderTrace(wsId, orderId);
+  const { data: trace, isLoading: traceLoading } = useOrderTrace(wsId, orderId);
   const accounts = useAccounts(wsId);
   const addPayment = useAddOrderPayment(wsId);
   const addInstallment = useAddInstallmentPayment(wsId);
@@ -948,6 +1245,16 @@ function OrderDetailSheet({
                   </p>
                 )}
 
+                <Tabs defaultValue="overview">
+                  <TabsList className="flex w-full">
+                    <TabsTrigger value="overview">Обзор</TabsTrigger>
+                    <TabsTrigger value="payment">Оплата</TabsTrigger>
+                    <TabsTrigger value="stock">Склад</TabsTrigger>
+                    <TabsTrigger value="docs">Документы</TabsTrigger>
+                  </TabsList>
+
+                  {/* ─────────────── Обзор: позиции + итоги + маржа ─────────────── */}
+                  <TabsContent value="overview" className="space-y-5">
                 {/* Items */}
                 <div className="overflow-hidden rounded-md border border-border">
                   <table className="w-full text-sm">
@@ -993,40 +1300,6 @@ function OrderDetailSheet({
                     </tbody>
                   </table>
                 </div>
-
-                {/* F5: происхождение — из каких партий взято, поставщик и счёт
-                    закупки. Питается складским net-леджером; пусто до отгрузки. */}
-                {trace && trace.items.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
-                      Происхождение (партии)
-                    </div>
-                    <div className="space-y-1.5">
-                      {trace.items.map((ti) => {
-                        const line = (order.items ?? []).find((i) => i.id === ti.orderItemId);
-                        return (
-                          <div
-                            key={ti.orderItemId}
-                            className="rounded-md border border-border px-3 py-2 text-sm"
-                          >
-                            <div className="font-medium">{line?.name ?? 'Позиция'}</div>
-                            {ti.lots.map((l) => (
-                              <div
-                                key={l.lotId}
-                                className="text-xs text-muted-foreground tabular-nums"
-                              >
-                                {l.qty} × {formatRub(l.unitCost)} · от{' '}
-                                {formatDate(l.receivedAt)}
-                                {l.supplier ? ` · ${l.supplier.name}` : ''}
-                                {l.account ? ` · ${l.account.name}` : ''}
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 {/* Totals */}
                 <div className="space-y-1 text-sm">
@@ -1081,6 +1354,82 @@ function OrderDetailSheet({
                       />
                     </div>
                   )}
+
+                  </TabsContent>
+
+                  {/* ─────────────── Оплата: принять + график + журнал ─────────────── */}
+                  <TabsContent value="payment" className="space-y-5">
+                {/* Принять оплату — закреплено вверху вкладки, без прокрутки 10 секций */}
+                {order.status !== 'CANCELLED' && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <div className="text-sm font-medium">Принять оплату</div>
+                    <div className="flex items-end gap-2">
+                      <div className="w-32">
+                        <Input
+                          inputMode="decimal"
+                          value={payAmount}
+                          onChange={(e) => setPayAmount(e.target.value)}
+                          placeholder={payInstallment ? 'Полная сумма' : 'Сумма'}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Select value={payAccount} onChange={(e) => setPayAccount(e.target.value)}>
+                          <option value="">— Счёт —</option>
+                          {(accounts.data ?? [])
+                            .filter((a) => !a.isArchived)
+                            .map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
+                        </Select>
+                      </div>
+                      <Button
+                        onClick={onPay}
+                        loading={addPayment.isPending || addInstallment.isPending}
+                      >
+                        Добавить
+                      </Button>
+                    </div>
+                    {/* F3: сторонняя рассрочка — gross. Полная сумма выручкой
+                        закрывает дебиторку, комиссия банка отдельным расходом. */}
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={payInstallment}
+                        onChange={(e) => setPayInstallment(e.target.checked)}
+                        className="h-4 w-4 rounded border-input accent-primary"
+                      />
+                      Рассрочка (сторонняя)
+                    </label>
+                    {payInstallment && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-32">
+                            <Input
+                              inputMode="decimal"
+                              value={payFee}
+                              onChange={(e) => setPayFee(e.target.value)}
+                              placeholder="Комиссия, ₽"
+                              aria-label="Комиссия банка рассрочки"
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {(() => {
+                              const a = parseAmountInput(payAmount || '');
+                              const f = parseAmountInput(payFee || '0');
+                              if (!a || f === null) return 'комиссия банка из договора';
+                              return `на счёт поступит ${formatRub(toMoneyString(sub(a, f)))}`;
+                            })()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          В выручку пойдёт полная сумма, комиссия — отдельным расходом по заказу.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* График платежей (F2): план «суммы + даты», покрытие строк
                     считает бэкенд FIFO из paidAmount — здесь только рисуем. */}
@@ -1156,54 +1505,6 @@ function OrderDetailSheet({
                   )}
                 </div>
 
-                {/* Чеки / документы */}
-                <div>
-                  <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
-                    Чеки и документы
-                  </div>
-                  <div className="space-y-1.5">
-                    {(order.attachments ?? []).map((a) => (
-                      <div
-                        key={a.id}
-                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                      >
-                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <a
-                          href={`/api/v1/workspaces/${wsId}/attachments/${a.id}/download`}
-                          className="flex-1 truncate text-primary hover:underline"
-                        >
-                          {a.filename}
-                        </a>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {(a.size / 1024).toFixed(0)} KB
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteAtt(a.id)}
-                          aria-label="Удалить чек"
-                          className="text-destructive transition-colors hover:opacity-80"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
-                      <Paperclip className="h-3.5 w-3.5" />
-                      {uploadAtt.isPending ? 'Загружаю…' : 'Прикрепить чек'}
-                      <input
-                        type="file"
-                        className="hidden"
-                        disabled={uploadAtt.isPending}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f && order) uploadAtt.mutate({ orderId: order.id, file: f });
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
                 {/* Payments log */}
                 {order.transactions && order.transactions.length > 0 && (
                   <div>
@@ -1266,78 +1567,99 @@ function OrderDetailSheet({
                     </div>
                   </div>
                 )}
+                  </TabsContent>
 
-                {/* Add payment */}
-                {order.status !== 'CANCELLED' && (
-                  <div className="space-y-2 rounded-md border border-border p-3">
-                    <div className="text-sm font-medium">Принять оплату</div>
-                    <div className="flex items-end gap-2">
-                      <div className="w-32">
-                        <Input
-                          inputMode="decimal"
-                          value={payAmount}
-                          onChange={(e) => setPayAmount(e.target.value)}
-                          placeholder={payInstallment ? 'Полная сумма' : 'Сумма'}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <Select value={payAccount} onChange={(e) => setPayAccount(e.target.value)}>
-                          <option value="">— Счёт —</option>
-                          {(accounts.data ?? [])
-                            .filter((a) => !a.isArchived)
-                            .map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.name}
-                              </option>
-                            ))}
-                        </Select>
-                      </div>
-                      <Button
-                        onClick={onPay}
-                        disabled={addPayment.isPending || addInstallment.isPending}
-                      >
-                        Добавить
-                      </Button>
+                  {/* ─────────────── Склад: происхождение партий (F5) ─────────────── */}
+                  <TabsContent value="stock" className="space-y-5">
+                {trace && trace.items.length > 0 ? (
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                      Происхождение (партии)
                     </div>
-                    {/* F3: сторонняя рассрочка — gross. Полная сумма выручкой
-                        закрывает дебиторку, комиссия банка отдельным расходом. */}
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={payInstallment}
-                        onChange={(e) => setPayInstallment(e.target.checked)}
-                        className="h-4 w-4 rounded border-input accent-primary"
-                      />
-                      Рассрочка (сторонняя)
-                    </label>
-                    {payInstallment && (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div className="w-32">
-                            <Input
-                              inputMode="decimal"
-                              value={payFee}
-                              onChange={(e) => setPayFee(e.target.value)}
-                              placeholder="Комиссия, ₽"
-                              aria-label="Комиссия банка рассрочки"
-                            />
+                    <div className="space-y-1.5">
+                      {trace.items.map((ti) => {
+                        const line = (order.items ?? []).find((i) => i.id === ti.orderItemId);
+                        return (
+                          <div
+                            key={ti.orderItemId}
+                            className="rounded-md border border-border px-3 py-2 text-sm"
+                          >
+                            <div className="font-medium">{line?.name ?? 'Позиция'}</div>
+                            {ti.lots.map((l) => (
+                              <div
+                                key={l.lotId}
+                                className="text-xs text-muted-foreground tabular-nums"
+                              >
+                                {l.qty} × {formatRub(l.unitCost)} · от{' '}
+                                {formatDate(l.receivedAt)}
+                                {l.supplier ? ` · ${l.supplier.name}` : ''}
+                                {l.account ? ` · ${l.account.name}` : ''}
+                              </div>
+                            ))}
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            {(() => {
-                              const a = parseAmountInput(payAmount || '');
-                              const f = parseAmountInput(payFee || '0');
-                              if (!a || f === null) return 'комиссия банка из договора';
-                              return `на счёт поступит ${formatRub(toMoneyString(sub(a, f)))}`;
-                            })()}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          В выручку пойдёт полная сумма, комиссия — отдельным расходом по заказу.
-                        </p>
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </div>
+                ) : traceLoading ? (
+                  <p className="text-sm text-muted-foreground">Загрузка…</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Партии появятся после закрытия заказа — склад спишется по FIFO при выдаче.
+                  </p>
                 )}
+                  </TabsContent>
+
+                  {/* ─────────────── Документы: чеки ─────────────── */}
+                  <TabsContent value="docs" className="space-y-5">
+                <div>
+                  <div className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+                    Чеки и документы
+                  </div>
+                  <div className="space-y-1.5">
+                    {(order.attachments ?? []).map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <a
+                          href={`/api/v1/workspaces/${wsId}/attachments/${a.id}/download`}
+                          className="flex-1 truncate text-primary hover:underline"
+                        >
+                          {a.filename}
+                        </a>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {(a.size / 1024).toFixed(0)} KB
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteAtt(a.id)}
+                          aria-label="Удалить чек"
+                          className="text-destructive transition-colors hover:opacity-80"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {uploadAtt.isPending ? 'Загружаю…' : 'Прикрепить чек'}
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={uploadAtt.isPending}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f && order) uploadAtt.mutate({ orderId: order.id, file: f });
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+                  </TabsContent>
+                </Tabs>
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
               </>
