@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, UserRound, Search, X, Trash2 } from '@/components/ui/icons';
+import { useRouter } from 'next/navigation';
+import { Plus, UserRound, Search, X, Trash2, Pencil } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import {
   useCounterparties,
   useCreateCounterparty,
@@ -31,6 +33,7 @@ import {
 } from '@/components/ui/Sheet';
 
 export default function ClientsPage() {
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
@@ -39,6 +42,8 @@ export default function ClientsPage() {
   const list = useCounterparties(wsId, debouncedSearch || undefined, false, 'CLIENT');
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
+  // Глобальное «+ Создать» → ?new=1 открывает форму клиента.
+  useCreateFromUrl(() => setCreating(true));
 
   if (!current) {
     return (
@@ -93,6 +98,28 @@ export default function ClientsPage() {
         c.isArchived ? <Badge variant="muted">В архиве</Badge> : <Badge variant="outline">Активен</Badge>,
       className: 'w-[120px]',
     },
+    {
+      // Клик по строке ведёт на карточку — редактирование вынесено на явную
+      // кнопку-карандаш (stopPropagation, чтобы не сработала навигация).
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (c) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditing(c);
+          }}
+          aria-label="Редактировать клиента"
+          title="Редактировать"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      ),
+      className: 'w-[60px]',
+    },
   ];
 
   return (
@@ -128,7 +155,7 @@ export default function ClientsPage() {
           data={list.data ?? []}
           columns={columns}
           rowKey={(c) => c.id}
-          onRowClick={(c) => setEditing(c)}
+          onRowClick={(c) => router.push(`/clients/${c.id}` as Parameters<typeof router.push>[0])}
           loading={list.isLoading}
           error={list.error}
           onRetry={() => list.refetch()}
@@ -145,14 +172,27 @@ export default function ClientsPage() {
             />
           }
           mobileCards={(c) => (
-            <div className="flex flex-col gap-0.5">
-              <div className="font-medium">{c.name}</div>
-              {c.contact && (
-                <div className="text-xs text-muted-foreground">{c.contact}</div>
-              )}
-              {c.source && (
-                <div className="text-xs text-muted-foreground">Источник: {c.source}</div>
-              )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="truncate font-medium">{c.name}</div>
+                {c.contact && (
+                  <div className="truncate text-xs text-muted-foreground">{c.contact}</div>
+                )}
+                {c.source && (
+                  <div className="truncate text-xs text-muted-foreground">Источник: {c.source}</div>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditing(c);
+                }}
+                aria-label="Редактировать клиента"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
             </div>
           )}
         />

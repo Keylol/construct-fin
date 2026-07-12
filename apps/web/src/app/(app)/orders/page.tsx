@@ -5,6 +5,7 @@ import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons
 import { formatRub, parseAmountInput, D, add, sub, mul, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useWarehouse } from '@/hooks/useWarehouse';
@@ -123,6 +124,8 @@ export default function OrdersPage() {
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Order | null>(null);
+  // Глобальное «+ Создать» → ?new=1 открывает форму заказа.
+  useCreateFromUrl(() => setCreating(true));
 
   if (!current) {
     return (

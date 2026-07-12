@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
@@ -106,7 +107,19 @@ export default function MarginReportPage() {
                 ) : (
                   rows.map((r, i) => (
                     <tr key={r.key ?? `${r.name}-${i}`} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2">{r.name}</td>
+                      <td className="px-4 py-2">
+                        {/* By-client: ключ = id клиента → ярлык-drill-down в карточку. */}
+                        {!isProduct && r.key ? (
+                          <Link
+                            href={`/clients/${r.key}` as Parameters<typeof Link>[0]['href']}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {r.name}
+                          </Link>
+                        ) : (
+                          r.name
+                        )}
+                      </td>
                       {isProduct && (
                         <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
                           {r.qty}
