@@ -3,7 +3,7 @@
 ## Production топология
 
 ```
-miniapp.aleksandrantropov.online  →  VPS 45.82.254.230  →  nginx :443
+miniapp.aleksandrantropov.online  →  VPS 195.133.1.13  →  nginx :443
                                                             ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
                                                             └ /         → 127.0.0.1:3000 (web контейнер)
                                                           docker compose stack at /srv/construct-v6:
@@ -21,13 +21,13 @@ LE-сертификат `/etc/letsencrypt/live/constructpc.aleksandrantropov.ru/
 **Ручной с локали:**
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'cd /srv/construct-v6 && docker compose pull && docker compose up -d'
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose pull && docker compose up -d'
 ```
 
 **Если CI упал и нужно собрать прямо на VPS:**
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'cd /srv/construct-v6/src && git fetch origin && git reset --hard origin/v6 && docker build -f deploy/api.Dockerfile -t ghcr.io/keylol/construct-v6-api:latest . && docker build -f deploy/web.Dockerfile --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t ghcr.io/keylol/construct-v6-web:latest . && cd /srv/construct-v6 && docker compose up -d'
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6/src && git fetch origin && git reset --hard origin/v6 && docker build -f deploy/api.Dockerfile -t ghcr.io/keylol/construct-v6-api:latest . && docker build -f deploy/web.Dockerfile --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t ghcr.io/keylol/construct-v6-web:latest . && cd /srv/construct-v6 && docker compose up -d'
 ```
 
 ## Миграции БД
@@ -35,16 +35,16 @@ ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'cd /srv/construct-v6/src && git 
 CI прогоняет `prisma migrate deploy` автоматически после `up -d`. Ручной запуск:
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 \
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
   'cd /srv/construct-v6 && docker compose exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"'
 ```
 
 ## Логи и отладка
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'cd /srv/construct-v6 && docker compose logs api -f --tail=100'
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'cd /srv/construct-v6 && docker compose logs web -f --tail=100'
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'docker exec construct-v6-postgres-1 psql -U construct -d construct_v6 -c "SELECT count(*) FROM \"Workspace\";"'
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose logs api -f --tail=100'
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose logs web -f --tail=100'
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'docker exec construct-v6-postgres-1 psql -U construct -d construct_v6 -c "SELECT count(*) FROM \"Workspace\";"'
 ```
 
 ## Известные грабли
@@ -58,7 +58,7 @@ ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 'docker exec construct-v6-postgre
 
 | Имя | Что |
 |---|---|
-| `VPS_SSH_KEY` | Приватный SSH-ключ `deploy_ferrum` для root@45.82.254.230 |
+| `VPS_SSH_KEY` | Приватный SSH-ключ `deploy_ferrum` для root@195.133.1.13 |
 
 GHCR работает через `secrets.GITHUB_TOKEN` (auto), отдельный PAT не нужен.
 
@@ -67,7 +67,7 @@ GHCR работает через `secrets.GITHUB_TOKEN` (auto), отдельны
 Все теги остаются: `latest` (последний) + `<short-sha>`. Откат на предыдущий релиз:
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 \
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
   'cd /srv/construct-v6 && \
    docker compose pull && \
    API_IMAGE=ghcr.io/keylol/construct-v6-api:<sha> \

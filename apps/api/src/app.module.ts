@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigSchema, validateConfig } from './config';
+import { loggerParams } from './common/logger.config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -31,6 +33,9 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
       cache: true,
       validate: validateConfig,
     }),
+    // L5 (наблюдаемость): структурный лог + request-id (см. logger.config.ts).
+    // Стоит рано в списке, чтобы request-логи покрывали все нижележащие модули.
+    LoggerModule.forRoot(loggerParams),
     ScheduleModule.forRoot(),
     // Базовый лимит: 10 запросов/мин с одного IP. Применяется точечно через
     // ThrottlerGuard только на login-эндпоинтах (см. AuthController) —
