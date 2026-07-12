@@ -2,7 +2,11 @@
 # Multi-stage build для Next.js 14 standalone.
 # Контекст билда — корень монорепо.
 
-ARG NODE_VERSION=20-alpine
+# L11 (supply chain): base-образ запинен по digest, а не по плавающему тегу
+# 20-alpine — воспроизводимость билда и защита от подмены тега. Бампить digest
+# осознанно (renovate/dependabot или вручную):
+#   docker buildx imagetools inspect node:20-alpine --format '{{.Manifest.Digest}}'
+ARG NODE_VERSION=20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 FROM node:${NODE_VERSION} AS deps
 RUN apk add --no-cache libc6-compat

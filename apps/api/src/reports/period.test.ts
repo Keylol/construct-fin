@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  businessYear,
   enumerateMonths,
   enumerateQuarters,
   resolveComparison,
@@ -187,5 +188,27 @@ describe('enumerateQuarters', () => {
   it('Q1+Q2 2026', () => {
     const qs = enumerateQuarters(resolvePeriod({ from: '2026-01-01', to: '2026-06-30' }, NOW));
     expect(qs.map((q) => q.label)).toEqual(['2026-Q1', '2026-Q2']);
+  });
+});
+
+describe('businessYear (L12)', () => {
+  it('обычный момент — год в UTC+5', () => {
+    expect(businessYear(new Date('2026-06-15T12:00:00Z'))).toBe(2026);
+  });
+
+  it('стык года: 2026-12-31 21:00Z (UTC) = 2027-01-01 02:00 в UTC+5 → 2027', () => {
+    // Ключевой баг: server-local getUTCFullYear() здесь вернул бы 2026 → номер
+    // заказа ORD-2026-… для операции, которая по бизнес-времени уже в 2027.
+    const at = new Date('2026-12-31T21:00:00Z');
+    expect(at.getUTCFullYear()).toBe(2026); // «наивный» год
+    expect(businessYear(at)).toBe(2027); // TZ-safe год
+  });
+
+  it('стык года наоборот: 2027-01-01 03:00Z всё ещё 2027 в UTC+5', () => {
+    expect(businessYear(new Date('2027-01-01T03:00:00Z'))).toBe(2027);
+  });
+
+  it('раннее утро UTC у начала года: 2026-01-01 02:00Z = 2026-01-01 07:00 UTC+5 → 2026', () => {
+    expect(businessYear(new Date('2026-01-01T02:00:00Z'))).toBe(2026);
   });
 });
