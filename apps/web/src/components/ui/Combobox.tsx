@@ -164,7 +164,7 @@ export function Combobox({
           disabled={disabled}
           className={cn(
             // Стили Input/Select — триггер выглядит как обычное поле формы.
-            'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm',
+            'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 text-sm',
             'text-foreground shadow-xs transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring',
             'aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/40 aria-[invalid=true]:focus-visible:border-destructive',

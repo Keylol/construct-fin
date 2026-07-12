@@ -54,6 +54,8 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Третий уровень поверхности — «утопленные» зоны (фильтры, футеры, Sheet).
+        sunken: 'hsl(var(--surface-sunken))',
       },
       borderRadius: {
         lg: '12px', // контейнеры
@@ -72,6 +74,10 @@ const config: Config = {
         xl: ['1.125rem', { lineHeight: '1.625rem' }],
         '2xl': ['1.375rem', { lineHeight: '1.875rem' }],
         '3xl': ['1.75rem', { lineHeight: '2.125rem' }],
+        // Display-шкала для главных денег (решение №7 блица 07-12): цифра,
+        // которую видно через комнату. Отриц. трекинг — крупный mono плотнее.
+        '4xl': ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.02em' }],
+        '5xl': ['2.75rem', { lineHeight: '3rem', letterSpacing: '-0.025em' }],
       },
       boxShadow: {
         xs: '0 1px 2px 0 rgb(15 23 42 / 0.04)',
