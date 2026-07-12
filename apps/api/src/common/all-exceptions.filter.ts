@@ -32,9 +32,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const { httpAdapter } = this.httpAdapterHost;
     const ctx = host.switchToHttp();
+    const req = ctx.getRequest();
     const res = ctx.getResponse();
 
     const { status, body } = this.resolve(exception);
+
+    // L5 (наблюдаемость): любой 5xx — форензик-лог с контекстом запроса
+    // (метод, путь, request-id) и полным стеком на сервере. Наружу стек не уходит
+    // (см. resolve). request-id берём из уже проставленного заголовка ответа —
+    // это тот же id, что вернётся клиенту и связывает лог с request-логом.
+    if (status >= 500) {
+      const method = req?.method ?? '?';
+      const url = req?.url ?? req?.raw?.url ?? '?';
+      const reqId = res?.getHeader?.('x-request-id') ?? req?.id ?? '?';
+      this.logger.error(
+        `${method} ${url} → ${status} [reqId=${reqId}]`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
+    }
+
     httpAdapter.reply(res, body, status);
   }
 
@@ -53,7 +69,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     //     транзиентная серверная проблема: 503 Service Unavailable, чтобы
     //     клиент/прокси понимали, что запрос можно повторить. Деталей не светим.
     if (exception instanceof Prisma.PrismaClientInitializationError) {
-      this.logger.warn(`Prisma initialization error ${exception.errorCode ?? '<no-code>'}`);
+      // 503 залогируется в catch() с контекстом запроса (как любой 5xx).
       return this.error(HttpStatus.SERVICE_UNAVAILABLE, 'База данных временно недоступна');
     }
     if (exception instanceof Prisma.PrismaClientValidationError) {
@@ -83,12 +99,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return this.error(sc, msg && typeof msg === 'string' ? msg : 'Некорректный запрос');
     }
 
-    // 5. Всё остальное — внутренняя ошибка. Логируем полностью на сервере,
-    //    наружу отдаём дженерик без стектрейса.
-    this.logger.error(
-      'Unhandled exception',
-      exception instanceof Error ? exception.stack : String(exception),
-    );
+    // 5. Всё остальное — внутренняя ошибка. Полный стек с контекстом запроса
+    //    логируется в catch() (L5), наружу отдаём дженерик без стектрейса.
     return this.error(HttpStatus.INTERNAL_SERVER_ERROR, 'Internal server error');
   }
 

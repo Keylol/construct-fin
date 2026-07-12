@@ -44,7 +44,7 @@ docker compose exec backup ls -lh /backups/monthly/
 ## Скачать дамп на свой компьютер
 
 ```sh
-ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 \
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
   "docker compose -f /srv/construct-v6/docker-compose.yml exec -T backup cat /backups/daily/construct_v6-$(date +%Y%m%d).sql.gz" \
   > construct_v6-$(date +%Y%m%d).sql.gz
 ```

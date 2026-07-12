@@ -22,13 +22,8 @@ process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import { HttpAdapterHost } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fastifyCookie = require('@fastify/cookie');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fastifyMultipart = require('@fastify/multipart');
 
 export interface InjectArgs {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -61,8 +56,7 @@ export interface HttpApp {
 export async function buildHttpApp(): Promise<HttpApp> {
   // Динамический импорт ПОСЛЕ установки env (см. шапку файла).
   const { AppModule } = await import('../app.module');
-  const { IdempotencyInterceptor } = await import('../common/idempotency.interceptor');
-  const { AllExceptionsFilter } = await import('../common/all-exceptions.filter');
+  const { applyHttpPipeline } = await import('../common/http-pipeline');
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
@@ -70,13 +64,9 @@ export async function buildHttpApp(): Promise<HttpApp> {
     { logger: false },
   );
 
-  await app.register(fastifyCookie);
-  await app.register(fastifyMultipart, {
-    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-  });
-
-  app.useGlobalInterceptors(app.get(IdempotencyInterceptor));
-  app.useGlobalFilters(new AllExceptionsFilter(app.get(HttpAdapterHost)));
+  // Тот же HTTP-пайплайн, что и в main.ts (плагины, request-id, интерсептор,
+  // фильтр) — чтобы e2e гонял ровно прод-поведение.
+  await applyHttpPipeline(app, { maxUploadMb: 10 });
 
   await app.init();
 
