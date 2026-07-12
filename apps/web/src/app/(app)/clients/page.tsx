@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
@@ -94,8 +95,13 @@ export default function ClientsPage() {
     {
       key: 'status',
       header: 'Статус',
-      cell: (c) =>
-        c.isArchived ? <Badge variant="muted">В архиве</Badge> : <Badge variant="outline">Активен</Badge>,
+      // №15: точка + текст вместо пилюли — статус как вторичный сигнал.
+      cell: (c) => (
+        <StatusDot
+          tone={c.isArchived ? 'muted' : 'success'}
+          label={c.isArchived ? 'В архиве' : 'Активен'}
+        />
+      ),
       className: 'w-[120px]',
     },
     {
@@ -104,6 +110,7 @@ export default function ClientsPage() {
       key: 'actions',
       header: '',
       align: 'right',
+      hoverOnly: true,
       cell: (c) => (
         <Button
           variant="ghost"

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -19,6 +19,11 @@ export interface Column<T> {
   className?: string;
   /** Header-only classes (e.g. column width hints). */
   headClassName?: string;
+  /**
+   * Действия строки (решение №29 блица): на десктопе проявляются по hover
+   * строки / фокусу, таблица чище. На <sm рендерятся mobileCards — там всё видно.
+   */
+  hoverOnly?: boolean;
 }
 
 export interface SortState {
@@ -47,6 +52,18 @@ interface DataTableProps<T> {
   /** Render rows as cards instead of a table on mobile. Default true. */
   mobileCards?: (row: T) => ReactNode;
   className?: string;
+  /**
+   * Группировка строк (решение №27 блица): ключ группы по строке — при смене
+   * ключа вставляется строка-заголовок («Сегодня», «Вчера», дата).
+   */
+  groupBy?: (row: T) => string;
+  /** Рендер заголовка группы (получает ключ и строки группы). */
+  renderGroupHeader?: (key: string, rows: T[]) => ReactNode;
+  /**
+   * Итоговая строка (решение №28): ячейки по ключам колонок — Σ по видимым
+   * данным без калькулятора. Рендерится в <tfoot>.
+   */
+  footer?: Partial<Record<string, ReactNode>>;
 }
 
 export function DataTable<T>({
@@ -62,6 +79,9 @@ export function DataTable<T>({
   empty,
   mobileCards,
   className,
+  groupBy,
+  renderGroupHeader,
+  footer,
 }: DataTableProps<T>) {
   const toggleSort = (key: string) => {
     if (!onSortChange) return;
@@ -108,11 +128,51 @@ export function DataTable<T>({
     return <div className="py-6">{empty}</div>;
   }
 
+  // Группировка: соседние строки с одним ключом собираются в блоки.
+  const groups: { key: string | null; rows: T[] }[] = [];
+  if (groupBy) {
+    for (const row of data) {
+      const k = groupBy(row);
+      const last = groups[groups.length - 1];
+      if (last && last.key === k) last.rows.push(row);
+      else groups.push({ key: k, rows: [row] });
+    }
+  } else {
+    groups.push({ key: null, rows: data });
+  }
+
+  const renderRow = (row: T) => (
+    <tr
+      key={rowKey(row)}
+      onClick={onRowClick ? () => onRowClick(row) : undefined}
+      className={cn(
+        'group/row border-b border-border last:border-0 transition-colors',
+        onRowClick && 'cursor-pointer hover:bg-secondary',
+      )}
+    >
+      {columns.map((c) => (
+        <td
+          key={c.key}
+          className={cn(
+            'px-4 py-3 align-middle text-foreground',
+            c.align === 'right' && 'text-right tabular-nums',
+            // Действия по hover (№29): фокус тоже раскрывает — клавиатура не страдает.
+            c.hoverOnly &&
+              'opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100',
+            c.className,
+          )}
+        >
+          {c.cell(row)}
+        </td>
+      ))}
+    </tr>
+  );
+
   return (
     <>
-      {/* Desktop / tablet */}
+      {/* Desktop / tablet. Кегль таблиц 15px (решение №10) — данные читаются легче. */}
       <div className={cn('hidden overflow-auto sm:block', className)}>
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full border-collapse text-base">
           <thead className="sticky top-0 z-10 bg-background">
             <tr className="border-b border-border">
               {columns.map((c) => {
@@ -158,30 +218,42 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => (
-              <tr
-                key={rowKey(row)}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={cn(
-                  'border-b border-border last:border-0 transition-colors',
-                  onRowClick && 'cursor-pointer hover:bg-secondary',
-                )}
-              >
+            {groups.map((g) =>
+              g.key === null ? (
+                g.rows.map(renderRow)
+              ) : (
+                <Fragment key={`group-${g.key}`}>
+                  <tr className="border-b border-border bg-sunken">
+                    <td
+                      colSpan={columns.length}
+                      className="px-4 py-1.5 text-xs font-medium text-muted-foreground"
+                    >
+                      {renderGroupHeader ? renderGroupHeader(g.key, g.rows) : g.key}
+                    </td>
+                  </tr>
+                  {g.rows.map(renderRow)}
+                </Fragment>
+              ),
+            )}
+          </tbody>
+          {footer && (
+            <tfoot>
+              <tr className="border-t-2 border-border bg-sunken">
                 {columns.map((c) => (
                   <td
                     key={c.key}
                     className={cn(
-                      'px-4 py-3 align-middle text-foreground',
+                      'px-4 py-2.5 text-sm font-semibold',
                       c.align === 'right' && 'text-right tabular-nums',
                       c.className,
                     )}
                   >
-                    {c.cell(row)}
+                    {footer[c.key] ?? null}
                   </td>
                 ))}
               </tr>
-            ))}
-          </tbody>
+            </tfoot>
+          )}
         </table>
       </div>
 

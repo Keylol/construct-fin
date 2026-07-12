@@ -20,6 +20,8 @@ interface KpiCardProps {
    * видно через комнату. md — обычная плитка.
    */
   size?: 'md' | 'display';
+  /** Мини-график под значением (Sparkline) — решение №24 блица. */
+  chart?: ReactNode;
 }
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -44,6 +46,7 @@ export function KpiCard({
   className,
   href,
   size = 'md',
+  chart,
 }: KpiCardProps) {
   const body = (
     <>
@@ -63,6 +66,7 @@ export function KpiCard({
         {value}
       </div>
       {hint && <div className="mt-1.5 text-xs text-muted-foreground">{hint}</div>}
+      {chart && <div className="mt-2">{chart}</div>}
     </>
   );
 
