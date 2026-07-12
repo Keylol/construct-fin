@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
@@ -27,12 +28,7 @@ import { rangeFor } from '@/lib/periods';
 import { formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
-
-const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
+import { formatDate } from '@/lib/dates';
 
 export default function TransactionsPage() {
   const { current } = useCurrentWorkspace();
@@ -46,6 +42,8 @@ export default function TransactionsPage() {
     period: 'month',
     range: rangeFor('month'),
   });
+  // В инпуте — сырой filters.search, в запрос уходит значение после паузы в наборе.
+  const debouncedSearch = useDebouncedValue(filters.search);
 
   const apiFilters: TF = useMemo(
     () => ({
@@ -55,10 +53,10 @@ export default function TransactionsPage() {
       categoryId: filters.categoryId,
       counterpartyId: filters.counterpartyId,
       type: filters.type,
-      search: filters.search,
+      search: debouncedSearch,
       limit: 100,
     }),
-    [filters],
+    [filters, debouncedSearch],
   );
 
   const txs = useInfiniteTransactions(wsId, apiFilters);
@@ -110,10 +108,9 @@ export default function TransactionsPage() {
       header: 'Дата',
       cell: (t) => (
         <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-          {DATE_FMT.format(new Date(t.date))}
+          {formatDate(t.date)}
         </span>
       ),
-      sortable: true,
       className: 'w-[110px]',
     },
     {
@@ -148,7 +145,6 @@ export default function TransactionsPage() {
       key: 'amount',
       header: 'Сумма',
       align: 'right',
-      sortable: true,
       cell: (t) => (
         <span
           className={cn(
@@ -224,6 +220,8 @@ export default function TransactionsPage() {
             setEditingId(t.id);
           }}
           loading={txs.isLoading}
+          error={txs.error}
+          onRetry={() => txs.refetch()}
           empty={
             <EmptyState
               icon={ReceiptText}
@@ -247,7 +245,7 @@ export default function TransactionsPage() {
                     {t.description?.trim() || cp?.name || cat?.name || (t.type === 'INCOME' ? 'Доход' : 'Расход')}
                   </div>
                   <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {DATE_FMT.format(new Date(t.date))} · {accountById[t.accountId]?.name ?? '—'}
+                    {formatDate(t.date)} · {accountById[t.accountId]?.name ?? '—'}
                     {cat && ` · ${cat.name}`}
                   </div>
                 </div>

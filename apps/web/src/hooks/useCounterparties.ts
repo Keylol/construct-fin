@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { Counterparty, CounterpartyRole } from '@/lib/types';
 
@@ -43,6 +43,8 @@ export function useCounterparties(
       return api.get<Counterparty[]>(`/workspaces/${wsId}/counterparties?${params.toString()}`);
     },
     enabled: !!wsId,
+    // Смена поиска не «моргает» пустой таблицей — держим прошлые данные.
+    placeholderData: keepPreviousData,
   });
 }
 

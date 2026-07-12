@@ -5,6 +5,7 @@ import { Plus, Wallet, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useAccounts,
+  useAccountBalances,
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
@@ -28,7 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/Sheet';
-import { formatRub } from '@construct/shared';
+import { formatRub, D, add, toMoneyString } from '@construct/shared';
 
 const TYPE_LABELS: Record<AccountType, string> = {
   CASH: 'Наличные',
@@ -40,8 +41,22 @@ export default function AccountsPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const accounts = useAccounts(wsId);
+  // Текущие остатки (начальный + все движения) — считает бэкенд через ОДДС.
+  const balances = useAccountBalances(wsId);
   const [editing, setEditing] = useState<Account | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // «Всего денег» — сумма текущих остатков активных счетов (Decimal, не number).
+  const totalMoney = (() => {
+    if (!balances.data || !accounts.data) return null;
+    let acc = D(0);
+    for (const a of accounts.data) {
+      if (a.isArchived) continue;
+      const b = balances.data.get(a.id);
+      if (b != null) acc = add(acc, D(b));
+    }
+    return toMoneyString(acc);
+  })();
 
   if (!current) {
     return (
@@ -62,7 +77,6 @@ export default function AccountsPage() {
     {
       key: 'name',
       header: 'Название',
-      sortable: true,
       cell: (a) => (
         <div className="min-w-0">
           <div className="truncate font-medium text-foreground">{a.name}</div>
@@ -93,9 +107,23 @@ export default function AccountsPage() {
       key: 'opening',
       header: 'Начальный остаток',
       align: 'right',
-      sortable: true,
-      cell: (a) => formatRub(a.openingBalance),
-      className: 'w-[180px]',
+      cell: (a) => <span className="text-muted-foreground">{formatRub(a.openingBalance)}</span>,
+      className: 'w-[170px]',
+    },
+    {
+      // Главная колонка страницы: сколько денег на счёте СЕЙЧАС.
+      key: 'balance',
+      header: 'Остаток сейчас',
+      align: 'right',
+      cell: (a) => {
+        const b = balances.data?.get(a.id);
+        return b != null ? (
+          <span className="font-semibold tabular-nums">{formatRub(b)}</span>
+        ) : (
+          <span className="text-muted-foreground">…</span>
+        );
+      },
+      className: 'w-[170px]',
     },
   ];
 
@@ -111,6 +139,12 @@ export default function AccountsPage() {
           </Button>
         }
       />
+      {totalMoney != null && (
+        <div className="flex items-baseline justify-between border-t border-border bg-card px-6 py-3">
+          <span className="text-sm text-muted-foreground">Всего денег (активные счета)</span>
+          <span className="text-lg font-semibold tabular-nums">{formatRub(totalMoney)}</span>
+        </div>
+      )}
       <div className="bg-card border-t border-border">
         <DataTable
           data={accounts.data ?? []}
@@ -118,6 +152,8 @@ export default function AccountsPage() {
           rowKey={(a) => a.id}
           onRowClick={(a) => setEditing(a)}
           loading={accounts.isLoading}
+          error={accounts.error}
+          onRetry={() => void accounts.refetch()}
           empty={
             <EmptyState
               icon={Wallet}
@@ -142,7 +178,10 @@ export default function AccountsPage() {
               <div className="shrink-0 text-right">
                 <div className="text-[10px] uppercase text-muted-foreground">Остаток</div>
                 <div className="text-sm font-medium tabular-nums">
-                  {formatRub(a.openingBalance)}
+                  {/* Текущий остаток, а не начальный — раньше карточка вводила в заблуждение. */}
+                  {balances.data?.get(a.id) != null
+                    ? formatRub(balances.data.get(a.id)!)
+                    : formatRub(a.openingBalance)}
                 </div>
               </div>
             </div>
@@ -232,13 +271,21 @@ function AccountForm({
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>{initial ? 'Редактировать счёт' : 'Новый счёт'}</SheetTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
           </SheetHeader>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             <FormField label="Название" htmlFor="acc-name" required>
               <Input
@@ -293,6 +340,7 @@ function AccountForm({
           <SheetFooter>
             {initial && (
               <Button
+                type="button"
                 variant="destructive"
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
@@ -301,16 +349,18 @@ function AccountForm({
                 Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
             <Button
-              onClick={onSave}
-              disabled={!name.trim() || create.isPending || update.isPending}
+              type="submit"
+              loading={create.isPending || update.isPending}
+              disabled={!name.trim()}
             >
-              {(create.isPending || update.isPending) ? 'Сохраняю…' : 'Сохранить'}
+              Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
       <ConfirmDialog

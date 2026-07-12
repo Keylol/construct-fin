@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
@@ -18,6 +19,7 @@ import { rangeFor } from '@/lib/periods';
 import { formatRub } from '@construct/shared';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const range = useMemo(() => rangeFor('month'), []);
@@ -123,7 +125,7 @@ export default function DashboardPage() {
                     tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined
                   }
                   onClick={() => {
-                    window.location.href = '/transactions';
+                    router.push('/transactions');
                   }}
                 />
               ))}

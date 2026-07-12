@@ -243,7 +243,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-md">
+        <SheetContent side="right" hideClose>
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>{isEdit ? 'Операция' : 'Новая операция'}</SheetTitle>
             <Button
@@ -256,6 +256,14 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             </Button>
           </SheetHeader>
 
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSave();
+            }}
+          >
           <SheetBody className="space-y-4">
             {showSuggestion && (
               <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
@@ -472,6 +480,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
           <SheetFooter>
             {isEdit && (
               <Button
+                type="button"
                 variant="destructive"
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
@@ -480,21 +489,18 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                 Удалить
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
             <Button
-              onClick={onSave}
-              disabled={
-                !amount.trim() ||
-                !accountId ||
-                create.isPending ||
-                update.isPending
-              }
+              type="submit"
+              loading={create.isPending || update.isPending}
+              disabled={!amount.trim() || !accountId}
             >
-              {(create.isPending || update.isPending) ? 'Сохраняю…' : 'Сохранить'}
+              Сохранить
             </Button>
           </SheetFooter>
+          </form>
         </SheetContent>
       </Sheet>
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
 import { formatRub, parseAmountInput, D, add, sub, mul, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useWarehouse } from '@/hooks/useWarehouse';
@@ -58,6 +59,7 @@ import {
 } from '@/components/ui/Sheet';
 import { toast } from '@/components/ui/Toaster';
 import { cn } from '@/lib/cn';
+import { formatDate } from '@/lib/dates';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   OPEN: 'В работе',
@@ -84,12 +86,6 @@ const PAY_VARIANT: Record<OrderPaymentState, BadgeProps['variant']> = {
   REFUNDED: 'destructive',
 };
 
-const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-
 const SCHED_LABEL: Record<ScheduleEntryStatus, string> = {
   PAID: 'Оплачен',
   PARTIAL: 'Частично',
@@ -108,9 +104,11 @@ export default function OrdersPage() {
   const wsId = current?.id ?? null;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [search, setSearch] = useState('');
+  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
+  const debouncedSearch = useDebouncedValue(search);
   const orders = useOrders(wsId, {
     status: statusFilter || undefined,
-    search: search || undefined,
+    search: debouncedSearch || undefined,
   });
   const orderRows = useMemo<Order[]>(
     () => orders.data?.pages.flatMap((p) => p.items) ?? [],
@@ -194,7 +192,6 @@ export default function OrdersPage() {
       key: 'total',
       header: 'Сумма',
       align: 'right',
-      sortable: true,
       cell: (o) => <span className="font-semibold tabular-nums">{formatRub(o.totalAmount)}</span>,
       className: 'w-[140px]',
     },
@@ -246,6 +243,8 @@ export default function OrdersPage() {
           rowKey={(o) => o.id}
           onRowClick={(o) => setOpenId(o.id)}
           loading={orders.isLoading}
+          error={orders.error}
+          onRetry={() => orders.refetch()}
           empty={
             <EmptyState
               icon={ClipboardList}
@@ -334,33 +333,93 @@ function OrderFormSheet({
     { name: '', qty: '1', unitPrice: '', unitCost: '' },
   ]);
   const [error, setError] = useState<string | null>(null);
+  // Ошибки по строкам позиций: индекс строки → текст. Невалидная строка больше
+  // не выбрасывается молча — подсвечивается и блокирует сабмит.
+  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
+  const [confirmClose, setConfirmClose] = useState(false);
+  // Снимок состояния на момент открытия — для guard «Закрыть без сохранения?».
+  const initialSnap = useRef('');
+
+  const snapOf = (
+    cl: string,
+    t: string,
+    d: string,
+    disc: string,
+    its: OrderItemInput[],
+  ) =>
+    JSON.stringify({
+      cl,
+      t,
+      d,
+      disc,
+      its: its.map((it) => ({
+        w: it.warehouseItemId ?? null,
+        n: it.name,
+        q: it.qty,
+        p: it.unitPrice,
+        c: it.unitCost ?? '',
+      })),
+    });
 
   // Префилл при открытии на редактирование.
   useEffect(() => {
     if (!open) return;
     if (editing) {
+      const nextItems = (editing.items ?? []).map((it) => ({
+        warehouseItemId: it.warehouseItemId,
+        name: it.name,
+        qty: String(Number(it.qty)),
+        unitPrice: String(Number(it.unitPrice)),
+        unitCost: it.unitCost ? String(Number(it.unitCost)) : '',
+      }));
+      const nextDiscount =
+        Number(editing.discountAmount) > 0 ? String(Number(editing.discountAmount)) : '';
       setClientId(editing.clientId ?? '');
       setTitle(editing.title ?? '');
       setDescription(editing.description ?? '');
-      setDiscount(Number(editing.discountAmount) > 0 ? String(Number(editing.discountAmount)) : '');
-      setItems(
-        (editing.items ?? []).map((it) => ({
-          warehouseItemId: it.warehouseItemId,
-          name: it.name,
-          qty: String(Number(it.qty)),
-          unitPrice: String(Number(it.unitPrice)),
-          unitCost: it.unitCost ? String(Number(it.unitCost)) : '',
-        })),
+      setDiscount(nextDiscount);
+      setItems(nextItems);
+      initialSnap.current = snapOf(
+        editing.clientId ?? '',
+        editing.title ?? '',
+        editing.description ?? '',
+        nextDiscount,
+        nextItems,
       );
     } else {
+      const nextItems = [{ warehouseItemId: null, name: '', qty: '1', unitPrice: '', unitCost: '' }];
       setClientId('');
       setTitle('');
       setDescription('');
       setDiscount('');
-      setItems([{ name: '', qty: '1', unitPrice: '', unitCost: '' }]);
+      setItems(nextItems);
+      initialSnap.current = snapOf('', '', '', '', nextItems);
     }
     setError(null);
+    setItemErrors({});
   }, [open, editing]);
+
+  const isDirty = snapOf(clientId, title, description, discount, items) !== initialSnap.current;
+
+  // Закрытие через guard: заполненная форма не стирается молча по Esc/оверлею.
+  const requestClose = () => {
+    if (isDirty && !create.isPending && !update.isPending) {
+      setConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  // Правка строки позиции + сброс её ошибки (пользователь начал исправлять).
+  const patchItem = (i: number, patch: Partial<OrderItemInput>) => {
+    setItems((arr) => arr.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    setItemErrors((prev) => {
+      if (!(i in prev)) return prev;
+      const next = { ...prev };
+      delete next[i];
+      return next;
+    });
+  };
 
   // Превью-итоги черновика через Decimal (не JS number, D4). Ввод свободный —
   // невалидное значение считаем нулём, «жёсткая» валидация остаётся на сабмите.
@@ -402,12 +461,34 @@ function OrderFormSheet({
   }, [subtotal, discount]);
   const estEarnings = sub(total, costTotal);
 
-  const collectItems = (): OrderItemInput[] | null => {
+  // Честная валидация: полностью пустые строки игнорируются (запасная строка),
+  // но частично заполненная невалидная строка — это ошибка, а не молчаливый
+  // выброс (иначе заказ тихо создаётся без части позиций).
+  const collectItems = ():
+    | { ok: true; items: OrderItemInput[] }
+    | { ok: false; errors: Record<number, string> } => {
     const cleaned: OrderItemInput[] = [];
-    for (const it of items) {
-      if (!it.name.trim() || !it.unitPrice) continue;
+    const errors: Record<number, string> = {};
+    items.forEach((it, i) => {
+      const blank = !it.name.trim() && !it.unitPrice.trim() && !it.warehouseItemId;
+      if (blank) return;
+      if (!it.name.trim()) {
+        errors[i] = 'Укажи наименование';
+        return;
+      }
       const price = parseAmountInput(it.unitPrice);
-      if (!price) continue;
+      if (!price) {
+        errors[i] = 'Укажи цену продажи — число больше нуля';
+        return;
+      }
+      if (!parseDraft(it.qty).gt(0)) {
+        errors[i] = 'Количество должно быть больше нуля';
+        return;
+      }
+      if (it.unitCost && !parseAmountInput(it.unitCost)) {
+        errors[i] = 'Закупочная цена — некорректное число';
+        return;
+      }
       const cost = it.unitCost ? parseAmountInput(it.unitCost) : null;
       cleaned.push({
         warehouseItemId: it.warehouseItemId ?? null,
@@ -416,14 +497,21 @@ function OrderFormSheet({
         unitPrice: price,
         unitCost: cost,
       });
-    }
-    return cleaned.length ? cleaned : null;
+    });
+    if (Object.keys(errors).length) return { ok: false, errors };
+    return { ok: true, items: cleaned };
   };
 
   const submitCreate = async () => {
     setError(null);
-    const cleaned = collectItems();
-    if (!cleaned) {
+    const collected = collectItems();
+    if (!collected.ok) {
+      setItemErrors(collected.errors);
+      setError('Исправь выделенные позиции — они не будут сохранены в таком виде');
+      return;
+    }
+    const cleaned = collected.items;
+    if (!cleaned.length) {
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
     }
@@ -445,8 +533,14 @@ function OrderFormSheet({
   const submitEdit = async () => {
     if (!editing) return;
     setError(null);
-    const cleaned = collectItems();
-    if (!cleaned) {
+    const collected = collectItems();
+    if (!collected.ok) {
+      setItemErrors(collected.errors);
+      setError('Исправь выделенные позиции — они не будут сохранены в таком виде');
+      return;
+    }
+    const cleaned = collected.items;
+    if (!cleaned.length) {
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
     }
@@ -467,14 +561,23 @@ function OrderFormSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose className="sm:max-w-lg">
+    <>
+    <Sheet open={open} onOpenChange={(o) => !o && requestClose()}>
+      <SheetContent side="right" hideClose size="2xl">
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>{isEdit ? `Изменить ${editing?.number ?? 'заказ'}` : 'Новый заказ'}</SheetTitle>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
+          <Button variant="ghost" size="icon" onClick={requestClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
         </SheetHeader>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void (isEdit ? submitEdit() : submitCreate());
+          }}
+        >
         <SheetBody className="space-y-4">
           <FormField label="Клиент" htmlFor="o-client">
             <Select id="o-client" value={clientId} onChange={(e) => setClientId(e.target.value)}>
@@ -508,25 +611,25 @@ function OrderFormSheet({
             <div className="text-sm font-medium">Позиции</div>
             {items.map((it, i) => {
               const wh = warehouse.data?.find((w) => w.id === it.warehouseItemId);
+              const rowError = itemErrors[i];
               return (
-                <div key={i} className="space-y-1.5 rounded-md border border-border p-2.5">
+                <div
+                  key={i}
+                  className={cn(
+                    'space-y-1.5 rounded-md border p-2.5',
+                    rowError ? 'border-destructive' : 'border-border',
+                  )}
+                >
                   <div className="flex items-center gap-2">
                     <Select
                       value={it.warehouseItemId ?? ''}
                       onChange={(e) => {
                         const id = e.target.value;
                         const item = warehouse.data?.find((w) => w.id === id);
-                        setItems((arr) =>
-                          arr.map((x, j) =>
-                            j === i
-                              ? {
-                                  ...x,
-                                  warehouseItemId: id || null,
-                                  name: item ? item.name : x.name,
-                                }
-                              : x,
-                          ),
-                        );
+                        patchItem(i, {
+                          warehouseItemId: id || null,
+                          ...(item ? { name: item.name } : {}),
+                        });
                       }}
                       className="h-8 text-xs"
                     >
@@ -541,9 +644,13 @@ function OrderFormSheet({
                         ))}
                     </Select>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => setItems((arr) => arr.filter((_, j) => j !== i))}
+                      onClick={() => {
+                        setItems((arr) => arr.filter((_, j) => j !== i));
+                        setItemErrors({});
+                      }}
                       aria-label="Удалить позицию"
                       disabled={items.length === 1}
                     >
@@ -554,51 +661,44 @@ function OrderFormSheet({
                     <div className="flex-1">
                       <Input
                         value={it.name}
-                        onChange={(e) =>
-                          setItems((arr) =>
-                            arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
-                          )
-                        }
+                        onChange={(e) => patchItem(i, { name: e.target.value })}
                         placeholder="Наименование"
+                        aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                     <div className="w-14">
                       <Input
                         inputMode="decimal"
                         value={it.qty}
-                        onChange={(e) =>
-                          setItems((arr) =>
-                            arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)),
-                          )
-                        }
+                        onChange={(e) => patchItem(i, { qty: e.target.value })}
                         placeholder="Кол."
+                        aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                     <div className="w-24">
                       <Input
                         inputMode="decimal"
                         value={it.unitPrice}
-                        onChange={(e) =>
-                          setItems((arr) =>
-                            arr.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)),
-                          )
-                        }
+                        onChange={(e) => patchItem(i, { unitPrice: e.target.value })}
                         placeholder="Цена прод."
+                        aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                     <div className="w-24">
                       <Input
                         inputMode="decimal"
                         value={it.unitCost ?? ''}
-                        onChange={(e) =>
-                          setItems((arr) =>
-                            arr.map((x, j) => (j === i ? { ...x, unitCost: e.target.value } : x)),
-                          )
-                        }
+                        onChange={(e) => patchItem(i, { unitCost: e.target.value })}
                         placeholder="Закупка"
+                        aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                   </div>
+                  {rowError && (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {rowError}
+                    </p>
+                  )}
                   {wh && !it.unitCost && (
                     <p className="text-xs text-muted-foreground">
                       Себест. со склада {formatRub(wh.avgCost)} · спишется при закрытии. Или впиши закупку вручную.
@@ -614,6 +714,7 @@ function OrderFormSheet({
               );
             })}
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() =>
@@ -670,21 +771,40 @@ function OrderFormSheet({
         <SheetFooter>
           {isEdit ? (
             <>
-              <Button variant="secondary" onClick={onClose} disabled={update.isPending}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={requestClose}
+                disabled={update.isPending}
+              >
                 Отмена
               </Button>
-              <Button onClick={submitEdit} disabled={update.isPending}>
-                {update.isPending ? 'Сохраняю…' : 'Сохранить'}
+              <Button type="submit" loading={update.isPending}>
+                Сохранить
               </Button>
             </>
           ) : (
-            <Button onClick={submitCreate} disabled={create.isPending}>
-              {create.isPending ? 'Создаю…' : 'Создать заказ'}
+            <Button type="submit" loading={create.isPending}>
+              Создать заказ
             </Button>
           )}
         </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
+    <ConfirmDialog
+      open={confirmClose}
+      onOpenChange={setConfirmClose}
+      title="Закрыть без сохранения?"
+      description="В форме заказа есть несохранённые изменения — они будут потеряны."
+      confirmText="Закрыть"
+      cancelText="Вернуться к форме"
+      onConfirm={() => {
+        setConfirmClose(false);
+        onClose();
+      }}
+    />
+    </>
   );
 }
 
@@ -767,7 +887,7 @@ function OrderDetailSheet({
   return (
     <>
       <Sheet open={!!orderId} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose className="sm:max-w-lg">
+        <SheetContent side="right" hideClose size="2xl">
           <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <SheetTitle>{order ? order.number : 'Заказ'}</SheetTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
@@ -867,7 +987,7 @@ function OrderDetailSheet({
                                 className="text-xs text-muted-foreground tabular-nums"
                               >
                                 {l.qty} × {formatRub(l.unitCost)} · от{' '}
-                                {DATE_FMT.format(new Date(l.receivedAt))}
+                                {formatDate(l.receivedAt)}
                                 {l.supplier ? ` · ${l.supplier.name}` : ''}
                                 {l.account ? ` · ${l.account.name}` : ''}
                               </div>
@@ -960,7 +1080,7 @@ function OrderDetailSheet({
                             {order.schedule.entries.map((e) => (
                               <tr key={e.id} className="border-b border-border last:border-0">
                                 <td className="px-3 py-1.5 tabular-nums">
-                                  {DATE_FMT.format(new Date(e.dueDate))}
+                                  {formatDate(e.dueDate)}
                                   {e.note && (
                                     <div className="text-xs text-muted-foreground">{e.note}</div>
                                   )}
@@ -995,7 +1115,7 @@ function OrderDetailSheet({
                         {order.schedule.summary.nextDueDate && (
                           <Row
                             label="Следующий платёж"
-                            value={`${DATE_FMT.format(new Date(order.schedule.summary.nextDueDate))} · ${formatRub(order.schedule.summary.nextDueAmount ?? '0')}`}
+                            value={`${formatDate(order.schedule.summary.nextDueDate)} · ${formatRub(order.schedule.summary.nextDueAmount ?? '0')}`}
                           />
                         )}
                       </div>
@@ -1088,7 +1208,7 @@ function OrderDetailSheet({
                             className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
                           >
                             <span className="text-muted-foreground">
-                              {DATE_FMT.format(new Date(t.date))} · {label}
+                              {formatDate(t.date)} · {label}
                             </span>
                             <div className="flex items-center gap-2">
                               <span

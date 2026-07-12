@@ -2,22 +2,26 @@
 
 import { useState } from 'react';
 import { formatRub } from '@construct/shared';
-import { ShoppingCart, RotateCcw } from '@/components/ui/icons';
+import { ShoppingCart, RotateCcw, Plus, X } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/Sheet';
 import { toast } from '@/components/ui/Toaster';
+import { PurchaseSheet } from '@/components/purchases/PurchaseSheet';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
 import type { Purchase } from '@/lib/types';
-
-const DT_FMT = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
+import { formatDate } from '@/lib/dates';
 
 function purchaseTotal(p: Purchase): string {
   if (p.transaction?.amount) return p.transaction.amount;
@@ -30,6 +34,8 @@ export default function PurchasesPage() {
   const purchases = usePurchases(wsId);
   const voidPurchase = useVoidPurchase(wsId ?? '');
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [detail, setDetail] = useState<Purchase | null>(null);
 
   if (!wsId) {
     return (
@@ -52,7 +58,7 @@ export default function PurchasesPage() {
       header: 'Дата',
       cell: (p) => (
         <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-          {DT_FMT.format(new Date(p.transaction?.date ?? p.createdAt))}
+          {formatDate(p.transaction?.date ?? p.createdAt)}
         </span>
       ),
       className: 'w-[120px]',
@@ -90,7 +96,15 @@ export default function PurchasesPage() {
       header: '',
       align: 'right',
       cell: (p) => (
-        <Button variant="ghost" size="sm" onClick={() => setConfirmVoid(p)} title="Отменить закупку">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmVoid(p);
+          }}
+          title="Отменить закупку"
+        >
           <RotateCcw className="h-3.5 w-3.5" /> Отменить
         </Button>
       ),
@@ -103,6 +117,12 @@ export default function PurchasesPage() {
       <PageHeader
         title="Закупки"
         breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки' }]}
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            Закупка
+          </Button>
+        }
       />
 
       <div className="bg-card border-t border-border">
@@ -110,16 +130,24 @@ export default function PurchasesPage() {
           data={purchases.data ?? []}
           columns={columns}
           rowKey={(p) => p.id}
+          onRowClick={(p) => setDetail(p)}
           loading={purchases.isLoading}
+          error={purchases.error}
+          onRetry={() => void purchases.refetch()}
           empty={
             <EmptyState
               icon={ShoppingCart}
               title="Закупок пока нет"
-              hint="Закупки создаются со страницы склада (приход товара на склад)."
+              hint="Проведи первую закупку — товар придёт на склад, деньги спишутся со счёта."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" /> Закупка
+                </Button>
+              }
             />
           }
           mobileCards={(p) => (
-            <div className="space-y-1">
+            <div className="space-y-1" onClick={() => setDetail(p)}>
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate font-medium">
                   {p.supplier?.name ?? 'Без поставщика'}
@@ -128,9 +156,16 @@ export default function PurchasesPage() {
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="tabular-nums">
-                  {DT_FMT.format(new Date(p.transaction?.date ?? p.createdAt))} · {p.lines.length} поз.
+                  {formatDate(p.transaction?.date ?? p.createdAt)} · {p.lines.length} поз.
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => setConfirmVoid(p)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmVoid(p);
+                  }}
+                >
                   <RotateCcw className="h-3.5 w-3.5" /> Отменить
                 </Button>
               </div>
@@ -138,6 +173,79 @@ export default function PurchasesPage() {
           )}
         />
       </div>
+
+      {/* Состав закупки — данные уже в строке списка, запрос не нужен. */}
+      <Sheet open={detail !== null} onOpenChange={(o) => !o && setDetail(null)}>
+        <SheetContent side="right" hideClose>
+          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <SheetTitle>
+              Закупка от{' '}
+              {detail ? formatDate(detail.transaction?.date ?? detail.createdAt) : ''}
+            </SheetTitle>
+            <Button variant="ghost" size="icon" onClick={() => setDetail(null)} aria-label="Закрыть">
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetHeader>
+          <SheetBody className="space-y-4">
+            {detail && (
+              <>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Поставщик</span>
+                    <span>{detail.supplier?.name ?? '—'}</span>
+                  </div>
+                  {detail.note && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Комментарий</span>
+                      <span className="text-right">{detail.note}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-sm font-medium">Состав</div>
+                  <div className="divide-y divide-border rounded-md border border-border">
+                    {detail.lines.map((l) => (
+                      <div key={l.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {l.warehouseItem?.name ?? 'Позиция склада'}
+                        </span>
+                        <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                          {Number(l.qty)} × {formatRub(l.unitPrice)} ={' '}
+                          <span className="font-medium text-foreground">{formatRub(l.lineTotal)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
+                  <div className="flex justify-between font-semibold">
+                    <span>Сумма закупки</span>
+                    <span className="tabular-nums">{formatRub(purchaseTotal(detail))}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </SheetBody>
+          <SheetFooter>
+            <Button
+              type="button"
+              variant="destructive"
+              className="sm:mr-auto"
+              onClick={() => {
+                if (detail) setConfirmVoid(detail);
+                setDetail(null);
+              }}
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Отменить закупку
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setDetail(null)}>
+              Закрыть
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <PurchaseSheet wsId={wsId} open={creating} onClose={() => setCreating(false)} />
 
       <ConfirmDialog
         open={confirmVoid !== null}
