@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   Bar,
   BarChart,
@@ -27,6 +28,7 @@ import {
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePnlReport } from '@/hooks/useReports';
+import { txDrilldownHref } from '@/lib/tx-filters';
 import type { CompareMode, ReportBucket } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { CHART_SEMANTIC } from '@/lib/chart';
@@ -279,7 +281,19 @@ export default function PnlReportPage() {
               <tbody>
                 {query.data.primary.buckets.map((b) => (
                   <tr key={b.label} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2">{b.label}</td>
+                    <td className="px-4 py-2">
+                      <Link
+                        href={
+                          txDrilldownHref({
+                            from: b.from,
+                            to: b.to,
+                          }) as Parameters<typeof Link>[0]['href']
+                        }
+                        className="cursor-pointer hover:text-foreground hover:underline"
+                      >
+                        {b.label}
+                      </Link>
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums text-success">
                       {formatRub(b.income)}
                     </td>

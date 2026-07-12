@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   CartesianGrid,
   Legend,
@@ -22,6 +23,7 @@ import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/repo
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCashflowReport } from '@/hooks/useReports';
+import { txDrilldownHref } from '@/lib/tx-filters';
 import { useAccounts } from '@/hooks/useAccounts';
 import { CHART_PALETTE as COLORS } from '@/lib/chart';
 
@@ -161,7 +163,24 @@ export default function CashflowReportPage() {
                   <tbody>
                     {s.points.map((p) => (
                       <tr key={p.label} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2">{p.label}</td>
+                        <td className="px-3 py-2">
+                          {s.accountId !== null ? (
+                            <Link
+                              href={
+                                txDrilldownHref({
+                                  accountId: s.accountId,
+                                  from: p.from,
+                                  to: p.to,
+                                }) as Parameters<typeof Link>[0]['href']
+                              }
+                              className="cursor-pointer hover:text-foreground hover:underline"
+                            >
+                              {p.label}
+                            </Link>
+                          ) : (
+                            p.label
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums text-success">
                           {formatRub(p.inflow)}
                         </td>

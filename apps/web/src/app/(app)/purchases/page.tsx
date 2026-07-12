@@ -20,6 +20,7 @@ import { toast } from '@/components/ui/Toaster';
 import { PurchaseSheet } from '@/components/purchases/PurchaseSheet';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
+import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import type { Purchase } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 
@@ -36,6 +37,8 @@ export default function PurchasesPage() {
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<Purchase | null>(null);
+  // Глобальное «+ Создать» → ?new=1 открывает форму закупки.
+  useCreateFromUrl(() => setCreating(true));
 
   if (!wsId) {
     return (
