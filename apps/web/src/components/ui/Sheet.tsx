@@ -30,8 +30,9 @@ export const SheetOverlay = React.forwardRef<
   );
 });
 
+// Панель — off-white (решение №30 блица): белые поля читаются «окнами» на ней.
 const sheetVariants = cva(
-  'fixed z-50 gap-4 bg-card text-card-foreground shadow-lg transition ease-in-out ' +
+  'fixed z-50 gap-4 bg-background text-foreground shadow-lg transition ease-in-out ' +
     'data-[state=open]:animate-in data-[state=closed]:animate-out ' +
     'data-[state=closed]:duration-200 data-[state=open]:duration-300 ' +
     'motion-reduce:transition-none motion-reduce:animate-none',
