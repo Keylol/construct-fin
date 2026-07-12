@@ -2,8 +2,18 @@
 
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from '@/components/ui/Toaster';
+import { ApiError } from '@/lib/api';
 
 function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const parts = [err.message];
+    // 503 — заведомо временное («БД недоступна»): подсказываем повтор.
+    if (err.status === 503) parts.push('Повторите попытку через минуту.');
+    // Для серверных сбоев даём id запроса — по нему бэкенд найдёт сбой в логах.
+    if (err.status >= 500 && err.requestId?.trim())
+      parts.push(`id запроса: ${err.requestId.slice(0, 8)}`);
+    return parts.join(' · ');
+  }
   return err instanceof Error && err.message ? err.message : 'Что-то пошло не так';
 }
 
