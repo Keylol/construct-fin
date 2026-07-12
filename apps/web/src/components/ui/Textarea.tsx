@@ -13,6 +13,7 @@ export const Textarea = forwardRef<
         'text-foreground shadow-xs transition-colors',
         'placeholder:text-muted-foreground',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring',
+        'aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/40 aria-[invalid=true]:focus-visible:border-destructive',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
