@@ -36,6 +36,13 @@ interface DataTableProps<T> {
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
   loading?: boolean;
+  /**
+   * Ошибка загрузки. Когда задана — вместо пустой таблицы рисуется блок
+   * «Не удалось загрузить» с кнопкой «Повторить» (ошибка ≠ «данных нет»).
+   */
+  error?: unknown;
+  /** Обработчик «Повторить» — обычно `() => query.refetch()`. */
+  onRetry?: () => void;
   empty?: ReactNode;
   /** Render rows as cards instead of a table on mobile. Default true. */
   mobileCards?: (row: T) => ReactNode;
@@ -50,6 +57,8 @@ export function DataTable<T>({
   sort,
   onSortChange,
   loading,
+  error,
+  onRetry,
   empty,
   mobileCards,
   className,
@@ -68,9 +77,29 @@ export function DataTable<T>({
       <div className="px-6 py-3">
         <div className="space-y-2">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-10 w-full animate-pulse rounded-md bg-muted" />
+            <div key={i} className="h-10 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (error != null) {
+    return (
+      <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+        <p className="text-sm font-medium text-foreground">Не удалось загрузить данные</p>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {error instanceof Error && error.message ? error.message : 'Ошибка соединения с сервером'}
+        </p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-sm border border-input bg-background px-4 py-1.5 text-sm font-medium hover:bg-secondary"
+          >
+            Повторить
+          </button>
+        )}
       </div>
     );
   }

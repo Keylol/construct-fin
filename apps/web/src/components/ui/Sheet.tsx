@@ -22,6 +22,7 @@ export const SheetOverlay = React.forwardRef<
         'fixed inset-0 z-50 bg-foreground/40',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
+        'motion-reduce:animate-none',
         className,
       )}
       {...props}
@@ -32,7 +33,8 @@ export const SheetOverlay = React.forwardRef<
 const sheetVariants = cva(
   'fixed z-50 gap-4 bg-card text-card-foreground shadow-lg transition ease-in-out ' +
     'data-[state=open]:animate-in data-[state=closed]:animate-out ' +
-    'data-[state=closed]:duration-200 data-[state=open]:duration-300',
+    'data-[state=closed]:duration-200 data-[state=open]:duration-300 ' +
+    'motion-reduce:transition-none motion-reduce:animate-none',
   {
     variants: {
       side: {
@@ -41,10 +43,24 @@ const sheetVariants = cva(
           'inset-x-0 bottom-0 border-t border-border data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
         left: 'inset-y-0 left-0 h-full w-3/4 sm:max-w-sm border-r border-border data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
         right:
-          'inset-y-0 right-0 h-full w-full sm:max-w-md border-l border-border data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+          'inset-y-0 right-0 h-full w-full border-l border-border data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+      },
+      // Ширина правой панели: справочники — md/lg, документы (заказ, закупка,
+      // выдача, правила) — xl/2xl. Действует только для side="right".
+      size: {
+        md: '',
+        lg: '',
+        xl: '',
+        '2xl': '',
       },
     },
-    defaultVariants: { side: 'right' },
+    compoundVariants: [
+      { side: 'right', size: 'md', class: 'sm:max-w-md' },
+      { side: 'right', size: 'lg', class: 'sm:max-w-lg' },
+      { side: 'right', size: 'xl', class: 'sm:max-w-3xl' },
+      { side: 'right', size: '2xl', class: 'sm:max-w-4xl' },
+    ],
+    defaultVariants: { side: 'right', size: 'md' },
   },
 );
 
@@ -57,13 +73,13 @@ export interface SheetContentProps
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(function SheetContent({ side = 'right', className, children, hideClose, ...props }, ref) {
+>(function SheetContent({ side = 'right', size, className, children, hideClose, ...props }, ref) {
   return (
     <SheetPortal>
       <SheetOverlay />
       <DialogPrimitive.Content
         ref={ref}
-        className={cn(sheetVariants({ side }), 'flex flex-col', className)}
+        className={cn(sheetVariants({ side, size }), 'flex flex-col', className)}
         {...props}
       >
         {!hideClose && (

@@ -38,21 +38,57 @@ export interface ButtonProps
     Omit<VariantProps<typeof buttonVariants>, 'variant'> {
   variant?: ButtonVariant;
   asChild?: boolean;
+  /** Блокирует кнопку и показывает спиннер — для isPending мутаций (защита от дублей). */
+  loading?: boolean;
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="animate-spin motion-reduce:animate-none"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path
+        d="M14.5 8A6.5 6.5 0 0 0 8 1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = 'primary', size, asChild, ...props },
+  { className, variant = 'primary', size, asChild, loading, disabled, children, ...props },
   ref,
 ) {
   // Backwards-compat: pre-Redwood code used variant="danger" — alias to destructive.
   const v = variant === 'danger' ? 'destructive' : variant;
-  const Comp = asChild ? Slot : 'button';
+  if (asChild) {
+    return (
+      <Slot
+        ref={ref}
+        className={cn(buttonVariants({ variant: v, size }), className)}
+        {...props}
+      >
+        {children}
+      </Slot>
+    );
+  }
   return (
-    <Comp
+    <button
       ref={ref}
       className={cn(buttonVariants({ variant: v, size }), className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {loading && <Spinner />}
+      {children}
+    </button>
   );
 });
 
