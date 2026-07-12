@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Truck, Search, X, Trash2 } from '@/components/ui/icons';
+import { useRouter } from 'next/navigation';
+import { Plus, Truck, Search, X, Trash2, Pencil } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
@@ -31,6 +32,7 @@ import {
 } from '@/components/ui/Sheet';
 
 export default function SuppliersPage() {
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
@@ -79,6 +81,27 @@ export default function SuppliersPage() {
       cell: (c) => (c.isArchived ? <Badge variant="muted">В архиве</Badge> : <Badge variant="outline">Активен</Badge>),
       className: 'w-[120px]',
     },
+    {
+      // Клик по строке ведёт на карточку — редактирование на кнопке-карандаше.
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (c) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditing(c);
+          }}
+          aria-label="Редактировать поставщика"
+          title="Редактировать"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      ),
+      className: 'w-[60px]',
+    },
   ];
 
   return (
@@ -111,7 +134,7 @@ export default function SuppliersPage() {
           data={list.data ?? []}
           columns={columns}
           rowKey={(c) => c.id}
-          onRowClick={(c) => setEditing(c)}
+          onRowClick={(c) => router.push(`/suppliers/${c.id}` as Parameters<typeof router.push>[0])}
           loading={list.isLoading}
           error={list.error}
           onRetry={() => list.refetch()}
@@ -128,10 +151,23 @@ export default function SuppliersPage() {
             />
           }
           mobileCards={(c) => (
-            <div className="flex flex-col gap-0.5">
-              <div className="font-medium">{c.name}</div>
-              {c.inn && <div className="text-xs text-muted-foreground">ИНН {c.inn}</div>}
-              {c.contact && <div className="text-xs text-muted-foreground">{c.contact}</div>}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="truncate font-medium">{c.name}</div>
+                {c.inn && <div className="truncate text-xs text-muted-foreground">ИНН {c.inn}</div>}
+                {c.contact && <div className="truncate text-xs text-muted-foreground">{c.contact}</div>}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditing(c);
+                }}
+                aria-label="Редактировать поставщика"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
             </div>
           )}
         />

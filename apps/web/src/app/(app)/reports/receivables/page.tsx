@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { BarChart3, ChevronRight } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
@@ -157,7 +158,19 @@ function FragmentRow({
             <ChevronRight
               className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-90')}
             />
-            {client.clientName}
+            {/* Drill-down в карточку клиента (отчёт не мапится на /transactions).
+                Только имя-ярлык — клик по остальной строке разворачивает заказы. */}
+            {client.clientId ? (
+              <Link
+                href={`/clients/${client.clientId}` as Parameters<typeof Link>[0]['href']}
+                className="hover:text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {client.clientName}
+              </Link>
+            ) : (
+              client.clientName
+            )}
             <span className="text-xs text-muted-foreground">({client.orders.length})</span>
           </span>
         </td>

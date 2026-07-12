@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -24,13 +25,22 @@ import {
   type ActiveFilters,
 } from '@/components/transactions/TransactionFilters';
 import { TransactionFormDialog } from '@/components/transactions/TransactionFormDialog';
-import { rangeFor } from '@/lib/periods';
+import { filtersToSearchParams, searchParamsToFilters } from '@/lib/tx-filters';
 import { formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function TransactionsPage() {
+  return (
+    <Suspense>
+      <TransactionsView />
+    </Suspense>
+  );
+}
+
+function TransactionsView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const accounts = useAccounts(wsId);
@@ -38,10 +48,27 @@ export default function TransactionsPage() {
   const expenseCats = useCategories(wsId, 'EXPENSE');
   const counterparties = useCounterparties(wsId);
 
-  const [filters, setFilters] = useState<ActiveFilters>({
-    period: 'month',
-    range: rangeFor('month'),
-  });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Инициализация из URL (drill-down из отчётов/карточек). Ленивый инициализатор —
+  // читаем один раз на маунте; дальше состояние ведёт форма фильтров + router.replace.
+  const [filters, setFiltersState] = useState<ActiveFilters>(() =>
+    searchParamsToFilters(searchParams),
+  );
+
+  // Пишем измерения фильтров обратно в URL (deep-link на текущий разрез).
+  // replace, а не push — клики по фильтрам не засоряют историю браузера.
+  const setFilters = useCallback(
+    (next: ActiveFilters) => {
+      setFiltersState(next);
+      const qs = filtersToSearchParams(next);
+      const href = (qs ? `${pathname}?${qs}` : pathname) as Parameters<typeof router.replace>[0];
+      router.replace(href, { scroll: false });
+    },
+    [pathname, router],
+  );
   // В инпуте — сырой filters.search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(filters.search);
 
@@ -68,7 +95,20 @@ export default function TransactionsPage() {
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  // ?new=1 (из глобального «+ Создать») открывает форму создания сразу на маунте.
+  const [creating, setCreating] = useState(() => searchParams.get('new') === '1');
+
+  const closeForm = useCallback(() => {
+    setCreating(false);
+    setEditingId(null);
+    // Убираем ?new из URL, чтобы refresh не переоткрыл форму.
+    if (searchParams.get('new')) {
+      const qs = filtersToSearchParams(filters);
+      router.replace((qs ? `${pathname}?${qs}` : pathname) as Parameters<typeof router.replace>[0], {
+        scroll: false,
+      });
+    }
+  }, [searchParams, filters, pathname, router]);
 
   const allCats = useMemo(
     () => [...(incomeCats.data ?? []), ...(expenseCats.data ?? [])],
@@ -279,10 +319,7 @@ export default function TransactionsPage() {
         wsId={current.id}
         open={creating || editingId !== null}
         transactionId={editingId}
-        onClose={() => {
-          setCreating(false);
-          setEditingId(null);
-        }}
+        onClose={closeForm}
       />
     </>
   );
