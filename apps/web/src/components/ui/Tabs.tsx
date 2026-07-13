@@ -50,7 +50,10 @@ export const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
+        // Cross-fade 150мс при смене вкладки (решение №34 блица).
         'mt-6 focus-visible:outline-none',
+        'data-[state=active]:animate-in data-[state=active]:fade-in-0 data-[state=active]:duration-150',
+        'motion-reduce:animate-none',
         className,
       )}
       {...props}
