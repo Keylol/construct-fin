@@ -291,7 +291,8 @@ export class PnlService {
  * гасит PURCHASES.expense → byBucket.PURCHASES = чистые закупки. См.
  * docs/audit-2026-06-16.md (Трек A, бакет PURCHASES + A6).
  */
-function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
+// export — для теста синхронизации с KINDS_FOR_BUCKET (transaction.service).
+export function bucketForSystemKind(kind: TransactionKind): CategoryBucket {
   switch (kind) {
     case 'ORDER_PAYMENT':
     case 'ORDER_REFUND': // контр-выручка (type=EXPENSE «минус выручка»)

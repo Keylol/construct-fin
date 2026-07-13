@@ -29,20 +29,10 @@ import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePnlReport } from '@/hooks/useReports';
 import { txDrilldownHref } from '@/lib/tx-filters';
-import type { CompareMode, ReportBucket } from '@/lib/types';
+import { BUCKET_LABEL } from '@/lib/buckets';
+import type { CompareMode } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { CHART_SEMANTIC } from '@/lib/chart';
-
-const BUCKET_LABEL: Record<ReportBucket, string> = {
-  REVENUE: 'Выручка',
-  COGS: 'Себестоимость',
-  PURCHASES: 'Закупки', // IJ10: бакет закупок склада — раньше рендерился без названия
-  FIXED: 'Постоянные',
-  VARIABLE: 'Переменные',
-  TAX: 'Налоги',
-  CAPITAL: 'Капитал собственника',
-  OTHER: 'Прочее',
-};
 
 const CHART_COLORS = {
   income: CHART_SEMANTIC.income,
@@ -255,7 +245,18 @@ export default function PnlReportPage() {
                     return (
                       <tr key={b.bucket} className="border-t border-border">
                         <td className="px-4 py-2">
-                          {BUCKET_LABEL[b.bucket]}
+                          <Link
+                            href={
+                              txDrilldownHref({
+                                bucket: b.bucket,
+                                from: totals.from,
+                                to: totals.to,
+                              }) as Parameters<typeof Link>[0]['href']
+                            }
+                            className="cursor-pointer hover:text-foreground hover:underline"
+                          >
+                            {BUCKET_LABEL[b.bucket]}
+                          </Link>
                           {b.bucket === 'CAPITAL' && (
                             <span className="ml-2 text-xs text-muted-foreground">
                               (не входит в чистую прибыль)

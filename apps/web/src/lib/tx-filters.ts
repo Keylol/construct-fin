@@ -1,14 +1,16 @@
 import { rangeFor } from '@/lib/periods';
+import { isReportBucket } from '@/lib/buckets';
 import type { ActiveFilters } from '@/components/transactions/TransactionFilters';
-import type { TxType } from '@/lib/types';
+import type { ReportBucket, TxType } from '@/lib/types';
 
 /**
  * URL ↔ фильтры списка операций (drill-down из отчётов/карточек).
  *
  * Контракт query-параметров: from, to (ISO, точные границы периода из отчёта),
- * accountId, categoryId, counterpartyId, type (INCOME|EXPENSE). `period` в URL НЕ
- * кладём — при явных from/to выставляем period:'all', чтобы пресет rangeFor не
- * перезаписал диапазон. `search` в URL не выносим (эфемерный ввод).
+ * accountId, categoryId, counterpartyId, type (INCOME|EXPENSE), bucket
+ * (P&L-группа из ОПиУ «По группам»). `period` в URL НЕ кладём — при явных
+ * from/to выставляем period:'all', чтобы пресет rangeFor не перезаписал
+ * диапазон. `search` в URL не выносим (эфемерный ввод).
  *
  * Один источник имён для приёмника (/transactions) и источников (отчёты/карточки).
  */
@@ -22,6 +24,7 @@ export function filtersToSearchParams(active: ActiveFilters): string {
   if (active.categoryId) sp.set('categoryId', active.categoryId);
   if (active.counterpartyId) sp.set('counterpartyId', active.counterpartyId);
   if (active.type) sp.set('type', active.type);
+  if (active.bucket) sp.set('bucket', active.bucket);
   return sp.toString();
 }
 
@@ -36,6 +39,10 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
   const accountId = sp.get('accountId') || undefined;
   const categoryId = sp.get('categoryId') || undefined;
   const counterpartyId = sp.get('counterpartyId') || undefined;
+  const rawBucket = sp.get('bucket');
+  // Бакет валидируем по словарю — мусор из URL отбрасываем.
+  const bucket: ReportBucket | undefined =
+    rawBucket && isReportBucket(rawBucket) ? rawBucket : undefined;
 
   // from > to → API вернёт 400 (assertFromBeforeTo). Невалидную пару отбрасываем.
   const validRange = from && to ? from <= to : true;
@@ -48,6 +55,7 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
       categoryId,
       counterpartyId,
       type,
+      bucket,
     };
   }
   // Нет диапазона в URL — дефолт «этот месяц», но фильтры-измерения уважаем.
@@ -58,6 +66,7 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
     categoryId,
     counterpartyId,
     type,
+    bucket,
   };
 }
 
@@ -72,6 +81,7 @@ export function txDrilldownHref(params: {
   categoryId?: string;
   counterpartyId?: string;
   type?: TxType;
+  bucket?: ReportBucket;
 }): string {
   const sp = new URLSearchParams();
   if (params.from) sp.set('from', params.from);
@@ -80,6 +90,7 @@ export function txDrilldownHref(params: {
   if (params.categoryId) sp.set('categoryId', params.categoryId);
   if (params.counterpartyId) sp.set('counterpartyId', params.counterpartyId);
   if (params.type) sp.set('type', params.type);
+  if (params.bucket) sp.set('bucket', params.bucket);
   const qs = sp.toString();
   return qs ? `/transactions?${qs}` : '/transactions';
 }
