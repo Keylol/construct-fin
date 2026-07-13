@@ -10,15 +10,34 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useMarginReport, useReceivables } from '@/hooks/useTradeReports';
-import { useStockValue } from '@/hooks/useWarehouse';
+import { useStockValue, useWarehouse } from '@/hooks/useWarehouse';
+import { useCashflowReport } from '@/hooks/useReports';
+import { useTotalCash } from '@/hooks/useTotalCash';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { Sparkline } from '@/components/ui/Sparkline';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { TransactionListItem } from '@/components/transactions/TransactionListItem';
 import { rangeFor } from '@/lib/periods';
+import { formatDayLabel } from '@/lib/dates';
 import { formatRub } from '@construct/shared';
+import { cn } from '@/lib/cn';
+import type { Transaction } from '@/lib/types';
+
+/** Дневные группы для ленты: соседние операции одного дня — под один заголовок. */
+function groupByDay(items: Transaction[]): { label: string; items: Transaction[] }[] {
+  const groups: { label: string; items: Transaction[] }[] = [];
+  for (const tx of items) {
+    const label = formatDayLabel(tx.date);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(tx);
+    else groups.push({ label, items: [tx] });
+  }
+  return groups;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,11 +45,16 @@ export default function DashboardPage() {
   const wsId = current?.id ?? null;
   const range = useMemo(() => rangeFor('month'), []);
   const summary = useTransactionSummary(wsId, range);
-  const recent = useTransactions(wsId, { ...range, limit: 5 });
+  const recent = useTransactions(wsId, { ...range, limit: 8 });
   // Владельческие KPI: каждый хук грузится независимо (частичная загрузка плиток).
+  const cash = useTotalCash(wsId);
   const receivables = useReceivables(wsId);
   const stock = useStockValue(wsId);
   const margin = useMarginReport('by-product', wsId, range);
+  // Тренд 12 мес для sparkline доход/расход (месячные бакеты ОДДС, consolidated).
+  const trendRange = useMemo(() => ({ preset: 'last-12m' as const }), []);
+  const cashflowTrend = useCashflowReport(wsId, trendRange, null);
+  const warehouse = useWarehouse(wsId);
   const accounts = useAccounts(wsId);
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
@@ -68,38 +92,60 @@ export default function DashboardPage() {
     .sort((a, b) => Number(b.due) - Number(a.due))
     .slice(0, 5);
 
+  // Sparkline-тренды (№24): месячные бакеты ОДДС; Number — только для геометрии.
+  const trendPoints = cashflowTrend.data?.series[0]?.points ?? [];
+  const inflowTrend = trendPoints.map((p) => Number(p.inflow));
+  const outflowTrend = trendPoints.map((p) => Number(p.outflow));
+
+  // «Требует внимания» (№25): рабочая очередь владельца — каждый пункт ведёт
+  // в место исправления. Виджет не рендерится, когда всё чисто.
+  const noCostItems = (warehouse.data ?? []).filter(
+    (w) => Number(w.qty) > 0 && Number(w.avgCost) === 0,
+  );
+  const overdueClients = (receivables.data?.clients ?? []).filter(
+    (c) => Number(c.overdueByPlan) > 0,
+  );
+  const attention: { key: string; href: string; tone: 'warning' | 'destructive'; text: string }[] =
+    [];
+  if (hasOverdue) {
+    attention.push({
+      key: 'overdue',
+      href: '/reports/receivables',
+      tone: 'destructive',
+      text: `Просроченные платежи: ${formatRub(overdueTotal)} у ${overdueClients.length} клиент(ов)`,
+    });
+  }
+  if (noCostItems.length > 0) {
+    attention.push({
+      key: 'no-cost',
+      href: '/warehouse',
+      tone: 'warning',
+      text: `Позиции склада без себестоимости: ${noCostItems.length} — маржа по ним считается оценкой`,
+    });
+  }
+
   return (
     <>
       <PageHeader title="Главная" description="Сводка за текущий месяц" />
 
       <div className="space-y-6 px-6 py-6">
+        {/* Bento (№23): «Всего денег» — главная цифра, вдвое шире остальных. */}
         <div className="stagger grid gap-4 sm:grid-cols-3">
-          {/* Денежный поток за месяц — из одного summary-запроса. */}
-          {summary.isLoading || !summary.data ? (
-            <>
-              <Skeleton className="h-[92px]" />
-              <Skeleton className="h-[92px]" />
-              <Skeleton className="h-[92px]" />
-            </>
+          {cash.isLoading || cash.total == null ? (
+            <Skeleton className="h-[124px] sm:col-span-2" />
           ) : (
-            <>
-              <KpiCard
-                label="Доходы"
-                value={formatRub(summary.data.income)}
-                tone="positive"
-              />
-              <KpiCard
-                label="Расходы"
-                value={formatRub(summary.data.expense)}
-                tone="negative"
-              />
-              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
-            </>
+            <KpiCard
+              label="Всего денег на счетах"
+              value={formatRub(cash.total)}
+              size="display"
+              href="/accounts"
+              className="sm:col-span-2"
+            />
           )}
 
           {/* Дебиторка — свой loading-скелетон; ошибка/нет данных → 0 ₽. */}
           {receivables.isLoading ? (
-            <Skeleton className="h-[92px]" />
+            <Skeleton className="h-[124px]" />
           ) : (
             <KpiCard
               label="Дебиторка"
@@ -108,6 +154,39 @@ export default function DashboardPage() {
               hint={hasOverdue ? `в т.ч. просрочено ${formatRub(overdueTotal)}` : undefined}
               href="/reports/receivables"
             />
+          )}
+
+          {/* Денежный поток за месяц + тренд 12 мес (№24). */}
+          {summary.isLoading || !summary.data ? (
+            <>
+              <Skeleton className="h-[124px]" />
+              <Skeleton className="h-[124px]" />
+              <Skeleton className="h-[124px]" />
+            </>
+          ) : (
+            <>
+              <KpiCard
+                label="Доходы"
+                value={formatRub(summary.data.income)}
+                tone="positive"
+                chart={
+                  inflowTrend.length > 1 ? (
+                    <Sparkline values={inflowTrend} className="text-success" />
+                  ) : undefined
+                }
+              />
+              <KpiCard
+                label="Расходы"
+                value={formatRub(summary.data.expense)}
+                tone="negative"
+                chart={
+                  outflowTrend.length > 1 ? (
+                    <Sparkline values={outflowTrend} className="text-destructive" />
+                  ) : undefined
+                }
+              />
+              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
+            </>
           )}
 
           {/* Склад в деньгах. */}
@@ -130,9 +209,29 @@ export default function DashboardPage() {
               value={formatRub(margin.data?.totals.margin ?? '0')}
               hint={margin.data ? `${margin.data.totals.marginPct}%` : undefined}
               href="/reports/margin"
+              className="sm:col-span-2"
             />
           )}
         </div>
+
+        {/* Требует внимания (№25): дашборд — рабочий стол, а не витрина. */}
+        {attention.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-base font-semibold tracking-tight">Требует внимания</h2>
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+              {attention.map((a) => (
+                <Link
+                  key={a.key}
+                  href={a.href as Parameters<typeof Link>[0]['href']}
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+                >
+                  <StatusDot tone={a.tone} label={a.text} />
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {topDebtors.length > 0 && (
           <section>
@@ -153,21 +252,46 @@ export default function DashboardPage() {
                 const href = (
                   c.clientId ? `/clients/${c.clientId}` : '/reports/receivables'
                 ) as Parameters<typeof Link>[0]['href'];
+                // Aging-полоса (№26): доли долга по давности. Number — только
+                // для геометрии сегментов, суммы наружу — Decimal-строками.
+                const dueNum = Number(c.due) || 1;
+                const seg = (v: string) => Math.max(0, Math.min(100, (Number(v) / dueNum) * 100));
+                const aging = [
+                  { key: '0-30', width: seg(c.buckets['0-30']), className: 'bg-primary/35' },
+                  { key: '30-60', width: seg(c.buckets['30-60']), className: 'bg-warning' },
+                  { key: '60+', width: seg(c.buckets['60+']), className: 'bg-destructive' },
+                ].filter((s) => s.width > 0);
                 return (
                   <Link
                     key={c.clientId ?? c.clientName}
                     href={href}
-                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+                    className="block px-4 py-3 transition-colors hover:bg-accent/50"
                   >
-                    <span className="truncate text-sm font-medium">{c.clientName}</span>
-                    <span className="flex shrink-0 items-center gap-3">
-                      {overdue && (
-                        <span className="text-xs text-destructive">
-                          просрочено {formatRub(c.overdueByPlan)}
-                        </span>
-                      )}
-                      <span className="num text-sm font-semibold">{formatRub(c.due)}</span>
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium">{c.clientName}</span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        {overdue && (
+                          <span className="text-xs text-destructive">
+                            просрочено {formatRub(c.overdueByPlan)}
+                          </span>
+                        )}
+                        <span className="num text-sm font-semibold">{formatRub(c.due)}</span>
+                      </span>
                     </span>
+                    {aging.length > 0 && (
+                      <span
+                        className="mt-2 flex h-1 w-full overflow-hidden rounded-full bg-border/60"
+                        title="Давность долга: синий — до 30 дн, янтарь — 30–60, красный — 60+"
+                      >
+                        {aging.map((s) => (
+                          <span
+                            key={s.key}
+                            className={cn('h-full', s.className)}
+                            style={{ width: `${s.width}%` }}
+                          />
+                        ))}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -207,19 +331,29 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="overflow-hidden rounded-lg border border-border bg-card divide-y divide-border">
-              {(recent.data?.items ?? []).map((tx) => (
-                <TransactionListItem
-                  key={tx.id}
-                  tx={tx}
-                  account={tx.accountId ? accountById[tx.accountId] : undefined}
-                  category={tx.categoryId ? categoryById[tx.categoryId] : undefined}
-                  counterparty={
-                    tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined
-                  }
-                  onClick={() => {
-                    router.push('/transactions');
-                  }}
-                />
+              {/* Группировка по дням (№27): заголовок дня между операциями. */}
+              {groupByDay(recent.data?.items ?? []).map((g) => (
+                <div key={g.label}>
+                  <div className="bg-sunken px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                    {g.label}
+                  </div>
+                  <div className="divide-y divide-border">
+                    {g.items.map((tx) => (
+                      <TransactionListItem
+                        key={tx.id}
+                        tx={tx}
+                        account={tx.accountId ? accountById[tx.accountId] : undefined}
+                        category={tx.categoryId ? categoryById[tx.categoryId] : undefined}
+                        counterparty={
+                          tx.counterpartyId ? counterpartyById[tx.counterpartyId] : undefined
+                        }
+                        onClick={() => {
+                          router.push('/transactions');
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
