@@ -35,6 +35,7 @@ model User {
   createdStockMovements StockMovement[]       @relation("StockMovementCreatedBy")
   balanceChecks         AccountBalanceCheck[] @relation("BalanceCheckCreatedBy")
   createdStockLots      StockLot[]            @relation("StockLotCreatedBy")
+  createdOrderReturns   OrderReturn[]         @relation("OrderReturnCreatedBy")
 }
 
 model Workspace {
@@ -66,6 +67,7 @@ model Workspace {
   balanceChecks   AccountBalanceCheck[]
   stockLots       StockLot[]
   lotConsumptions LotConsumption[]
+  orderReturns    OrderReturn[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -270,6 +272,7 @@ model Order {
   transactions Transaction[] @relation("OrderTransactions")
   attachments  Attachment[]
   schedule     PaymentScheduleEntry[]
+  returns      OrderReturn[] @relation("OrderReturns")
 
   // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
   // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
@@ -351,9 +354,48 @@ model OrderItem {
 
   order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   warehouseItem WarehouseItem? @relation(fields: [warehouseItemId], references: [id])
+  returns       OrderReturn[]
 
   @@index([orderId])
   @@index([warehouseItemId])
+}
+
+/// Событие возврата клиента (RMA) по позиции заказа — IJ9 «месяц возврата»:
+/// ОПиУ/марже нужна ДАТА возврата, а OrderItem.returnedQty — накопительный кэш
+/// без даты (инвариант: Σ qty событий позиции == её returnedQty). Пишется
+/// атомарно в order.service.returnItem(); история засеяна backfill-миграцией
+/// (note LIKE 'BACKFILL%', даты best-effort).
+model OrderReturn {
+  id          String  @id @default(cuid())
+  workspaceId String
+  orderId     String
+  orderItemId String
+  /// Возвращённое количество ЭТИМ событием (не накопительно).
+  qty         Decimal @db.Decimal(14, 3)
+  /// Минус выручки этого события (qty × unitPrice позиции, money-округление).
+  revenueAmount Decimal @db.Decimal(14, 2)
+  /// Минус COGS этого события. Считается дельтой признанной себестоимости:
+  /// (netQty×unitCostAtSale ДО) − (netQty×unitCostAtSale ПОСЛЕ пересчёта) —
+  /// точно согласуется с FIFO-инвариантом маржи (I8) и без ошибок округления
+  /// поединичной цены.
+  costAmount  Decimal @db.Decimal(14, 2)
+  /// Сколько денег вернули этим событием (инфо; 0 — возврат без денег).
+  refundAmount Decimal @db.Decimal(14, 2)
+  /// Дата возврата (бизнес-семантика периода отчётов).
+  date        DateTime
+  /// BACKFILL-события миграции и произвольные пометки.
+  note        String?
+  createdAt   DateTime @default(now())
+  createdById String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  order     Order     @relation("OrderReturns", fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+  createdBy User      @relation("OrderReturnCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId, date])
+  @@index([orderId])
+  @@index([orderItemId])
 }
 
 // ───────────────────────────── Warehouse ─────────────────────────────

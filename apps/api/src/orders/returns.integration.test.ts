@@ -312,3 +312,172 @@ describe('RMA: сторно себестоимости услуги (Блок C 
     expect(reversal.originalTxId).not.toBeNull();
   });
 });
+
+describe('IJ9: событие OrderReturn при возврате (месяц возврата для ОПиУ/маржи)', () => {
+  it('складская позиция: qty/revenueAmount/costAmount/refundAmount/date из события', async () => {
+    const { order } = await doneWarehouseOrder('5', '500'); // FIFO-себестоимость 150
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '2',
+      refundAmount: '1000',
+      accountId: seed.accountId,
+      date: '2026-05-10T12:00:00.000Z',
+    });
+
+    const ev = await h.prisma.orderReturn.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, orderId: order.id },
+    });
+    expect(num(ev.qty)).toBe(2);
+    expect(ev.revenueAmount.toFixed(2)).toBe('1000.00'); // 2 × 500
+    expect(ev.costAmount.toFixed(2)).toBe('300.00'); // 2 × 150 (дельта FIFO-признания)
+    expect(ev.refundAmount.toFixed(2)).toBe('1000.00');
+    expect(ev.date.toISOString()).toBe('2026-05-10T12:00:00.000Z');
+    expect(ev.orderItemId).toBe(oi.id);
+  });
+
+  it('инвариант: Σ qty событий позиции == её returnedQty (два частичных возврата)', async () => {
+    const { order } = await doneWarehouseOrder('5', '500');
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '2',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '1',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+
+    const events = await h.prisma.orderReturn.findMany({ where: { orderItemId: oi.id } });
+    expect(events).toHaveLength(2);
+    const sumQty = events.reduce((acc, e) => acc + num(e.qty), 0);
+    const oiAfter = await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } });
+    expect(sumQty).toBe(num(oiAfter.returnedQty));
+    // Σ costAmount двух событий == себестоимость возвращённых 3 единиц (3 × 150)
+    const sumCost = events.reduce((acc, e) => acc + Number(e.costAmount.toString()), 0);
+    expect(sumCost.toFixed(2)).toBe('450.00');
+  });
+
+  it('ручная позиция (услуга с unitCost): costAmount = qty × unitCost', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '1',
+      refundAmount: '500',
+      accountId: seed.accountId,
+    });
+
+    const ev = await h.prisma.orderReturn.findFirstOrThrow({
+      where: { orderItemId: oi.id },
+    });
+    expect(ev.revenueAmount.toFixed(2)).toBe('500.00');
+    expect(ev.costAmount.toFixed(2)).toBe('300.00');
+  });
+});
+
+describe('IJ9: backfill-SQL миграции восстанавливает события из истории', () => {
+  it('склад — из StockMovement RETURN_CUSTOMER; остаток — датой closedAt', async () => {
+    // Сценарий: складской возврат (создаёт движение) + ручная позиция с
+    // возвратом (движения не создаёт). Затем стираем события и прогоняем
+    // backfill-часть миграции — события должны восстановиться.
+    const { order } = await doneWarehouseOrder('5', '500');
+    const oiW = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oiW.id,
+      returnQty: '2',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+
+    const manual = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+    });
+    await h.orders.addPayment(seed.workspaceId, manual.id, seed.userId, {
+      amount: '1000',
+      accountId: seed.accountId,
+    });
+    await h.orders.finalize(seed.workspaceId, manual.id, seed.userId);
+    const oiM = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: manual.id } });
+    await h.orders.returnItem(seed.workspaceId, manual.id, seed.userId, {
+      itemId: oiM.id,
+      returnQty: '1',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+
+    await h.prisma.orderReturn.deleteMany({});
+
+    // Берём backfill-инструкции прямо из файла миграции (без дублирования SQL).
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const sql = fs.readFileSync(
+      path.join(
+        __dirname,
+        '../../../../packages/db/prisma/migrations/20260713211427_ij9_order_return_events/migration.sql',
+      ),
+      'utf8',
+    );
+    const backfill = sql.slice(sql.indexOf('-- ─────────────────────────── Backfill'));
+    const statements = backfill
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.includes('INSERT INTO'));
+    expect(statements).toHaveLength(2);
+    for (const st of statements) {
+      await h.prisma.$executeRawUnsafe(st);
+    }
+
+    const events = await h.prisma.orderReturn.findMany({ orderBy: { date: 'asc' } });
+    expect(events).toHaveLength(2);
+
+    const evW = events.find((e) => e.orderItemId === oiW.id)!;
+    expect(evW.note).toContain('BACKFILL:stock-movement');
+    expect(Number(evW.qty.toString())).toBe(2);
+    expect(evW.revenueAmount.toFixed(2)).toBe('1000.00'); // 2 × 500
+    expect(evW.costAmount.toFixed(2)).toBe('300.00'); // 2 × 150
+
+    const evM = events.find((e) => e.orderItemId === oiM.id)!;
+    expect(evM.note).toBe('BACKFILL:residual');
+    expect(Number(evM.qty.toString())).toBe(1);
+    expect(evM.revenueAmount.toFixed(2)).toBe('500.00');
+    expect(evM.costAmount.toFixed(2)).toBe('300.00'); // 1 × 300 (unitCost)
+    // residual датируется закрытием заказа
+    const mOrder = await h.prisma.order.findUniqueOrThrow({ where: { id: manual.id } });
+    expect(evM.date.toISOString()).toBe(mOrder.closedAt!.toISOString());
+  });
+});
+
+describe('IJ9: откат финализации удаляет события возврата (инвариант с returnedQty)', () => {
+  it('reopen после возврата: returnedQty=0 и событий нет', async () => {
+    const { order } = await doneWarehouseOrder('5', '500');
+    const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+    await h.orders.returnItem(seed.workspaceId, order.id, seed.userId, {
+      itemId: oi.id,
+      returnQty: '2',
+      refundAmount: '0',
+      accountId: seed.accountId,
+    });
+    expect(await h.prisma.orderReturn.count({ where: { orderId: order.id } })).toBe(1);
+
+    await h.orders.reopen(seed.workspaceId, order.id, seed.userId);
+
+    const oiAfter = await h.prisma.orderItem.findUniqueOrThrow({ where: { id: oi.id } });
+    expect(Number(oiAfter.returnedQty.toString())).toBe(0);
+    expect(await h.prisma.orderReturn.count({ where: { orderId: order.id } })).toBe(0);
+  });
+});
