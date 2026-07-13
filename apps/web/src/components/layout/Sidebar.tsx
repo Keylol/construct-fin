@@ -72,56 +72,71 @@ export function Sidebar({ onNavigate, variant = 'full' }: SidebarProps) {
 }
 
 /**
- * Рейка 64px: иконки на месте, подписи проявляются при наведении — панель
- * расширяется ОВЕРЛЕЕМ (absolute), контент страницы не дёргается.
+ * Рейка 64px: иконки на месте, подписи проявляются при наведении.
+ * Анимируется ТОЛЬКО ширина окна-обтравки (overflow-hidden); контент внутри —
+ * всегда фиксированные 240px, поэтому при расхлопе ничего не переносится,
+ * не прыгает и не наезжает друг на друга (фикс «шторки» 07-13).
  */
 function RailSidebar({ pathname }: { pathname: string | null }) {
   return (
     <aside className="group/rail relative z-40 h-full w-16 shrink-0">
       <div
         className={cn(
-          'absolute inset-y-0 left-0 flex w-16 flex-col overflow-hidden border-r border-border bg-card',
+          'absolute inset-y-0 left-0 w-16 overflow-hidden border-r border-border bg-card',
           'transition-[width,box-shadow] duration-200 ease-out',
           'group-hover/rail:w-60 group-hover/rail:shadow-lg group-focus-within/rail:w-60',
           'motion-reduce:transition-none',
         )}
       >
-        {/* Brand: иконка на фиксированном x, подпись проявляется */}
-        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[18px]">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-            C
+        {/* Внутренняя колонка фиксированной конечной ширины */}
+        <div className="flex h-full w-60 flex-col">
+          {/* Brand: иконка на фиксированном x, подпись проявляется */}
+          <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[18px]">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+              C
+            </div>
+            <RailLabel className="text-sm font-semibold tracking-tight">Construct</RailLabel>
           </div>
-          <RailLabel className="text-sm font-semibold tracking-tight">Construct</RailLabel>
-        </div>
 
-        {/* Переключатель пространства — только в развёрнутом виде */}
-        <div className="hidden border-b border-border px-3 py-3 group-hover/rail:block group-focus-within/rail:block">
-          <WorkspaceSwitcher />
-        </div>
+          {/* Переключатель пространства: всегда в DOM (высота стабильна),
+              в свёрнутом виде — невидим и недоступен для клика/фокуса. */}
+          <div
+            className={cn(
+              'shrink-0 border-b border-border px-3 py-3',
+              'pointer-events-none opacity-0 transition-opacity duration-150',
+              'group-hover/rail:pointer-events-auto group-hover/rail:opacity-100',
+              'group-focus-within/rail:pointer-events-auto group-focus-within/rail:opacity-100',
+              'motion-reduce:transition-none',
+            )}
+          >
+            <WorkspaceSwitcher />
+          </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {NAV_GROUPS.map((group, gi) => {
-            const isFirst = gi === 0;
-            return (
-              <div key={`${group.label ?? 'main'}-${gi}`} className={cn(!isFirst && 'mt-4')}>
-                {group.label && (
-                  <>
-                    {/* Свёрнуто: группу обозначает тонкая линия; развёрнуто — подпись */}
-                    <div className="mx-1 mb-2 border-t border-border group-hover/rail:hidden group-focus-within/rail:hidden" />
-                    <div className="hidden px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground group-hover/rail:block group-focus-within/rail:block">
-                      {group.label}
+          <nav className="flex-1 overflow-y-auto px-3 py-3">
+            {NAV_GROUPS.map((group, gi) => {
+              const isFirst = gi === 0;
+              return (
+                <div
+                  key={`${group.label ?? 'main'}-${gi}`}
+                  className={cn(!isFirst && 'mt-3 border-t border-border pt-3')}
+                >
+                  {group.label && (
+                    <div className="h-5 px-2 pb-1.5">
+                      <RailLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.label}
+                      </RailLabel>
                     </div>
-                  </>
-                )}
-                <ul className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <NavLink key={item.href} item={item} pathname={pathname} rail />
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </nav>
+                  )}
+                  <ul className="space-y-0.5">
+                    {group.items.map((item) => (
+                      <NavLink key={item.href} item={item} pathname={pathname} rail />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </nav>
+        </div>
       </div>
     </aside>
   );
@@ -162,7 +177,10 @@ function NavLink({
   // Active rule: exact match OR child route (with trailing slash boundary)
   // — except /reports must not light up for /reports/rules.
   const exact = pathname === item.href;
-  const child = pathname?.startsWith(item.href + '/') && item.href !== '/reports';
+  const child =
+    pathname?.startsWith(item.href + '/') &&
+    // «Отчёты» не подсвечиваются только на /reports/rules — у правил свой пункт.
+    !(item.href === '/reports' && pathname?.startsWith('/reports/rules'));
   const active = exact || child;
   const Icon = item.icon;
   return (

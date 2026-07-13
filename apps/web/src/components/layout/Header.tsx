@@ -4,52 +4,18 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { Menu, Search, ChevronRight, ChevronDown, Plus } from '@/components/ui/icons';
+import { Search, ChevronRight, ChevronDown, Plus } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
-import { Sheet, SheetContent } from '@/components/ui/Sheet';
-import { Sidebar } from './Sidebar';
 import { Button } from '@/components/ui/Button';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTotalCash } from '@/hooks/useTotalCash';
 import { formatRub } from '@construct/shared';
+import { CreateActionsContent, CREATE_POPOVER_CLASSES } from './create-actions';
 
 interface HeaderProps {
   onCommandOpen: () => void;
 }
-
-// Глобальное «+ Создать»: открывает форму создания на нужной странице через ?new=1
-// (страницы читают его на маунте). Один клик из любого экрана.
-const CREATE_ACTIONS: { label: string; href: string }[] = [
-  { label: 'Операция', href: '/transactions?new=1' },
-  { label: 'Заказ', href: '/orders?new=1' },
-  { label: 'Закупка', href: '/purchases?new=1' },
-  { label: 'Клиент', href: '/clients?new=1' },
-];
-
-function CreateActionsContent({ onPick }: { onPick: (href: string) => void }) {
-  return (
-    <>
-      {CREATE_ACTIONS.map((a) => (
-        <button
-          key={a.href}
-          type="button"
-          onClick={() => onPick(a.href)}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary"
-        >
-          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-          {a.label}
-        </button>
-      ))}
-    </>
-  );
-}
-
-const CREATE_POPOVER_CLASSES = cn(
-  'z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-card p-1 shadow-md',
-  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
-  'motion-reduce:animate-none',
-);
 
 function CreateMenu() {
   const router = useRouter();
@@ -65,44 +31,6 @@ function CreateMenu() {
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content align="end" sideOffset={6} className={CREATE_POPOVER_CLASSES}>
-          <CreateActionsContent
-            onPick={(href) => {
-              setOpen(false);
-              router.push(href as Parameters<typeof router.push>[0]);
-            }}
-          />
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
-  );
-}
-
-/** FAB на мобиле (решение №20): палец не тянется к хедеру — «+» справа-снизу. */
-function CreateFab() {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <PopoverPrimitive.Trigger asChild>
-        <button
-          type="button"
-          aria-label="Создать"
-          className={cn(
-            'fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center md:hidden',
-            'rounded-full bg-primary text-primary-foreground shadow-lg',
-            'transition-transform active:scale-95 motion-reduce:transition-none',
-          )}
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-      </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          side="top"
-          align="end"
-          sideOffset={10}
-          className={CREATE_POPOVER_CLASSES}
-        >
           <CreateActionsContent
             onPick={(href) => {
               setOpen(false);
@@ -145,7 +73,6 @@ function HeaderCash() {
 
 export function Header({ onCommandOpen }: HeaderProps) {
   const pathname = usePathname() ?? '/';
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
@@ -162,21 +89,7 @@ export function Header({ onCommandOpen }: HeaderProps) {
         'sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background px-4 sm:px-6',
       )}
     >
-      {/* Mobile drawer trigger */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Открыть меню"
-          className="md:hidden"
-          onClick={() => setDrawerOpen(true)}
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <SheetContent side="left" className="w-60 p-0">
-          <Sidebar onNavigate={() => setDrawerOpen(false)} />
-        </SheetContent>
-      </Sheet>
+      {/* Мобильное меню живёт в нижнем таб-баре («Ещё») — гамбургер не нужен. */}
 
       {/* Breadcrumbs */}
       <nav aria-label="Хлебные крошки" className="min-w-0 flex-1">
@@ -214,9 +127,10 @@ export function Header({ onCommandOpen }: HeaderProps) {
       {/* Касса — всего денег на счетах */}
       <HeaderCash />
 
-      {/* Глобальное создание */}
-      <CreateMenu />
-      <CreateFab />
+      {/* Глобальное создание (десктоп; на мобиле — центр таб-бара) */}
+      <div className="hidden md:block">
+        <CreateMenu />
+      </div>
 
       {/* Command palette trigger */}
       <button
@@ -256,9 +170,11 @@ const LABELS: Record<string, string> = {
   import: 'Импорт',
   batches: 'История',
   reports: 'Отчёты',
-  cashflow: 'Cash flow',
+  cashflow: 'ОДДС',
   rules: 'Правила',
   pnl: 'P&L',
+  margin: 'Валовая прибыль',
+  receivables: 'Дебиторка',
 };
 
 function buildBreadcrumbs(pathname: string): CrumbItem[] {

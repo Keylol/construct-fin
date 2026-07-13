@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useReceivables } from '@/hooks/useTradeReports';
+import { toLocalDateInput } from '@/lib/periods';
 import type { AgingBucketKey } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
@@ -25,11 +26,17 @@ const BUCKET_TONE: Record<AgingBucketKey, string> = {
 export default function ReceivablesReportPage() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
-  const today = new Date().toISOString().slice(0, 10);
+  // Локальная «сегодня» (не UTC-слайс: в UTC+5 до 05:00 utc-дата = вчера).
+  const today = toLocalDateInput(new Date());
   const [asOf, setAsOf] = useState(today);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const query = useReceivables(wsId, new Date(asOf).toISOString());
+  // Пустое/невалидное поле даты не должно ронять рендер (new Date('') →
+  // Invalid Date → toISOString кидает). Без даты держим последний валидный
+  // запрос: undefined → бэкенд сам берёт «сейчас».
+  const parsedAsOf = new Date(asOf);
+  const asOfIso = asOf && !Number.isNaN(+parsedAsOf) ? parsedAsOf.toISOString() : undefined;
+  const query = useReceivables(wsId, asOfIso);
 
   if (!wsId) {
     return (
@@ -80,7 +87,13 @@ export default function ReceivablesReportPage() {
         ) : query.isError ? (
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : data ? (
-          <div className="stagger grid gap-4 sm:grid-cols-4">
+          <div
+            className={cn(
+              'stagger grid gap-4 sm:grid-cols-2',
+              // Пять карточек при просрочке — без одинокой на второй строке.
+              data.overdueByPlanTotal !== '0.00' ? 'lg:grid-cols-5' : 'lg:grid-cols-4',
+            )}
+          >
             <KpiCard label="Всего к получению" value={formatRub(data.totalDue)} />
             <KpiCard label="0–30 дней" value={formatRub(data.buckets['0-30'])} tone="positive" />
             <KpiCard label="30–60 дней" value={formatRub(data.buckets['30-60'])} tone="warning" />

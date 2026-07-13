@@ -1289,7 +1289,7 @@ function OrderDetailSheet({
                   <TabsContent value="overview" className="space-y-5">
                 {/* Items */}
                 <div className="overflow-hidden rounded-md border border-border">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-base">
                     <thead className="border-b border-border bg-secondary/40">
                       <tr className="text-left text-xs uppercase text-muted-foreground">
                         <th className="px-3 py-2 font-medium">Позиция</th>
@@ -1485,7 +1485,7 @@ function OrderDetailSheet({
                         </p>
                       )}
                       <div className="overflow-hidden rounded-md border border-border">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-base">
                           <tbody>
                             {order.schedule.entries.map((e) => (
                               <tr key={e.id} className="border-b border-border last:border-0">
