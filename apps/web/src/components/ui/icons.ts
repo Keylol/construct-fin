@@ -31,6 +31,8 @@ export {
   Scales as Scale,
   Search,
   ShoppingCart,
+  SidePanelClose,
+  SidePanelOpen,
   MagicWand as Sparkles,
   Tag,
   TrashCan as Trash2,
