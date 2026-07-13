@@ -89,6 +89,20 @@ const assertFromBeforeTo = (
   }
 };
 
+// P&L-бакеты для drill-down из ОПиУ «По группам». Значения = enum CategoryBucket
+// (schema.prisma); фильтр повторяет атрибуцию pnl.service: бакет категории,
+// для бескатегорийных — по kind (bucketForSystemKind), переводы исключены.
+const BucketEnum = z.enum([
+  'REVENUE',
+  'COGS',
+  'PURCHASES',
+  'FIXED',
+  'VARIABLE',
+  'TAX',
+  'CAPITAL',
+  'OTHER',
+]);
+
 export const ListTransactionsQuerySchema = z
   .object({
     from: isoDate.optional(),
@@ -97,6 +111,7 @@ export const ListTransactionsQuerySchema = z
     categoryId: cuid.optional(),
     counterpartyId: cuid.optional(),
     type: TxTypeEnum.optional(),
+    bucket: BucketEnum.optional(),
     minAmount: moneyString.optional(),
     maxAmount: moneyString.optional(),
     search: z.string().trim().min(1).optional(),

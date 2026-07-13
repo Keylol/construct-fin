@@ -93,6 +93,7 @@ function TransactionsView() {
       categoryId: filters.categoryId,
       counterpartyId: filters.counterpartyId,
       type: filters.type,
+      bucket: filters.bucket,
       search: debouncedSearch,
       limit: 100,
     }),
