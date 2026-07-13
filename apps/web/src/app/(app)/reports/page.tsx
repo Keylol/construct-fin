@@ -89,6 +89,13 @@ export default function PnlReportPage() {
     })) ?? [];
 
   const totals = query.data?.primary.totals;
+  // Отчёт загружен, но пуст: все итоги нулевые и в разбивке по группам нет
+  // ни одной строки с суммами — вместо голых нулей показываем EmptyState.
+  const reportEmpty =
+    !!totals &&
+    Number(totals.income) === 0 &&
+    Number(totals.expense) === 0 &&
+    totals.byBucket.every((b) => Number(b.income) === 0 && Number(b.expense) === 0);
 
   return (
     <>
@@ -162,7 +169,17 @@ export default function PnlReportPage() {
           </>
         ) : null}
 
-        {data.length > 0 && (
+        {reportEmpty && (
+          <Card>
+            <EmptyState
+              icon={BarChart3}
+              title="Нет операций за период"
+              hint="Поменяйте период или добавьте операции."
+            />
+          </Card>
+        )}
+
+        {!reportEmpty && data.length > 0 && (
           <Card className="!p-3">
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -214,12 +231,12 @@ export default function PnlReportPage() {
           </Card>
         )}
 
-        {totals && totals.byBucket.length > 0 && (
+        {!reportEmpty && totals && totals.byBucket.length > 0 && (
           <Card className="overflow-x-auto !p-0">
             <div className="border-b border-border px-4 py-2 text-sm font-medium">
               По группам
             </div>
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead>
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Группа</th>
@@ -267,9 +284,9 @@ export default function PnlReportPage() {
           </Card>
         )}
 
-        {query.data && query.data.primary.buckets.length > 0 && (
+        {!reportEmpty && query.data && query.data.primary.buckets.length > 0 && (
           <Card className="overflow-x-auto !p-0">
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead className="border-b border-border">
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Период</th>

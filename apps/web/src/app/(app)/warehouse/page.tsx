@@ -492,7 +492,7 @@ function WarehouseItemForm({
                   Партии на складе
                 </div>
                 <div className="overflow-hidden rounded-md border border-border">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-base">
                     <tbody>
                       {lots.data!.map((l) => (
                         <tr key={l.id} className="border-b border-border last:border-0">
