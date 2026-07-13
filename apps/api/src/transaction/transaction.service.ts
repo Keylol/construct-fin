@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, type TransactionKind } from '@prisma/client';
+import { Prisma, type CategoryBucket, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
@@ -47,6 +47,43 @@ const SYSTEM_KINDS = new Set<TransactionKind>([
   'WRITE_OFF',
 ]);
 
+// Обратная карта bucketForSystemKind (reports/pnl.service): какие kind попадают
+// в бакет, когда у операции нет активной категории. Держать в синхронизации
+// с bucketForSystemKind — на расхождение есть unit-тест (export ради него).
+export const KINDS_FOR_BUCKET: Record<CategoryBucket, TransactionKind[]> = {
+  REVENUE: ['ORDER_PAYMENT', 'ORDER_REFUND'],
+  COGS: ['COGS', 'WRITE_OFF'],
+  PURCHASES: ['PURCHASE', 'SUPPLIER_REFUND'],
+  CAPITAL: ['CAPITAL_IN', 'CAPITAL_OUT'],
+  TAX: ['TAX'],
+  FIXED: ['FIXED_COST', 'SALARY'],
+  VARIABLE: ['VARIABLE_COST'],
+  OTHER: ['NON_OP', 'OTHER'],
+};
+
+export const TRANSFER_KINDS: TransactionKind[] = ['TRANSFER_IN', 'TRANSFER_OUT'];
+
+/**
+ * Prisma-условие «операция относится к P&L-бакету» — drill-down из ОПиУ
+ * «По группам». Зеркалит атрибуцию pnl.service: бакет активной категории;
+ * для строк без категории (или с soft-deleted категорией) — по kind
+ * (bucketForSystemKind). Переводы в ОПиУ не входят — исключаем и здесь.
+ */
+function bucketWhere(bucket: CategoryBucket): Prisma.TransactionWhereInput {
+  return {
+    kind: { notIn: TRANSFER_KINDS },
+    OR: [
+      { category: { is: { bucket, deletedAt: null } } },
+      {
+        AND: [
+          { OR: [{ categoryId: null }, { category: { is: { deletedAt: { not: null } } } }] },
+          { kind: { in: KINDS_FOR_BUCKET[bucket] } },
+        ],
+      },
+    ],
+  };
+}
+
 interface TransactionRow {
   id: string;
   date: Date;
@@ -86,6 +123,9 @@ export class TransactionService {
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.counterpartyId ? { counterpartyId: query.counterpartyId } : {}),
       ...(query.type ? { type: query.type } : {}),
+      // В AND-обёртке: bucketWhere несёт kind/OR на своём верхнем уровне,
+      // изоляция защищает от коллизий с будущими одноимёнными фильтрами.
+      ...(query.bucket ? { AND: [bucketWhere(query.bucket)] } : {}),
       ...(query.minAmount || query.maxAmount
         ? {
             amount: {

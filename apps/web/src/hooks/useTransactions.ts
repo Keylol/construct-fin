@@ -15,6 +15,7 @@ import type {
   TransactionListPage,
   TransactionSummary,
   TxType,
+  ReportBucket,
   AttachmentSummary,
 } from '@/lib/types';
 
@@ -25,6 +26,8 @@ export interface TransactionFilters {
   categoryId?: string;
   counterpartyId?: string;
   type?: TxType;
+  /** P&L-группа (drill-down из ОПиУ «По группам») — фильтр повторяет атрибуцию отчёта. */
+  bucket?: ReportBucket;
   minAmount?: string;
   maxAmount?: string;
   search?: string;

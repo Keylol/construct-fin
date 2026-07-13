@@ -332,6 +332,135 @@ describe('Транзакции: список с фильтрацией и кур
   });
 });
 
+describe('Транзакции: bucket-фильтр (drill-down из ОПиУ «По группам»)', () => {
+  it('бакет активной категории приоритетнее kind-фолбэка', async () => {
+    const fixedCat = await h.categories.create(seed.workspaceId, {
+      name: 'Аренда',
+      kind: 'EXPENSE',
+      isFixedCost: true,
+      bucket: 'FIXED',
+    });
+    // kind=OTHER, но активная категория FIXED → операция строго в бакете FIXED
+    await h.transactions.create(seed.workspaceId, seed.userId, {
+      date: '2026-05-01',
+      amount: '100.00',
+      type: 'EXPENSE',
+      kind: 'OTHER',
+      accountId: seed.accountId,
+      categoryId: fixedCat.id,
+      description: 'аренда',
+    });
+
+    const fixed = await h.transactions.list(seed.workspaceId, { bucket: 'FIXED', limit: 50 });
+    expect(fixed.items.map((i) => i.description)).toEqual(['аренда']);
+
+    const other = await h.transactions.list(seed.workspaceId, { bucket: 'OTHER', limit: 50 });
+    expect(other.items).toHaveLength(0);
+  });
+
+  it('без категории — фолбэк по kind, как bucketForSystemKind в ОПиУ', async () => {
+    await h.transactions.create(seed.workspaceId, seed.userId, {
+      date: '2026-05-01',
+      amount: '50.00',
+      type: 'EXPENSE',
+      kind: 'TAX',
+      accountId: seed.accountId,
+      description: 'налог',
+    });
+    await h.transactions.create(seed.workspaceId, seed.userId, {
+      date: '2026-05-02',
+      amount: '70.00',
+      type: 'EXPENSE',
+      kind: 'SALARY',
+      accountId: seed.accountId,
+      description: 'зарплата',
+    });
+
+    const tax = await h.transactions.list(seed.workspaceId, { bucket: 'TAX', limit: 50 });
+    expect(tax.items.map((i) => i.description)).toEqual(['налог']);
+
+    // SALARY → FIXED (зарплата — постоянная операционная статья)
+    const fixed = await h.transactions.list(seed.workspaceId, { bucket: 'FIXED', limit: 50 });
+    expect(fixed.items.map((i) => i.description)).toEqual(['зарплата']);
+  });
+
+  it('soft-deleted категория не считается — операция уходит в kind-фолбэк', async () => {
+    const cat = await h.categories.create(seed.workspaceId, {
+      name: 'Времянка',
+      kind: 'EXPENSE',
+      isFixedCost: false,
+      bucket: 'VARIABLE',
+    });
+    await h.transactions.create(seed.workspaceId, seed.userId, {
+      date: '2026-05-01',
+      amount: '30.00',
+      type: 'EXPENSE',
+      kind: 'TAX',
+      accountId: seed.accountId,
+      categoryId: cat.id,
+      description: 'налог-времянка',
+    });
+    await h.categories.softDelete(seed.workspaceId, cat.id);
+
+    const variable = await h.transactions.list(seed.workspaceId, { bucket: 'VARIABLE', limit: 50 });
+    expect(variable.items).toHaveLength(0);
+
+    const tax = await h.transactions.list(seed.workspaceId, { bucket: 'TAX', limit: 50 });
+    expect(tax.items.map((i) => i.description)).toEqual(['налог-времянка']);
+  });
+
+  it('несовместимая пара categoryId+bucket даёт честное пустое пересечение', async () => {
+    const fixedCat = await h.categories.create(seed.workspaceId, {
+      name: 'Аренда',
+      kind: 'EXPENSE',
+      isFixedCost: true,
+      bucket: 'FIXED',
+    });
+    await h.transactions.create(seed.workspaceId, seed.userId, {
+      date: '2026-05-01',
+      amount: '100.00',
+      type: 'EXPENSE',
+      accountId: seed.accountId,
+      categoryId: fixedCat.id,
+      description: 'аренда',
+    });
+
+    // Категория из FIXED + bucket=VARIABLE — пересечение пусто (фильтры AND).
+    const res = await h.transactions.list(seed.workspaceId, {
+      categoryId: fixedCat.id,
+      bucket: 'VARIABLE',
+      limit: 50,
+    });
+    expect(res.items).toHaveLength(0);
+
+    // Совместимая пара — строка находится.
+    const ok = await h.transactions.list(seed.workspaceId, {
+      categoryId: fixedCat.id,
+      bucket: 'FIXED',
+      limit: 50,
+    });
+    expect(ok.items.map((i) => i.description)).toEqual(['аренда']);
+  });
+
+  it('переводы не попадают ни в один бакет (в т.ч. OTHER), но видны без фильтра', async () => {
+    const bank = await makeAccount('Банк-перевод');
+    await h.transfer.create(seed.workspaceId, seed.userId, {
+      fromAccountId: seed.accountId,
+      toAccountId: bank,
+      amount: '500.00',
+      fee: '0',
+      date: '2026-05-03',
+    });
+
+    const other = await h.transactions.list(seed.workspaceId, { bucket: 'OTHER', limit: 50 });
+    expect(other.items).toHaveLength(0);
+
+    // Исключение переводов относится только к drill-down: в общем списке обе ноги видны
+    const all = await h.transactions.list(seed.workspaceId, { limit: 50 });
+    expect(all.items).toHaveLength(2);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. Получение одной транзакции с вложениями
 // ─────────────────────────────────────────────────────────────────────────────
