@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { BarChart3 } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
@@ -15,7 +14,6 @@ import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
 import { txDrilldownHref } from '@/lib/tx-filters';
-import { CHART_PALETTE as COLORS } from '@/lib/chart';
 
 export default function CategoriesReportPage() {
   const ws = useCurrentWorkspace();
@@ -40,8 +38,7 @@ export default function CategoriesReportPage() {
     );
   }
 
-  const top = (query.data?.rows ?? []).slice(0, 10);
-  const pieData = top.map((r) => ({ name: r.name, value: Number(r.total) }));
+  const rows = query.data?.rows ?? [];
 
   return (
     <>
@@ -71,57 +68,36 @@ export default function CategoriesReportPage() {
       <div className="space-y-4 px-6 py-4">
         {query.isLoading && <Skeleton className="h-80 w-full" />}
 
-        {pieData.length > 0 && (
-          <Card className="!p-3">
-            <div className="h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={110}
-                    label={(d) =>
-                      `${d.name}: ${((Number(d.value) / pieData.reduce((s, p) => s + p.value, 0)) * 100).toFixed(0)}%`
-                    }
-                  >
-                    {pieData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(v) => formatRub(Number(v))}
-                    contentStyle={{
-                      borderRadius: 6,
-                      border: '1px solid hsl(var(--border))',
-                      background: 'hsl(var(--card))',
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+        {query.data && rows.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={BarChart3}
+              title="Нет операций за период"
+              hint="Поменяйте период или тип — либо добавьте операции."
+            />
           </Card>
         )}
 
-        {query.data && (
+        {/* Доля — полосой прямо в строке (гроссбух-стиль вместо круговой
+            диаграммы: подписи не наезжают, мелкие категории читаются). */}
+        {query.data && rows.length > 0 && (
           <Card className="overflow-x-auto !p-0">
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead className="border-b border-border">
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Категория</th>
-                  <th className="px-4 py-2 text-right font-medium">Операций</th>
-                  <th className="px-4 py-2 text-right font-medium">Итого</th>
-                  <th className="px-4 py-2 text-right font-medium">Доля</th>
+                  <th className="w-[110px] px-4 py-2 text-right font-medium">Операций</th>
+                  <th className="w-[170px] px-4 py-2 text-right font-medium">Итого</th>
+                  <th className="w-[90px] px-4 py-2 text-right font-medium">Доля</th>
                 </tr>
               </thead>
               <tbody>
-                {query.data.rows.map((r) => (
-                  <tr key={r.id ?? 'none'} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2">
+                {rows.map((r) => (
+                  <tr
+                    key={r.id ?? 'none'}
+                    className="border-b border-border transition-colors last:border-0 hover:bg-secondary/50"
+                  >
+                    <td className="px-4 py-2.5">
                       {r.id !== null ? (
                         <Link
                           href={
@@ -132,19 +108,26 @@ export default function CategoriesReportPage() {
                               type: type === 'ALL' ? undefined : type,
                             }) as Parameters<typeof Link>[0]['href']
                           }
-                          className="cursor-pointer hover:text-foreground hover:underline"
+                          className="cursor-pointer hover:underline"
                         >
                           {r.name}
                         </Link>
                       ) : (
                         r.name
                       )}
+                      <div className="mt-1.5 h-1 w-full max-w-[360px] overflow-hidden rounded-full bg-border/50">
+                        <div
+                          className="h-full rounded-full bg-primary/70"
+                          // Доля честная (от 100%); минимум 1% — чтобы мелкие были видны.
+                          style={{ width: `${Math.max(r.share * 100, 1)}%` }}
+                        />
+                      </div>
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{r.count}</td>
-                    <td className="px-4 py-2 text-right font-medium tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums">{r.count}</td>
+                    <td className="num px-4 py-2.5 text-right font-medium">
                       {formatRub(r.total)}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                       {(r.share * 100).toFixed(1)}%
                     </td>
                   </tr>
