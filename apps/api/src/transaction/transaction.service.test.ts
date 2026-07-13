@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { Prisma } from '@prisma/client';
-import { TransactionService } from './transaction.service';
+import { Prisma, TransactionKind, type CategoryBucket } from '@prisma/client';
+import { TransactionService, KINDS_FOR_BUCKET, TRANSFER_KINDS } from './transaction.service';
+import { bucketForSystemKind } from '../reports/pnl.service';
 
 /**
  * Юнит-тесты сервисного слоя транзакций (Фаза 3 п.16): блокировка системных
@@ -168,5 +169,25 @@ describe('TransactionService.softDelete — блокировка системн�
     await service.softDelete('ws1', 'tx1', 'user1');
     expect(prisma.transaction.update).toHaveBeenCalledOnce();
     expect((audit.record.mock.calls[0]![1] as any).action).toBe('transaction.delete');
+  });
+});
+
+describe('KINDS_FOR_BUCKET — синхронизация с bucketForSystemKind (drill-down ОПиУ)', () => {
+  it('каждый не-transfer kind лежит ровно в одном бакете, и это бакет bucketForSystemKind', () => {
+    const allKinds = Object.values(TransactionKind);
+    for (const kind of allKinds) {
+      const containing = (Object.keys(KINDS_FOR_BUCKET) as CategoryBucket[]).filter((b) =>
+        KINDS_FOR_BUCKET[b].includes(kind),
+      );
+      if (TRANSFER_KINDS.includes(kind)) {
+        // Переводы в ОПиУ не входят — их нет ни в одном бакете.
+        expect(containing, `transfer kind ${kind} не должен быть в карте`).toHaveLength(0);
+      } else {
+        expect(containing, `kind ${kind} должен быть ровно в одном бакете`).toHaveLength(1);
+        expect(containing[0], `kind ${kind}: карта разошлась с pnl.service`).toBe(
+          bucketForSystemKind(kind),
+        );
+      }
+    }
   });
 });

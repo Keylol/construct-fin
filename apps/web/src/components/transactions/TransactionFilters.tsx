@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, RotateCcw } from '@/components/ui/icons';
+import { Search, RotateCcw, X } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Button } from '@/components/ui/Button';
 import { FilterBar } from '@/components/ui/FilterBar';
-import type { TxType, Account, Category, Counterparty } from '@/lib/types';
+import { BUCKET_LABEL } from '@/lib/buckets';
+import type { ReportBucket, TxType, Account, Category, Counterparty } from '@/lib/types';
 import {
   type DateRange,
   type PeriodKey,
@@ -24,6 +25,8 @@ export interface ActiveFilters {
   categoryId?: string;
   counterpartyId?: string;
   type?: TxType;
+  /** P&L-группа — приходит только drill-down'ом из ОПиУ «По группам». */
+  bucket?: ReportBucket;
   search?: string;
 }
 
@@ -204,7 +207,9 @@ export function TransactionFilters({
         <Combobox
           value={active.categoryId ?? ''}
           onChange={(v) =>
-            onChange({ ...active, categoryId: v || undefined })
+            // Категория сама определяет P&L-группу — выбор категории снимает
+            // bucket-чип, иначе несовместимая пара дала бы пустой список.
+            onChange({ ...active, categoryId: v || undefined, bucket: undefined })
           }
           options={categoryOptions}
           placeholder="Все"
@@ -229,6 +234,22 @@ export function TransactionFilters({
           className="h-9 w-[160px]"
         />
       </FilterField>
+
+      {/* Чип группы ОПиУ: свой контрол не заводим — значение приходит только
+          drill-down'ом из отчёта, здесь его можно лишь увидеть и снять. */}
+      {active.bucket && (
+        <FilterField label="Группа ОПиУ">
+          <button
+            type="button"
+            onClick={() => onChange({ ...active, bucket: undefined })}
+            title="Снять фильтр группы"
+            className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
+          >
+            {BUCKET_LABEL[active.bucket]}
+            <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          </button>
+        </FilterField>
+      )}
 
       <Button variant="ghost" size="sm" onClick={reset} className="self-end">
         <RotateCcw className="h-3.5 w-3.5" />
