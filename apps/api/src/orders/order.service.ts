@@ -672,6 +672,32 @@ export class OrderService {
         },
       });
 
+      // IJ9: датированное событие возврата — источник семантики «месяц
+      // возврата» для ОПиУ/маржи (returnedQty — кэш без даты). Минус-COGS
+      // события = дельта признанной себестоимости до/после FIFO-пересчёта
+      // снимка (I8); для ручных позиций это ровно returnQty × unitCost.
+      {
+        const netBefore = sub(item.qty, item.returnedQty);
+        const netAfter = sub(netBefore, returnQty);
+        const unitBefore = item.unitCostAtSale ?? item.unitCost ?? '0';
+        const unitAfter =
+          (item.warehouseItemId ? costSnapshot : item.unitCostAtSale ?? item.unitCost) ?? '0';
+        await tx.orderReturn.create({
+          data: {
+            workspaceId,
+            orderId,
+            orderItemId: item.id,
+            qty: returnQty,
+            revenueAmount: money(mul(returnQty, item.unitPrice)),
+            costAmount: money(sub(mul(netBefore, unitBefore), mul(netAfter, unitAfter))),
+            refundAmount: refund,
+            date: refundDate,
+            note: dto.note ?? null,
+            createdById: userId,
+          },
+        });
+      }
+
       // CR1/CR2 (Блок C): для УСЛУГ/ручных позиций (без склада) с признанной
       // себестоимостью сторнируем COGS пропорционально возврату — отдельной
       // видимой проводкой (отрицательный COGS, дата возврата, привязка к
@@ -1035,6 +1061,11 @@ export class OrderService {
       where: { workspaceId, orderId: order.id, kind: 'COGS', deletedAt: null },
       data: { deletedAt: new Date() },
     });
+    // IJ9: события возврата откатываются вместе с returnedQty (инвариант
+    // Σ qty событий == returnedQty). Иначе после reopen/cancel фантомные
+    // события продолжали бы минусовать выручку месяца возврата в ОПиУ,
+    // хотя признание заказа откатано (closedAt снят).
+    await tx.orderReturn.deleteMany({ where: { workspaceId, orderId: order.id } });
   }
 
   /** Счёт для списания себестоимости: счёт последней оплаты, иначе первый активный. */
