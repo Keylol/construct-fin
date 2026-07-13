@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
@@ -11,8 +11,8 @@ import { Sheet, SheetContent } from '@/components/ui/Sheet';
 import { Sidebar } from './Sidebar';
 import { Button } from '@/components/ui/Button';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
-import { useAccounts, useAccountBalances } from '@/hooks/useAccounts';
-import { formatRub, D, add, toMoneyString } from '@construct/shared';
+import { useTotalCash } from '@/hooks/useTotalCash';
+import { formatRub } from '@construct/shared';
 
 interface HeaderProps {
   onCommandOpen: () => void;
@@ -122,19 +122,7 @@ function CreateFab() {
 function HeaderCash() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const accounts = useAccounts(wsId);
-  const balances = useAccountBalances(wsId);
-
-  const total = useMemo(() => {
-    if (!accounts.data || !balances.data) return null;
-    let acc = D(0);
-    for (const a of accounts.data) {
-      if (a.isArchived) continue;
-      const b = balances.data.get(a.id);
-      if (b != null) acc = add(acc, D(b));
-    }
-    return toMoneyString(acc);
-  }, [accounts.data, balances.data]);
+  const { total } = useTotalCash(wsId);
 
   if (total == null) return null;
 

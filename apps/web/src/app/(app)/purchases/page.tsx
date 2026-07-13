@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatRub } from '@construct/shared';
+import { D, add, toMoneyString, formatRub } from '@construct/shared';
 import { ShoppingCart, RotateCcw, Plus, X } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -133,6 +133,15 @@ export default function PurchasesPage() {
           data={purchases.data ?? []}
           columns={columns}
           rowKey={(p) => p.id}
+          footer={{
+            supplier: 'Итого по видимым',
+            // Σ purchaseTotal по строкам — Decimal, без Number (решение №28).
+            total: formatRub(
+              toMoneyString(
+                (purchases.data ?? []).reduce((acc, p) => add(acc, purchaseTotal(p)), D(0)),
+              ),
+            ),
+          }}
           onRowClick={(p) => setDetail(p)}
           loading={purchases.isLoading}
           error={purchases.error}
