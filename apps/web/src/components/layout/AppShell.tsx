@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex min-h-dvh bg-background">
-        {/* Desktop: icon-rail 64px с расхлопом по hover (решение №17 блица) */}
+        {/* Desktop: сайдбар 240px, сворачиваемый кликом в рейку 64px */}
         <div className="sticky top-0 hidden h-dvh md:flex">
           <Sidebar variant="rail" />
         </div>
