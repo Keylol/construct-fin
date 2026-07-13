@@ -3,6 +3,7 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from '@/components/ui/Toaster';
 import { ApiError } from '@/lib/api';
+import { hapticSuccess, hapticError } from '@/lib/haptics';
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -34,7 +35,11 @@ export function getQueryClient(): QueryClient {
         },
       }),
       mutationCache: new MutationCache({
+        // Telegram-вибрация (№36) на ошибки: только критические события, не каждую мутацию.
+        // Успехи подключаются на конкретные useMutation({ onSuccess: () => hapticSuccess() })
+        // для ключевых действий (сохранение, удаление), исключая молчаливые авто-мутации.
         onError: (error, _vars, _ctx, mutation) => {
+          hapticError();
           toast.error('Не удалось сохранить', {
             id: `mutation-error:${mutation.mutationId}`,
             description: errorMessage(error),

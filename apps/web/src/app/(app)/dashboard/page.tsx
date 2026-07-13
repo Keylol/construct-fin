@@ -16,6 +16,7 @@ import { useTotalCash } from '@/hooks/useTotalCash';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Sparkline } from '@/components/ui/Sparkline';
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -136,7 +137,7 @@ export default function DashboardPage() {
           ) : (
             <KpiCard
               label="Всего денег на счетах"
-              value={formatRub(cash.total)}
+              value={<AnimatedNumber value={cash.total} />}
               size="display"
               href="/accounts"
               className="sm:col-span-2"
@@ -149,7 +150,7 @@ export default function DashboardPage() {
           ) : (
             <KpiCard
               label="Дебиторка"
-              value={formatRub(receivables.data?.totalDue ?? '0')}
+              value={<AnimatedNumber value={receivables.data?.totalDue ?? '0'} />}
               tone={hasOverdue ? 'negative' : 'neutral'}
               hint={hasOverdue ? `в т.ч. просрочено ${formatRub(overdueTotal)}` : undefined}
               href="/reports/receivables"
@@ -167,7 +168,7 @@ export default function DashboardPage() {
             <>
               <KpiCard
                 label="Доходы"
-                value={formatRub(summary.data.income)}
+                value={<AnimatedNumber value={summary.data.income} />}
                 tone="positive"
                 chart={
                   inflowTrend.length > 1 ? (
@@ -177,7 +178,7 @@ export default function DashboardPage() {
               />
               <KpiCard
                 label="Расходы"
-                value={formatRub(summary.data.expense)}
+                value={<AnimatedNumber value={summary.data.expense} />}
                 tone="negative"
                 chart={
                   outflowTrend.length > 1 ? (
@@ -185,7 +186,7 @@ export default function DashboardPage() {
                   ) : undefined
                 }
               />
-              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
+              <KpiCard label="Чистый денежный поток" value={<AnimatedNumber value={summary.data.net} />} />
             </>
           )}
 
@@ -195,7 +196,7 @@ export default function DashboardPage() {
           ) : (
             <KpiCard
               label="Склад в деньгах"
-              value={formatRub(stock.data?.value ?? '0')}
+              value={<AnimatedNumber value={stock.data?.value ?? '0'} />}
               href="/warehouse"
             />
           )}
@@ -206,7 +207,7 @@ export default function DashboardPage() {
           ) : (
             <KpiCard
               label="Маржа за месяц"
-              value={formatRub(margin.data?.totals.margin ?? '0')}
+              value={<AnimatedNumber value={margin.data?.totals.margin ?? '0'} />}
               hint={margin.data ? `${margin.data.totals.marginPct}%` : undefined}
               href="/reports/margin"
               className="sm:col-span-2"
