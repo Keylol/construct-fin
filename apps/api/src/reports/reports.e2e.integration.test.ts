@@ -26,6 +26,7 @@ import {
   pnlToTable,
 } from './export/builders';
 import { resolvePeriod, type Period } from './period';
+import { Prisma } from '@prisma/client';
 import type {
   CategoryBucket,
   CategoryKind,
@@ -131,6 +132,63 @@ async function tx(opts: {
   });
 }
 
+/** DONE-заказ прямой вставкой — признание IJ9 (closedAt, totalAmount, позиция qty=1). */
+let ordSeq = 0;
+async function doneOrder(opts: {
+  closedAt: Date;
+  total: string;
+  cogs?: string;
+  discount?: string;
+}): Promise<string> {
+  ordSeq += 1;
+  const discount = opts.discount ?? '0';
+  const subtotal = new Prisma.Decimal(opts.total).plus(discount).toFixed(2);
+  const o = await h.prisma.order.create({
+    data: {
+      workspaceId: seed.workspaceId,
+      number: `ORD-IJ9-${ordSeq}`,
+      status: 'DONE',
+      closedAt: opts.closedAt,
+      subtotal,
+      discountAmount: discount,
+      totalAmount: opts.total,
+      items: {
+        create: [
+          {
+            name: `Позиция ${ordSeq}`,
+            qty: '1',
+            unitPrice: subtotal,
+            lineTotal: subtotal,
+            unitCostAtSale: opts.cogs ?? null,
+          },
+        ],
+      },
+    },
+  });
+  return o.id;
+}
+
+/** Событие возврата (OrderReturn, И1) прямой вставкой — минус месяца возврата. */
+async function returnEvent(
+  orderId: string,
+  opts: { date: Date; revenue: string; cost?: string; qty?: string },
+): Promise<void> {
+  const item = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+  await h.prisma.orderReturn.create({
+    data: {
+      workspaceId: seed.workspaceId,
+      orderId,
+      orderItemId: item.id,
+      qty: opts.qty ?? '1',
+      revenueAmount: opts.revenue,
+      costAmount: opts.cost ?? '0',
+      refundAmount: '0',
+      date: opts.date,
+      createdById: seed.userId,
+    },
+  });
+}
+
 const bucketOf = (
   totals: { byBucket: { bucket: string; expense: string; income: string }[] },
   b: string,
@@ -140,14 +198,13 @@ const bucketOf = (
 
 describe('P&L отчёт (по данным)', () => {
   it('доход/расход по бакетам, grossProfit = выручка − COGS, ноги перевода исключены ПО kind', async () => {
-    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     const fixedCat = await makeCategory('Аренда', 'EXPENSE', 'FIXED');
     const varCat = await makeCategory('Комиссия', 'EXPENSE', 'VARIABLE');
     const otherAcc = await makeAccount({ name: 'Запасной' });
 
-    // Выручка 10000 (REVENUE) + COGS 3000 (по kind, без categoryId) + аренда 2000 (FIXED).
-    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2), categoryId: revCat });
-    await tx({ amount: '3000', type: 'EXPENSE', kind: 'COGS', date: d2025(2), categoryId: null });
+    // IJ9: выручка 10000 и COGS 3000 — признание DONE-заказа по closedAt
+    // (не проводки); аренда 2000 (FIXED) — операцией.
+    await doneOrder({ closedAt: d2025(2), total: '10000', cogs: '3000' });
     await tx({ amount: '2000', type: 'EXPENSE', kind: 'FIXED_COST', date: d2025(2), categoryId: fixedCat });
 
     // Реальный перевод между своими счетами (через сервис → валидный Transfer
@@ -187,11 +244,10 @@ describe('P&L отчёт (по данным)', () => {
   });
 
   it('IJ3: CAPITAL исключён из headline Доход/Расход, net и grossProfit (виден только в bucket)', async () => {
-    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     const capInCat = await makeCategory('Вложение', 'INCOME', 'CAPITAL');
     const capOutCat = await makeCategory('Изъятие', 'EXPENSE', 'CAPITAL');
 
-    await tx({ amount: '8000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat });
+    await doneOrder({ closedAt: d2025(4), total: '8000' });
     await tx({ amount: '20000', type: 'INCOME', kind: 'CAPITAL_IN', date: d2025(4), categoryId: capInCat });
     await tx({ amount: '5000', type: 'EXPENSE', kind: 'CAPITAL_OUT', date: d2025(4), categoryId: capOutCat });
 
@@ -216,13 +272,11 @@ describe('P&L отчёт (по данным)', () => {
   });
 
   it('IJ2: grossProfit = чистая выручка − COGS (возврат поставщику не выручка, возврат клиенту вычтен)', async () => {
-    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
-    // Выручка 10000, возврат клиенту 2000 (ORDER_REFUND), возврат поставщику 1500
-    // (SUPPLIER_REFUND, бакет PURCHASES), COGS 3000.
-    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat });
-    await tx({ amount: '2000', type: 'EXPENSE', kind: 'ORDER_REFUND', date: d2025(4) });
+    // IJ9: признание 10000/COGS 3000 (заказ), возврат клиенту 2000 — событием
+    // OrderReturn, возврат поставщику 1500 (SUPPLIER_REFUND → PURCHASES, вне net).
+    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '3000' });
+    await returnEvent(orderId, { date: d2025(4), revenue: '2000' });
     await tx({ amount: '1500', type: 'INCOME', kind: 'SUPPLIER_REFUND', date: d2025(4) });
-    await tx({ amount: '3000', type: 'EXPENSE', kind: 'COGS', date: d2025(4) });
 
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -235,11 +289,11 @@ describe('P&L отчёт (по данным)', () => {
     expect(t.grossProfit).toBe('5000.00');
   });
 
-  it('F5: WRITE_OFF вне операционного net, но в grossProfit', async () => {
-    const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
-    // Выручка 10000, COGS 0, потеря склада WRITE_OFF 1500 (неденежная).
-    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat });
+  it('IJ9: WRITE_OFF — расход периода (склад = актив), PURCHASES — инфо вне итога', async () => {
+    // Признание 10000; потеря склада WRITE_OFF 1500; закупка PURCHASE 7000.
+    await doneOrder({ closedAt: d2025(4), total: '10000' });
     await tx({ amount: '1500', type: 'EXPENSE', kind: 'WRITE_OFF', date: d2025(4) });
+    await tx({ amount: '7000', type: 'EXPENSE', kind: 'PURCHASE', date: d2025(4) });
 
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -248,22 +302,71 @@ describe('P&L отчёт (по данным)', () => {
       groupBy: 'month',
     });
     const t = report.primary.totals;
-    // net не трогает WRITE_OFF (деньги ушли при закупке): 10000 − 0.
-    expect(t.net).toBe('10000.00');
-    // grossProfit уменьшен потерей (бакет COGS): 10000 − 1500.
-    expect(t.grossProfit).toBe('8500.00');
-    // headline Расход не включает WRITE_OFF (тождество Доход − Расход = net).
-    expect(t.expense).toBe('0.00');
+    // Пересмотр F5 при IJ9 (решение №5): закупка склада больше не расход ОПиУ
+    // (актив, инфо-строка) → списание запасов бьёт прибыль периода.
+    expect(t.expense).toBe('1500.00');
+    expect(t.net).toBe('8500.00');
+    expect(t.grossProfit).toBe('8500.00'); // потеря в бакете COGS
     expect(Number(t.income) - Number(t.expense)).toBe(Number(t.net));
+    // Закупки видны информационно в byBucket, но не в headline/net.
+    expect(bucketOf(t, 'PURCHASES').expense).toBe('7000.00');
+  });
+
+  it('IJ9: признание по closedAt, а не по датам платежей (авансы не доход)', async () => {
+    // Деньги пришли в июне (ORDER_PAYMENT), заказ закрыт в июле → выручка июля.
+    await tx({ amount: '5000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(5) });
+    await doneOrder({ closedAt: d2025(6), total: '5000' });
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    expect(report.primary.buckets[5]!.income).toBe('0.00'); // июнь: аванс не доход
+    expect(report.primary.buckets[6]!.income).toBe('5000.00'); // июль: реализация
+    expect(report.primary.totals.income).toBe('5000.00');
+  });
+
+  it('IJ9: возврат минусует выручку и COGS в СВОЙ месяц, признание не трогает', async () => {
+    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '4000' }); // май
+    await returnEvent(orderId, { date: d2025(6), revenue: '2500', cost: '1000' }); // июль
+
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const may = report.primary.buckets[4]!;
+    expect(may.grossProfit).toBe('6000.00'); // 10000 − 4000, без ретро-правок
+    const jul = report.primary.buckets[6]!;
+    expect(bucketOf(jul, 'REVENUE').expense).toBe('2500.00');
+    expect(bucketOf(jul, 'COGS').expense).toBe('-1000.00');
+    expect(jul.grossProfit).toBe('-1500.00'); // −2500 − (−1000)
+    // Итог года: (10000−2500) − (4000−1000) = 4500.
+    expect(report.primary.totals.grossProfit).toBe('4500.00');
+  });
+
+  it('IJ9: скидка заказа уменьшает признание (выручка = totalAmount)', async () => {
+    await doneOrder({ closedAt: d2025(4), total: '9000', discount: '1000', cogs: '3000' });
+    const report = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    expect(report.primary.totals.income).toBe('9000.00');
+    expect(report.primary.totals.grossProfit).toBe('6000.00');
   });
 
   it('IJ6: primary и comparison — хронологические равные массивы бакетов (совмещение по индексу позиционно)', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
     // Primary: май+июнь; comparison: март+апрель (предыдущие 2 месяца).
-    await tx({ amount: '1000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4), categoryId: revCat }); // май
-    await tx({ amount: '2000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(5), categoryId: revCat }); // июнь
-    await tx({ amount: '100', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2), categoryId: revCat }); // март
-    await tx({ amount: '200', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(3), categoryId: revCat }); // апрель
+    await tx({ amount: '1000', type: 'INCOME', kind: 'OTHER', date: d2025(4), categoryId: revCat }); // май
+    await tx({ amount: '2000', type: 'INCOME', kind: 'OTHER', date: d2025(5), categoryId: revCat }); // июнь
+    await tx({ amount: '100', type: 'INCOME', kind: 'OTHER', date: d2025(2), categoryId: revCat }); // март
+    await tx({ amount: '200', type: 'INCOME', kind: 'OTHER', date: d2025(3), categoryId: revCat }); // апрель
 
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -285,8 +388,8 @@ describe('P&L отчёт (по данным)', () => {
 
   it('groupBy=month режет на месячные слайсы; groupBy=quarter — на квартальные', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
-    await tx({ amount: '1000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(0), categoryId: revCat }); // Q1
-    await tx({ amount: '2000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(3), categoryId: revCat }); // Q2
+    await tx({ amount: '1000', type: 'INCOME', kind: 'OTHER', date: d2025(0), categoryId: revCat }); // Q1
+    await tx({ amount: '2000', type: 'INCOME', kind: 'OTHER', date: d2025(3), categoryId: revCat }); // Q2
 
     const byMonth = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -317,7 +420,7 @@ describe('P&L отчёт (по данным)', () => {
     await tx({
       amount: '900',
       type: 'INCOME',
-      kind: 'ORDER_PAYMENT',
+      kind: 'OTHER',
       date: new Date('2025-03-31T20:00:00Z'),
       categoryId: revCat,
     });
@@ -335,8 +438,8 @@ describe('P&L отчёт (по данным)', () => {
 
   it('режим сравнения возвращает данные периода comparison', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
-    await tx({ amount: '5000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(6), categoryId: revCat }); // primary
-    await tx({ amount: '3000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: new Date(2024, 6, 15), categoryId: revCat }); // yoy
+    await tx({ amount: '5000', type: 'INCOME', kind: 'OTHER', date: d2025(6), categoryId: revCat }); // primary
+    await tx({ amount: '3000', type: 'INCOME', kind: 'OTHER', date: new Date(2024, 6, 15), categoryId: revCat }); // yoy
 
     const primary: Period = { from: new Date(2025, 0, 1), to: new Date(2025, 11, 31, 23, 59, 59) };
     const comparison: Period = { from: new Date(2024, 0, 1), to: new Date(2024, 11, 31, 23, 59, 59) };
@@ -347,11 +450,29 @@ describe('P&L отчёт (по данным)', () => {
     expect(report.comparison!.totals.income).toBe('3000.00');
   });
 
+  it('IJ9: сверка с отчётом маржи — grossProfit ОПиУ == маржа (без возвратов)', async () => {
+    await doneOrder({ closedAt: d2025(3), total: '10000', cogs: '4000' });
+    await doneOrder({ closedAt: d2025(5), total: '6000', discount: '500', cogs: '2000' });
+
+    const pnl = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    // byClient — единственный разрез маржи, вычитающий скидку заказа (IJ1;
+    // by-product не может отнести order-level скидку к товару).
+    const margin = await h.tradeMargin.byClient(seed.workspaceId, Y2025);
+    // Единый базис closedAt: (10000−4000) + (6000−2000) = 10000 в обоих отчётах.
+    expect(pnl.primary.totals.grossProfit).toBe('10000.00');
+    expect(margin.totals.margin).toBe(pnl.primary.totals.grossProfit);
+  });
+
   it('byCategory сортируется по убыванию суммарного оборота', async () => {
     const big = await makeCategory('Крупная', 'INCOME', 'REVENUE');
     const small = await makeCategory('Мелкая', 'INCOME', 'REVENUE');
-    await tx({ amount: '100', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(1), categoryId: small });
-    await tx({ amount: '900', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(1), categoryId: big });
+    await tx({ amount: '100', type: 'INCOME', kind: 'OTHER', date: d2025(1), categoryId: small });
+    await tx({ amount: '900', type: 'INCOME', kind: 'OTHER', date: d2025(1), categoryId: big });
 
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -624,7 +745,7 @@ describe('Breakdown by-counterparty (по данным)', () => {
 describe('Экспорт отчёта в CSV/XLSX', () => {
   it('P&L → CSV содержит суммы и заголовок; имя расширение csv', async () => {
     const revCat = await makeCategory('Продажи', 'INCOME', 'REVENUE');
-    await tx({ amount: '12345.67', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2), categoryId: revCat });
+    await tx({ amount: '12345.67', type: 'INCOME', kind: 'OTHER', date: d2025(2), categoryId: revCat });
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
       primary: Y2025,

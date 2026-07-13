@@ -131,9 +131,14 @@ export class PnlService {
           AND "deletedAt" IS NULL
           AND "date" >= ${period.from}
           AND "date" <= ${period.to}
-          -- Ноги переводов между своими счетами (TRANSFER_IN/OUT) — не доход/расход,
-          -- исключаем ПО kind. Комиссия перевода (VARIABLE_COST) ОСТАЁТСЯ расходом.
-          AND "kind"::text NOT IN ('TRANSFER_IN', 'TRANSFER_OUT')
+          -- Исключены ПО kind (IJ9 — ОПиУ по реализации, docs/ij9-accrual-design.md):
+          --  • TRANSFER_IN/OUT — ноги переводов (не доход/расход);
+          --  • ORDER_PAYMENT/ORDER_REFUND — движение денег по заказу (место — ОДДС),
+          --    выручка признаётся по closedAt из заказов (recognition ниже);
+          --  • COGS — себестоимость берётся из позиций заказов и событий возврата
+          --    (единый источник с отчётом маржи); проводки остаются для аудита.
+          -- WRITE_OFF (потери) и комиссия перевода (VARIABLE_COST) остаются расходом.
+          AND "kind"::text NOT IN ('TRANSFER_IN', 'TRANSFER_OUT', 'ORDER_PAYMENT', 'ORDER_REFUND', 'COGS')
         GROUP BY 1, "type", "categoryId", "kind"
       `,
     );
@@ -144,6 +149,55 @@ export class PnlService {
       rowsByLabel.set(r.label, arr);
     }
 
+    // IJ9: признание заказов по реализации — DONE-заказы по closedAt (только
+    // целиком при закрытии, решение №6). Выручка = totalAmount (кэш
+    // subtotal − скидка); себестоимость = Σ qty × (unitCostAtSale ?? unitCost ?? 0)
+    // по позициям — формула BR1 как в отчёте маржи, но GROSS: возвраты
+    // минусуются отдельными событиями в СВОЙ месяц (решение №3, ниже).
+    const recognitionRows = await this.prisma.$queryRaw<
+      Array<{ label: string; revenue: Prisma.Decimal | null; cogs: Prisma.Decimal | null }>
+    >(
+      Prisma.sql`
+        SELECT to_char(date_trunc(${trunc}, o."closedAt" + interval '5 hours'), ${labelFmt}) AS label,
+               SUM(o."totalAmount") AS revenue,
+               SUM(items."cogs") AS cogs
+        FROM "Order" o
+        JOIN LATERAL (
+          SELECT COALESCE(SUM(i."qty" * COALESCE(i."unitCostAtSale", i."unitCost", 0)), 0) AS cogs
+          FROM "OrderItem" i
+          WHERE i."orderId" = o."id" AND i."deletedAt" IS NULL
+        ) items ON TRUE
+        WHERE o."workspaceId" = ${workspaceId}
+          AND o."deletedAt" IS NULL
+          AND o."status" = 'DONE'
+          AND o."closedAt" >= ${period.from}
+          AND o."closedAt" <= ${period.to}
+        GROUP BY 1
+      `,
+    );
+    const recByLabel = new Map(recognitionRows.map((r) => [r.label, r]));
+
+    // IJ9: события возврата клиента (OrderReturn, волна И1) — минус выручки и
+    // COGS в месяц ВОЗВРАТА. Заказы, откаченные reopen/cancel, событий не имеют
+    // (reverseFinalization их удаляет); deletedAt-заказы отфильтрованы join'ом.
+    const returnRows = await this.prisma.$queryRaw<
+      Array<{ label: string; revenue: Prisma.Decimal | null; cogs: Prisma.Decimal | null }>
+    >(
+      Prisma.sql`
+        SELECT to_char(date_trunc(${trunc}, r."date" + interval '5 hours'), ${labelFmt}) AS label,
+               SUM(r."revenueAmount") AS revenue,
+               SUM(r."costAmount") AS cogs
+        FROM "OrderReturn" r
+        JOIN "Order" o ON o."id" = r."orderId"
+        WHERE r."workspaceId" = ${workspaceId}
+          AND o."deletedAt" IS NULL
+          AND r."date" >= ${period.from}
+          AND r."date" <= ${period.to}
+        GROUP BY 1
+      `,
+    );
+    const retByLabel = new Map(returnRows.map((r) => [r.label, r]));
+
     const buckets: PnlBucket[] = [];
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
@@ -152,8 +206,8 @@ export class PnlService {
     const totalsByBucket = newBucketMap();
 
     for (const slice of slices) {
-      // COGS-операции заводятся системой без categoryId, поэтому бакетятся не по
-      // категории, а по самому kind (см. bucketForSystemKind ниже).
+      // Системные операции без categoryId (WRITE_OFF, ноги капитала и т.п.)
+      // бакетятся по самому kind (см. bucketForSystemKind ниже).
       const groups = (rowsByLabel.get(slice.label) ?? []).map((r) => ({
         type: r.type as 'INCOME' | 'EXPENSE',
         categoryId: r.categoryId,
@@ -161,9 +215,6 @@ export class PnlService {
         _sum: { amount: r.sum },
       }));
 
-      let income = new Prisma.Decimal(0);
-      let expense = new Prisma.Decimal(0);
-      let writeOff = new Prisma.Decimal(0); // F5: неденежные потери склада отдельно
       const catMap = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
       const bucketMap = newBucketMap();
 
@@ -175,10 +226,8 @@ export class PnlService {
           expense: new Prisma.Decimal(0),
         };
         if (g.type === 'INCOME') {
-          income = income.plus(amount);
           entry.income = entry.income.plus(amount);
         } else {
-          expense = expense.plus(amount);
           entry.expense = entry.expense.plus(amount);
         }
         catMap.set(key, entry);
@@ -210,32 +259,68 @@ export class PnlService {
           bEntry.expense = bEntry.expense.plus(amount);
           tEntry.expense = tEntry.expense.plus(amount);
         }
-        // F5: WRITE_OFF — неденежная потеря (деньги ушли при закупке PURCHASE);
-        // копим отдельно, чтобы исключить из операционного net, но оставить в
-        // grossProfit через бакет COGS.
-        if (g.kind === 'WRITE_OFF') writeOff = writeOff.plus(amount);
       }
 
-      // Себестоимость за период — это расходная часть бакета COGS (единый
-      // источник истины; cash-basis: COGS по ручным позициям признаётся в
-      // момент finalize заказа, складские товары — в момент PURCHASE).
+      // IJ9: инъекция признания заказов (closedAt ∈ слайс) и событий возвратов
+      // (date ∈ слайс) в бакеты REVENUE/COGS и в бескатегорийную строку
+      // byCategory (там раньше жили бескатегорийные ORDER_PAYMENT/COGS-проводки).
+      const zero = new Prisma.Decimal(0);
+      const rec = recByLabel.get(slice.label);
+      const ret = retByLabel.get(slice.label);
+      const recRevenue = rec?.revenue ?? zero;
+      const recCogs = rec?.cogs ?? zero;
+      const retRevenue = ret?.revenue ?? zero;
+      const retCogs = ret?.cogs ?? zero;
+
+      const revEntry = bucketMap.get('REVENUE')!;
+      revEntry.income = revEntry.income.plus(recRevenue);
+      revEntry.expense = revEntry.expense.plus(retRevenue); // контр-выручка возвратов
+      const cogsEntry = bucketMap.get('COGS')!;
+      // Может уйти в минус, если возвратов в периоде больше признания — это
+      // корректно по дизайну (возврат минусует СВОЙ месяц, решение №3).
+      cogsEntry.expense = cogsEntry.expense.plus(recCogs).minus(retCogs);
+
+      const tRev = totalsByBucket.get('REVENUE')!;
+      tRev.income = tRev.income.plus(recRevenue);
+      tRev.expense = tRev.expense.plus(retRevenue);
+      const tCogsEntry = totalsByBucket.get('COGS')!;
+      tCogsEntry.expense = tCogsEntry.expense.plus(recCogs).minus(retCogs);
+
+      if (!recRevenue.isZero() || !retRevenue.isZero() || !recCogs.isZero() || !retCogs.isZero()) {
+        const nullEntry = catMap.get(null) ?? { income: zero, expense: zero };
+        nullEntry.income = nullEntry.income.plus(recRevenue);
+        nullEntry.expense = nullEntry.expense.plus(retRevenue).plus(recCogs).minus(retCogs);
+        catMap.set(null, nullEntry);
+        const tNull = totalsByCat.get(null) ?? { income: zero, expense: zero };
+        tNull.income = tNull.income.plus(recRevenue);
+        tNull.expense = tNull.expense.plus(retRevenue).plus(recCogs).minus(retCogs);
+        totalsByCat.set(null, tNull);
+      }
+
+      // Себестоимость периода = расходная часть бакета COGS: признание заказов
+      // (позиции, BR1) − события возвратов + WRITE_OFF (потери, по дате) +
+      // ручные операции категорий бакета COGS.
       const cogs = bucketMap.get('COGS')!.expense;
 
-      // IJ2: grossProfit = чистая выручка − себестоимость. REVENUE.net нетит
-      // ORDER_PAYMENT против ORDER_REFUND; SUPPLIER_REFUND (бакет PURCHASES) сюда
-      // НЕ попадает. Раньше было operatingIncome − cogs → возврат поставщику
-      // прибавлялся как выручка, возврат клиенту не вычитался («прибыль из воздуха»).
+      // IJ2: grossProfit = чистая выручка − себестоимость (признание минус
+      // события возвратов — «прибыли из воздуха» по-прежнему нет).
       const revenueNet = bucketMap.get('REVENUE')!.income.minus(bucketMap.get('REVENUE')!.expense);
       const grossProfit = revenueNet.minus(cogs);
 
-      // IJ3+F5: headline Доход/Расход и net согласованы. Доход/Расход БЕЗ CAPITAL
-      // (вложения/изъятия собственника не операционные — «CAPITAL из headline») и
-      // БЕЗ неденежного WRITE_OFF (F5: деньги ушли при закупке, потеря видна только
-      // в grossProfit). Тогда Доход − Расход === net тождественно.
-      const capitalIncome = bucketMap.get('CAPITAL')!.income;
-      const capitalExpense = bucketMap.get('CAPITAL')!.expense;
-      const opIncome = income.minus(capitalIncome);
-      const opExpense = expense.minus(capitalExpense).minus(writeOff);
+      // IJ9+IJ3: headline Доход/Расход = Σ бакетов БЕЗ CAPITAL (не операционка)
+      // и БЕЗ PURCHASES (закупка склада = актив, решение №5 — инфо-строка вне
+      // итога; расход признаётся как COGS при продаже и списаниях). WRITE_OFF
+      // теперь ВХОДИТ в net (пересмотр F5: при активе-складе потеря запасов —
+      // расход периода, «деньги ушли при закупке» больше не расход ОПиУ).
+      // Тождество Доход − Расход === net сохраняется.
+      let opIncome = new Prisma.Decimal(0);
+      let opExpense = new Prisma.Decimal(0);
+      for (const b of ALL_BUCKETS) {
+        if (b === 'CAPITAL' || b === 'PURCHASES') continue;
+        const e = bucketMap.get(b)!;
+        opIncome = opIncome.plus(e.income);
+        opExpense = opExpense.plus(e.expense);
+      }
       const net = opIncome.minus(opExpense);
 
       totalIncome = totalIncome.plus(opIncome);

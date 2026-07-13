@@ -84,13 +84,15 @@ describe('F3: оплата сторонней рассрочкой (gross)', () 
     expect(net.toFixed(2)).toBe('95000.00');
   });
 
-  it('P&L: выручка полная (REVENUE 100к), комиссия в VARIABLE (5к)', async () => {
+  it('P&L: выручка полная (REVENUE 100к) по реализации, комиссия в VARIABLE (5к)', async () => {
     const order = await makeOrder();
     await h.orders.addInstallmentPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '100000.00',
       fee: '5000.00',
       accountId: seed.accountId,
     });
+    // IJ9: выручка признаётся по closedAt (finalize), а не по проводке оплаты.
+    await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     const pnl = await h.pnl.build({
       workspaceId: seed.workspaceId,
       primary: PERIOD,
