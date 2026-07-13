@@ -24,8 +24,10 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-        <Icon className="h-6 w-6 text-muted-foreground" aria-hidden />
+      {/* Пиктограмма 64px (решение №35 блица): крупный знак в мягком круге —
+          пустой экран перестаёт быть дырой. Иконки те же (Carbon), не рисуем свои. */}
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-sunken">
+        <Icon className="h-8 w-8 text-muted-foreground/80" aria-hidden />
       </div>
       <div className="text-base font-medium text-foreground">{title}</div>
       {hint && (
