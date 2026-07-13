@@ -66,9 +66,19 @@ export default function CounterpartiesReportPage() {
       <div className="space-y-4 px-6 py-4">
         {query.isLoading && <Skeleton className="h-64 w-full" />}
 
-        {query.data && (
+        {query.data && query.data.rows.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={BarChart3}
+              title="Нет операций за период"
+              hint="Поменяйте период или тип — либо добавьте операции."
+            />
+          </Card>
+        )}
+
+        {query.data && query.data.rows.length > 0 && (
           <Card className="overflow-x-auto !p-0">
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead className="border-b border-border">
                 <tr className="text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Контрагент</th>

@@ -128,6 +128,12 @@ html {
 .stagger > *:nth-child(6) {
   animation-delay: 0.3s;
 }
+.stagger > *:nth-child(7) {
+  animation-delay: 0.36s;
+}
+.stagger > *:nth-child(8) {
+  animation-delay: 0.42s;
+}
 
 @media (prefers-reduced-motion: reduce) {
   html {

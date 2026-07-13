@@ -48,7 +48,9 @@ export default function CashflowReportPage() {
       const row: Record<string, string | number> = { label };
       for (const s of query.data!.series) {
         const point = s.points.find((p) => p.label === label);
-        row[s.accountName ?? 'Без счёта'] = point ? Number(point.balance) : 0;
+        // Ключ ряда — accountId (одинаковые имена счетов не должны схлопываться);
+        // подпись в легенде задаёт проп name у <Line>.
+        row[s.accountId ?? 'none'] = point ? Number(point.balance) : 0;
       }
       return row;
     });
@@ -97,6 +99,18 @@ export default function CashflowReportPage() {
       <div className="space-y-4 px-6 py-4">
         {query.isLoading && <Skeleton className="h-80 w-full" />}
 
+        {query.data &&
+          (query.data.series.length === 0 ||
+            query.data.series.every((s) => s.points.length === 0)) && (
+            <Card>
+              <EmptyState
+                icon={BarChart3}
+                title="Нет движений за период"
+                hint="Поменяйте период или добавьте операции."
+              />
+            </Card>
+          )}
+
         {chartData.length > 0 && (
           <Card className="!p-3">
             <div className="h-80 w-full">
@@ -124,12 +138,13 @@ export default function CashflowReportPage() {
                       fontSize: 12,
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12 }} />
                   {query.data?.series.map((s, i) => (
                     <Line
                       key={s.accountId ?? i}
                       type="monotone"
-                      dataKey={s.accountName ?? 'Без счёта'}
+                      dataKey={s.accountId ?? 'none'}
+                      name={s.accountName ?? 'Без счёта'}
                       stroke={COLORS[i % COLORS.length]}
                       strokeWidth={2}
                       dot={false}
@@ -151,7 +166,7 @@ export default function CashflowReportPage() {
                     Старт: <span className="tabular-nums">{formatRub(s.openingBalance)}</span>
                   </span>
                 </header>
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead className="border-b border-border">
                     <tr className="text-left text-xs uppercase text-muted-foreground">
                       <th className="px-3 py-2 font-medium">Период</th>

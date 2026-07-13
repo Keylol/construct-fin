@@ -346,7 +346,7 @@ function PreviewStage({
       </Card>
 
       <Card className="overflow-x-auto !p-0">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead className="border-b border-border bg-background">
             <tr className="text-left text-xs uppercase text-muted-foreground">
               <th className="px-3 py-2 font-medium">#</th>

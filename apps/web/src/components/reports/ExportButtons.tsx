@@ -18,7 +18,7 @@ export function ExportButtons({
         <a
           key={format}
           href={buildExportUrl(wsId, kind, format, params)}
-          className="inline-flex h-9 items-center gap-1.5 bg-background px-3 text-xs font-medium uppercase tracking-wide transition-colors hover:bg-secondary"
+          className="inline-flex h-9 items-center gap-1.5 bg-card px-3 text-xs font-medium uppercase tracking-wide transition-colors hover:bg-secondary"
         >
           {format === 'csv' && <Download className="h-3 w-3" />}
           {format}
