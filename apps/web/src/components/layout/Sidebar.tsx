@@ -1,8 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
 import { NAV_GROUPS } from './nav-items';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
@@ -10,8 +12,9 @@ interface SidebarProps {
   /** Called after a nav link is clicked — mobile drawer uses this to close. */
   onNavigate?: () => void;
   /**
-   * rail — узкая рейка 64px с расхлопом по hover (десктоп, решение №17 блица:
-   * +176px рабочей области). full — полный сайдбар 240px (мобильный drawer).
+   * rail — десктоп: развёрнутый сайдбар 240px, сворачиваемый КЛИКОМ в рейку 64px
+   * (hover-расхлоп убран 07-14: ловился в промежуточном обрезанном состоянии).
+   * full — полный сайдбар 240px без кнопки сворачивания (мобильный drawer).
    */
   variant?: 'full' | 'rail';
 }
@@ -71,71 +74,113 @@ export function Sidebar({ onNavigate, variant = 'full' }: SidebarProps) {
   );
 }
 
+// Ключ сохранённого состояния «свёрнут/развёрнут» (localStorage, только десктоп).
+const COLLAPSED_KEY = 'cf.sidebar.collapsed';
+
 /**
- * Рейка 64px: иконки на месте, подписи проявляются при наведении.
- * Анимируется ТОЛЬКО ширина окна-обтравки (overflow-hidden); контент внутри —
- * всегда фиксированные 240px, поэтому при расхлопе ничего не переносится,
- * не прыгает и не наезжает друг на друга (фикс «шторки» 07-13).
+ * Десктопный сайдбар: по умолчанию развёрнут (240px), кнопкой внизу сворачивается
+ * в рейку 64px (иконки + title-подсказки). Никакого hover-расхлопа: ширина меняется
+ * только по клику. Анимируется ТОЛЬКО ширина окна-обтравки (overflow-hidden);
+ * контент внутри — всегда фиксированные 240px, поэтому при анимации ничего
+ * не переносится и не наезжает друг на друга.
  */
 function RailSidebar({ pathname }: { pathname: string | null }) {
-  return (
-    <aside className="group/rail relative z-40 h-full w-16 shrink-0">
-      <div
-        className={cn(
-          'absolute inset-y-0 left-0 w-16 overflow-hidden border-r border-border bg-card',
-          'transition-[width,box-shadow] duration-200 ease-out',
-          'group-hover/rail:w-60 group-hover/rail:shadow-lg group-focus-within/rail:w-60',
-          'motion-reduce:transition-none',
-        )}
-      >
-        {/* Внутренняя колонка фиксированной конечной ширины */}
-        <div className="flex h-full w-60 flex-col">
-          {/* Brand: иконка на фиксированном x, подпись проявляется */}
-          <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[18px]">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-              C
-            </div>
-            <RailLabel className="text-sm font-semibold tracking-tight">Construct</RailLabel>
-          </div>
+  const [collapsed, setCollapsed] = useState(false);
 
-          {/* Переключатель пространства: всегда в DOM (высота стабильна),
-              в свёрнутом виде — невидим и недоступен для клика/фокуса. */}
-          <div
+  // localStorage читаем после маунта: SSR его не видит, а чтение в инициализаторе
+  // дало бы hydration-рассинхрон. Возможен короткий развёрнутый кадр — приемлемо.
+  useEffect(() => {
+    if (window.localStorage.getItem(COLLAPSED_KEY) === '1') setCollapsed(true);
+  }, []);
+
+  const toggle = () =>
+    setCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+      return next;
+    });
+
+  return (
+    <aside
+      className={cn(
+        'flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card',
+        'transition-[width] duration-200 ease-out motion-reduce:transition-none',
+        collapsed ? 'w-16' : 'w-60',
+      )}
+    >
+      {/* Внутренняя колонка фиксированной конечной ширины */}
+      <div className="flex h-full w-60 flex-col">
+        {/* Brand: иконка на фиксированном x, подпись гаснет в свёрнутом виде */}
+        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[18px]">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+            C
+          </div>
+          <RailLabel collapsed={collapsed} className="text-sm font-semibold tracking-tight">
+            Construct
+          </RailLabel>
+        </div>
+
+        {/* Переключатель пространства: всегда в DOM (высота стабильна),
+            в свёрнутом виде — невидим и недоступен для клика/фокуса. */}
+        <div
+          aria-hidden={collapsed}
+          className={cn(
+            'shrink-0 border-b border-border px-3 py-3',
+            'transition-opacity duration-150 motion-reduce:transition-none',
+            // invisible (не только opacity-0) — выкидывает вложенные кнопки из tab-order
+            collapsed && 'invisible pointer-events-none opacity-0',
+          )}
+        >
+          <WorkspaceSwitcher />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          {NAV_GROUPS.map((group, gi) => {
+            const isFirst = gi === 0;
+            return (
+              <div
+                key={`${group.label ?? 'main'}-${gi}`}
+                className={cn(!isFirst && 'mt-3 border-t border-border pt-3')}
+              >
+                {group.label && (
+                  <div className="h-5 px-2 pb-1.5">
+                    <RailLabel
+                      collapsed={collapsed}
+                      className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      {group.label}
+                    </RailLabel>
+                  </div>
+                )}
+                <ul className="space-y-0.5">
+                  {group.items.map((item) => (
+                    <NavLink key={item.href} item={item} pathname={pathname} railCollapsed={collapsed} />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Кнопка свернуть/развернуть — единственный способ менять ширину */}
+        <div className="shrink-0 border-t border-border p-2">
+          <button
+            type="button"
+            onClick={toggle}
+            title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            aria-expanded={!collapsed}
             className={cn(
-              'shrink-0 border-b border-border px-3 py-3',
-              'pointer-events-none opacity-0 transition-opacity duration-150',
-              'group-hover/rail:pointer-events-auto group-hover/rail:opacity-100',
-              'group-focus-within/rail:pointer-events-auto group-focus-within/rail:opacity-100',
-              'motion-reduce:transition-none',
+              'flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-sm transition-colors',
+              'text-muted-foreground hover:bg-secondary hover:text-foreground',
             )}
           >
-            <WorkspaceSwitcher />
-          </div>
-
-          <nav className="flex-1 overflow-y-auto px-3 py-3">
-            {NAV_GROUPS.map((group, gi) => {
-              const isFirst = gi === 0;
-              return (
-                <div
-                  key={`${group.label ?? 'main'}-${gi}`}
-                  className={cn(!isFirst && 'mt-3 border-t border-border pt-3')}
-                >
-                  {group.label && (
-                    <div className="h-5 px-2 pb-1.5">
-                      <RailLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {group.label}
-                      </RailLabel>
-                    </div>
-                  )}
-                  <ul className="space-y-0.5">
-                    {group.items.map((item) => (
-                      <NavLink key={item.href} item={item} pathname={pathname} rail />
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </nav>
+            {collapsed ? (
+              <SidePanelOpen className="h-4 w-4 shrink-0" aria-hidden />
+            ) : (
+              <SidePanelClose className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            <RailLabel collapsed={collapsed}>{collapsed ? 'Развернуть' : 'Свернуть'}</RailLabel>
+          </button>
         </div>
       </div>
     </aside>
@@ -143,18 +188,19 @@ function RailSidebar({ pathname }: { pathname: string | null }) {
 }
 
 function RailLabel({
+  collapsed,
   className,
   children,
 }: {
+  collapsed: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <span
       className={cn(
-        'whitespace-nowrap opacity-0 transition-opacity duration-150',
-        'group-hover/rail:opacity-100 group-focus-within/rail:opacity-100',
-        'motion-reduce:transition-none',
+        'whitespace-nowrap transition-opacity duration-150 motion-reduce:transition-none',
+        collapsed && 'opacity-0',
         className,
       )}
     >
@@ -167,12 +213,13 @@ function NavLink({
   item,
   pathname,
   onNavigate,
-  rail,
+  railCollapsed,
 }: {
   item: (typeof NAV_GROUPS)[number]['items'][number];
   pathname: string | null;
   onNavigate?: () => void;
-  rail?: boolean;
+  /** undefined — полный сайдбар; boolean — десктопная рейка (true = свёрнута). */
+  railCollapsed?: boolean;
 }) {
   // Active rule: exact match OR child route (with trailing slash boundary)
   // — except /reports must not light up for /reports/rules.
@@ -188,7 +235,7 @@ function NavLink({
       <Link
         href={item.href as Parameters<typeof Link>[0]['href']}
         onClick={onNavigate}
-        title={rail ? item.label : undefined}
+        title={railCollapsed ? item.label : undefined}
         className={cn(
           'relative flex h-8 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors',
           active
@@ -200,8 +247,10 @@ function NavLink({
           className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')}
           aria-hidden
         />
-        {rail ? (
-          <RailLabel className="truncate">{item.label}</RailLabel>
+        {railCollapsed !== undefined ? (
+          <RailLabel collapsed={railCollapsed} className="truncate">
+            {item.label}
+          </RailLabel>
         ) : (
           <span className="truncate">{item.label}</span>
         )}
