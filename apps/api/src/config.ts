@@ -25,6 +25,16 @@ const RawConfigSchema = z.object({
   // L5-хвост: chat_id для Telegram-алертов о 5xx (обычно telegramId владельца).
   // Не задан → алертинг выключен (локалка/CI/тесты).
   ALERT_TELEGRAM_CHAT_ID: z.string().optional(),
+  // Ф1 «Полный автомат»: мастер-ключ шифрования токенов интеграций (банки/WB).
+  // base64 от РОВНО 32 байт (AES-256). Не задан → модуль интеграций выключен
+  // (локалка/CI/тесты без секретов). Генерация: `openssl rand -base64 32`.
+  INTEGRATION_MASTER_KEY: z
+    .string()
+    .optional()
+    .refine(
+      (v) => v === undefined || Buffer.from(v, 'base64').length === 32,
+      'INTEGRATION_MASTER_KEY должен быть base64 от 32 байт (openssl rand -base64 32)',
+    ),
 });
 
 export type ConfigSchema = z.infer<typeof RawConfigSchema>;
