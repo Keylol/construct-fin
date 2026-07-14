@@ -239,6 +239,7 @@ export class ImportService {
         importHash,
         isDuplicate: false,
         transferSuggestion: null,
+        receiptMatch: null,
         errors: r.errors,
         raw: r.raw,
       });
@@ -262,6 +263,7 @@ export class ImportService {
     }
 
     await this.annotateTransferSuggestions(opts.workspaceId, opts.accountId, previewRows);
+    await this.annotateReceiptMatches(opts.workspaceId, opts.accountId, previewRows);
 
     return {
       source: parsed.source,
@@ -338,6 +340,70 @@ export class ImportService {
 
     for (const row of rows) {
       row.transferSuggestion = findTransferMatch(row, candidates, TRANSFER_MATCH_WINDOW_DAYS);
+    }
+  }
+
+  /** Окно матча строки выписки с расходом, созданным разбором чека WB (±дней). */
+  private static readonly RECEIPT_MATCH_WINDOW_DAYS = 2;
+
+  /**
+   * Ф6 (анти-задвоение): помечает EXPENSE-строки превью, чей расход уже
+   * СОЗДАН разбором чека WB на этом же счёте (сумма равна, дата ± 2 дня —
+   * списание в выписке может отставать от даты чека). Привязанные операции
+   * (transactionCreated=false) не метятся: их источник — сама выписка.
+   * Один батч-запрос на все строки, точная проверка окна per-row.
+   */
+  private async annotateReceiptMatches(
+    workspaceId: string,
+    accountId: string,
+    rows: PreviewRow[],
+  ): Promise<void> {
+    const expenseRows = rows.filter((r) => r.type === 'EXPENSE');
+    if (expenseRows.length === 0) return;
+
+    const windowMs = ImportService.RECEIPT_MATCH_WINDOW_DAYS * DAY_MS;
+    let minMs = Number.POSITIVE_INFINITY;
+    let maxMs = Number.NEGATIVE_INFINITY;
+    for (const r of expenseRows) {
+      const t = Date.parse(r.date);
+      if (Number.isNaN(t)) continue;
+      if (t < minMs) minMs = t;
+      if (t > maxMs) maxMs = t;
+    }
+    if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return;
+    const amounts = Array.from(new Set(expenseRows.map((r) => r.amount))).map(
+      (a) => new Prisma.Decimal(a),
+    );
+
+    const candidates = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId,
+        accountId,
+        deletedAt: null,
+        type: 'EXPENSE',
+        amount: { in: amounts },
+        date: { gte: new Date(minMs - windowMs), lte: new Date(maxMs + windowMs) },
+        wbReceipt: { is: { deletedAt: null, transactionCreated: true } },
+      },
+      select: {
+        id: true,
+        amount: true,
+        date: true,
+        wbReceipt: { select: { id: true } },
+      },
+    });
+    if (candidates.length === 0) return;
+
+    for (const row of expenseRows) {
+      const rowMs = Date.parse(row.date);
+      const rowAmount = new Prisma.Decimal(row.amount);
+      const hit = candidates.find(
+        (c) =>
+          c.amount.equals(rowAmount) && Math.abs(rowMs - c.date.getTime()) <= windowMs,
+      );
+      if (hit && hit.wbReceipt) {
+        row.receiptMatch = { receiptId: hit.wbReceipt.id, transactionId: hit.id };
+      }
     }
   }
 
