@@ -69,9 +69,11 @@ export default function ImportPage() {
 
   async function onCommit() {
     if (!preview || !wsId) return;
-    const rows = preview.rows.map((r) =>
-      rowToCommitRow(r, null, orderLinks[r.rawIndex] ?? null),
-    );
+    // Ф6: строки, чей расход уже создан разбором чека WB, не импортируем
+    // никогда (иначе задвоение) — фильтр жёсткий, не зависит от skipDuplicates.
+    const rows = preview.rows
+      .filter((r) => !r.receiptMatch)
+      .map((r) => rowToCommitRow(r, null, orderLinks[r.rawIndex] ?? null));
     const result = await commitMut.mutateAsync({
       filename: preview.filename,
       fileHash: preview.fileHash,
@@ -316,9 +318,11 @@ function PreviewStage({
   commitError: string | null;
 }) {
   const visibleRows = preview.rows.slice(0, 50);
+  // Ф6: строки «уже учтено чеком WB» не импортируются никогда.
+  const importable = preview.rows.filter((r) => !r.receiptMatch);
   const willImport = skipDuplicates
-    ? preview.rows.filter((r) => !r.isDuplicate).length
-    : preview.rows.length;
+    ? importable.filter((r) => !r.isDuplicate).length
+    : importable.length;
 
   // F3 (5d): открытые долги для привязки приходных строк. Номера заказа в
   // назначении платежа обычно нет — выбор ручной, подсказка по совпадению суммы.
@@ -407,6 +411,8 @@ function PreviewStage({
                 </td>
                 <td className="px-3 py-2">
                   {r.isDuplicate && <Badge variant="muted">дубль</Badge>}
+                  {/* Ф6: расход уже создан разбором чека WB — строка не импортируется. */}
+                  {r.receiptMatch && <Badge variant="muted">учтено чеком WB</Badge>}
                   {r.errors.length > 0 && <Badge variant="destructive">ошибка</Badge>}
                 </td>
               </tr>
