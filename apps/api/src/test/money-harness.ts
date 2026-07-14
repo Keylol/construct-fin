@@ -115,6 +115,7 @@ export async function resetDb(prisma: PrismaClient): Promise<void> {
   // «использовался с другим запросом» во втором и последующих прогонах.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "BankStatementLine","IntegrationConnection",
       "Attachment","AuditLog","LotConsumption","StockLot","PurchaseLine","Purchase",
       "OrderReturn","OrderItem","PaymentScheduleEntry","Order","Transaction","StockMovement","Transfer","AccountBalanceCheck",
       "WarehouseItem","Counterparty","Category","Account",
