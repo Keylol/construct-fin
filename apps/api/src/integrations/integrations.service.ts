@@ -1,8 +1,23 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from './crypto.service';
 import { SyncService, type SyncResult } from './sync.service';
 import type { CreateIntegrationDto, UpdateIntegrationDto } from './integrations.dto';
+
+// Публичная выборка — credentialEnc НАМЕРЕННО не выбирается: секрет не покидает
+// слой БД (defense-in-depth, а не только фильтрация в serialize).
+const PUBLIC_SELECT = {
+  id: true,
+  provider: true,
+  status: true,
+  keyLast4: true,
+  syncCursor: true,
+  lastSyncAt: true,
+  lastSyncError: true,
+  createdAt: true,
+  account: { select: { id: true, name: true } },
+} satisfies Prisma.IntegrationConnectionSelect;
 
 /**
  * CRUD банковских подключений + ручной запуск синка (Ф1-C). Секрет
@@ -20,7 +35,7 @@ export class IntegrationsService {
   async list(workspaceId: string) {
     const rows = await this.prisma.integrationConnection.findMany({
       where: { workspaceId, deletedAt: null },
-      include: { account: { select: { id: true, name: true } } },
+      select: PUBLIC_SELECT,
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((r) => this.serialize(r));
@@ -39,7 +54,7 @@ export class IntegrationsService {
         keyLast4: CryptoService.mask(dto.token),
         createdById: userId,
       },
-      include: { account: { select: { id: true, name: true } } },
+      select: PUBLIC_SELECT,
     });
     return this.serialize(created);
   }
@@ -60,7 +75,7 @@ export class IntegrationsService {
           : {}),
         ...(dto.status ? { status: dto.status } : {}),
       },
-      include: { account: { select: { id: true, name: true } } },
+      select: PUBLIC_SELECT,
     });
     return this.serialize(updated);
   }
