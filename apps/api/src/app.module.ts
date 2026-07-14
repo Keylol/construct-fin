@@ -25,6 +25,7 @@ import { PurchaseModule } from './purchase/purchase.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AuditModule } from './audit/audit.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
+import { TelegramAlertService } from './common/telegram-alert.service';
 
 @Module({
   imports: [
@@ -61,7 +62,7 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
     AuditModule,
   ],
   controllers: [HealthController],
-  providers: [IdempotencyInterceptor],
+  providers: [IdempotencyInterceptor, TelegramAlertService],
 })
 export class AppModule {}
 

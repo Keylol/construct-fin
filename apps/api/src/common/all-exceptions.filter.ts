@@ -9,6 +9,7 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
+import type { TelegramAlertService } from './telegram-alert.service';
 
 /**
  * Глобальный фильтр исключений.
@@ -27,7 +28,11 @@ import { ZodError } from 'zod';
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
-  constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
+  constructor(
+    private readonly httpAdapterHost: HttpAdapterHost,
+    // Опционален: юнит-тесты фильтра и старые харнессы могут не передавать.
+    private readonly alerts?: TelegramAlertService,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const { httpAdapter } = this.httpAdapterHost;
@@ -49,6 +54,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${method} ${url} → ${status} [reqId=${reqId}]`,
         exception instanceof Error ? exception.stack : String(exception),
       );
+      // L5-хвост: алерт владельцу (no-op без ALERT_TELEGRAM_CHAT_ID; троттлинг
+      // внутри сервиса). Никогда не бросает — обработку ответа не трогает.
+      this.alerts?.alert5xx({ status, method, url, reqId: String(reqId) });
     }
 
     httpAdapter.reply(res, body, status);
