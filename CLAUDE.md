@@ -15,12 +15,13 @@
 
 Финансовый учёт для малого бизнеса / самозанятых. Веб-приложение (mobile+desktop) + Telegram Mini App. Полная пересборка с нуля; старая версия v5.2.1 живёт в `~/Documents/Legacy/Construct/` (рабочая, можно подсматривать алгоритмы, но **переносить код напрямую нельзя**).
 
-## Состояние (на 2026-05-23)
+## Состояние (на 2026-07-14)
 
-- **Ветка:** `v6` (orphan) в `Keylol/construct-fin`, 8 коммитов, последний `2ea75ee`
-- **Фазы 0–2 закрыты:** монорепо, БД, auth (Login Widget + Mini App), workspaces, accounts, categories (2 уровня), counterparties, transactions (CRUD + фильтры + summary), attachments
-- **Mini App логин работает end-to-end:** `@ConstructFinance_bot` → ngrok → авто-логин → /dashboard
-- **Тесты:** 91 unit зелёных + 8 integration (money-flows против `construct_v6_test`). Деньги-интеграция гоняется в CI с Фазы 0 (см. ниже).
+- **Все фазы генплана 0→5 закрыты**; поверх — council-аудит (~105 находок, волны 1–3 + движок правил Rule), UX-волны В1–В4, дизайн-волны Д1–Д4 («сухой гроссбух»: IBM Plex, navy+янтарь, display-цифры mono), мобильный таб-бар, drill-down отчётов.
+- **IJ9 закрыт (2026-07-14):** ОПиУ и маржа — «по реализации» (`Order.closedAt`), возвраты — датированные события `OrderReturn` (минус в месяц возврата), «Закупки» — инфо-строка вне прибыли (склад = актив), ОДДС остаётся строго cash. Дизайн: `docs/ij9-accrual-design.md`.
+- **Прод:** VPS 195.133.1.13, https://miniapp.aleksandrantropov.online (TLS до 2026-09-05, серт только на живой домен); деплой = push в `v6` (см. ветвление выше).
+- **Тесты:** ~342 unit + ~421 integration + ~121 functional (числа плывут вверх; все против `construct_v6_test` на :5433).
+- **Mini App логин end-to-end:** `@ConstructFinance_bot`; локально для браузера можно подписать JWT секретом из `apps/api/.env` и положить cookie `construct_jwt`.
 
 ## Стек (фиксирован, не менять без явного согласия)
 
@@ -45,7 +46,7 @@
 ## Что НЕ делаем в MVP
 
 - Двойная запись (есть таблица `IdempotencyKey`, но `JournalEntry` модель не создана)
-- ~~Склад / заказы / COGS~~ — **вернулись в скоуп** (миграция `tier1_orders_warehouse_audit`): есть `OrderService`/`WarehouseService`/`PurchaseService`, WAVG-себестоимость, `COGS`-kind, сьют `money-flows.integration.test.ts`. Учёт **cash-basis** (см. `docs/improvement-plan.md`, решение по COGS + Фаза 3 п.15).
+- ~~Склад / заказы / COGS~~ — **вернулись в скоуп**: `OrderService`/`WarehouseService`/`PurchaseService`, **FIFO**-себестоимость (StockLot/LotConsumption, F0), сьют `money-flows.integration.test.ts`. Учёт: **ОПиУ и маржа — по реализации** (IJ9, `docs/ij9-accrual-design.md`), **ОДДС — cash**.
 - Двусторонний Google Sheets sync
 - AI-аналитика расходов
 - Push-уведомления (только in-app)
@@ -53,13 +54,12 @@
 - Точка безубыточности (флаг `Category.isFixedCost` есть, endpoint — post-MVP)
 - Долги / кредиты, цели / накопления
 
-## Что дальше
+## Что дальше (бэклог на 2026-07-14)
 
-**Фаза 3 (приоритет):** CSV/Excel импорт с wizard (маппинг колонок), `RecurringRule` cron-runner (BullMQ или pg_cron, идемпотентность по `(ruleId, nextRunAtBefore)`).
-
-**Фаза 4:** P&L / Cash flow / по категориям / по контрагентам / сравнение периодов / PDF + Excel экспорт.
-
-**Фаза 5:** PWA manifest, Telegram theme params интеграция, Playwright e2e, деплой staging на `v6.aleksandrantropov.ru`.
+- **Волна 4 (наблюдаемость):** L5 частично сделана (nestjs-pino, x-request-id, форензик 5xx) — остаётся алертинг error-rate и активация UptimeRobot.
+- Сверка факта прод-БД по backfill `OrderReturn` (Σ qty событий == Σ returnedQty) — SSH требует запуска вне авто-режима.
+- Summary-эндпоинт для карточек клиента/поставщика (сводка сейчас по загруженным страницам).
+- Буклет-инструкция под новый UI; живой клик-тест редизайна в Mini App (только владелец).
 
 ## Запуск
 
@@ -85,6 +85,9 @@ ngrok http 3000                                       # публичный HTTPS
 | `apps/api/src/auth/telegram-verify.ts` | HMAC проверка Widget + Mini App |
 | `apps/api/src/common/workspace.guard.ts` | Проверка членства в workspace |
 | `apps/api/src/transaction/transaction.service.ts` | Самая сложная бизнес-логика (фильтры, summary) |
+| `apps/api/src/reports/pnl.service.ts` | ОПиУ по реализации (IJ9): признание по closedAt + события возвратов |
+| `apps/api/src/trade-reports/margin.service.ts` | Маржа (та же семантика; ключ «без клиента» содержит NUL-байт — grep видит binary) |
+| `apps/api/src/orders/order.service.ts` | Заказы: оплаты/отгрузка/finalize/RMA (пишет события OrderReturn) |
 | `apps/web/src/app/layout.tsx` | Telegram SDK Script (beforeInteractive) |
 | `apps/web/src/app/login/page.tsx` | Mini App auto-login + Widget fallback |
 | `apps/web/src/components/transactions/TransactionFormDialog.tsx` | FAB-форма быстрого ввода |
