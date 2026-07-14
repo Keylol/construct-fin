@@ -65,3 +65,6 @@ backups/
 /data/
 apps/api/data/
 memory/
+
+# Реальные банковские/фискальные документы для локальных тестов — НЕ коммитить
+fixtures/imports/private/

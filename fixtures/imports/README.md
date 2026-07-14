@@ -1,13 +1,29 @@
 # Import fixtures
 
-Drop sample bank statements here so parsers can be written against real data and tests can pin to fixtures.
+Фикстуры парсеров выписок/чеков. Репозиторий ПУБЛИЧНЫЙ — сюда кладём только
+синтетические или обезличенные файлы.
 
-Expected files:
+## В гите (синтетика)
 
 - `alfa-sample.xlsx` — Альфа-Банк выписка в Excel
-- `tinkoff-sample.pdf` — Т-Банк выписка в PDF (текстовый, не скан)
-- `wb-sample.pdf` — Wildberries отчёт в PDF (текстовый)
+- `wb-sample.pdf` — выписка карты ВБ Банка (текстовый PDF)
+- `wb-receipt-synth.pdf` — синтетический кассовый чек Wildberries: все боевые
+  паттерны формата (склейка «цена+кол-во+сумма», поштучные строки одной позиции,
+  номер позиции, склеенный с именем на цифру, разрыв страницы внутри блока
+  продавца, два разных WB-заказа в одном чеке, «Без НДС», иностранный продавец
+  с нулевым ИНН). Сгенерён `cupsfilter` из текстового макета.
+- `wb-statement-synth.pdf` — синтетическая выписка ВБ Банка (v1-squished):
+  пополнение СБП, оплата WB, оплата через СБП, возврат оплаты, вывод, проценты;
+  контрольные итоги «Всего зачислено/списано» сходятся с операциями.
 
-Replace amounts/names with masked values if needed — only column structure matters.
+## Локально, ВНЕ гита: `private/` (.gitignore)
+
+Реальные банковские/фискальные документы (персональные данные — НЕ коммитить):
+
+- `private/wb-receipt-{1,2,3}.pdf` — реальные чеки WB
+- `private/wb-statement-2.pdf` — реальная выписка ВБ Банка
+
+Тесты на них помечены `describe.skipIf`/`it.skipIf` и гоняются только там, где
+файлы есть (локальная машина владельца); в CI скипаются.
 
 Fixtures live outside `apps/api` so they're not bundled into builds.
