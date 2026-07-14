@@ -334,6 +334,11 @@ export interface PreviewRow {
   suggestedCategoryId: string | null;
   importHash: string;
   isDuplicate: boolean;
+  /**
+   * Ф6: расход уже учтён разбором чека WB (совпали счёт+сумма+дата) — строка
+   * исключается из импорта, иначе расход задвоится. null — совпадения нет.
+   */
+  receiptMatch: { receiptId: string; transactionId: string } | null;
   errors: string[];
   raw: Record<string, string>;
 }
@@ -686,4 +691,76 @@ export interface InboxLine {
 export interface InboxPage {
   items: InboxLine[];
   nextCursor: string | null;
+}
+
+// ── Чеки WB (Ф6 «Полный автомат») ──
+export type WbLineTarget = 'WAREHOUSE' | 'ORDER' | 'SKIPPED';
+
+/** Сгруппированная позиция чека из парсера (штуки WB свёрнуты в кол-во). */
+export interface WbParsedItem {
+  name: string;
+  qty: string;
+  unitPrice: string;
+  lineTotal: string;
+  sellerInn: string | null;
+  sellerName: string | null;
+  wbOrderHash: string | null;
+  unitCodes: string[];
+}
+
+export interface WbReceiptPreview {
+  receipt: {
+    receiptDate: string | null;
+    checkNumber: string | null;
+    fd: string | null;
+    fpd: string | null;
+    totalAmount: string | null;
+    paidElectronic: string | null;
+    items: WbParsedItem[];
+    warnings: string[];
+  };
+  /** Операции карты-кандидаты для привязки денег (сумма == итогу, дата ±3д). */
+  candidates: { id: string; date: string; amount: string; description: string | null }[];
+  alreadyImported: { receiptId: string; importedAt: string } | null;
+}
+
+/** Строка commit-запроса: разметка оператора поверх позиции чека. */
+export type WbCommitLine = {
+  name: string;
+  qty: string;
+  unitPrice: string;
+  sellerName?: string | null;
+  sellerInn?: string | null;
+  wbOrderHash?: string | null;
+} & (
+  | { target: 'WAREHOUSE'; warehouseItemId?: string; newItem?: { name: string; unit?: string } }
+  | { target: 'ORDER'; orderId: string; salePrice?: string }
+  | { target: 'SKIPPED' }
+);
+
+export interface WbCommitInput {
+  accountId: string;
+  money: { mode: 'link'; transactionId: string } | { mode: 'create'; categoryId?: string | null };
+  fpd: string;
+  fd?: string | null;
+  checkNumber?: string | null;
+  receiptDate: string;
+  totalAmount: string;
+  note?: string | null;
+  lines: WbCommitLine[];
+}
+
+export interface WbReceiptListItem {
+  id: string;
+  fpd: string;
+  checkNumber: string | null;
+  receiptDate: string;
+  totalAmount: string;
+  transactionCreated: boolean;
+  createdAt: string;
+  deletedAt: string | null;
+  account: { id: string; name: string };
+  transaction: { id: string; date: string; amount: string } | null;
+  createdBy: { firstName: string | null; username: string | null };
+  _count: { lines: number };
 }

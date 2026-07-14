@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { D, add, toMoneyString, formatRub } from '@construct/shared';
-import { ShoppingCart, RotateCcw, Plus, X } from '@/components/ui/icons';
+import { ShoppingCart, RotateCcw, Plus, X, Receipt } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -30,6 +31,7 @@ function purchaseTotal(p: Purchase): string {
 }
 
 export default function PurchasesPage() {
+  const router = useRouter();
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const purchases = usePurchases(wsId);
@@ -121,10 +123,17 @@ export default function PurchasesPage() {
         title="Закупки"
         breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки' }]}
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" />
-            Закупка
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Ф6: мастер разбора PDF-чека Wildberries (позиции → склад/заказ). */}
+            <Button variant="secondary" onClick={() => router.push('/purchases/wb-receipt')}>
+              <Receipt className="h-4 w-4" />
+              Чек WB
+            </Button>
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" />
+              Закупка
+            </Button>
+          </div>
         }
       />
 
