@@ -223,8 +223,12 @@ export default function PnlReportPage() {
 
         {!reportEmpty && totals && totals.byBucket.length > 0 && (
           <Card className="overflow-x-auto !p-0">
-            <div className="border-b border-border px-4 py-2 text-sm font-medium">
-              По группам
+            <div className="flex items-baseline justify-between border-b border-border px-4 py-2">
+              <span className="text-sm font-medium">По группам</span>
+              {/* IJ9: базис отчёта — по реализации (деньги — в ОДДС) */}
+              <span className="text-xs text-muted-foreground">
+                выручка и себестоимость — по дате выдачи заказа
+              </span>
             </div>
             <table className="w-full text-base">
               <thead>
@@ -247,17 +251,23 @@ export default function PnlReportPage() {
                         <td className="px-4 py-2">
                           <Link
                             href={
-                              txDrilldownHref({
-                                bucket: b.bucket,
-                                from: totals.from,
-                                to: totals.to,
-                              }) as Parameters<typeof Link>[0]['href']
+                              // IJ9 (решение №4): выручка/себестоимость признаются
+                              // по реализации — drill-down ведёт в ЗАКАЗЫ, закрытые
+                              // в периоде (сумма сходится с цифрой отчёта). Прочие
+                              // группы — операции с bucket-фильтром, как раньше.
+                              (b.bucket === 'REVENUE' || b.bucket === 'COGS'
+                                ? `/orders?status=DONE&closedFrom=${encodeURIComponent(totals.from)}&closedTo=${encodeURIComponent(totals.to)}`
+                                : txDrilldownHref({
+                                    bucket: b.bucket,
+                                    from: totals.from,
+                                    to: totals.to,
+                                  })) as Parameters<typeof Link>[0]['href']
                             }
                             className="cursor-pointer hover:text-foreground hover:underline"
                           >
                             {BUCKET_LABEL[b.bucket]}
                           </Link>
-                          {b.bucket === 'CAPITAL' && (
+                          {(b.bucket === 'CAPITAL' || b.bucket === 'PURCHASES') && (
                             <span className="ml-2 text-xs text-muted-foreground">
                               (не входит в чистую прибыль)
                             </span>
