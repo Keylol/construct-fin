@@ -274,6 +274,105 @@ export class OrderService {
     });
   }
 
+  /**
+   * Ф6: АДРЕСНО добавить позиции в открытый заказ (разбор чека WB) — в отличие
+   * от update(items), который заменяет состав целиком и потому запрещён для
+   * частично отгруженных заказов. Здесь существующие позиции не трогаются
+   * (отгрузки не осиротеют), поэтому гейт только на закрытость заказа.
+   * Позиции внескладские (warehouseItemId=null), себестоимость = unitCost
+   * (цена чека) — маржа считается сразу. Вызывается ПОД внешней транзакцией.
+   */
+  async addExternalItems(
+    tx: TxClient,
+    workspaceId: string,
+    orderId: string,
+    items: { name: string; qty: string; unitPrice: string; unitCost: string }[],
+  ): Promise<{ id: string }[]> {
+    const order = await this.lockAndLoad(tx, workspaceId, orderId);
+    if (order.status === 'DONE' || order.status === 'CANCELLED') {
+      throw new BadRequestException(
+        `Заказ ${order.number} закрыт/отменён — добавить позиции нельзя`,
+      );
+    }
+    const created: { id: string }[] = [];
+    let subtotal: Prisma.Decimal = order.subtotal;
+    for (const it of items) {
+      const lineTotal = money(mul(it.qty, it.unitPrice));
+      const row = await tx.orderItem.create({
+        data: {
+          orderId,
+          warehouseItemId: null,
+          name: it.name,
+          qty: new Prisma.Decimal(it.qty),
+          unitPrice: new Prisma.Decimal(it.unitPrice),
+          unitCost: new Prisma.Decimal(it.unitCost),
+          lineTotal,
+        },
+        select: { id: true },
+      });
+      subtotal = add(subtotal, lineTotal);
+      created.push(row);
+    }
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        subtotal: money(subtotal),
+        totalAmount: money(sub(subtotal, order.discountAmount)),
+      },
+    });
+    // Сумма заказа выросла — paidAmount/paymentStatus пересчитываются (PAID→PARTIAL).
+    await this.syncPaymentState(workspaceId, orderId, tx);
+    return created;
+  }
+
+  /**
+   * Ф6: откат позиций, добавленных из чека WB. Удаляются только нетронутые
+   * (ничего не отгружено/не возвращено), заказ должен быть открыт. Суммы и
+   * статус оплаты пересчитываются. Вызывается ПОД внешней транзакцией.
+   */
+  async removeExternalItems(
+    tx: TxClient,
+    workspaceId: string,
+    orderId: string,
+    itemIds: string[],
+  ): Promise<void> {
+    if (itemIds.length === 0) return;
+    const order = await this.lockAndLoad(tx, workspaceId, orderId);
+    if (order.status === 'DONE' || order.status === 'CANCELLED') {
+      throw new BadRequestException(
+        `Заказ ${order.number} закрыт/отменён — сначала переоткройте его`,
+      );
+    }
+    const items = await tx.orderItem.findMany({
+      where: { id: { in: itemIds }, orderId, deletedAt: null },
+      select: { id: true, name: true, lineTotal: true, shippedQty: true, returnedQty: true },
+    });
+    if (items.length !== itemIds.length) {
+      throw new BadRequestException('Позиция чека не найдена в заказе (уже изменена?)');
+    }
+    let removedTotal = D(0);
+    for (const it of items) {
+      if (gt(it.shippedQty, '0') || gt(it.returnedQty, '0')) {
+        throw new BadRequestException(
+          `Позиция «${it.name}» уже отгружена/возвращена — откат чека невозможен`,
+        );
+      }
+      removedTotal = add(removedTotal, it.lineTotal);
+    }
+    const subtotal = money(sub(order.subtotal, removedTotal));
+    if (gt(order.discountAmount, subtotal)) {
+      throw new BadRequestException(
+        'После отката скидка заказа превысит сумму позиций — сначала уменьшите скидку',
+      );
+    }
+    await tx.orderItem.deleteMany({ where: { id: { in: itemIds }, orderId } });
+    await tx.order.update({
+      where: { id: orderId },
+      data: { subtotal, totalAmount: money(sub(subtotal, order.discountAmount)) },
+    });
+    await this.syncPaymentState(workspaceId, orderId, tx);
+  }
+
   /** Добавить оплату по заказу → Transaction(kind=ORDER_PAYMENT). */
   async addPayment(
     workspaceId: string,

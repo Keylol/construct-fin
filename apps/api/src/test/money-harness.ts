@@ -26,6 +26,7 @@ import { ReceivablesService } from '../trade-reports/receivables.service';
 import { CashflowService } from '../reports/cashflow.service';
 import { TransactionService } from '../transaction/transaction.service';
 import { ImportService } from '../import/import.service';
+import { WbReceiptService } from '../wb-receipt/wb-receipt.service';
 import { AccountService } from '../account/account.service';
 import { CategoryService } from '../category/category.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
@@ -50,6 +51,7 @@ export type Harness = {
   cashflow: CashflowService;
   transactions: TransactionService;
   importSvc: ImportService;
+  wbReceipts: WbReceiptService;
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
@@ -79,6 +81,7 @@ export function buildHarness(): Harness {
   const cashflow = new CashflowService(prisma);
   const transactions = new TransactionService(prisma, audit);
   const importSvc = new ImportService(prisma, orders, audit);
+  const wbReceipts = new WbReceiptService(prisma, uow, warehouse, orders, audit);
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
@@ -97,6 +100,7 @@ export function buildHarness(): Harness {
     cashflow,
     transactions,
     importSvc,
+    wbReceipts,
     accounts,
     categories,
     counterparties,

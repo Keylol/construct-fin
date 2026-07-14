@@ -910,11 +910,52 @@ export class WarehouseService {
     itemIds: string[],
     userId: string,
   ): Promise<void> {
+    await this.voidUntouchedLots(
+      tx,
+      workspaceId,
+      { purchaseLineId: { in: lineIds } },
+      itemIds,
+      userId,
+      { subject: 'закупку', reason: 'Отмена закупки', refType: 'Purchase' },
+    );
+  }
+
+  /**
+   * Ф6: тот же откат нетронутых партий, но для лотов разбора чека WB — они
+   * трассируются слабой парой sourceType/sourceId (sourceId = WbReceiptLine.id,
+   * purchaseLineId=null). Отдельного индекса по sourceId нет: откат редкий,
+   * скан по workspace на реальных объёмах лотов дешёв.
+   */
+  async voidLotsBySource(
+    tx: TxClient,
+    workspaceId: string,
+    sourceIds: string[],
+    itemIds: string[],
+    userId: string,
+  ): Promise<void> {
+    await this.voidUntouchedLots(
+      tx,
+      workspaceId,
+      { sourceId: { in: sourceIds } },
+      itemIds,
+      userId,
+      { subject: 'разбор чека', reason: 'Откат разбора чека WB', refType: 'WbReceipt' },
+    );
+  }
+
+  private async voidUntouchedLots(
+    tx: TxClient,
+    workspaceId: string,
+    lotWhere: Prisma.StockLotWhereInput,
+    itemIds: string[],
+    userId: string,
+    wording: { subject: string; reason: string; refType: string },
+  ): Promise<void> {
     for (const itemId of itemIds) {
       await this.repo.lockForUpdate(tx, workspaceId, itemId);
     }
     const lots = await tx.stockLot.findMany({
-      where: { workspaceId, purchaseLineId: { in: lineIds }, deletedAt: null },
+      where: { workspaceId, deletedAt: null, ...lotWhere },
     });
     const lotIds = lots.map((l) => l.id);
     if (lotIds.length > 0) {
@@ -925,13 +966,15 @@ export class WarehouseService {
       });
       if (consumed > 0) {
         throw new BadRequestException(
-          'Нельзя отменить закупку: товар из её партий уже продан или списан — оформите возврат поставщику',
+          `Нельзя отменить ${wording.subject}: товар из партий уже продан или списан — оформите возврат поставщику`,
         );
       }
       // Защита в глубину: остаток обязан равняться приходу (партия нетронута).
       for (const l of lots) {
         if (!l.qtyRemaining.equals(l.qtyInitial)) {
-          throw new BadRequestException('Нельзя отменить закупку: остаток одной из партий изменён');
+          throw new BadRequestException(
+            `Нельзя отменить ${wording.subject}: остаток одной из партий изменён`,
+          );
         }
       }
       await tx.stockLot.updateMany({
@@ -953,8 +996,8 @@ export class WarehouseService {
           type: 'ADJUSTMENT',
           qtyDelta: roundQty(removed.negated()),
           qtyAfter: item?.qty ?? D(0),
-          reason: 'Отмена закупки',
-          refType: 'Purchase',
+          reason: wording.reason,
+          refType: wording.refType,
           createdById: userId,
         },
         tx,

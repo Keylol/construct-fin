@@ -33,6 +33,12 @@ export type PreviewRow = {
   isDuplicate: boolean;
   /** Подсказка-перевод (Полоса D); null — пары не найдено. */
   transferSuggestion: TransferSuggestion | null;
+  /**
+   * Ф6: расход уже учтён разбором чека WB (совпали счёт+сумма+дата±2д с
+   * транзакцией, СОЗДАННОЙ чеком) — строку выписки надо пропустить, иначе
+   * расход задвоится. null — совпадения нет.
+   */
+  receiptMatch: { receiptId: string; transactionId: string } | null;
   errors: string[];
   raw: Record<string, string>;
 };
