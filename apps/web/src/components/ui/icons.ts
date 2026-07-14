@@ -29,6 +29,7 @@ export {
   Receipt as ReceiptText,
   Reset as RotateCcw,
   Scales as Scale,
+  Plug,
   Search,
   ShoppingCart,
   SidePanelClose,

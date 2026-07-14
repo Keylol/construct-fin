@@ -645,3 +645,45 @@ export interface AuditPage {
   items: AuditEntry[];
   nextCursor: string | null;
 }
+
+// ── Интеграции (Ф1 «Полный автомат») ──
+export type IntegrationProvider = 'ALFA' | 'TBANK' | 'WB_CARD';
+export type IntegrationStatus = 'ACTIVE' | 'ERROR' | 'DISABLED';
+
+export interface IntegrationConnection {
+  id: string;
+  provider: IntegrationProvider;
+  status: IntegrationStatus;
+  keyLast4: string;
+  account: { id: string; name: string };
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  createdAt: string;
+}
+
+export interface SyncResult {
+  fetched: number;
+  created: number;
+  autoPosted: number;
+}
+
+export type AusnMark = 'INCOME' | 'EXPENSE' | 'NOT_COUNTED';
+
+export interface InboxLine {
+  id: string;
+  date: string;
+  amount: string;
+  direction: TxType;
+  counterpartyName: string | null;
+  counterpartyInn: string | null;
+  description: string | null;
+  ausnMark: AusnMark | null;
+  suggestedCategoryId: string | null;
+  provider: IntegrationProvider;
+  account: { id: string; name: string };
+}
+
+export interface InboxPage {
+  items: InboxLine[];
+  nextCursor: string | null;
+}
