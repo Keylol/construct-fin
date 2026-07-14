@@ -22,6 +22,9 @@ const RawConfigSchema = z.object({
   UPLOAD_DIR: z.string().default('./data/uploads'),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().default(10),
   AUTH_PASSWORD_HASH: z.string().optional(),
+  // L5-хвост: chat_id для Telegram-алертов о 5xx (обычно telegramId владельца).
+  // Не задан → алертинг выключен (локалка/CI/тесты).
+  ALERT_TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 export type ConfigSchema = z.infer<typeof RawConfigSchema>;

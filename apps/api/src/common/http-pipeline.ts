@@ -3,6 +3,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger as PinoAppLogger } from 'nestjs-pino';
 import { IdempotencyInterceptor } from './idempotency.interceptor';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import { TelegramAlertService } from './telegram-alert.service';
 import { normalizeRequestId } from './logger.config';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fastifyCookie = require('@fastify/cookie');
@@ -49,5 +50,7 @@ export async function applyHttpPipeline(
   // Глобальный фильтр (Фаза 3 п.13 + L5): маппинг ошибок Prisma/Zod в 4xx,
   // сокрытие стектрейсов наружу, форензик-лог 5xx с request-id. HttpException
   // проходят без изменений — контракт ответов сохранён.
-  app.useGlobalFilters(new AllExceptionsFilter(app.get(HttpAdapterHost)));
+  app.useGlobalFilters(
+    new AllExceptionsFilter(app.get(HttpAdapterHost), app.get(TelegramAlertService)),
+  );
 }
