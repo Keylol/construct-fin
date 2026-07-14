@@ -162,9 +162,16 @@ function Wizard({ wsId }: { wsId: string }) {
     ? D(linesTotal).equals(parsed.receipt.totalAmount)
     : false;
 
+  const MONEY_RX = /^\d+(\.\d{1,4})?$/;
   const linesValid = lines.every((l) => {
-    if (Number(l.qty) <= 0) return false;
-    if (l.target === 'ORDER') return !!l.orderId;
+    // NaN-гвард: Number('abc') не ≤ 0 — «мусор не ≤ нуля» не значит «валидно».
+    const q = Number(l.qty);
+    if (!Number.isFinite(q) || q <= 0) return false;
+    if (l.target === 'ORDER') {
+      // Пустая продажная цена = «взять цену чека» (default бэка); непустая
+      // обязана быть деньгами — иначе ловим до запроса, а не 400 от zod.
+      return !!l.orderId && (l.salePrice === '' || MONEY_RX.test(l.salePrice));
+    }
     return true; // WAREHOUSE: пустой warehouseItemId = «создать новый» — валидно
   });
 
