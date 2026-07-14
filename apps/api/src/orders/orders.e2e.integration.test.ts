@@ -167,6 +167,36 @@ describe('get / list', () => {
   });
 });
 
+describe('list: период по дате закрытия (IJ9 drill-down «Выручка»)', () => {
+  it('closedFrom/closedTo фильтруют DONE-заказы по closedAt', async () => {
+    const mk = async () => {
+      const o = await h.orders.create(seed.workspaceId, {
+        items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      });
+      await h.orders.finalize(seed.workspaceId, o.id, seed.userId);
+      return o.id;
+    };
+    const inRange = await mk();
+    const outRange = await mk();
+    // closedAt задаём прямо в БД — finalize ставит «сейчас».
+    await h.prisma.order.update({
+      where: { id: inRange },
+      data: { closedAt: new Date('2026-03-10T10:00:00Z') },
+    });
+    await h.prisma.order.update({
+      where: { id: outRange },
+      data: { closedAt: new Date('2026-05-10T10:00:00Z') },
+    });
+
+    const page = await h.orders.list(seed.workspaceId, {
+      status: 'DONE',
+      closedFrom: '2026-03-01T00:00:00Z',
+      closedTo: '2026-03-31T23:59:59Z',
+    });
+    expect(page.items.map((o) => o.id)).toEqual([inRange]);
+  });
+});
+
 describe('Обновление (update)', () => {
   it('замена позиций пересчитывает subtotal/total с учётом discount', async () => {
     const order = await h.orders.create(seed.workspaceId, {

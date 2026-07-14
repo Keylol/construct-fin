@@ -54,6 +54,16 @@ export const ListOrdersQuerySchema = z.object({
   status: z.enum(['OPEN', 'DONE', 'CANCELLED']).optional(),
   clientId: z.string().cuid().optional(),
   search: z.string().max(100).optional(),
+  // IJ9 (drill-down «Выручка» из ОПиУ): период по дате ЗАКРЫТИЯ заказа.
+  // ISO-даты; заказы без closedAt (OPEN/CANCELLED) фильтром отсеиваются.
+  closedFrom: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'invalid ISO date')
+    .optional(),
+  closedTo: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'invalid ISO date')
+    .optional(),
   cursor: z.string().cuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
