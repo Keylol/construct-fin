@@ -15,6 +15,7 @@ import {
   History,
   ArrowLeftRight,
   Scale,
+  Plug,
   type LucideIcon,
 } from '@/components/ui/icons';
 
@@ -46,6 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/transfers', label: 'Переводы', icon: ArrowLeftRight },
       { href: '/import', label: 'Импорт', icon: Upload },
       { href: '/reconciliation', label: 'Сверка', icon: Scale },
+      { href: '/integrations', label: 'Интеграции', icon: Plug },
     ],
   },
   {
