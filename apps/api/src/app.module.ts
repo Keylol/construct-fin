@@ -24,6 +24,7 @@ import { WarehouseModule } from './warehouse/warehouse.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AuditModule } from './audit/audit.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 import { TelegramAlertService } from './common/telegram-alert.service';
 
@@ -60,6 +61,7 @@ import { TelegramAlertService } from './common/telegram-alert.service';
     PurchaseModule,
     ReconciliationModule,
     AuditModule,
+    IntegrationsModule,
   ],
   controllers: [HealthController],
   providers: [IdempotencyInterceptor, TelegramAlertService],
