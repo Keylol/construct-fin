@@ -6,10 +6,10 @@
 
 | Параметр | Значение | Где смотреть/менять |
 |---|---|---|
-| Token (актуальный, после ротации 2026-05-03) | `<REDACTED-BOT-TOKEN>` | `.env` локально, `gh secret list -R Keylol/construct-fin` на CI, `/srv/construct/app/.env` на VPS |
+| Token | **в доках не храним** (секрет) | прод: `/srv/construct-v6/.env.production` на VPS 195.133.1.13; CI: `gh secret list -R Keylol/construct-fin`; локально: `apps/api/.env`. Значения токена, попавшие в git-историю этого файла, считать скомпрометированными — при сомнении Revoke в BotFather |
 | Username | `ConstructFinance_bot` | `@BotFather → Bot Settings` |
 | Login Widget domain | `aleksandrantropov.ru` (вкл. поддомены `*.aleksandrantropov.ru`) | `@BotFather → Bot Settings → Domain` |
-| Mini App URL (Menu button) | `https://constructpc.aleksandrantropov.ru` (v5.2.1 прод) | Бот устанавливает через `set_chat_menu_button` (см. `Legacy/Construct/bot/main.py`) |
+| Mini App URL (Menu button) | `https://miniapp.aleksandrantropov.online` (v6 прод) | Бот устанавливает через `set_chat_menu_button` |
 | Allowed Telegram IDs | `661916730, 932026723` | `.env` → `TELEGRAM_ALLOWED_IDS` |
 
 ## Сценарий A: локальная разработка v6
@@ -35,7 +35,7 @@ ngrok http 3000
 
 Когда хочется протестить v6 серьёзно, не ломая прод v5.2.1:
 
-1. Поднимаем v6 на отдельном поддомене **`v6.aleksandrantropov.ru`** (VPS `45.82.254.230`, тот же сервер).
+1. Прод v6 живёт на **`miniapp.aleksandrantropov.online`** (VPS `195.133.1.13`; старый VPS 45.82.254.230 мёртв с ~2026-06-05 — хостер обанкротился).
 2. Прописываем nginx + Let's Encrypt для нового поддомена.
 3. В `@BotFather` домен уже `aleksandrantropov.ru` (с подстановочными поддоменами), ничего менять не надо.
 4. Открываем `https://v6.aleksandrantropov.ru/login` — Login Widget работает.
@@ -86,13 +86,13 @@ curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChatMenuButton?cha
 
 Token периодически ротируется. Источники в порядке свежести:
 
-1. **VPS:** `/srv/construct/app/.env` (deploy ssh ключ `~/.ssh/deploy_ferrum`):
+1. **VPS:** `/srv/construct-v6/.env.production` (deploy ssh ключ `~/.ssh/deploy_ferrum`):
    ```bash
-   ssh -i ~/.ssh/deploy_ferrum root@45.82.254.230 \
-     'grep TELEGRAM_BOT_TOKEN /srv/construct/app/.env'
+   ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
+     'grep TELEGRAM_BOT_TOKEN /srv/construct-v6/.env.production'
    ```
 2. **GitHub Secrets:** `gh secret list -R Keylol/construct-fin` — имена видны, значения не читаются. Только setting:
    ```bash
    gh secret set TELEGRAM_BOT_TOKEN -R Keylol/construct-fin
    ```
-3. **BotFather:** `/mybots → ConstructFinance_bot → API Token → Revoke current token`. После этого нужно обновить и `.env`, и GitHub Secret, и `/srv/construct/app/.env` на VPS.
+3. **BotFather:** `/mybots → ConstructFinance_bot → API Token → Revoke current token`. После этого нужно обновить и локальный `apps/api/.env`, и GitHub Secret, и `/srv/construct-v6/.env.production` на VPS.
