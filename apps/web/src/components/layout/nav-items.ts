@@ -16,6 +16,7 @@ import {
   ArrowLeftRight,
   Scale,
   Plug,
+  Inbox,
   type LucideIcon,
 } from '@/components/ui/icons';
 
@@ -36,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     items: [
       { href: '/dashboard', label: 'Главная', icon: Home },
+      { href: '/inbox', label: 'Входящие', icon: Inbox },
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
       { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
