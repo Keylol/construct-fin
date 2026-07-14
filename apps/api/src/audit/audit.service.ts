@@ -27,7 +27,9 @@ export type AuditAction =
   | 'warehouse.supplier-return'
   | 'warehouse.write-off'
   | 'transaction.update'
-  | 'transaction.delete';
+  | 'transaction.delete'
+  | 'wbReceipt.commit'
+  | 'wbReceipt.revert';
 
 export interface AuditEntry {
   workspaceId: string;
