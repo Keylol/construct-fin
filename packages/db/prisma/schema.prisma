@@ -37,6 +37,7 @@ model User {
   createdStockLots      StockLot[]            @relation("StockLotCreatedBy")
   createdOrderReturns   OrderReturn[]         @relation("OrderReturnCreatedBy")
   createdIntegrations   IntegrationConnection[] @relation("IntegrationCreatedBy")
+  createdWbReceipts     WbReceipt[]           @relation("WbReceiptCreatedBy")
 }
 
 model Workspace {
@@ -71,6 +72,7 @@ model Workspace {
   orderReturns    OrderReturn[]
   integrations    IntegrationConnection[]
   bankLines       BankStatementLine[]
+  wbReceipts      WbReceipt[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -122,6 +124,7 @@ model Account {
   balanceChecks AccountBalanceCheck[]
   stockLots     StockLot[]            @relation("StockLotAccount")
   integrations  IntegrationConnection[]
+  wbReceipts    WbReceipt[]           @relation("WbReceiptAccount")
 
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
@@ -277,6 +280,7 @@ model Order {
   attachments  Attachment[]
   schedule     PaymentScheduleEntry[]
   returns      OrderReturn[] @relation("OrderReturns")
+  wbReceiptLines WbReceiptLine[] @relation("WbReceiptLineOrder")
 
   // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
   // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
@@ -359,6 +363,8 @@ model OrderItem {
   order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   warehouseItem WarehouseItem? @relation(fields: [warehouseItemId], references: [id])
   returns       OrderReturn[]
+  // Ф6: строка чека WB, породившая эту позицию (маркировка «в заказ»).
+  wbReceiptLine WbReceiptLine? @relation("WbReceiptLineOrderItem")
 
   @@index([orderId])
   @@index([warehouseItemId])
@@ -452,6 +458,7 @@ model WarehouseItem {
   purchaseLines   PurchaseLine[]
   stockMovements  StockMovement[]
   lots            StockLot[]
+  wbReceiptLines  WbReceiptLine[] @relation("WbReceiptLineItem")
 
   // Уникальность sku — partial-unique (WHERE deletedAt IS NULL AND sku IS NOT
   // NULL), заведена сырым SQL в миграции *_phase4_sku_number_unique (см. Order
@@ -731,6 +738,8 @@ model Transaction {
   // Inbox). SetNull держится через сервис (правка/удаление проводки возвращает
   // строку в Inbox); FK — целостность на случай hard-delete.
   bankLine     BankStatementLine? @relation("BankLineTransaction")
+  // Ф6: чек WB, чьи деньги эта проводка (создана разбором или привязана).
+  wbReceipt    WbReceipt?         @relation("WbReceiptTransaction")
 
   @@index([workspaceId, date])
   @@index([workspaceId, kind, date])
@@ -1070,4 +1079,87 @@ enum AusnMark {
   INCOME // банк отнёс к доходу для АУСН
   EXPENSE // банк отнёс к расходу для АУСН
   NOT_COUNTED // не учитывается в базе АУСН
+}
+
+// ───────────────────────── WB-чеки (Ф6) ─────────────────────────
+// Кассовый чек Wildberries (карта физлица, PDF с receipt.wb.ru) — составной
+// документ разбора: деньги = РОВНО ОДНА транзакция-расход (созданная разбором
+// либо привязанная строка выписки карты — анти-задвоение), складские строки
+// приходуются FIFO-партиями, заказные — становятся позициями заказов
+// (себестоимость = цена чека). Идемпотентность повторной загрузки — по ФПД
+// (partial-unique (workspaceId, fpd) WHERE deletedAt IS NULL, сырым SQL).
+
+model WbReceipt {
+  id          String @id @default(cuid())
+  workspaceId String
+  /// Карта, с которой оплачен чек (счёт workspace).
+  accountId   String
+  /// Деньги чека 1:1. null недолго: commit либо создаёт расход, либо привязывает
+  /// существующую операцию; после отката созданная удаляется, привязанная отвязывается.
+  transactionId String? @unique
+  /// true — транзакцию создал разбор (откат её soft-удаляет);
+  /// false — привязана существующая (откат только отвязывает).
+  transactionCreated Boolean @default(false)
+  /// Фискальный признак документа — ключ идемпотентности.
+  fpd          String
+  /// Номер фискального документа («No ФД»).
+  fd           String?
+  checkNumber  String?
+  receiptDate  DateTime
+  totalAmount  Decimal  @db.Decimal(14, 2)
+  note         String?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account     Account      @relation("WbReceiptAccount", fields: [accountId], references: [id])
+  transaction Transaction? @relation("WbReceiptTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
+  createdBy   User         @relation("WbReceiptCreatedBy", fields: [createdById], references: [id])
+  lines       WbReceiptLine[]
+
+  @@index([workspaceId, receiptDate])
+  @@index([workspaceId, deletedAt])
+  @@index([accountId])
+}
+
+// Сгруппированная позиция чека (поштучные строки WB свёрнуты в кол-во) и её
+// назначение после маркировки оператором.
+model WbReceiptLine {
+  id        String @id @default(cuid())
+  receiptId String
+  name      String
+  qty       Decimal @db.Decimal(14, 3)
+  unitPrice Decimal @db.Decimal(14, 4)
+  /// Кэш: qty × unitPrice (== сумме штук в чеке).
+  lineTotal Decimal @db.Decimal(14, 2)
+  /// Реальный продавец строки (WB — посредник-«поверенный»).
+  sellerName String?
+  sellerInn  String?
+  /// Хэш WB-заказа из кода маркировки — один чек несёт позиции разных заказов WB.
+  wbOrderHash String?
+  target      WbLineTarget
+  /// target=WAREHOUSE: товар, оприходованный этой строкой (FIFO-партия ссылается
+  /// на строку слабой парой sourceType/sourceId).
+  warehouseItemId String?
+  /// target=ORDER: заказ и созданная в нём позиция (1:1 — ключ отката).
+  orderId     String?
+  orderItemId String? @unique
+  createdAt   DateTime @default(now())
+
+  receipt       WbReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  warehouseItem WarehouseItem? @relation("WbReceiptLineItem", fields: [warehouseItemId], references: [id])
+  order         Order?         @relation("WbReceiptLineOrder", fields: [orderId], references: [id])
+  orderItem     OrderItem?     @relation("WbReceiptLineOrderItem", fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@index([orderId])
+  @@index([warehouseItemId])
+}
+
+enum WbLineTarget {
+  WAREHOUSE // оприходована на склад (создана FIFO-партия)
+  ORDER // добавлена позицией в заказ (себестоимость = цена чека)
+  SKIPPED // пропущена оператором (личное/не учитывать)
 }
