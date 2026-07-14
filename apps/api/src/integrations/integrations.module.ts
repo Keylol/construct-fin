@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { CryptoService } from './crypto.service';
+import { AdapterRegistry } from './adapter-registry';
+import { FakeBankAdapter } from './adapters/fake-bank.adapter';
+import { SyncService } from './sync.service';
 
 /**
- * Модуль интеграций (Ф1 «Полный автомат»). Пока — только CryptoService
- * (шифрование секретов). Синк-каркас, адаптеры провайдеров, CRUD подключений
- * и Inbox добавляются в следующих волнах (Ф1-B, Ф1-C).
+ * Модуль интеграций (Ф1 «Полный автомат»): шифрование секретов (CryptoService),
+ * реестр адаптеров провайдеров + фейк для dev/тестов, синк выписки (SyncService,
+ * ежечасный cron + ручной запуск). CRUD подключений и Inbox — Ф1-C.
  */
 @Module({
-  providers: [CryptoService],
-  exports: [CryptoService],
+  providers: [CryptoService, AdapterRegistry, FakeBankAdapter, SyncService],
+  exports: [CryptoService, AdapterRegistry, SyncService],
 })
 export class IntegrationsModule {}
