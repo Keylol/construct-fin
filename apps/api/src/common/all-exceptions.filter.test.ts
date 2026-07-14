@@ -130,3 +130,35 @@ describe('AllExceptionsFilter', () => {
     expect(JSON.stringify(body)).not.toContain('secret');
   });
 });
+
+describe('AllExceptionsFilter → TelegramAlertService (L5-хвост)', () => {
+  function runWithAlerts(exception: unknown) {
+    const alert5xx = vi.fn();
+    const reply = vi.fn();
+    const adapterHost = { httpAdapter: { reply } } as unknown as HttpAdapterHost;
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ getHeader: () => 'req-123' }),
+        getRequest: () => ({ method: 'POST', url: '/api/orders?x=1' }),
+      }),
+    } as unknown as ArgumentsHost;
+    new AllExceptionsFilter(adapterHost, { alert5xx } as never).catch(exception, host);
+    return alert5xx;
+  }
+
+  it('5xx зовёт alert5xx с методом/URL/reqId', () => {
+    const alert5xx = runWithAlerts(new Error('boom'));
+    expect(alert5xx).toHaveBeenCalledOnce();
+    expect(alert5xx).toHaveBeenCalledWith({
+      status: 500,
+      method: 'POST',
+      url: '/api/orders?x=1',
+      reqId: 'req-123',
+    });
+  });
+
+  it('4xx алерт НЕ зовёт', () => {
+    const alert5xx = runWithAlerts(new NotFoundException('нет'));
+    expect(alert5xx).not.toHaveBeenCalled();
+  });
+});
