@@ -36,6 +36,7 @@ model User {
   balanceChecks         AccountBalanceCheck[] @relation("BalanceCheckCreatedBy")
   createdStockLots      StockLot[]            @relation("StockLotCreatedBy")
   createdOrderReturns   OrderReturn[]         @relation("OrderReturnCreatedBy")
+  createdIntegrations   IntegrationConnection[] @relation("IntegrationCreatedBy")
 }
 
 model Workspace {
@@ -68,6 +69,8 @@ model Workspace {
   stockLots       StockLot[]
   lotConsumptions LotConsumption[]
   orderReturns    OrderReturn[]
+  integrations    IntegrationConnection[]
+  bankLines       BankStatementLine[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -118,6 +121,7 @@ model Account {
   transfersTo   Transfer[]            @relation("TransferTo")
   balanceChecks AccountBalanceCheck[]
   stockLots     StockLot[]            @relation("StockLotAccount")
+  integrations  IntegrationConnection[]
 
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
@@ -723,6 +727,10 @@ model Transaction {
   importBatch  ImportBatch?  @relation(fields: [importBatchId], references: [id])
   createdBy    User          @relation("TransactionCreatedBy", fields: [createdById], references: [id])
   attachments  Attachment[]
+  // Ф1: строка банковской выписки, из которой создана эта проводка (авто-разбор
+  // Inbox). SetNull держится через сервис (правка/удаление проводки возвращает
+  // строку в Inbox); FK — целостность на случай hard-delete.
+  bankLine     BankStatementLine? @relation("BankLineTransaction")
 
   @@index([workspaceId, date])
   @@index([workspaceId, kind, date])
@@ -801,6 +809,7 @@ model Transfer {
   toAccount   Account       @relation("TransferTo", fields: [toAccountId], references: [id])
   createdBy   User          @relation("TransferCreatedBy", fields: [createdById], references: [id])
   legs        Transaction[] @relation("TransferLegs")
+  bankLines   BankStatementLine[] @relation("BankLineTransfer")
 
   @@index([workspaceId, date])
   @@index([workspaceId, deletedAt])
@@ -955,4 +964,110 @@ model IdempotencyKey {
   createdAt    DateTime  @default(now())
 
   @@index([expiresAt])
+}
+
+// ───────────────────────────── Интеграции (Ф1 «Полный автомат») ─────────────
+//
+// Подключение внешнего источника операций (банк по API / карта через PDF).
+// Секрет (токен банка) шифруется AES-256-GCM мастер-ключом из env и хранится
+// строкой `v1.<nonce>.<tag>.<ciphertext>` (base64) — наружу отдаётся только
+// маска keyLast4. Управление — ТОЛЬКО владелец workspace (OwnerGuard).
+
+model IntegrationConnection {
+  id           String              @id @default(cuid())
+  workspaceId  String
+  provider     IntegrationProvider
+  /// Счёт, на который ложатся операции этого подключения.
+  accountId    String
+  /// Зашифрованный токен (AES-256-GCM, формат `v1.<nonce>.<tag>.<ct>`).
+  credentialEnc String
+  /// Маска ключа для UI (последние 4 символа) — сам ключ наружу не отдаётся.
+  keyLast4     String
+  status       IntegrationStatus   @default(ACTIVE)
+  /// Курсор инкрементальной синхронизации (provider-специфичный, напр. дата/id).
+  syncCursor   String?
+  lastSyncAt   DateTime?
+  lastSyncError String?
+  createdById  String
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  deletedAt    DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id])
+  createdBy User      @relation("IntegrationCreatedBy", fields: [createdById], references: [id])
+  lines     BankStatementLine[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([accountId])
+}
+
+// Строка выписки из подключения — staging для экрана «Входящие» (Inbox).
+// Идемпотентность синка: @@unique([connectionId, externalId]) (id операции
+// у банка). Первая линия дедупа против ручного ввода — importHash-совместимость
+// решается на уровне сервиса синка (Ф1-B).
+model BankStatementLine {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  connectionId   String
+  /// Идентификатор операции у провайдера (для идемпотентного upsert).
+  externalId     String
+  date           DateTime
+  amount         Decimal       @db.Decimal(14, 2)
+  /// Знак операции: INCOME — приход, EXPENSE — расход.
+  direction      TxType
+  counterpartyName String?
+  counterpartyInn  String?
+  /// Назначение платежа.
+  description    String?
+  /// Маркировка АУСН от банка (для сверки Ф4): доход/расход/не учитывается.
+  ausnMark       AusnMark?
+  status         BankLineStatus @default(NEW)
+  /// Подсказка Rule-движка (для UI и авто-проводки).
+  suggestedCategoryId String?
+  /// Проводка, созданная из строки (авто или вручную из Inbox). 1:1 — одна
+  /// строка порождает не более одной проводки.
+  transactionId  String?       @unique
+  /// Перевод, к которому отнесена строка (обе ноги детекта переводов, 1:many).
+  transferId     String?
+  /// Сырой ответ провайдера — для форензики/повторного разбора.
+  raw            Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection  IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  transaction Transaction?          @relation("BankLineTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
+  transfer    Transfer?             @relation("BankLineTransfer", fields: [transferId], references: [id], onDelete: SetNull)
+
+  @@unique([connectionId, externalId])
+  @@index([workspaceId, status, date])
+  @@index([connectionId, status])
+  // transactionId не индексируем отдельно — @unique уже создаёт уникальный индекс.
+  @@index([transferId])
+}
+
+enum IntegrationProvider {
+  ALFA // Альфа-Бизнес API (р/с ИП)
+  TBANK // Т-Бизнес OpenAPI (р/с ИП)
+  WB_CARD // карта ВБ-банка (физлицо) — через PDF-парсинг
+}
+
+enum IntegrationStatus {
+  ACTIVE // синхронизируется
+  ERROR // последний синк упал (см. lastSyncError)
+  DISABLED // выключено владельцем, синк не идёт
+}
+
+enum BankLineStatus {
+  NEW // ждёт разбора в Inbox
+  AUTO_POSTED // проведено автоматически по правилу (проводка создана)
+  RESOLVED // разобрано вручную (проводка/заказ/закупка/перевод)
+  DISMISSED // «не учитывать» — в отчёты не идёт
+}
+
+enum AusnMark {
+  INCOME // банк отнёс к доходу для АУСН
+  EXPENSE // банк отнёс к расходу для АУСН
+  NOT_COUNTED // не учитывается в базе АУСН
 }
