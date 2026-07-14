@@ -178,6 +178,25 @@ describe('WbReceipt commit (create-mode)', () => {
     expect(orderRow.totalAmount.toFixed(2)).toBe('75000.00');
   });
 
+  it('заказ со 100% скидкой: добавление позиции из чека не роняет total в минус', async () => {
+    // Инвариант discount ≤ subtotal держат create/update; addExternalItems
+    // только растит subtotal — total монотонно неотрицателен. Фиксируем.
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Промо-сборка', qty: '1', unitPrice: '1000.00' }],
+      discountAmount: '1000.00',
+    } as Parameters<typeof h.orders.create>[1]);
+    await h.wbReceipts.commit(seed.workspaceId, seed.userId, {
+      ...dto({ orderId: order.id }),
+      totalAmount: '18438.00',
+      lines: [
+        { name: 'Процессор', qty: '1', unitPrice: '18438.00', target: 'ORDER', orderId: order.id },
+      ],
+    });
+    const row = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(row.subtotal.toFixed(2)).toBe('19438.00');
+    expect(row.totalAmount.toFixed(2)).toBe('18438.00'); // ≥ 0 всегда
+  });
+
   it('Σ строк ≠ итогу чека → 400 (ловит потерянные парсером позиции)', async () => {
     const order = await seedOrder();
     await expect(
