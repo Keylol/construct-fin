@@ -20,6 +20,7 @@ function item(over: {
   discountAmount?: string;
 }) {
   return {
+    id: `item-${over.name}`,
     name: over.name,
     qty: new Prisma.Decimal(over.qty),
     returnedQty: new Prisma.Decimal(over.returnedQty ?? '0'),
@@ -35,13 +36,53 @@ function item(over: {
   };
 }
 
+/** Событие возврата (IJ9) в форме select'а loadReturnEvents + orderItemId для groupBy. */
+function returnEvent(over: {
+  orderItemId: string;
+  qty: string;
+  revenueAmount: string;
+  costAmount: string;
+  itemName: string;
+  clientId?: string | null;
+}) {
+  return {
+    orderItemId: over.orderItemId,
+    qty: new Prisma.Decimal(over.qty),
+    revenueAmount: new Prisma.Decimal(over.revenueAmount),
+    costAmount: new Prisma.Decimal(over.costAmount),
+    orderItem: { name: over.itemName },
+    order: { clientId: over.clientId ?? null },
+  };
+}
+
 function buildService(
   items: ReturnType<typeof item>[],
   clients: { id: string; name: string }[] = [],
+  events: ReturnType<typeof returnEvent>[] = [],
 ) {
   const prisma = {
     orderItem: { findMany: vi.fn().mockResolvedValue(items) },
     counterparty: { findMany: vi.fn().mockResolvedValue(clients) },
+    orderReturn: {
+      // groupBy — Σ costAmount по позициям (реконструкция признания).
+      groupBy: vi.fn().mockImplementation(({ where }: { where: { orderItemId: { in: string[] } } }) => {
+        const byItem = new Map<string, Prisma.Decimal>();
+        for (const ev of events) {
+          if (!where.orderItemId.in.includes(ev.orderItemId)) continue;
+          byItem.set(
+            ev.orderItemId,
+            (byItem.get(ev.orderItemId) ?? new Prisma.Decimal(0)).plus(ev.costAmount),
+          );
+        }
+        return Promise.resolve(
+          Array.from(byItem.entries()).map(([orderItemId, sum]) => ({
+            orderItemId,
+            _sum: { costAmount: sum },
+          })),
+        );
+      }),
+      findMany: vi.fn().mockResolvedValue(events),
+    },
   };
   return { service: new MarginService(prisma as never), prisma };
 }
@@ -109,11 +150,13 @@ describe('MarginService.byProduct', () => {
     expect(r.rows[0]!.marginPct).toBe('100.00');
   });
 
-  it('возврат клиента (RMA) сужает маржу: считаем по qty − returnedQty (A4)', async () => {
-    // Продали 5 по 1000 (себест. 600), вернули 2 → чистая продажа 3 шт.
-    const { service } = buildService([
-      item({ name: 'Стол', qty: '5', returnedQty: '2', unitPrice: '1000', unitCostAtSale: '600' }),
-    ]);
+  it('возврат клиента (RMA) сужает маржу: gross минус событие возврата (IJ9)', async () => {
+    // Продали 5 по 1000 (себест. 600), вернули 2 → без периода итоги как netQty.
+    const { service } = buildService(
+      [item({ name: 'Стол', qty: '5', returnedQty: '2', unitPrice: '1000', unitCostAtSale: '600' })],
+      [],
+      [returnEvent({ orderItemId: 'item-Стол', qty: '2', revenueAmount: '2000', costAmount: '1200', itemName: 'Стол' })],
+    );
     const r = await service.byProduct('ws1');
     const row = r.rows[0]!;
     expect(row.qty).toBe('3.000'); // 5 − 2
@@ -123,9 +166,11 @@ describe('MarginService.byProduct', () => {
   });
 
   it('полный возврат позиции → нулевые выручка/COGS/маржа', async () => {
-    const { service } = buildService([
-      item({ name: 'Стол', qty: '2', returnedQty: '2', unitPrice: '1000', unitCostAtSale: '600' }),
-    ]);
+    const { service } = buildService(
+      [item({ name: 'Стол', qty: '2', returnedQty: '2', unitPrice: '1000', unitCostAtSale: '600' })],
+      [],
+      [returnEvent({ orderItemId: 'item-Стол', qty: '2', revenueAmount: '2000', costAmount: '1200', itemName: 'Стол' })],
+    );
     const r = await service.byProduct('ws1');
     const row = r.rows[0]!;
     expect(row.qty).toBe('0.000');
