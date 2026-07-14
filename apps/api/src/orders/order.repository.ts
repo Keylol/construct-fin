@@ -27,7 +27,15 @@ export class OrderRepository {
    */
   async list(
     workspaceId: string,
-    opts: { status?: string; clientId?: string; search?: string; cursor?: string; limit?: number },
+    opts: {
+      status?: string;
+      clientId?: string;
+      search?: string;
+      closedFrom?: string;
+      closedTo?: string;
+      cursor?: string;
+      limit?: number;
+    },
   ) {
     const limit = opts.limit ?? 100;
     const rows = await this.prisma.order.findMany({
@@ -36,6 +44,15 @@ export class OrderRepository {
         deletedAt: null,
         ...(opts.status ? { status: opts.status as Prisma.EnumOrderStatusFilter } : {}),
         ...(opts.clientId ? { clientId: opts.clientId } : {}),
+        // IJ9: период по дате закрытия (drill-down «Выручка» из ОПиУ).
+        ...(opts.closedFrom || opts.closedTo
+          ? {
+              closedAt: {
+                ...(opts.closedFrom ? { gte: new Date(opts.closedFrom) } : {}),
+                ...(opts.closedTo ? { lte: new Date(opts.closedTo) } : {}),
+              },
+            }
+          : {}),
         ...(opts.search
           ? {
               OR: [

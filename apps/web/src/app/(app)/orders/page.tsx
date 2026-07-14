@@ -114,11 +114,40 @@ export default function OrdersPage() {
   const wsId = current?.id ?? null;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [search, setSearch] = useState('');
+  // IJ9 drill-down «Выручка» из ОПиУ: период по дате ЗАКРЫТИЯ заказа
+  // (?closedFrom&closedTo&status=DONE). Читаем window.location в эффекте
+  // (как useCreateFromUrl) — без Suspense и hydration-рассинхрона.
+  const [closedRange, setClosedRange] = useState<{ from?: string; to?: string } | null>(null);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const from = sp.get('closedFrom') || undefined;
+    const to = sp.get('closedTo') || undefined;
+    if (from || to) {
+      setClosedRange({ from, to });
+      const st = sp.get('status');
+      if (st === 'OPEN' || st === 'DONE' || st === 'CANCELLED') setStatusFilter(st);
+    }
+  }, []);
+  // Снятие чипа чистит и URL — иначе refresh вернул бы фильтр из адреса.
+  const clearClosedRange = () => {
+    setClosedRange(null);
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('closedFrom');
+    sp.delete('closedTo');
+    const qs = sp.toString();
+    window.history.replaceState(
+      null,
+      '',
+      qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
+    );
+  };
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
   const orders = useOrders(wsId, {
     status: statusFilter || undefined,
     search: debouncedSearch || undefined,
+    closedFrom: closedRange?.from,
+    closedTo: closedRange?.to,
   });
   const orderRows = useMemo<Order[]>(
     () => orders.data?.pages.flatMap((p) => p.items) ?? [],
@@ -247,7 +276,13 @@ export default function OrdersPage() {
           <span className="pb-1">Статус</span>
           <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
+            onChange={(e) => {
+              const st = e.target.value as OrderStatus | '';
+              setStatusFilter(st);
+              // Период закрытия совместим только с DONE (у OPEN/CANCELLED нет
+              // closedAt — фильтр дал бы пустой список без объяснения).
+              if (closedRange && (st === 'OPEN' || st === 'CANCELLED')) clearClosedRange();
+            }}
             className="h-9 w-[150px]"
           >
             <option value="">Все</option>
@@ -256,6 +291,23 @@ export default function OrdersPage() {
             <option value="CANCELLED">Отменён</option>
           </Select>
         </label>
+        {/* IJ9: чип периода закрытия — приходит только drill-down'ом из ОПиУ */}
+        {closedRange && (
+          <label className="flex flex-col text-xs text-muted-foreground">
+            <span className="pb-1">Закрыты в периоде</span>
+            <button
+              type="button"
+              onClick={clearClosedRange}
+              title="Снять фильтр периода закрытия"
+              className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
+            >
+              {closedRange.from ? formatDate(closedRange.from) : '…'}
+              {' — '}
+              {closedRange.to ? formatDate(closedRange.to) : '…'}
+              <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            </button>
+          </label>
+        )}
       </FilterBar>
 
       <div className="bg-card">

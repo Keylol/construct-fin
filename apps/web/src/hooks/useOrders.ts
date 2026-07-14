@@ -56,7 +56,15 @@ export interface ScheduleEntryInput {
  */
 export function useOrders(
   wsId: string | null,
-  filters?: { status?: OrderStatus; clientId?: string; search?: string; limit?: number },
+  filters?: {
+    status?: OrderStatus;
+    clientId?: string;
+    search?: string;
+    /** IJ9: период по дате закрытия (drill-down «Выручка» из ОПиУ). */
+    closedFrom?: string;
+    closedTo?: string;
+    limit?: number;
+  },
 ) {
   return useInfiniteQuery({
     queryKey: ['orders', wsId, filters],
@@ -67,6 +75,8 @@ export function useOrders(
       if (filters?.status) p.set('status', filters.status);
       if (filters?.clientId) p.set('clientId', filters.clientId);
       if (filters?.search) p.set('search', filters.search);
+      if (filters?.closedFrom) p.set('closedFrom', filters.closedFrom);
+      if (filters?.closedTo) p.set('closedTo', filters.closedTo);
       if (filters?.limit) p.set('limit', String(filters.limit));
       if (pageParam) p.set('cursor', pageParam);
       return api.get<OrderListPage>(`/workspaces/${wsId}/orders?${p.toString()}`);
