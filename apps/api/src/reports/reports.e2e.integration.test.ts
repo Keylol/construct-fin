@@ -137,29 +137,32 @@ let ordSeq = 0;
 async function doneOrder(opts: {
   closedAt: Date;
   total: string;
+  /** СУММАРНАЯ себестоимость позиции (за все qty). */
   cogs?: string;
   discount?: string;
+  qty?: string;
 }): Promise<string> {
   ordSeq += 1;
   const discount = opts.discount ?? '0';
-  const subtotal = new Prisma.Decimal(opts.total).plus(discount).toFixed(2);
+  const qty = new Prisma.Decimal(opts.qty ?? '1');
+  const subtotal = new Prisma.Decimal(opts.total).plus(discount);
   const o = await h.prisma.order.create({
     data: {
       workspaceId: seed.workspaceId,
       number: `ORD-IJ9-${ordSeq}`,
       status: 'DONE',
       closedAt: opts.closedAt,
-      subtotal,
+      subtotal: subtotal.toFixed(2),
       discountAmount: discount,
       totalAmount: opts.total,
       items: {
         create: [
           {
             name: `Позиция ${ordSeq}`,
-            qty: '1',
-            unitPrice: subtotal,
-            lineTotal: subtotal,
-            unitCostAtSale: opts.cogs ?? null,
+            qty: qty.toFixed(3),
+            unitPrice: subtotal.div(qty).toFixed(2),
+            lineTotal: subtotal.toFixed(2),
+            unitCostAtSale: opts.cogs ? new Prisma.Decimal(opts.cogs).div(qty).toFixed(4) : null,
           },
         ],
       },
@@ -186,6 +189,11 @@ async function returnEvent(
       date: opts.date,
       createdById: seed.userId,
     },
+  });
+  // Как в реальном returnItem: событие идёт рука об руку с инкрементом кэша.
+  await h.prisma.orderItem.update({
+    where: { id: item.id },
+    data: { returnedQty: new Prisma.Decimal(item.returnedQty).plus(opts.qty ?? '1').toFixed(3) },
   });
 }
 
@@ -272,10 +280,11 @@ describe('P&L отчёт (по данным)', () => {
   });
 
   it('IJ2: grossProfit = чистая выручка − COGS (возврат поставщику не выручка, возврат клиенту вычтен)', async () => {
-    // IJ9: признание 10000/COGS 3000 (заказ), возврат клиенту 2000 — событием
-    // OrderReturn, возврат поставщику 1500 (SUPPLIER_REFUND → PURCHASES, вне net).
-    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '3000' });
-    await returnEvent(orderId, { date: d2025(4), revenue: '2000' });
+    // IJ9: признание 10000/COGS 3000 (5 шт по 2000/600), возврат клиентом
+    // 1 шт (событие: −2000 выручки, −600 COGS), возврат поставщику 1500
+    // (SUPPLIER_REFUND → PURCHASES, вне net).
+    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '3000', qty: '5' });
+    await returnEvent(orderId, { date: d2025(4), revenue: '2000', cost: '600' });
     await tx({ amount: '1500', type: 'INCOME', kind: 'SUPPLIER_REFUND', date: d2025(4) });
 
     const report = await h.pnl.build({
@@ -285,8 +294,9 @@ describe('P&L отчёт (по данным)', () => {
       groupBy: 'month',
     });
     const t = report.primary.totals;
-    // grossProfit = (10000 − 2000) − 3000 = 5000. Раньше было бы 10000+1500−3000=8500.
-    expect(t.grossProfit).toBe('5000.00');
+    // grossProfit = (10000 − 2000) − (3000 − 600) = 5600: возврат минусует
+    // и выручку, и себестоимость возвращённой единицы.
+    expect(t.grossProfit).toBe('5600.00');
   });
 
   it('IJ9: WRITE_OFF — расход периода (склад = актив), PURCHASES — инфо вне итога', async () => {
@@ -329,8 +339,9 @@ describe('P&L отчёт (по данным)', () => {
   });
 
   it('IJ9: возврат минусует выручку и COGS в СВОЙ месяц, признание не трогает', async () => {
-    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '4000' }); // май
-    await returnEvent(orderId, { date: d2025(6), revenue: '2500', cost: '1000' }); // июль
+    // Май: 4 шт по 2500/1000. Июль: возврат 1 шт (−2500 выручки, −1000 COGS).
+    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '4000', qty: '4' });
+    await returnEvent(orderId, { date: d2025(6), revenue: '2500', cost: '1000' });
 
     const report = await h.pnl.build({
       workspaceId: seed.workspaceId,
@@ -466,6 +477,36 @@ describe('P&L отчёт (по данным)', () => {
     // Единый базис closedAt: (10000−4000) + (6000−2000) = 10000 в обоих отчётах.
     expect(pnl.primary.totals.grossProfit).toBe('10000.00');
     expect(margin.totals.margin).toBe(pnl.primary.totals.grossProfit);
+  });
+
+  it('IJ9-И3: сверка ОПиУ ↔ маржа ПРИ возврате через границу месяца', async () => {
+    // Май: 4 шт по 2500 (себест. 1000/шт). Июль: возврат 1 шт.
+    const orderId = await doneOrder({ closedAt: d2025(4), total: '10000', cogs: '4000', qty: '4' });
+    await returnEvent(orderId, { date: d2025(6), revenue: '2500', cost: '1000' });
+
+    const pnl = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+    });
+    const marginYear = await h.tradeMargin.byProduct(seed.workspaceId, Y2025);
+    // Год: (10000−2500) − (4000−1000) = 4500 в обоих отчётах.
+    expect(pnl.primary.totals.grossProfit).toBe('4500.00');
+    expect(marginYear.totals.margin).toBe('4500.00');
+
+    // Июль изолированно: маржа видит ТОЛЬКО минус возврата (−2500 + 1000 = −1500),
+    // как июльский grossProfit ОПиУ.
+    const july = resolvePeriod({ from: '2025-07-01', to: '2025-07-31' });
+    const marginJuly = await h.tradeMargin.byProduct(seed.workspaceId, july);
+    expect(marginJuly.totals.margin).toBe('-1500.00');
+    expect(pnl.primary.buckets[6]!.grossProfit).toBe('-1500.00');
+
+    // Май изолированно: полное признание без ретро-правок.
+    const may = resolvePeriod({ from: '2025-05-01', to: '2025-05-31' });
+    const marginMay = await h.tradeMargin.byProduct(seed.workspaceId, may);
+    expect(marginMay.totals.margin).toBe('6000.00');
+    expect(pnl.primary.buckets[4]!.grossProfit).toBe('6000.00');
   });
 
   it('byCategory сортируется по убыванию суммарного оборота', async () => {

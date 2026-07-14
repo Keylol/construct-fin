@@ -160,13 +160,22 @@ export class PnlService {
       Prisma.sql`
         SELECT to_char(date_trunc(${trunc}, o."closedAt" + interval '5 hours'), ${labelFmt}) AS label,
                SUM(o."totalAmount") AS revenue,
-               SUM(items."cogs") AS cogs
+               SUM(items."cogs" + ret."cost") AS cogs
         FROM "Order" o
         JOIN LATERAL (
-          SELECT COALESCE(SUM(i."qty" * COALESCE(i."unitCostAtSale", i."unitCost", 0)), 0) AS cogs
+          -- Признание на момент закрытия (qty × cost₀) напрямую невосстановимо:
+          -- возвраты пересчитывают unitCostAtSale задним числом. Телескоп событий
+          -- даёт точную реконструкцию: qty×cost₀ = netQty×cost_текущий + Σ costAmount
+          -- событий позиции (каждое событие = дельта признания до/после).
+          SELECT COALESCE(SUM((i."qty" - i."returnedQty") * COALESCE(i."unitCostAtSale", i."unitCost", 0)), 0) AS cogs
           FROM "OrderItem" i
           WHERE i."orderId" = o."id" AND i."deletedAt" IS NULL
         ) items ON TRUE
+        JOIN LATERAL (
+          SELECT COALESCE(SUM(r."costAmount"), 0) AS cost
+          FROM "OrderReturn" r
+          WHERE r."orderId" = o."id"
+        ) ret ON TRUE
         WHERE o."workspaceId" = ${workspaceId}
           AND o."deletedAt" IS NULL
           AND o."status" = 'DONE'
