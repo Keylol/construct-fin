@@ -17,6 +17,10 @@ process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'test-jwt-secret-please-chang
 process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? 'test-bot-token';
 process.env.TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'test_bot';
 process.env.TELEGRAM_ALLOWED_IDS = '';
+// Ф1: мастер-ключ интеграций (base64 32 байта) — чтобы CryptoService был
+// «configured» в функциональных тестах API интеграций (иначе create → 503).
+process.env.INTEGRATION_MASTER_KEY =
+  process.env.INTEGRATION_MASTER_KEY ?? Buffer.alloc(32, 5).toString('base64');
 process.env.NODE_ENV = 'test';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
