@@ -693,10 +693,11 @@ export interface InboxPage {
   nextCursor: string | null;
 }
 
-// ── Чеки WB (Ф6 «Полный автомат») ──
+// ── Разбор закупок (Ф6 «Полный автомат»): WB / ДНС / Онлайн Трейд / ручной ──
 export type WbLineTarget = 'WAREHOUSE' | 'ORDER' | 'SKIPPED';
+export type ReceiptSource = 'WB_CARD' | 'DNS' | 'ONLINE_TRADE' | 'MANUAL';
 
-/** Сгруппированная позиция чека из парсера (штуки WB свёрнуты в кол-во). */
+/** Нормализованная позиция из парсера (штуки WB свёрнуты в кол-во). */
 export interface WbParsedItem {
   name: string;
   qty: string;
@@ -704,18 +705,17 @@ export interface WbParsedItem {
   lineTotal: string;
   sellerInn: string | null;
   sellerName: string | null;
-  wbOrderHash: string | null;
-  unitCodes: string[];
+  sourceRef: string | null;
 }
 
 export interface WbReceiptPreview {
   receipt: {
+    source: ReceiptSource;
     receiptDate: string | null;
     checkNumber: string | null;
     fd: string | null;
-    fpd: string | null;
+    docNumber: string | null;
     totalAmount: string | null;
-    paidElectronic: string | null;
     items: WbParsedItem[];
     warnings: string[];
   };
@@ -724,7 +724,7 @@ export interface WbReceiptPreview {
   alreadyImported: { receiptId: string; importedAt: string } | null;
 }
 
-/** Строка commit-запроса: разметка оператора поверх позиции чека. */
+/** Строка commit-запроса: разметка оператора поверх позиции. */
 export type WbCommitLine = {
   name: string;
   qty: string;
@@ -740,8 +740,10 @@ export type WbCommitLine = {
 
 export interface WbCommitInput {
   accountId: string;
+  source: ReceiptSource;
   money: { mode: 'link'; transactionId: string } | { mode: 'create'; categoryId?: string | null };
-  fpd: string;
+  /** Ключ дедупа: номер документа (обязателен для не-MANUAL). */
+  docNumber?: string | null;
   fd?: string | null;
   checkNumber?: string | null;
   receiptDate: string;
@@ -752,7 +754,8 @@ export interface WbCommitInput {
 
 export interface WbReceiptListItem {
   id: string;
-  fpd: string;
+  source: ReceiptSource;
+  fpd: string | null;
   checkNumber: string | null;
   receiptDate: string;
   totalAmount: string;

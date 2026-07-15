@@ -124,10 +124,10 @@ export default function PurchasesPage() {
         breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки' }]}
         actions={
           <div className="flex items-center gap-2">
-            {/* Ф6: мастер разбора PDF-чека Wildberries (позиции → склад/заказ). */}
+            {/* Ф6: мастер разбора чека (WB/ДНС/Онлайн Трейд/ручной → склад/заказ). */}
             <Button variant="secondary" onClick={() => router.push('/purchases/wb-receipt')}>
               <Receipt className="h-4 w-4" />
-              Чек WB
+              Разбор чека
             </Button>
             <Button onClick={() => setCreating(true)}>
               <Plus className="h-4 w-4" />
