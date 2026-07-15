@@ -26,18 +26,20 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  ownedWorkspaces       Workspace[]           @relation("WorkspaceOwner")
+  ownedWorkspaces       Workspace[]             @relation("WorkspaceOwner")
   workspaceMemberships  WorkspaceMember[]
-  createdTransactions   Transaction[]         @relation("TransactionCreatedBy")
+  createdTransactions   Transaction[]           @relation("TransactionCreatedBy")
   auditLogs             AuditLog[]
   importBatches         ImportBatch[]
-  createdTransfers      Transfer[]            @relation("TransferCreatedBy")
-  createdStockMovements StockMovement[]       @relation("StockMovementCreatedBy")
-  balanceChecks         AccountBalanceCheck[] @relation("BalanceCheckCreatedBy")
-  createdStockLots      StockLot[]            @relation("StockLotCreatedBy")
-  createdOrderReturns   OrderReturn[]         @relation("OrderReturnCreatedBy")
+  createdTransfers      Transfer[]              @relation("TransferCreatedBy")
+  createdStockMovements StockMovement[]         @relation("StockMovementCreatedBy")
+  balanceChecks         AccountBalanceCheck[]   @relation("BalanceCheckCreatedBy")
+  createdStockLots      StockLot[]              @relation("StockLotCreatedBy")
+  createdOrderReturns   OrderReturn[]           @relation("OrderReturnCreatedBy")
   createdIntegrations   IntegrationConnection[] @relation("IntegrationCreatedBy")
-  createdWbReceipts     WbReceipt[]           @relation("WbReceiptCreatedBy")
+  createdWbReceipts     WbReceipt[]             @relation("WbReceiptCreatedBy")
+  createdRecurring      RecurringPayment[]      @relation("RecurringCreatedBy")
+  createdPlanned        PlannedPayment[]        @relation("PlannedCreatedBy")
 }
 
 model Workspace {
@@ -50,29 +52,31 @@ model Workspace {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner           User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  members         WorkspaceMember[]
-  accounts        Account[]
-  categories      Category[]
-  counterparties  Counterparty[]
-  transactions    Transaction[]
-  importBatches   ImportBatch[]
-  rules           Rule[]
-  auditLogs       AuditLog[]
-  orders          Order[]
-  warehouseItems  WarehouseItem[]
-  purchases       Purchase[]
-  attachments     Attachment[]
-  paymentSchedule PaymentScheduleEntry[]
-  transfers       Transfer[]
-  stockMovements  StockMovement[]
-  balanceChecks   AccountBalanceCheck[]
-  stockLots       StockLot[]
-  lotConsumptions LotConsumption[]
-  orderReturns    OrderReturn[]
-  integrations    IntegrationConnection[]
-  bankLines       BankStatementLine[]
-  wbReceipts      WbReceipt[]
+  owner             User                    @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members           WorkspaceMember[]
+  accounts          Account[]
+  categories        Category[]
+  counterparties    Counterparty[]
+  transactions      Transaction[]
+  importBatches     ImportBatch[]
+  rules             Rule[]
+  auditLogs         AuditLog[]
+  orders            Order[]
+  warehouseItems    WarehouseItem[]
+  purchases         Purchase[]
+  attachments       Attachment[]
+  paymentSchedule   PaymentScheduleEntry[]
+  transfers         Transfer[]
+  stockMovements    StockMovement[]
+  balanceChecks     AccountBalanceCheck[]
+  stockLots         StockLot[]
+  lotConsumptions   LotConsumption[]
+  orderReturns      OrderReturn[]
+  integrations      IntegrationConnection[]
+  bankLines         BankStatementLine[]
+  wbReceipts        WbReceipt[]
+  recurringPayments RecurringPayment[]
+  plannedPayments   PlannedPayment[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -117,14 +121,16 @@ model Account {
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
 
-  workspace     Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  transactions  Transaction[]
-  transfersFrom Transfer[]            @relation("TransferFrom")
-  transfersTo   Transfer[]            @relation("TransferTo")
-  balanceChecks AccountBalanceCheck[]
-  stockLots     StockLot[]            @relation("StockLotAccount")
-  integrations  IntegrationConnection[]
-  wbReceipts    WbReceipt[]           @relation("WbReceiptAccount")
+  workspace         Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  transfersFrom     Transfer[]              @relation("TransferFrom")
+  transfersTo       Transfer[]              @relation("TransferTo")
+  balanceChecks     AccountBalanceCheck[]
+  stockLots         StockLot[]              @relation("StockLotAccount")
+  integrations      IntegrationConnection[]
+  wbReceipts        WbReceipt[]             @relation("WbReceiptAccount")
+  recurringPayments RecurringPayment[]      @relation("RecurringAccount")
+  plannedPayments   PlannedPayment[]        @relation("PlannedAccount")
 
   @@index([workspaceId, isArchived])
   @@index([workspaceId, deletedAt])
@@ -162,10 +168,12 @@ model Category {
   updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
 
-  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent       Category?      @relation("CategoryTree", fields: [parentId], references: [id])
-  children     Category[]     @relation("CategoryTree")
-  transactions Transaction[]
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent            Category?          @relation("CategoryTree", fields: [parentId], references: [id])
+  children          Category[]         @relation("CategoryTree")
+  transactions      Transaction[]
+  recurringPayments RecurringPayment[] @relation("RecurringCategory")
+  plannedPayments   PlannedPayment[]   @relation("PlannedCategory")
 
   @@index([workspaceId, kind, parentId])
   @@index([workspaceId, bucket])
@@ -220,12 +228,14 @@ model Counterparty {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions      Transaction[]
-  ordersAsClient    Order[]         @relation("OrderClient")
-  warehouseDefaults WarehouseItem[] @relation("WarehouseDefaultSupplier")
-  purchases         Purchase[]      @relation("PurchaseSupplier")
-  stockLotsSupplied StockLot[]      @relation("StockLotSupplier")
+  ordersAsClient    Order[]            @relation("OrderClient")
+  warehouseDefaults WarehouseItem[]    @relation("WarehouseDefaultSupplier")
+  purchases         Purchase[]         @relation("PurchaseSupplier")
+  stockLotsSupplied StockLot[]         @relation("StockLotSupplier")
+  recurringPayments RecurringPayment[] @relation("RecurringCounterparty")
+  plannedPayments   PlannedPayment[]   @relation("PlannedCounterparty")
 
   @@index([workspaceId, role, isArchived])
   @@index([workspaceId, deletedAt])
@@ -273,14 +283,14 @@ model Order {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client       Counterparty? @relation("OrderClient", fields: [clientId], references: [id])
-  items        OrderItem[]
-  transactions Transaction[] @relation("OrderTransactions")
-  attachments  Attachment[]
-  schedule     PaymentScheduleEntry[]
-  returns      OrderReturn[] @relation("OrderReturns")
-  wbReceiptLines WbReceiptLine[] @relation("WbReceiptLineOrder")
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client         Counterparty?          @relation("OrderClient", fields: [clientId], references: [id])
+  items          OrderItem[]
+  transactions   Transaction[]          @relation("OrderTransactions")
+  attachments    Attachment[]
+  schedule       PaymentScheduleEntry[]
+  returns        OrderReturn[]          @relation("OrderReturns")
+  wbReceiptLines WbReceiptLine[]        @relation("WbReceiptLineOrder")
 
   // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
   // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
@@ -310,7 +320,7 @@ enum OrderPaymentState {
 // FIFO по (dueDate, seq) из Order.paidAmount (см. orders/payment-schedule.ts).
 // Σ строк МОЖЕТ расходиться с totalAmount — мягкое предупреждение в UI, не ошибка.
 model PaymentScheduleEntry {
-  id          String @id @default(cuid())
+  id          String   @id @default(cuid())
   workspaceId String
   orderId     String
   /// Порядок строки — вторичный ключ FIFO-погашения (после dueDate).
@@ -376,27 +386,27 @@ model OrderItem {
 /// атомарно в order.service.returnItem(); история засеяна backfill-миграцией
 /// (note LIKE 'BACKFILL%', даты best-effort).
 model OrderReturn {
-  id          String  @id @default(cuid())
-  workspaceId String
-  orderId     String
-  orderItemId String
+  id            String   @id @default(cuid())
+  workspaceId   String
+  orderId       String
+  orderItemId   String
   /// Возвращённое количество ЭТИМ событием (не накопительно).
-  qty         Decimal @db.Decimal(14, 3)
+  qty           Decimal  @db.Decimal(14, 3)
   /// Минус выручки этого события (qty × unitPrice позиции, money-округление).
-  revenueAmount Decimal @db.Decimal(14, 2)
+  revenueAmount Decimal  @db.Decimal(14, 2)
   /// Минус COGS этого события. Считается дельтой признанной себестоимости:
   /// (netQty×unitCostAtSale ДО) − (netQty×unitCostAtSale ПОСЛЕ пересчёта) —
   /// точно согласуется с FIFO-инвариантом маржи (I8) и без ошибок округления
   /// поединичной цены.
-  costAmount  Decimal @db.Decimal(14, 2)
+  costAmount    Decimal  @db.Decimal(14, 2)
   /// Сколько денег вернули этим событием (инфо; 0 — возврат без денег).
-  refundAmount Decimal @db.Decimal(14, 2)
+  refundAmount  Decimal  @db.Decimal(14, 2)
   /// Дата возврата (бизнес-семантика периода отчётов).
-  date        DateTime
+  date          DateTime
   /// BACKFILL-события миграции и произвольные пометки.
-  note        String?
-  createdAt   DateTime @default(now())
-  createdById String
+  note          String?
+  createdAt     DateTime @default(now())
+  createdById   String
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   order     Order     @relation("OrderReturns", fields: [orderId], references: [id], onDelete: Cascade)
@@ -719,8 +729,8 @@ model Transaction {
   // Inbox) ИЛИ ручное переопределение оператора; null → авто по kind/type
   // (см. reports/ausn-classify). taxPeriod (YYYY-MM) — период, за который уплачен
   // налог (заполняется у TAX-расхода из вкладки «Налог»; сверка начислено/уплачено).
-  ausnMark   AusnMark?
-  taxPeriod  String?
+  ausnMark  AusnMark?
+  taxPeriod String?
 
   // Метаданные.
   importBatchId String?
@@ -730,24 +740,26 @@ model Transaction {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account      Account       @relation(fields: [accountId], references: [id])
-  category     Category?     @relation(fields: [categoryId], references: [id])
-  counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
-  order        Order?        @relation("OrderTransactions", fields: [orderId], references: [id])
-  transfer     Transfer?     @relation("TransferLegs", fields: [transferGroupId], references: [id])
-  purchase     Purchase?     @relation("PurchaseTransaction")
-  originalTx   Transaction?  @relation("Reversals", fields: [originalTxId], references: [id])
-  reversals    Transaction[] @relation("Reversals")
-  importBatch  ImportBatch?  @relation(fields: [importBatchId], references: [id])
-  createdBy    User          @relation("TransactionCreatedBy", fields: [createdById], references: [id])
-  attachments  Attachment[]
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account        Account            @relation(fields: [accountId], references: [id])
+  category       Category?          @relation(fields: [categoryId], references: [id])
+  counterparty   Counterparty?      @relation(fields: [counterpartyId], references: [id])
+  order          Order?             @relation("OrderTransactions", fields: [orderId], references: [id])
+  transfer       Transfer?          @relation("TransferLegs", fields: [transferGroupId], references: [id])
+  purchase       Purchase?          @relation("PurchaseTransaction")
+  originalTx     Transaction?       @relation("Reversals", fields: [originalTxId], references: [id])
+  reversals      Transaction[]      @relation("Reversals")
+  importBatch    ImportBatch?       @relation(fields: [importBatchId], references: [id])
+  createdBy      User               @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  attachments    Attachment[]
   // Ф1: строка банковской выписки, из которой создана эта проводка (авто-разбор
   // Inbox). SetNull держится через сервис (правка/удаление проводки возвращает
   // строку в Inbox); FK — целостность на случай hard-delete.
-  bankLine     BankStatementLine? @relation("BankLineTransaction")
+  bankLine       BankStatementLine? @relation("BankLineTransaction")
   // Ф6: чек WB, чьи деньги эта проводка (создана разбором или привязана).
-  wbReceipt    WbReceipt?         @relation("WbReceiptTransaction")
+  wbReceipt      WbReceipt?         @relation("WbReceiptTransaction")
+  // Ф5: плановый платёж, который закрыла эта проводка (оплата плана/зарплаты).
+  plannedPayment PlannedPayment?    @relation("PlannedPaymentTransaction")
 
   @@index([workspaceId, date])
   @@index([workspaceId, kind, date])
@@ -823,11 +835,11 @@ model Transfer {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  fromAccount Account       @relation("TransferFrom", fields: [fromAccountId], references: [id])
-  toAccount   Account       @relation("TransferTo", fields: [toAccountId], references: [id])
-  createdBy   User          @relation("TransferCreatedBy", fields: [createdById], references: [id])
-  legs        Transaction[] @relation("TransferLegs")
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fromAccount Account             @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount   Account             @relation("TransferTo", fields: [toAccountId], references: [id])
+  createdBy   User                @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  legs        Transaction[]       @relation("TransferLegs")
   bankLines   BankStatementLine[] @relation("BankLineTransfer")
 
   @@index([workspaceId, date])
@@ -993,28 +1005,28 @@ model IdempotencyKey {
 // маска keyLast4. Управление — ТОЛЬКО владелец workspace (OwnerGuard).
 
 model IntegrationConnection {
-  id           String              @id @default(cuid())
-  workspaceId  String
-  provider     IntegrationProvider
+  id            String              @id @default(cuid())
+  workspaceId   String
+  provider      IntegrationProvider
   /// Счёт, на который ложатся операции этого подключения.
-  accountId    String
+  accountId     String
   /// Зашифрованный токен (AES-256-GCM, формат `v1.<nonce>.<tag>.<ct>`).
   credentialEnc String
   /// Маска ключа для UI (последние 4 символа) — сам ключ наружу не отдаётся.
-  keyLast4     String
-  status       IntegrationStatus   @default(ACTIVE)
+  keyLast4      String
+  status        IntegrationStatus   @default(ACTIVE)
   /// Курсор инкрементальной синхронизации (provider-специфичный, напр. дата/id).
-  syncCursor   String?
-  lastSyncAt   DateTime?
+  syncCursor    String?
+  lastSyncAt    DateTime?
   lastSyncError String?
-  createdById  String
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  deletedAt    DateTime?
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account   Account   @relation(fields: [accountId], references: [id])
-  createdBy User      @relation("IntegrationCreatedBy", fields: [createdById], references: [id])
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account             @relation(fields: [accountId], references: [id])
+  createdBy User                @relation("IntegrationCreatedBy", fields: [createdById], references: [id])
   lines     BankStatementLine[]
 
   @@index([workspaceId, deletedAt])
@@ -1026,33 +1038,33 @@ model IntegrationConnection {
 // у банка). Первая линия дедупа против ручного ввода — importHash-совместимость
 // решается на уровне сервиса синка (Ф1-B).
 model BankStatementLine {
-  id             String        @id @default(cuid())
-  workspaceId    String
-  connectionId   String
+  id                  String         @id @default(cuid())
+  workspaceId         String
+  connectionId        String
   /// Идентификатор операции у провайдера (для идемпотентного upsert).
-  externalId     String
-  date           DateTime
-  amount         Decimal       @db.Decimal(14, 2)
+  externalId          String
+  date                DateTime
+  amount              Decimal        @db.Decimal(14, 2)
   /// Знак операции: INCOME — приход, EXPENSE — расход.
-  direction      TxType
-  counterpartyName String?
-  counterpartyInn  String?
+  direction           TxType
+  counterpartyName    String?
+  counterpartyInn     String?
   /// Назначение платежа.
-  description    String?
+  description         String?
   /// Маркировка АУСН от банка (для сверки Ф4): доход/расход/не учитывается.
-  ausnMark       AusnMark?
-  status         BankLineStatus @default(NEW)
+  ausnMark            AusnMark?
+  status              BankLineStatus @default(NEW)
   /// Подсказка Rule-движка (для UI и авто-проводки).
   suggestedCategoryId String?
   /// Проводка, созданная из строки (авто или вручную из Inbox). 1:1 — одна
   /// строка порождает не более одной проводки.
-  transactionId  String?       @unique
+  transactionId       String?        @unique
   /// Перевод, к которому отнесена строка (обе ноги детекта переводов, 1:many).
-  transferId     String?
+  transferId          String?
   /// Сырой ответ провайдера — для форензики/повторного разбора.
-  raw            Json?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  raw                 Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   connection  IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
@@ -1103,36 +1115,36 @@ enum AusnMark {
 // оставлено (миграция-переименование на проде рискованнее, чем косметический долг).
 
 model WbReceipt {
-  id          String @id @default(cuid())
-  workspaceId String
+  id                 String          @id @default(cuid())
+  workspaceId        String
   /// Источник документа (детерминирует парсер и наличие дедупа).
-  source      WbReceiptSource @default(WB_CARD)
+  source             WbReceiptSource @default(WB_CARD)
   /// Карта/счёт, с которого оплачена закупка (счёт workspace).
-  accountId   String
+  accountId          String
   /// Деньги чека 1:1. null недолго: commit либо создаёт расход, либо привязывает
   /// существующую операцию; после отката созданная удаляется, привязанная отвязывается.
-  transactionId String? @unique
+  transactionId      String?         @unique
   /// true — транзакцию создал разбор (откат её soft-удаляет);
   /// false — привязана существующая (откат только отвязывает).
-  transactionCreated Boolean @default(false)
+  transactionCreated Boolean         @default(false)
   /// Ключ идемпотентности = номер документа: ФПД (WB) / номер заказа-чека
   /// (ДНС/ОТ) / null (ручной ввод — без дедупа). partial-unique по (ws, fpd).
-  fpd          String?
+  fpd                String?
   /// Номер фискального документа («No ФД») — форензика, WB/ДНС.
-  fd           String?
-  checkNumber  String?
-  receiptDate  DateTime
-  totalAmount  Decimal  @db.Decimal(14, 2)
-  note         String?
-  createdById  String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  fd                 String?
+  checkNumber        String?
+  receiptDate        DateTime
+  totalAmount        Decimal         @db.Decimal(14, 2)
+  note               String?
+  createdById        String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
 
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account     Account      @relation("WbReceiptAccount", fields: [accountId], references: [id])
-  transaction Transaction? @relation("WbReceiptTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
-  createdBy   User         @relation("WbReceiptCreatedBy", fields: [createdById], references: [id])
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account     Account         @relation("WbReceiptAccount", fields: [accountId], references: [id])
+  transaction Transaction?    @relation("WbReceiptTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
+  createdBy   User            @relation("WbReceiptCreatedBy", fields: [createdById], references: [id])
   lines       WbReceiptLine[]
 
   @@index([workspaceId, receiptDate])
@@ -1150,26 +1162,26 @@ enum WbReceiptSource {
 // Сгруппированная позиция чека (поштучные строки WB свёрнуты в кол-во) и её
 // назначение после маркировки оператором.
 model WbReceiptLine {
-  id        String @id @default(cuid())
-  receiptId String
-  name      String
-  qty       Decimal @db.Decimal(14, 3)
-  unitPrice Decimal @db.Decimal(14, 4)
+  id              String       @id @default(cuid())
+  receiptId       String
+  name            String
+  qty             Decimal      @db.Decimal(14, 3)
+  unitPrice       Decimal      @db.Decimal(14, 4)
   /// Кэш: qty × unitPrice (== сумме штук в чеке).
-  lineTotal Decimal @db.Decimal(14, 2)
+  lineTotal       Decimal      @db.Decimal(14, 2)
   /// Реальный продавец строки (WB — посредник-«поверенный»).
-  sellerName String?
-  sellerInn  String?
+  sellerName      String?
+  sellerInn       String?
   /// Хэш WB-заказа из кода маркировки — один чек несёт позиции разных заказов WB.
-  wbOrderHash String?
-  target      WbLineTarget
+  wbOrderHash     String?
+  target          WbLineTarget
   /// target=WAREHOUSE: товар, оприходованный этой строкой (FIFO-партия ссылается
   /// на строку слабой парой sourceType/sourceId).
   warehouseItemId String?
   /// target=ORDER: заказ и созданная в нём позиция (1:1 — ключ отката).
-  orderId     String?
-  orderItemId String? @unique
-  createdAt   DateTime @default(now())
+  orderId         String?
+  orderItemId     String?      @unique
+  createdAt       DateTime     @default(now())
 
   receipt       WbReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   warehouseItem WarehouseItem? @relation("WbReceiptLineItem", fields: [warehouseItemId], references: [id])
@@ -1185,4 +1197,113 @@ enum WbLineTarget {
   WAREHOUSE // оприходована на склад (создана FIFO-партия)
   ORDER // добавлена позицией в заказ (себестоимость = цена чека)
   SKIPPED // пропущена оператором (личное/не учитывать)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ф5. Регулярные и плановые платежи (надстройка над транзакционной шиной).
+// Ядро (Transaction/деньги) неизменно: план лишь ПРЕДСКАЗЫВАЕТ будущий расход и
+// при оплате кладёт обычную проводку на шину (matchedTransaction). Всё —
+// суммы, график, привязки, статус — редактируется в приложении. Сотрудник —
+// это Counterparty с role=EMPLOYEE (отдельной сущности не заводим).
+
+enum RecurrenceCadence {
+  MONTHLY // раз в месяц по числу dayOfMonth (клампится к длине месяца)
+  WEEKLY // раз в неделю по дню недели weekday (0=вс..6=сб)
+}
+
+// Регулярный платёж-шаблон: аренда, подписки, интернет и т.п. Материализуется в
+// PlannedPayment на горизонт вперёд (идемпотентно по recurringId+dueDate).
+model RecurringPayment {
+  id          String          @id @default(cuid())
+  workspaceId String
+  title       String
+  amount      Decimal         @db.Decimal(14, 2)
+  // Как ляжет на шину при оплате (обычно EXPENSE-kind: FIXED_COST/VARIABLE_COST/
+  // SALARY/TAX). Тип (INCOME/EXPENSE) выводится из kind при создании проводки.
+  txKind      TransactionKind @default(FIXED_COST)
+
+  cadence    RecurrenceCadence @default(MONTHLY)
+  dayOfMonth Int? // MONTHLY: 1..31
+  weekday    Int? // WEEKLY: 0..6
+
+  startDate DateTime // с какой даты правило активно
+  endDate   DateTime? // необязательный конец
+  leadDays  Int       @default(3) // за сколько дней напоминать
+  isActive  Boolean   @default(true)
+
+  // Привязки по умолчанию (переносятся в план и проводку); все опциональны.
+  accountId      String?
+  categoryId     String?
+  counterpartyId String?
+  note           String?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account      Account?         @relation("RecurringAccount", fields: [accountId], references: [id])
+  category     Category?        @relation("RecurringCategory", fields: [categoryId], references: [id])
+  counterparty Counterparty?    @relation("RecurringCounterparty", fields: [counterpartyId], references: [id])
+  createdBy    User             @relation("RecurringCreatedBy", fields: [createdById], references: [id])
+  planned      PlannedPayment[]
+
+  @@index([workspaceId, isActive, deletedAt])
+}
+
+enum PlannedSource {
+  RECURRING // сгенерирован из RecurringPayment
+  SALARY // зарплата (ручной список выплат сотруднику)
+  MANUAL // разовый плановый платёж
+}
+
+enum PlannedStatus {
+  PLANNED // ожидается
+  PAID // оплачен (есть проводка matchedTransaction)
+  SKIPPED // в этот раз не платим (регулярку можно пропустить)
+  CANCELLED // отменён
+}
+
+// Конкретный ожидаемый платёж с датой. Три источника: RECURRING (из шаблона),
+// SALARY (ручная выплата сотруднику), MANUAL (разовый). При оплате создаётся
+// обычная проводка на шине; matchedTransaction связывает план с фактом 1:1.
+model PlannedPayment {
+  id          String          @id @default(cuid())
+  workspaceId String
+  title       String
+  amount      Decimal         @db.Decimal(14, 2)
+  txKind      TransactionKind @default(FIXED_COST)
+  dueDate     DateTime
+  source      PlannedSource   @default(MANUAL)
+  status      PlannedStatus   @default(PLANNED)
+  leadDays    Int             @default(3)
+
+  recurringId    String?
+  accountId      String?
+  categoryId     String?
+  counterpartyId String? // для SALARY — сотрудник (Counterparty role=EMPLOYEE)
+  note           String?
+
+  // Проводка, закрывшая план (создана при «Оплатить» или привязана вручную).
+  matchedTransactionId String? @unique
+  // true — проводку создала сама оплата плана (при отмене её надо удалить);
+  // false — привязана существующая операция (при отмене лишь отвязываем).
+  autoTx               Boolean @default(false)
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recurring          RecurringPayment? @relation(fields: [recurringId], references: [id])
+  account            Account?          @relation("PlannedAccount", fields: [accountId], references: [id])
+  category           Category?         @relation("PlannedCategory", fields: [categoryId], references: [id])
+  counterparty       Counterparty?     @relation("PlannedCounterparty", fields: [counterpartyId], references: [id])
+  matchedTransaction Transaction?      @relation("PlannedPaymentTransaction", fields: [matchedTransactionId], references: [id], onDelete: SetNull)
+  createdBy          User              @relation("PlannedCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId, status, dueDate])
+  @@index([recurringId])
 }
