@@ -714,6 +714,14 @@ model Transaction {
   originalTxId   String?
   reversalReason String?
 
+  // Ф4 (Налог АУСН Д−Р). ausnMark — АУСН-классификация операции:
+  // приоритетна маркировка банка из API (перенос со строки выписки при разборе
+  // Inbox) ИЛИ ручное переопределение оператора; null → авто по kind/type
+  // (см. reports/ausn-classify). taxPeriod (YYYY-MM) — период, за который уплачен
+  // налог (заполняется у TAX-расхода из вкладки «Налог»; сверка начислено/уплачено).
+  ausnMark   AusnMark?
+  taxPeriod  String?
+
   // Метаданные.
   importBatchId String?
   importHash    String?
@@ -751,6 +759,8 @@ model Transaction {
   @@index([workspaceId, transferGroupId])
   @@index([workspaceId, deletedAt])
   @@index([workspaceId, importHash])
+  // Ф4: выборка TAX-платежей по периоду (сверка «уплачено»).
+  @@index([workspaceId, taxPeriod])
   @@index([importBatchId])
   @@index([originalTxId])
 }

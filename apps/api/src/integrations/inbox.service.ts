@@ -88,6 +88,9 @@ export class InboxService {
           categoryId: dto.categoryId,
           counterpartyId: dto.counterpartyId ?? null,
           description: dto.description ?? line.description,
+          // Ф4: переносим АУСН-маркировку банка на проводку (приоритетна в базе
+          // налога; оператор может переопределить позже через PATCH).
+          ausnMark: line.ausnMark,
           createdById: userId,
         },
         select: { id: true },
