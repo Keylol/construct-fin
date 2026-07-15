@@ -18,6 +18,7 @@ import {
   Plug,
   Inbox,
   Calculator,
+  Calendar,
   type LucideIcon,
 } from '@/components/ui/icons';
 
@@ -42,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },
       { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
+      { href: '/planning', label: 'Платежи', icon: Calendar },
     ],
   },
   {

@@ -7,7 +7,10 @@
 export {
   ArrowsHorizontal as ArrowLeftRight,
   ArrowRight,
+  Alarm,
+  Calendar,
   Calculation as Calculator,
+  Renew as Repeat,
   ChartBar as BarChart3,
   Checkmark as Check,
   ChevronDown,

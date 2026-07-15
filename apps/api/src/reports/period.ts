@@ -151,6 +151,24 @@ export function businessMonthLabel(date: Date): string {
   return `${y}-${String(mo + 1).padStart(2, '0')}`;
 }
 
+/**
+ * Ф5. Y/M/D момента в поясе бизнеса (UTC+5). Экспорт для генератора регулярки:
+ * из даты вхождения нужны календарные компоненты в поясе бизнеса, а не сервера.
+ */
+export function businessDayParts(date: Date): { y: number; mo: number; d: number } {
+  return tzParts(date);
+}
+
+/**
+ * Ф5. UTC-инстант, чьи стенные часы в UTC+5 = (y, mo0, d) в указанный час (по
+ * умолчанию полдень). Полдень — канонический инстант даты платежа: ISO-дата
+ * стабильна (не «уезжает» на сутки из-за смещения +5), а идемпотентность
+ * материализации (recurringId+dueDate) держится на точном равенстве инстанта.
+ */
+export function businessInstant(y: number, mo0: number, d: number, hour = 12): Date {
+  return tzInstant(y, mo0, d, hour, 0, 0, 0);
+}
+
 /** Срок уплаты налога АУСН за месяц — 25-е число СЛЕДУЮЩЕГО месяца (UTC+5). */
 export function ausnDueDate(year: number, month1to12: number): Date {
   // month1to12: 1..12 → mo=month-1; следующий месяц = mo+1 (Date.UTC нормализует).

@@ -28,6 +28,7 @@ import { CashflowService } from '../reports/cashflow.service';
 import { TransactionService } from '../transaction/transaction.service';
 import { ImportService } from '../import/import.service';
 import { WbReceiptService } from '../wb-receipt/wb-receipt.service';
+import { PlanningService } from '../planning/planning.service';
 import { AccountService } from '../account/account.service';
 import { CategoryService } from '../category/category.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
@@ -54,6 +55,7 @@ export type Harness = {
   transactions: TransactionService;
   importSvc: ImportService;
   wbReceipts: WbReceiptService;
+  planning: PlanningService;
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
@@ -85,6 +87,7 @@ export function buildHarness(): Harness {
   const transactions = new TransactionService(prisma, audit);
   const importSvc = new ImportService(prisma, orders, audit);
   const wbReceipts = new WbReceiptService(prisma, uow, warehouse, orders, audit);
+  const planning = new PlanningService(prisma);
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
@@ -105,6 +108,7 @@ export function buildHarness(): Harness {
     transactions,
     importSvc,
     wbReceipts,
+    planning,
     accounts,
     categories,
     counterparties,
@@ -123,6 +127,7 @@ export async function resetDb(prisma: PrismaClient): Promise<void> {
   // «использовался с другим запросом» во втором и последующих прогонах.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "PlannedPayment","RecurringPayment",
       "BankStatementLine","IntegrationConnection",
       "WbReceiptLine","WbReceipt",
       "Attachment","AuditLog","LotConsumption","StockLot","PurchaseLine","Purchase",

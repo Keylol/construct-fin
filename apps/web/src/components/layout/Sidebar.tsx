@@ -8,6 +8,7 @@ import { SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
 import { NAV_GROUPS } from './nav-items';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { InboxNavBadge } from './InboxNavBadge';
+import { PlanningNavBadge } from './PlanningNavBadge';
 
 interface SidebarProps {
   /** Called after a nav link is clicked — mobile drawer uses this to close. */
@@ -256,6 +257,7 @@ function NavLink({
           <span className="truncate">{item.label}</span>
         )}
         {item.href === '/inbox' && <InboxNavBadge collapsed={railCollapsed} />}
+        {item.href === '/planning' && <PlanningNavBadge collapsed={railCollapsed} />}
       </Link>
     </li>
   );
