@@ -802,3 +802,109 @@ export interface TaxPayInput {
   date?: string;
   note?: string | null;
 }
+
+// ── Регулярные и плановые платежи (Ф5 «Полный автомат») ──
+export type PlannedTxKind =
+  | 'FIXED_COST'
+  | 'VARIABLE_COST'
+  | 'SALARY'
+  | 'TAX'
+  | 'NON_OP'
+  | 'OTHER';
+export type RecurrenceCadence = 'MONTHLY' | 'WEEKLY';
+export type PlannedSource = 'RECURRING' | 'SALARY' | 'MANUAL';
+export type PlannedStatus = 'PLANNED' | 'PAID' | 'SKIPPED' | 'CANCELLED';
+
+export interface RecurringPayment {
+  id: string;
+  title: string;
+  amount: string;
+  txKind: PlannedTxKind;
+  cadence: RecurrenceCadence;
+  dayOfMonth: number | null;
+  weekday: number | null;
+  startDate: string;
+  endDate: string | null;
+  leadDays: number;
+  isActive: boolean;
+  accountId: string | null;
+  accountName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  note: string | null;
+  nextDueDate: string | null;
+}
+
+export interface PlannedPayment {
+  id: string;
+  title: string;
+  amount: string;
+  txKind: PlannedTxKind;
+  dueDate: string;
+  source: PlannedSource;
+  status: PlannedStatus;
+  leadDays: number;
+  dueInDays: number;
+  overdue: boolean;
+  soon: boolean;
+  recurringId: string | null;
+  recurringTitle: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  note: string | null;
+  matchedTransactionId: string | null;
+  autoTx: boolean;
+}
+
+export interface UpcomingPayments {
+  horizonDays: number;
+  items: PlannedPayment[];
+  overdueCount: number;
+  soonCount: number;
+  overdueSum: string;
+  soonSum: string;
+}
+
+export interface CreateRecurringInput {
+  title: string;
+  amount: string;
+  txKind?: PlannedTxKind;
+  cadence: RecurrenceCadence;
+  dayOfMonth?: number | null;
+  weekday?: number | null;
+  startDate: string;
+  endDate?: string | null;
+  leadDays?: number;
+  isActive?: boolean;
+  accountId?: string | null;
+  categoryId?: string | null;
+  counterpartyId?: string | null;
+  note?: string | null;
+}
+
+export interface CreatePlannedInput {
+  title: string;
+  amount: string;
+  txKind?: PlannedTxKind;
+  dueDate: string;
+  source?: 'SALARY' | 'MANUAL';
+  leadDays?: number;
+  accountId?: string | null;
+  categoryId?: string | null;
+  counterpartyId?: string | null;
+  note?: string | null;
+}
+
+export interface PayPlannedInput {
+  transactionId?: string;
+  accountId?: string;
+  amount?: string;
+  date?: string;
+  note?: string | null;
+}

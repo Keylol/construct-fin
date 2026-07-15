@@ -63,6 +63,19 @@ export class TelegramAlertService {
     void this.send(chatId, text);
   }
 
+  /**
+   * Ф5: произвольное уведомление владельцу в тот же чат (напоминания о платежах).
+   * No-op без `ALERT_TELEGRAM_CHAT_ID` — TG-канал включается, когда владелец даст
+   * chat id (решение блица «логика + в аппе сейчас, TG потом»). Возвращает true,
+   * если отправка инициирована. Ошибки Telegram API не пробрасываются.
+   */
+  async notify(text: string): Promise<boolean> {
+    const chatId = this.config.get('ALERT_TELEGRAM_CHAT_ID', { infer: true });
+    if (!chatId) return false;
+    await this.send(chatId, text);
+    return true;
+  }
+
   private async send(chatId: string, text: string): Promise<void> {
     const token = this.config.get('TELEGRAM_BOT_TOKEN', { infer: true });
     try {
