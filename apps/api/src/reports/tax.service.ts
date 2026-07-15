@@ -216,6 +216,8 @@ export class TaxService {
 
     const date = input.date ? new Date(input.date) : new Date();
     assertNotFuture(date, 'Дата уплаты налога');
+    // taxPeriod — период, ЗА который платим налог (не дата платежа): налог за
+    // февраль можно уплатить в марте (date=март, taxPeriod=«2026-02»).
     const label = `${input.year}-${String(input.month).padStart(2, '0')}`;
 
     return this.prisma.transaction.create({
@@ -243,15 +245,15 @@ export class TaxService {
     transactionId: string,
     ausnMark: 'INCOME' | 'EXPENSE' | 'NOT_COUNTED' | null,
   ) {
-    const tx = await this.prisma.transaction.findFirst({
+    // Атомарный updateMany с workspaceId+deletedAt в WHERE (не findFirst→update):
+    // иначе гонка с параллельным soft-delete могла бы обновить удалённую операцию.
+    const res = await this.prisma.transaction.updateMany({
       where: { id: transactionId, workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!tx) throw new NotFoundException('Операция не найдена в этом пространстве');
-    await this.prisma.transaction.update({
-      where: { id: transactionId },
       data: { ausnMark },
     });
+    if (res.count === 0) {
+      throw new NotFoundException('Операция не найдена, удалена или из другого пространства');
+    }
     return { ok: true };
   }
 }

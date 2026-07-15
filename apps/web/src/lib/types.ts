@@ -767,3 +767,38 @@ export interface WbReceiptListItem {
   createdBy: { firstName: string | null; username: string | null };
   _count: { lines: number };
 }
+
+// ── Налог АУСН Д−Р (Ф4 «Полный автомат») ──
+export interface TaxMonthRow {
+  month: string; // «YYYY-MM»
+  year: number;
+  monthNo: number;
+  income: string;
+  expense: string;
+  base: string;
+  taxCalc: string;
+  taxMin: string;
+  taxDue: string;
+  taxPaid: string;
+  dueDate: string;
+  status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'NONE';
+  incomeCount: number;
+  expenseCount: number;
+}
+
+export interface TaxYearReport {
+  year: number;
+  rate: number;
+  minRate: number;
+  months: TaxMonthRow[];
+  totals: { income: string; expense: string; taxDue: string; taxPaid: string };
+}
+
+export interface TaxPayInput {
+  year: number;
+  month: number;
+  accountId: string;
+  amount: string;
+  date?: string;
+  note?: string | null;
+}

@@ -168,6 +168,18 @@ describe('TaxService.yearReport', () => {
     expect(apr.status).toBe('PARTIAL');
   });
 
+  it('markPaid дважды за месяц → уплаты суммируются', async () => {
+    await txn(1, '100000.00', 'INCOME', 'ORDER_PAYMENT'); // янв, налог мин 3000
+    await h.tax.markPaid(seed.workspaceId, seed.userId, {
+      year: 2026, month: 1, accountId: seed.accountId, amount: '8000.00', date: '2026-02-10T10:00:00.000Z',
+    });
+    await h.tax.markPaid(seed.workspaceId, seed.userId, {
+      year: 2026, month: 1, accountId: seed.accountId, amount: '4000.00', date: '2026-02-20T10:00:00.000Z',
+    });
+    const jan = (await h.tax.yearReport(seed.workspaceId, 2026)).months.find((m) => m.month === '2026-01')!;
+    expect(jan.taxPaid).toBe('12000.00'); // 8000 + 4000
+  });
+
   it('markPaid: будущая дата и неположительная сумма → 400', async () => {
     await expect(
       h.tax.markPaid(seed.workspaceId, seed.userId, {
