@@ -12,15 +12,29 @@ import { OrderService } from '../orders/order.service';
 import { AuditService } from '../audit/audit.service';
 import { add, mul, money, D } from '../common/money';
 import { assertNotFuture } from '../reports/period';
-import { parseWbReceiptPdf } from './receipt-parser';
-import type { CommitWbReceiptDto, WbReceiptLineInput } from './wb-receipt.dto';
+import { detectAndParseReceipt } from './receipt-detect';
+import type { CommitWbReceiptDto, ReceiptSource, WbReceiptLineInput } from './wb-receipt.dto';
 
 /** Окно поиска операции-кандидата под чек (дата чека ± дней). */
 const CANDIDATE_WINDOW_DAYS = 3;
 const DAY_MS = 86_400_000;
 
-/** Имя единого контрагента-посредника (решение блица: «поставщик — ВБ»). */
-const WB_COUNTERPARTY_NAME = 'Wildberries';
+/** Контрагент-посредник по источнику (решение блица: «поставщик — сам магазин/ВБ»).
+ *  MANUAL — без авто-контрагента (оператор задаёт примечанием). */
+const SOURCE_COUNTERPARTY: Record<ReceiptSource, string | null> = {
+  WB_CARD: 'Wildberries',
+  DNS: 'ДНС Ритейл',
+  ONLINE_TRADE: 'ОНЛАЙН ТРЕЙД',
+  MANUAL: null,
+};
+
+/** Человекочитаемая метка источника для описания авто-созданного расхода. */
+const RECEIPT_LABEL: Record<ReceiptSource, string> = {
+  WB_CARD: 'WB',
+  DNS: 'ДНС',
+  ONLINE_TRADE: 'Онлайн Трейд',
+  MANUAL: 'ручная',
+};
 
 /**
  * Разбор кассового чека Wildberries (Ф6). Инварианты денег:
@@ -45,48 +59,28 @@ export class WbReceiptService {
   ) {}
 
   /**
-   * Превью: разобрать PDF, найти операции-кандидаты для привязки денег
-   * (тот же счёт, сумма == итогу чека, дата ± CANDIDATE_WINDOW_DAYS, ещё не
-   * занята другим чеком) и проверить повторную загрузку по ФПД.
-   * Контракт парсера: непустые warnings — фронт блокирует «Провести», а
-   * серверная сверка Σ строк == итогу на commit ловит потерянные позиции.
+   * Превью: определить источник PDF (WB/ДНС/ОТ), разобрать, найти операции-
+   * кандидаты для привязки денег (тот же счёт, сумма == итогу, дата ±
+   * CANDIDATE_WINDOW_DAYS, ещё не занята) и проверить повтор по номеру документа.
+   * Контракт парсера: непустые warnings — фронт блокирует «Провести» без ручной
+   * правки; серверная сверка Σ строк == итогу на commit ловит потерянные позиции.
    */
   async preview(opts: { workspaceId: string; accountId: string; buffer: Buffer }) {
     await this.assertAccount(opts.workspaceId, opts.accountId);
-    const parsed = await parseWbReceiptPdf(opts.buffer);
+    const parsed = await detectAndParseReceipt(opts.buffer);
+    const candidates =
+      parsed.totalAmount && parsed.receiptDate
+        ? await this.findCandidates(
+            opts.workspaceId,
+            opts.accountId,
+            parsed.totalAmount,
+            parsed.receiptDate,
+          )
+        : [];
 
-    let candidates: {
-      id: string;
-      date: Date;
-      amount: Prisma.Decimal;
-      description: string | null;
-    }[] = [];
-    if (parsed.totalAmount && parsed.receiptDate) {
-      const windowMs = CANDIDATE_WINDOW_DAYS * DAY_MS;
-      candidates = await this.prisma.transaction.findMany({
-        where: {
-          workspaceId: opts.workspaceId,
-          accountId: opts.accountId,
-          deletedAt: null,
-          type: 'EXPENSE',
-          kind: 'OTHER',
-          transferGroupId: null,
-          amount: new Prisma.Decimal(parsed.totalAmount),
-          date: {
-            gte: new Date(parsed.receiptDate.getTime() - windowMs),
-            lte: new Date(parsed.receiptDate.getTime() + windowMs),
-          },
-          wbReceipt: null, // ещё не деньги другого чека
-        },
-        select: { id: true, date: true, amount: true, description: true },
-        orderBy: { date: 'asc' },
-        take: 5,
-      });
-    }
-
-    const existing = parsed.fpd
+    const existing = parsed.docNumber
       ? await this.prisma.wbReceipt.findFirst({
-          where: { workspaceId: opts.workspaceId, fpd: parsed.fpd, deletedAt: null },
+          where: { workspaceId: opts.workspaceId, fpd: parsed.docNumber, deletedAt: null },
           select: { id: true, createdAt: true },
         })
       : null;
@@ -96,16 +90,46 @@ export class WbReceiptService {
         ...parsed,
         receiptDate: parsed.receiptDate ? parsed.receiptDate.toISOString() : null,
       },
-      candidates: candidates.map((c) => ({
-        id: c.id,
-        date: c.date.toISOString(),
-        amount: c.amount.toFixed(2),
-        description: c.description,
-      })),
+      candidates,
       alreadyImported: existing
         ? { receiptId: existing.id, importedAt: existing.createdAt.toISOString() }
         : null,
     };
+  }
+
+  /** Операции-кандидаты для привязки денег документа (счёт+сумма+дата±окно). */
+  private async findCandidates(
+    workspaceId: string,
+    accountId: string,
+    totalAmount: string,
+    receiptDate: Date,
+  ) {
+    const windowMs = CANDIDATE_WINDOW_DAYS * DAY_MS;
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId,
+        accountId,
+        deletedAt: null,
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        transferGroupId: null,
+        amount: new Prisma.Decimal(totalAmount),
+        date: {
+          gte: new Date(receiptDate.getTime() - windowMs),
+          lte: new Date(receiptDate.getTime() + windowMs),
+        },
+        wbReceipt: null,
+      },
+      select: { id: true, date: true, amount: true, description: true },
+      orderBy: { date: 'asc' },
+      take: 5,
+    });
+    return rows.map((c) => ({
+      id: c.id,
+      date: c.date.toISOString(),
+      amount: c.amount.toFixed(2),
+      description: c.description,
+    }));
   }
 
   /**
@@ -161,18 +185,26 @@ export class WbReceiptService {
     }
 
     return this.uow.run(async (tx) => {
-      // Идемпотентность: читаемый отказ до вставки; гонка добьётся P2002 ниже.
-      const dup = await tx.wbReceipt.findFirst({
-        where: { workspaceId, fpd: dto.fpd, deletedAt: null },
-        select: { id: true },
-      });
-      if (dup) {
-        throw new ConflictException(
-          'Этот чек уже разобран (совпал фискальный признак). Откатите прежний разбор, чтобы повторить.',
-        );
+      // Идемпотентность по номеру документа — только для распознанных источников
+      // (ручной ввод без docNumber не дедупится). Читаемый отказ до вставки;
+      // гонка добьётся P2002 ниже.
+      if (dto.docNumber) {
+        const dup = await tx.wbReceipt.findFirst({
+          where: { workspaceId, fpd: dto.docNumber, deletedAt: null },
+          select: { id: true },
+        });
+        if (dup) {
+          throw new ConflictException(
+            'Этот документ уже разобран (совпал номер). Откатите прежний разбор, чтобы повторить.',
+          );
+        }
       }
 
-      const wb = await this.ensureWbCounterparty(tx, workspaceId);
+      // Контрагент-посредник по источнику (WB/ДНС/ОТ); MANUAL — без авто-контрагента.
+      const counterpartyName = SOURCE_COUNTERPARTY[dto.source];
+      const supplier = counterpartyName
+        ? await this.ensureCounterparty(tx, workspaceId, counterpartyName)
+        : null;
 
       // Деньги: ровно одна транзакция на чек.
       let transactionId: string;
@@ -196,17 +228,17 @@ export class WbReceiptService {
         }
         if (t.type !== 'EXPENSE' || t.kind !== 'OTHER' || t.transferGroupId) {
           throw new BadRequestException(
-            'К чеку можно привязать только обычный расход (не перевод и не системную операцию)',
+            'К документу можно привязать только обычный расход (не перевод и не системную операцию)',
           );
         }
         if (t.wbReceipt) {
-          throw new ConflictException('Операция уже привязана к другому чеку');
+          throw new ConflictException('Операция уже привязана к другому документу');
         }
-        // v1 строго: частичная оплата баллами WB (сумма операции < итога чека)
-        // не поддержана — такой чек вносится вручную.
+        // Строго: частичная оплата баллами (сумма операции < итога) не поддержана
+        // — операция должна ровно покрывать итог документа.
         if (!t.amount.equals(money(dto.totalAmount))) {
           throw new BadRequestException(
-            `Сумма операции ${t.amount.toFixed(2)} не равна итогу чека ${money(
+            `Сумма операции ${t.amount.toFixed(2)} не равна итогу ${money(
               dto.totalAmount,
             ).toFixed(2)} — привязка невозможна`,
           );
@@ -223,8 +255,10 @@ export class WbReceiptService {
             type: 'EXPENSE',
             kind: 'OTHER',
             categoryId: dto.money.categoryId ?? null,
-            counterpartyId: wb.id,
-            description: `Чек WB${dto.checkNumber ? ` №${dto.checkNumber}` : ''}`,
+            counterpartyId: supplier?.id ?? null,
+            description:
+              dto.note ??
+              `Закупка ${RECEIPT_LABEL[dto.source]}${dto.checkNumber ? ` №${dto.checkNumber}` : ''}`,
             createdById: userId,
           },
           select: { id: true },
@@ -238,10 +272,11 @@ export class WbReceiptService {
         receipt = await tx.wbReceipt.create({
           data: {
             workspaceId,
+            source: dto.source,
             accountId: dto.accountId,
             transactionId,
             transactionCreated,
-            fpd: dto.fpd,
+            fpd: dto.docNumber ?? null,
             fd: dto.fd ?? null,
             checkNumber: dto.checkNumber ?? null,
             receiptDate,
@@ -252,9 +287,9 @@ export class WbReceiptService {
           select: { id: true },
         });
       } catch (e) {
-        // Гонка двух commit одного чека: partial-unique (workspaceId, fpd).
+        // Гонка двух commit одного документа: partial-unique (workspaceId, fpd).
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-          throw new ConflictException('Этот чек уже разобран (совпал фискальный признак)');
+          throw new ConflictException('Этот документ уже разобран (совпал номер)');
         }
         throw e;
       }
@@ -359,7 +394,7 @@ export class WbReceiptService {
           userId,
           { refType: 'WbReceiptLine', refId: lineIdByIdx.get(wl.idx) },
           {
-            supplierId: wb.id,
+            supplierId: supplier?.id ?? null,
             accountId: dto.accountId,
             purchaseLineId: null,
             receivedAt: receiptDate,
@@ -374,7 +409,8 @@ export class WbReceiptService {
         entityType: 'WbReceipt',
         entityId: receipt.id,
         diff: {
-          fpd: dto.fpd,
+          source: dto.source,
+          docNumber: dto.docNumber ?? null,
           totalAmount: money(dto.totalAmount).toFixed(2),
           moneyMode: dto.money.mode,
           lines: dto.lines.length,
@@ -480,6 +516,7 @@ export class WbReceiptService {
       take: 50,
       select: {
         id: true,
+        source: true,
         fpd: true,
         checkNumber: true,
         receiptDate: true,
@@ -495,22 +532,23 @@ export class WbReceiptService {
     });
   }
 
-  /** Единый контрагент-посредник «Wildberries» (find-or-create, insensitive). */
-  private async ensureWbCounterparty(
+  /** Контрагент-посредник по имени (find-or-create, insensitive). */
+  private async ensureCounterparty(
     tx: TxClient,
     workspaceId: string,
+    name: string,
   ): Promise<{ id: string }> {
     const existing = await tx.counterparty.findFirst({
       where: {
         workspaceId,
         deletedAt: null,
-        name: { equals: WB_COUNTERPARTY_NAME, mode: 'insensitive' },
+        name: { equals: name, mode: 'insensitive' },
       },
       select: { id: true },
     });
     if (existing) return existing;
     return tx.counterparty.create({
-      data: { workspaceId, name: WB_COUNTERPARTY_NAME },
+      data: { workspaceId, name },
       select: { id: true },
     });
   }

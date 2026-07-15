@@ -73,16 +73,32 @@ const MoneyMode = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('create'), categoryId: z.string().cuid().nullish() }),
 ]);
 
+export const ReceiptSourceSchema = z.enum(['WB_CARD', 'DNS', 'ONLINE_TRADE', 'MANUAL']);
+export type ReceiptSource = z.infer<typeof ReceiptSourceSchema>;
+
 export const CommitWbReceiptSchema = z.object({
   accountId: z.string().cuid(),
+  source: ReceiptSourceSchema,
   money: MoneyMode,
-  fpd: z.string().trim().min(1).max(40),
+  /** Ключ дедупа = номер документа: ФПД (WB) / номер заказа-чека (ДНС/ОТ).
+   *  Обязателен для НЕ-ручных источников; для MANUAL — null (без дедупа). */
+  docNumber: z.string().trim().max(64).nullish(),
   fd: z.string().trim().max(40).nullish(),
   checkNumber: z.string().trim().max(40).nullish(),
   receiptDate: z.string().datetime(),
-  /** «Итого» чека; сервер сверяет с Σ строк (включая SKIPPED). */
+  /** «Итого»; сервер сверяет с Σ строк (включая SKIPPED). */
   totalAmount: Money,
   note: z.string().trim().max(500).nullish(),
   lines: z.array(WbReceiptLineInputSchema).min(1, 'Разметьте хотя бы одну строку'),
+}).superRefine((body, ctx) => {
+  // Дедуп-ключ обязателен для распознанных источников (чтобы повтор ловился);
+  // ручной ввод — без ключа (можно вносить многократно).
+  if (body.source !== 'MANUAL' && !body.docNumber) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['docNumber'],
+      message: 'Для распознанного документа нужен номер (ключ защиты от повтора)',
+    });
+  }
 });
 export type CommitWbReceiptDto = z.infer<typeof CommitWbReceiptSchema>;
