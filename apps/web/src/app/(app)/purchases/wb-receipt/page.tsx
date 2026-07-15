@@ -8,7 +8,8 @@ import {
   Upload,
   Check,
   RotateCcw,
-  ArrowLeftRight,
+  Plus,
+  X,
 } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -32,6 +33,7 @@ import {
   useWbReceipts,
 } from '@/hooks/useWbReceipts';
 import type {
+  ReceiptSource,
   WbCommitLine,
   WbLineTarget,
   WbReceiptListItem,
@@ -40,7 +42,7 @@ import type {
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
 
-/** Локальная строка разметки поверх позиции чека (split даёт несколько строк). */
+/** Локальная строка разметки поверх позиции (все поля редактируемы оператором). */
 type UiLine = {
   key: number;
   name: string;
@@ -48,9 +50,9 @@ type UiLine = {
   unitPrice: string;
   sellerName: string | null;
   sellerInn: string | null;
-  wbOrderHash: string | null;
+  sourceRef: string | null;
   target: WbLineTarget;
-  /** WAREHOUSE: '' = создать новый товар с именем из чека. */
+  /** WAREHOUSE: '' = создать новый товар с именем из строки. */
   warehouseItemId: string;
   /** ORDER */
   orderId: string;
@@ -63,14 +65,58 @@ const TARGET_LABELS: Record<WbLineTarget, string> = {
   SKIPPED: 'Пропустить',
 };
 
-export default function WbReceiptPage() {
+const SOURCE_LABELS: Record<ReceiptSource, string> = {
+  WB_CARD: 'Wildberries',
+  DNS: 'ДНС',
+  ONLINE_TRADE: 'Онлайн Трейд',
+  MANUAL: 'Ручной ввод',
+};
+
+const MONEY_RX = /^\d+(\.\d{1,4})?$/;
+
+/** Пустой шаблон превью для ручного ввода (без PDF). */
+function manualPreview(): WbReceiptPreview {
+  return {
+    receipt: {
+      source: 'MANUAL',
+      receiptDate: null,
+      checkNumber: null,
+      fd: null,
+      docNumber: null,
+      totalAmount: null,
+      items: [],
+      warnings: [],
+    },
+    candidates: [],
+    alreadyImported: null,
+  };
+}
+
+let LINE_SEQ = 1;
+function blankLine(): UiLine {
+  return {
+    key: LINE_SEQ++,
+    name: '',
+    qty: '1',
+    unitPrice: '',
+    sellerName: null,
+    sellerInn: null,
+    sourceRef: null,
+    target: 'WAREHOUSE',
+    warehouseItemId: '',
+    orderId: '',
+    salePrice: '',
+  };
+}
+
+export default function ReceiptWizardPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
 
   if (!wsId) {
     return (
       <>
-        <PageHeader title="Разбор чека WB" />
+        <PageHeader title="Разбор закупки" />
         <div className="p-6">
           <EmptyState icon={ReceiptIcon} title="Нет активного пространства" hint="Выберите пространство." />
         </div>
@@ -96,6 +142,7 @@ function Wizard({ wsId }: { wsId: string }) {
   const [moneyMode, setMoneyMode] = useState<'create' | 'link'>('create');
   const [linkTxId, setLinkTxId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [note, setNote] = useState('');
   const [confirmRevert, setConfirmRevert] = useState<WbReceiptListItem | null>(null);
 
   const accountOptions = useMemo<ComboboxOption[]>(
@@ -103,9 +150,24 @@ function Wizard({ wsId }: { wsId: string }) {
     [accounts.data],
   );
 
+  const seedLines = (res: WbReceiptPreview): UiLine[] =>
+    res.receipt.items.map((it) => ({
+      key: LINE_SEQ++,
+      name: it.name,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      sellerName: it.sellerName,
+      sellerInn: it.sellerInn,
+      sourceRef: it.sourceRef,
+      target: 'WAREHOUSE',
+      warehouseItemId: '',
+      orderId: '',
+      salePrice: it.unitPrice,
+    }));
+
   const runPreview = (file: File) => {
     if (!accountId) {
-      toast.error('Сначала выберите счёт (карту), с которого оплачен чек');
+      toast.error('Сначала выберите счёт (карту), с которого оплачена закупка');
       return;
     }
     setFileName(file.name);
@@ -114,29 +176,27 @@ function Wizard({ wsId }: { wsId: string }) {
       {
         onSuccess: (res) => {
           setParsed(res);
-          // По умолчанию всё «в склад, создать новый товар» — самый частый
-          // путь работает без лишних кликов; оператор меняет точечно.
-          setLines(
-            res.receipt.items.map((it, i) => ({
-              key: i + 1,
-              name: it.name,
-              qty: it.qty,
-              unitPrice: it.unitPrice,
-              sellerName: it.sellerName,
-              sellerInn: it.sellerInn,
-              wbOrderHash: it.wbOrderHash,
-              target: 'WAREHOUSE',
-              warehouseItemId: '',
-              orderId: '',
-              salePrice: it.unitPrice,
-            })),
-          );
+          setLines(seedLines(res));
+          setNote('');
           setMoneyMode(res.candidates.length > 0 ? 'link' : 'create');
           setLinkTxId(res.candidates[0]?.id ?? '');
         },
-        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось разобрать чек'),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось разобрать документ'),
       },
     );
+  };
+
+  const startManual = () => {
+    if (!accountId) {
+      toast.error('Сначала выберите счёт (карту)');
+      return;
+    }
+    setParsed(manualPreview());
+    setLines([blankLine()]);
+    setFileName(null);
+    setNote('');
+    setMoneyMode('create');
+    setLinkTxId('');
   };
 
   const reset = () => {
@@ -144,69 +204,77 @@ function Wizard({ wsId }: { wsId: string }) {
     setLines([]);
     setFileName(null);
     setLinkTxId('');
+    setNote('');
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // Σ размеченных строк — Decimal, сверка с итогом чека вживую.
+  const patchLine = (key: number, next: UiLine) =>
+    setLines((ls) => ls.map((l) => (l.key === key ? next : l)));
+  const removeLine = (key: number) => setLines((ls) => ls.filter((l) => l.key !== key));
+  const addLine = () => setLines((ls) => [...ls, blankLine()]);
+
+  // Итог = Σ строк (Decimal). Распознанный итог — ориентир (предупреждение при расхождении).
   const linesTotal = useMemo(
     () =>
       toMoneyString(
         lines.reduce((acc, l) => {
-          const qty = Number(l.qty) > 0 ? l.qty : '0';
-          return add(acc, D(qty).mul(l.unitPrice));
+          const qty = MONEY_RX.test(l.qty) && Number(l.qty) > 0 ? l.qty : '0';
+          const price = MONEY_RX.test(l.unitPrice) ? l.unitPrice : '0';
+          return add(acc, D(qty).mul(price));
         }, D(0)),
       ),
     [lines],
   );
-  const totalsMatch = parsed?.receipt.totalAmount
-    ? D(linesTotal).equals(parsed.receipt.totalAmount)
-    : false;
+  const recognizedTotal = parsed?.receipt.totalAmount ?? null;
+  const totalsDiffer = !!recognizedTotal && !D(linesTotal).equals(recognizedTotal);
+  const source = parsed?.receipt.source ?? 'MANUAL';
 
-  const MONEY_RX = /^\d+(\.\d{1,4})?$/;
-  const linesValid = lines.every((l) => {
-    // NaN-гвард: Number('abc') не ≤ 0 — «мусор не ≤ нуля» не значит «валидно».
-    const q = Number(l.qty);
-    if (!Number.isFinite(q) || q <= 0) return false;
+  const lineValid = (l: UiLine): boolean => {
+    if (!l.name.trim()) return false;
+    if (!MONEY_RX.test(l.qty) || Number(l.qty) <= 0) return false;
+    if (!MONEY_RX.test(l.unitPrice) || Number(l.unitPrice) <= 0) return false;
     if (l.target === 'ORDER') {
-      // Пустая продажная цена = «взять цену чека» (default бэка); непустая
-      // обязана быть деньгами — иначе ловим до запроса, а не 400 от zod.
       return !!l.orderId && (l.salePrice === '' || MONEY_RX.test(l.salePrice));
     }
     return true; // WAREHOUSE: пустой warehouseItemId = «создать новый» — валидно
-  });
+  };
+  const linesValid = lines.length > 0 && lines.every(lineValid);
+
+  // Привязка возможна только к операции, чья сумма == Σ строк (анти-задвоение;
+  // бэкенд это же проверяет). При правке строк список сужается.
+  const linkable = (parsed?.candidates ?? []).filter((c) => D(c.amount).equals(linesTotal));
 
   const canCommit =
     !!parsed &&
-    !!parsed.receipt.fpd &&
-    !!parsed.receipt.receiptDate &&
-    parsed.receipt.warnings.length === 0 &&
-    !parsed.alreadyImported &&
-    totalsMatch &&
+    !D(linesTotal).isZero() &&
     linesValid &&
-    (moneyMode === 'create' || !!linkTxId) &&
+    !parsed.alreadyImported &&
+    (moneyMode === 'create' || linkable.some((c) => c.id === linkTxId)) &&
     !commit.isPending;
 
   const doCommit = () => {
     if (!parsed || !canCommit) return;
     const payload = {
       accountId,
+      source,
       money:
         moneyMode === 'link'
           ? ({ mode: 'link', transactionId: linkTxId } as const)
           : ({ mode: 'create', categoryId: categoryId || null } as const),
-      fpd: parsed.receipt.fpd ?? '',
+      docNumber: parsed.receipt.docNumber,
       fd: parsed.receipt.fd,
       checkNumber: parsed.receipt.checkNumber,
-      receiptDate: parsed.receipt.receiptDate ?? '',
-      totalAmount: parsed.receipt.totalAmount ?? '0',
+      receiptDate: parsed.receipt.receiptDate ?? new Date().toISOString(),
+      totalAmount: linesTotal,
+      note: note.trim() || null,
       lines: lines.map<WbCommitLine>((l) => {
         const base = {
-          name: l.name,
+          name: l.name.trim(),
           qty: l.qty,
           unitPrice: l.unitPrice,
           sellerName: l.sellerName,
           sellerInn: l.sellerInn,
-          wbOrderHash: l.wbOrderHash,
+          wbOrderHash: l.sourceRef,
         };
         if (l.target === 'ORDER') {
           return { ...base, target: 'ORDER', orderId: l.orderId, salePrice: l.salePrice || undefined };
@@ -214,23 +282,25 @@ function Wizard({ wsId }: { wsId: string }) {
         if (l.target === 'SKIPPED') return { ...base, target: 'SKIPPED' };
         return l.warehouseItemId
           ? { ...base, target: 'WAREHOUSE', warehouseItemId: l.warehouseItemId }
-          : { ...base, target: 'WAREHOUSE', newItem: { name: l.name } };
+          : { ...base, target: 'WAREHOUSE', newItem: { name: l.name.trim() } };
       }),
     };
     commit.mutate(payload, {
       onSuccess: () => {
-        toast.success('Чек проведён');
+        toast.success('Закупка проведена');
         reset();
       },
-      onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось провести чек'),
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось провести'),
     });
   };
+
+  const isManual = source === 'MANUAL';
 
   return (
     <>
       <PageHeader
-        title="Разбор чека WB"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки', href: '/purchases' }, { label: 'Чек WB' }]}
+        title="Разбор закупки"
+        breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки', href: '/purchases' }, { label: 'Чек' }]}
         actions={
           <Button variant="secondary" onClick={() => router.push('/purchases')}>
             К закупкам
@@ -239,16 +309,17 @@ function Wizard({ wsId }: { wsId: string }) {
       />
       <div className="space-y-4 px-6 py-4">
         <p className="max-w-3xl text-sm text-muted-foreground">
-          PDF-чек с receipt.wb.ru: позиции распознаются автоматически, каждую вы
-          отправляете на склад или в заказ. Деньги чека попадают в кассу ровно один
-          раз — привязкой к операции карты из выписки или новым расходом.
+          PDF-чек (Wildberries, ДНС, Онлайн Трейд) распознаётся автоматически, либо
+          введите позиции вручную. Каждую позицию отправьте на склад или в заказ; любое
+          поле можно поправить. Деньги попадают в кассу ровно один раз — привязкой к
+          операции карты или новым расходом.
         </p>
 
-        {/* Шаг 1: счёт + файл */}
+        {/* Шаг 1: счёт + файл / ручной ввод */}
         <Card className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex w-[260px] flex-col gap-1 text-xs text-muted-foreground">
-              <span>Счёт (карта ВБ)</span>
+              <span>Счёт (карта)</span>
               <Combobox
                 value={accountId}
                 onChange={setAccountId}
@@ -268,13 +339,13 @@ function Wizard({ wsId }: { wsId: string }) {
                 if (f) runPreview(f);
               }}
             />
-            <Button
-              variant="secondary"
-              onClick={() => fileRef.current?.click()}
-              disabled={preview.isPending}
-            >
+            <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={preview.isPending}>
               <Upload className="h-4 w-4" />
-              {preview.isPending ? 'Разбираю…' : fileName ? 'Другой файл' : 'Выбрать PDF-чек'}
+              {preview.isPending ? 'Разбираю…' : fileName ? 'Другой файл' : 'Загрузить PDF-чек'}
+            </Button>
+            <Button variant="ghost" onClick={startManual} disabled={preview.isPending}>
+              <Plus className="h-4 w-4" />
+              Ввести вручную
             </Button>
             {fileName && <span className="text-xs text-muted-foreground">{fileName}</span>}
             {parsed && (
@@ -287,43 +358,46 @@ function Wizard({ wsId }: { wsId: string }) {
 
         {parsed && (
           <>
-            {/* Шапка чека + предупреждения */}
+            {/* Шапка документа + предупреждения */}
             <Card className="space-y-2">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <span>
-                  Чек {parsed.receipt.checkNumber ? `№${parsed.receipt.checkNumber}` : '—'} от{' '}
-                  <b>{parsed.receipt.receiptDate ? formatDate(parsed.receipt.receiptDate) : '—'}</b>
-                </span>
-                <span>
-                  Итого:{' '}
-                  <b className="tabular-nums">
-                    {parsed.receipt.totalAmount ? formatRub(parsed.receipt.totalAmount, 2) : '—'}
-                  </b>
-                </span>
-                <span className="text-muted-foreground">ФПД {parsed.receipt.fpd ?? '—'}</span>
-                <span className="text-muted-foreground">
-                  Позиции: {parsed.receipt.items.length}
-                </span>
+                <Badge variant="muted">{SOURCE_LABELS[source]}</Badge>
+                {!isManual && (
+                  <span>
+                    {parsed.receipt.checkNumber ? `№${parsed.receipt.checkNumber} · ` : ''}
+                    {parsed.receipt.receiptDate ? formatDate(parsed.receipt.receiptDate) : 'без даты'}
+                  </span>
+                )}
+                {recognizedTotal && (
+                  <span className="text-muted-foreground">
+                    распознанный итог{' '}
+                    <b className="tabular-nums text-foreground">{formatRub(recognizedTotal, 2)}</b>
+                  </span>
+                )}
+                {parsed.receipt.docNumber && (
+                  <span className="text-muted-foreground">№ док. {parsed.receipt.docNumber}</span>
+                )}
               </div>
               {parsed.receipt.warnings.length > 0 && (
                 <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                  <b>Чек распознан не полностью — проводить нельзя:</b>
+                  <b>Проверьте разбор — есть замечания:</b>
                   <ul className="mt-1 list-disc pl-5">
                     {parsed.receipt.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
                   </ul>
+                  <p className="mt-1 text-xs text-muted-foreground">Поправьте строки ниже и проведите.</p>
                 </div>
               )}
               {parsed.alreadyImported && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-                  Этот чек уже разобран {formatDate(parsed.alreadyImported.importedAt)} — повторно
+                  Этот документ уже разобран {formatDate(parsed.alreadyImported.importedAt)} — повторно
                   провести нельзя. Найдите его в истории ниже (можно откатить).
                 </div>
               )}
             </Card>
 
-            {/* Разметка позиций */}
+            {/* Позиции */}
             <Card className="space-y-2 p-0">
               <div className="divide-y divide-border">
                 {lines.map((line) => (
@@ -331,30 +405,22 @@ function Wizard({ wsId }: { wsId: string }) {
                     key={line.key}
                     wsId={wsId}
                     line={line}
-                    onChange={(next) =>
-                      setLines((ls) => ls.map((l) => (l.key === line.key ? next : l)))
-                    }
-                    onSplit={() =>
-                      setLines((ls) => {
-                        const idx = ls.findIndex((l) => l.key === line.key);
-                        const src = ls[idx];
-                        if (!src || Number(src.qty) <= 1) return ls;
-                        const half = Math.floor(Number(src.qty) / 2);
-                        const rest = Number(src.qty) - half;
-                        const maxKey = Math.max(...ls.map((l) => l.key));
-                        const a = { ...src, qty: String(rest) };
-                        const b = { ...src, key: maxKey + 1, qty: String(half) };
-                        return [...ls.slice(0, idx), a, b, ...ls.slice(idx + 1)];
-                      })
-                    }
+                    onChange={(next) => patchLine(line.key, next)}
+                    onRemove={() => removeLine(line.key)}
                   />
                 ))}
               </div>
+              <div className="p-3">
+                <Button variant="ghost" size="sm" onClick={addLine}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Добавить строку
+                </Button>
+              </div>
             </Card>
 
-            {/* Деньги чека */}
+            {/* Деньги */}
             <Card className="space-y-3">
-              <div className="text-sm font-medium">Деньги чека</div>
+              <div className="text-sm font-medium">Деньги закупки</div>
               <div className="flex flex-col gap-2 text-sm">
                 <label className="flex cursor-pointer items-start gap-2">
                   <input
@@ -362,21 +428,21 @@ function Wizard({ wsId }: { wsId: string }) {
                     name="money"
                     className="mt-1"
                     checked={moneyMode === 'link'}
-                    disabled={parsed.candidates.length === 0}
+                    disabled={linkable.length === 0}
                     onChange={() => setMoneyMode('link')}
                   />
                   <span>
                     Привязать к операции карты{' '}
                     <span className="text-muted-foreground">
-                      {parsed.candidates.length === 0
-                        ? '— подходящих не найдено (выписка ещё не загружена?)'
-                        : `— найдено: ${parsed.candidates.length}`}
+                      {linkable.length === 0
+                        ? '— операций на сумму Σ строк не найдено'
+                        : `— подходит: ${linkable.length}`}
                     </span>
                   </span>
                 </label>
-                {moneyMode === 'link' && parsed.candidates.length > 0 && (
+                {moneyMode === 'link' && linkable.length > 0 && (
                   <div className="ml-6 flex flex-col gap-1">
-                    {parsed.candidates.map((c) => (
+                    {linkable.map((c) => (
                       <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
                         <input
                           type="radio"
@@ -402,7 +468,7 @@ function Wizard({ wsId }: { wsId: string }) {
                     onChange={() => setMoneyMode('create')}
                   />
                   <span>
-                    Создать расход на весь чек{' '}
+                    Создать расход на Σ строк{' '}
                     <span className="text-muted-foreground">
                       — при импорте выписки строка подсветится как «уже учтено»
                     </span>
@@ -414,34 +480,42 @@ function Wizard({ wsId }: { wsId: string }) {
                   </div>
                 )}
               </div>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <span>Примечание {isManual && '(станет описанием расхода)'}</span>
+                <Input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={isManual ? 'напр. наличная закупка на рынке' : 'необязательно'}
+                  className="h-9 max-w-lg"
+                />
+              </label>
             </Card>
 
             {/* Итог и Провести */}
             <div className="flex flex-wrap items-center gap-3">
-              <span className={cn('text-sm tabular-nums', totalsMatch ? 'text-muted-foreground' : 'text-destructive')}>
-                Σ строк {formatRub(linesTotal, 2)} / итог чека{' '}
-                {parsed.receipt.totalAmount ? formatRub(parsed.receipt.totalAmount, 2) : '—'}
-                {!totalsMatch && ' — не сходится'}
+              <span className="text-sm tabular-nums">
+                Σ строк <b>{formatRub(linesTotal, 2)}</b>
               </span>
+              {totalsDiffer && (
+                <span className="text-sm text-warning">
+                  ≠ распознанный итог {formatRub(recognizedTotal!, 2)} — проверьте состав
+                </span>
+              )}
               <Button onClick={doCommit} disabled={!canCommit}>
                 <Check className="h-4 w-4" />
-                {commit.isPending ? 'Провожу…' : 'Провести чек'}
+                {commit.isPending ? 'Провожу…' : 'Провести'}
               </Button>
             </div>
           </>
         )}
 
-        {/* История разборов */}
-        <ReceiptHistory
-          items={history.data ?? []}
-          onRevert={(r) => setConfirmRevert(r)}
-        />
+        <ReceiptHistory items={history.data ?? []} onRevert={(r) => setConfirmRevert(r)} />
       </div>
 
       <ConfirmDialog
         open={!!confirmRevert}
         onOpenChange={(o) => !o && setConfirmRevert(null)}
-        title="Откатить разбор чека?"
+        title="Откатить разбор?"
         description={
           confirmRevert
             ? `Партии склада будут сняты, позиции заказов убраны, ${
@@ -458,7 +532,7 @@ function Wizard({ wsId }: { wsId: string }) {
           if (!confirmRevert) return;
           revert.mutate(confirmRevert.id, {
             onSuccess: () => {
-              toast.success('Разбор чека откачен');
+              toast.success('Разбор откачен');
               setConfirmRevert(null);
             },
             onError: (e) => {
@@ -472,60 +546,63 @@ function Wizard({ wsId }: { wsId: string }) {
   );
 }
 
-/** Одна строка разметки: назначение + зависимые поля. */
+/** Одна строка разметки: редактируемые имя/кол-во/цена + назначение. */
 function LineRow({
   wsId,
   line,
   onChange,
-  onSplit,
+  onRemove,
 }: {
   wsId: string;
   line: UiLine;
   onChange: (next: UiLine) => void;
-  onSplit: () => void;
+  onRemove: () => void;
 }) {
   const lineTotal = useMemo(() => {
-    const qty = Number(line.qty) > 0 ? line.qty : '0';
-    return toMoneyString(D(qty).mul(line.unitPrice));
+    const qty = MONEY_RX.test(line.qty) && Number(line.qty) > 0 ? line.qty : '0';
+    const price = MONEY_RX.test(line.unitPrice) ? line.unitPrice : '0';
+    return toMoneyString(D(qty).mul(price));
   }, [line.qty, line.unitPrice]);
 
   return (
     <div className="flex flex-wrap items-start gap-3 p-3">
-      <div className="min-w-[260px] flex-1">
-        <div className="text-sm font-medium">{line.name}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {line.sellerName ?? 'продавец не распознан'}
-          {line.wbOrderHash ? ` · заказ WB …${line.wbOrderHash.slice(-6)}` : ''}
-        </div>
+      <div className="min-w-[240px] flex-1">
+        <Input
+          value={line.name}
+          onChange={(e) => onChange({ ...line, name: e.target.value })}
+          placeholder="Наименование"
+          className="h-9"
+        />
+        {line.sellerName && (
+          <div className="mt-0.5 text-xs text-muted-foreground">{line.sellerName}</div>
+        )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>Кол-во</span>
           <Input
             value={line.qty}
-            inputMode="numeric"
+            inputMode="decimal"
             onChange={(e) => onChange({ ...line, qty: e.target.value })}
             className="h-9 w-[72px] text-right tabular-nums"
           />
         </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span>Цена</span>
+          <Input
+            value={line.unitPrice}
+            inputMode="decimal"
+            onChange={(e) => onChange({ ...line, unitPrice: e.target.value })}
+            className="h-9 w-[100px] text-right tabular-nums"
+          />
+        </label>
         <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Цена · Σ</span>
+          <span>Σ</span>
           <div className="flex h-9 items-center whitespace-nowrap text-sm tabular-nums">
-            {formatRub(line.unitPrice, 2)} · <b className="ml-1">{formatRub(lineTotal, 2)}</b>
+            {formatRub(lineTotal, 2)}
           </div>
         </div>
-        {Number(line.qty) > 1 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-4"
-            title="Разделить строку (часть в заказ, часть на склад)"
-            onClick={onSplit}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-          </Button>
-        )}
       </div>
 
       {/* Назначение */}
@@ -574,11 +651,15 @@ function LineRow({
           </div>
         )}
       </div>
+
+      <Button variant="ghost" size="sm" className="mt-6" title="Удалить строку" onClick={onRemove}>
+        <X className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }
 
-/** Товар склада: пусто = создать новый с именем из чека. */
+/** Товар склада: пусто = создать новый с именем из строки. */
 function WarehousePicker({
   wsId,
   value,
@@ -591,7 +672,7 @@ function WarehousePicker({
   const items = useWarehouse(wsId);
   const options = useMemo<ComboboxOption[]>(
     () => [
-      { value: '', label: '+ Новый товар (имя из чека)' },
+      { value: '', label: '+ Новый товар (имя из строки)' },
       ...(items.data ?? []).map((i) => ({
         value: i.id,
         label: i.name,
@@ -605,7 +686,7 @@ function WarehousePicker({
       value={value}
       onChange={onChange}
       options={options}
-      placeholder="+ Новый товар (имя из чека)"
+      placeholder="+ Новый товар (имя из строки)"
       searchPlaceholder="Товар склада…"
       className="h-9 w-[260px]"
     />
@@ -681,8 +762,13 @@ function ReceiptHistory({
 }) {
   const columns: Column<WbReceiptListItem>[] = [
     {
+      key: 'source',
+      header: 'Источник',
+      cell: (r) => <Badge variant="muted">{SOURCE_LABELS[r.source]}</Badge>,
+    },
+    {
       key: 'date',
-      header: 'Чек',
+      header: 'Документ',
       cell: (r) => (
         <span className="whitespace-nowrap tabular-nums">
           {r.checkNumber ? `№${r.checkNumber} · ` : ''}
@@ -734,9 +820,9 @@ function ReceiptHistory({
 
   return (
     <div className="space-y-2">
-      <h2 className="text-sm font-semibold">Разобранные чеки</h2>
+      <h2 className="text-sm font-semibold">Разобранные закупки</h2>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Пока ни одного разбора.</p>
+        <p className="text-sm text-muted-foreground">Пока ни одной.</p>
       ) : (
         <div className="rounded-md border border-border bg-card">
           <DataTable data={items} columns={columns} rowKey={(r) => r.id} />
