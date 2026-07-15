@@ -7,6 +7,7 @@
 export {
   ArrowsHorizontal as ArrowLeftRight,
   ArrowRight,
+  Calculation as Calculator,
   ChartBar as BarChart3,
   Checkmark as Check,
   ChevronDown,

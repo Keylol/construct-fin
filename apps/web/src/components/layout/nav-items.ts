@@ -17,6 +17,7 @@ import {
   Scale,
   Plug,
   Inbox,
+  Calculator,
   type LucideIcon,
 } from '@/components/ui/icons';
 
@@ -67,6 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Аналитика',
     items: [
       { href: '/reports', label: 'Отчёты', icon: BarChart3 },
+      { href: '/tax', label: 'Налог', icon: Calculator },
       { href: '/reports/rules', label: 'Правила', icon: Filter },
       { href: '/audit', label: 'Аудит', icon: History },
     ],
