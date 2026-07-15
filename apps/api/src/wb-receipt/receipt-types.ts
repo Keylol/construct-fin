@@ -3,7 +3,8 @@
 // ней. WB-специфика (ФПД, продавцы-«поверенные») ложится в общие поля docNumber/
 // sellerName; ненужные источнику поля остаются null.
 
-export type ParsedReceiptSource = 'WB_CARD' | 'DNS' | 'ONLINE_TRADE';
+// MANUAL — источник не распознан: оператор вводит позиции сам (дедупа нет).
+export type ParsedReceiptSource = 'WB_CARD' | 'DNS' | 'ONLINE_TRADE' | 'MANUAL';
 
 export type ParsedReceiptItem = {
   name: string;

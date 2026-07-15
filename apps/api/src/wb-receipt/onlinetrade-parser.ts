@@ -30,12 +30,17 @@ function money(raw: string): string {
   return new Prisma.Decimal(raw.replace(/[\s ]/g, '').replace(',', '.')).toFixed(2);
 }
 
-/** «19431311» = код + кол-во склеены; кол-во выводим из инварианта сумма/цена. */
+/**
+ * «19431311» = код + кол-во склеены; кол-во выводим из инварианта сумма/цена.
+ * `ok=false` — инвариант не сошёлся (последняя цифра взята как кол-во наугад):
+ * сервис по контракту покажет warning и заблокирует commit без ручной правки —
+ * молча ставить неверную себестоимость лота нельзя.
+ */
 function splitCodeQty(
   glued: string,
   price: Prisma.Decimal,
   sum: Prisma.Decimal,
-): { code: string; qty: string } {
+): { code: string; qty: string; ok: boolean } {
   if (!price.isZero()) {
     const q = sum.div(price).toDecimalPlaces(3);
     if (price.mul(q).toDecimalPlaces(2).equals(sum)) {
@@ -43,13 +48,13 @@ function splitCodeQty(
       const digits = qStr.replace('.', '');
       // Кол-во — последние цифры склейки (обычно 1 цифра); остальное — код.
       if (glued.length > digits.length && glued.endsWith(digits)) {
-        return { code: glued.slice(0, glued.length - digits.length), qty: qStr };
+        return { code: glued.slice(0, glued.length - digits.length), qty: qStr, ok: true };
       }
-      return { code: glued, qty: qStr };
+      return { code: glued, qty: qStr, ok: true };
     }
   }
-  // Fallback: последняя цифра — кол-во.
-  return { code: glued.slice(0, -1) || glued, qty: glued.slice(-1) || '1' };
+  // Инвариант не сошёлся: последняя цифра — кол-во (наугад), помечаем ok=false.
+  return { code: glued.slice(0, -1) || glued, qty: glued.slice(-1) || '1', ok: false };
 }
 
 export function parseOnlineTradeLines(lines: string[]): ParsedReceipt {
@@ -99,7 +104,12 @@ export function parseOnlineTradeLines(lines: string[]): ParsedReceipt {
     if (!/^\d/.test(glued) || !m) continue;
     const price = new Prisma.Decimal(money(m[1] ?? '0'));
     const sum = new Prisma.Decimal(money(m[2] ?? '0'));
-    const { code, qty } = splitCodeQty(glued, price, sum);
+    const { code, qty, ok } = splitCodeQty(glued, price, sum);
+    if (!ok) {
+      out.warnings.push(
+        `Строка «${glued}»: не удалось развязать код/кол-во (цена×кол-во≠сумма) — проверьте кол-во вручную`,
+      );
+    }
     const unit = new Prisma.Decimal(qty).isZero() ? price : sum.div(qty).toDecimalPlaces(4);
     rows.push({ code, qty, unitPrice: unit.toString(), lineTotal: sum.toFixed(2) });
   }

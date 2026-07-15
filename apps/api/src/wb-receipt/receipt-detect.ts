@@ -44,8 +44,10 @@ export async function detectAndParseReceipt(buffer: Buffer): Promise<ParsedRecei
   if (DNS_MARKER.test(text)) return parseDnsLines(lines);
   if (OT_MARKER.test(text)) return parseOnlineTradeLines(lines);
 
+  // Источник не распознан → трактуем как ручной ввод (без дедупа, docNumber=null):
+  // WB_CARD с пустым ключом дал бы ложную метку и отказ superRefine на commit.
   return {
-    source: 'WB_CARD',
+    source: 'MANUAL',
     receiptDate: null,
     docNumber: null,
     checkNumber: null,
