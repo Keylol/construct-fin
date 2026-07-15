@@ -244,11 +244,16 @@ function Wizard({ wsId }: { wsId: string }) {
   // бэкенд это же проверяет). При правке строк список сужается.
   const linkable = (parsed?.candidates ?? []).filter((c) => D(c.amount).equals(linesTotal));
 
+  // Распознанному источнику (не MANUAL) нужен номер документа — ключ дедупа,
+  // иначе бэк вернёт 400. Парсер обычно его находит; это защита от края.
+  const missingDocKey = source !== 'MANUAL' && !parsed?.receipt.docNumber;
+
   const canCommit =
     !!parsed &&
     !D(linesTotal).isZero() &&
     linesValid &&
     !parsed.alreadyImported &&
+    !missingDocKey &&
     (moneyMode === 'create' || linkable.some((c) => c.id === linkTxId)) &&
     !commit.isPending;
 
@@ -395,6 +400,12 @@ function Wizard({ wsId }: { wsId: string }) {
                   провести нельзя. Найдите его в истории ниже (можно откатить).
                 </div>
               )}
+              {missingDocKey && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                  У документа {SOURCE_LABELS[source]} не распознан номер (нужен для защиты от повторной
+                  загрузки). Проверьте файл или внесите позиции через «Ввести вручную».
+                </div>
+              )}
             </Card>
 
             {/* Позиции */}
@@ -440,6 +451,12 @@ function Wizard({ wsId }: { wsId: string }) {
                     </span>
                   </span>
                 </label>
+                {moneyMode === 'link' && !!linkTxId && !linkable.some((c) => c.id === linkTxId) && (
+                  <p className="ml-6 text-xs text-warning">
+                    Σ строк изменилась — выбранная операция больше не подходит по сумме. Выберите
+                    другую или создайте расход.
+                  </p>
+                )}
                 {moneyMode === 'link' && linkable.length > 0 && (
                   <div className="ml-6 flex flex-col gap-1">
                     {linkable.map((c) => (
