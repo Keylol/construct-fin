@@ -54,8 +54,9 @@ function multipartPdf() {
 function commitBody(over: Record<string, unknown> = {}) {
   return {
     accountId: seed.accountId,
+    source: 'WB_CARD',
     money: { mode: 'create', categoryId: null },
-    fpd: '1234567890',
+    docNumber: '1234567890',
     fd: '16669',
     checkNumber: '1471',
     receiptDate: '2026-05-21T03:25:00.000Z',
@@ -97,7 +98,8 @@ describe('Функциональные мутации: разбор чека WB 
     expect(res.statusCode).toBe(201);
     const preview = res.json<{
       receipt: {
-        fpd: string | null;
+        source: string;
+        docNumber: string | null;
         totalAmount: string | null;
         receiptDate: string | null;
         items: { name: string; qty: string }[];
@@ -106,7 +108,8 @@ describe('Функциональные мутации: разбор чека WB 
       candidates: { id: string }[];
       alreadyImported: { receiptId: string } | null;
     }>();
-    expect(preview.receipt.fpd).toBe('1234567890');
+    expect(preview.receipt.source).toBe('WB_CARD');
+    expect(preview.receipt.docNumber).toBe('1234567890');
     expect(preview.receipt.totalAmount).toBe('27226.00');
     expect(preview.receipt.items).toHaveLength(3);
     expect(preview.receipt.warnings).toEqual([]);
@@ -185,6 +188,42 @@ describe('Функциональные мутации: разбор чека WB 
       }),
     });
     expect(badLine.statusCode).toBe(400);
+  });
+
+  it('MANUAL без docNumber → 201; DNS без docNumber → 400 (zod)', async () => {
+    const ws = seed.workspaceId;
+    // Ручной ввод: source=MANUAL, docNumber опущен, позиции — от руки.
+    const manual = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/wb-receipts`,
+      token,
+      payload: {
+        accountId: seed.accountId,
+        source: 'MANUAL',
+        money: { mode: 'create', categoryId: null },
+        receiptDate: '2026-05-21T03:25:00.000Z',
+        totalAmount: '1000.00',
+        note: 'Закупка на рынке',
+        lines: [{ name: 'Провод', qty: '2', unitPrice: '500.00', target: 'SKIPPED' }],
+      },
+    });
+    expect(manual.statusCode).toBe(201);
+
+    // Распознанный источник (DNS) без номера документа — zod 400.
+    const dnsNoKey = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/wb-receipts`,
+      token,
+      payload: {
+        accountId: seed.accountId,
+        source: 'DNS',
+        money: { mode: 'create', categoryId: null },
+        receiptDate: '2026-05-21T03:25:00.000Z',
+        totalAmount: '1000.00',
+        lines: [{ name: 'Провод', qty: '2', unitPrice: '500.00', target: 'SKIPPED' }],
+      },
+    });
+    expect(dnsNoKey.statusCode).toBe(400);
   });
 
   it('без токена → 401, чужой workspace → 403', async () => {

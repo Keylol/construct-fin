@@ -44,8 +44,9 @@ function dto(over: Partial<CommitWbReceiptDto> & { itemId?: string; orderId?: st
   const { itemId, orderId, ...rest } = over;
   const base: CommitWbReceiptDto = {
     accountId: seed.accountId,
+    source: 'WB_CARD',
     money: { mode: 'create', categoryId: null },
-    fpd: 'FPD-1',
+    docNumber: 'FPD-1',
     fd: '16669',
     checkNumber: '1471',
     receiptDate: '2026-05-21T03:25:00.000Z',
@@ -238,6 +239,63 @@ describe('WbReceipt commit (create-mode)', () => {
   });
 });
 
+describe('WbReceipt commit (мультиисточник Ф6-D)', () => {
+  it('ДНС create: контрагент «ДНС Ритейл», дедуп по номеру заказа', async () => {
+    const res = await h.wbReceipts.commit(seed.workspaceId, seed.userId, {
+      ...dto(),
+      source: 'DNS',
+      docNumber: '6Б-010566220',
+      totalAmount: '590.00',
+      lines: [
+        { name: 'Кабель', qty: '1', unitPrice: '590.00', target: 'SKIPPED' },
+      ],
+    });
+    const tx = await h.prisma.transaction.findUniqueOrThrow({
+      where: { id: res.transaction?.id ?? '' },
+      include: { counterparty: true },
+    });
+    expect(tx.counterparty?.name).toBe('ДНС Ритейл');
+
+    // Повтор того же номера заказа ДНС → 409.
+    await expect(
+      h.wbReceipts.commit(seed.workspaceId, seed.userId, {
+        ...dto(),
+        source: 'DNS',
+        docNumber: '6Б-010566220',
+        totalAmount: '590.00',
+        lines: [{ name: 'Кабель', qty: '1', unitPrice: '590.00', target: 'SKIPPED' }],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('MANUAL: без docNumber — два одинаковых ввода проходят (без дедупа), без контрагента', async () => {
+    const body = {
+      ...dto(),
+      source: 'MANUAL' as const,
+      docNumber: null,
+      checkNumber: null,
+      totalAmount: '1234.00',
+      note: 'Наличная закупка на рынке',
+      lines: [{ name: 'Провод', qty: '2', unitPrice: '617.00', target: 'SKIPPED' as const }],
+    };
+    const a = await h.wbReceipts.commit(seed.workspaceId, seed.userId, body);
+    const b = await h.wbReceipts.commit(seed.workspaceId, seed.userId, body);
+    expect(a.id).not.toBe(b.id);
+    // Оба живы (partial-unique игнорирует NULL-ключи).
+    expect(
+      await h.prisma.wbReceipt.count({ where: { workspaceId: seed.workspaceId, deletedAt: null } }),
+    ).toBe(2);
+    // Ручной расход — без авто-контрагента, описание из примечания.
+    const tx = await h.prisma.transaction.findUniqueOrThrow({
+      where: { id: a.transaction?.id ?? '' },
+    });
+    expect(tx.counterpartyId).toBeNull();
+    expect(tx.description).toBe('Наличная закупка на рынке');
+  });
+  // «DNS без docNumber → 400» — инвариант zod (superRefine), проверяется в
+  // functional-тесте через реальный ZodPipe (сервис вызывается в обход pipe).
+});
+
 describe('WbReceipt commit (link-mode)', () => {
   async function seedCardExpense(amount: string, kind: 'OTHER' | 'ORDER_PAYMENT' = 'OTHER') {
     return h.prisma.transaction.create({
@@ -309,7 +367,7 @@ describe('WbReceipt commit (link-mode)', () => {
     await expect(
       h.wbReceipts.commit(seed.workspaceId, seed.userId, {
         ...dto(),
-        fpd: 'FPD-2',
+        docNumber: 'FPD-2',
         money: { mode: 'link', transactionId: good.id },
         totalAmount: '18438.00',
         lines,
@@ -395,7 +453,7 @@ describe('WbReceipt revert', () => {
     // Операция свободна — второй чек может привязаться к ней.
     await h.wbReceipts.commit(seed.workspaceId, seed.userId, {
       ...dto(),
-      fpd: 'FPD-2',
+      docNumber: 'FPD-2',
       money: { mode: 'link', transactionId: t.id },
       totalAmount: '18438.00',
       lines,
