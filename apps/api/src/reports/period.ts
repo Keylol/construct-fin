@@ -140,6 +140,24 @@ function endOfMonth(year: number, month: number): Date {
   return tzInstant(year, month + 1, 0, 23, 59, 59, 999);
 }
 
+/** Календарный год [1 янв .. 31 дек] в поясе бизнеса (UTC+5). Для вкладки «Налог». */
+export function yearPeriod(year: number): Period {
+  return { from: startOfMonth(year, 0), to: endOfMonth(year, 11) };
+}
+
+/** Метка бизнес-месяца момента: «YYYY-MM» (UTC+5). Ключ помесячной группировки. */
+export function businessMonthLabel(date: Date): string {
+  const { y, mo } = tzParts(date);
+  return `${y}-${String(mo + 1).padStart(2, '0')}`;
+}
+
+/** Срок уплаты налога АУСН за месяц — 25-е число СЛЕДУЮЩЕГО месяца (UTC+5). */
+export function ausnDueDate(year: number, month1to12: number): Date {
+  // month1to12: 1..12 → mo=month-1; следующий месяц = mo+1 (Date.UTC нормализует).
+  // Полдень бизнес-времени: ISO-дата (UTC) не «уезжает» на 24-е из-за смещения +5.
+  return tzInstant(year, month1to12, 25, 12, 0, 0, 0);
+}
+
 export function resolvePreset(preset: PeriodPreset, now: Date = new Date()): Period {
   const { y, mo: m, d } = tzParts(now);
   switch (preset) {

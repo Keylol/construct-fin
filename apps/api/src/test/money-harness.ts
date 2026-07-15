@@ -19,6 +19,7 @@ import { OrderRepository } from '../orders/order.repository';
 import { OrderService } from '../orders/order.service';
 import { PurchaseService } from '../purchase/purchase.service';
 import { PnlService } from '../reports/pnl.service';
+import { TaxService } from '../reports/tax.service';
 import { TransferService } from '../transfer/transfer.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { MarginService } from '../trade-reports/margin.service';
@@ -44,6 +45,7 @@ export type Harness = {
   warehouse: WarehouseService;
   orderRepo: OrderRepository;
   pnl: PnlService;
+  tax: TaxService;
   transfer: TransferService;
   reconciliation: ReconciliationService;
   tradeMargin: MarginService;
@@ -72,6 +74,7 @@ export function buildHarness(): Harness {
   const orders = new OrderService(prisma, orderRepo, uow, warehouse, audit);
   const purchases = new PurchaseService(prisma, uow, warehouse, audit);
   const pnl = new PnlService(prisma);
+  const tax = new TaxService(prisma);
 
   // Доп. сервисы для e2e — все инстанцируются от того же prisma/uow/audit.
   const transfer = new TransferService(prisma, uow);
@@ -93,6 +96,7 @@ export function buildHarness(): Harness {
     warehouse,
     orderRepo,
     pnl,
+    tax,
     transfer,
     reconciliation,
     tradeMargin,

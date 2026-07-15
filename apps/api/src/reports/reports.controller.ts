@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Param,
+  Post,
   Query,
   Res,
   StreamableFile,
@@ -11,6 +13,8 @@ import {
 import type { FastifyReply } from 'fastify';
 import { Readable } from 'node:stream';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { JwtPayload } from '../auth/auth.service';
 import { WorkspaceGuard, type WorkspaceContext } from '../common/workspace.guard';
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
@@ -24,10 +28,19 @@ import {
   type ExportFormat,
   type PnlQuery,
 } from './reports.dto';
+import {
+  TaxAusnBodySchema,
+  TaxPayBodySchema,
+  TaxYearQuerySchema,
+  type TaxAusnBody,
+  type TaxPayBody,
+  type TaxYearQuery,
+} from './tax.dto';
 import { resolveComparison, resolvePeriod } from './period';
 import { PnlService } from './pnl.service';
 import { CashflowService } from './cashflow.service';
 import { BreakdownService } from './breakdown.service';
+import { TaxService } from './tax.service';
 import { renderReport } from './export';
 import {
   breakdownToTable,
@@ -42,7 +55,34 @@ export class ReportsController {
     private readonly pnl: PnlService,
     private readonly cashflow: CashflowService,
     private readonly breakdown: BreakdownService,
+    private readonly tax: TaxService,
   ) {}
+
+  // ── Ф4: Налог АУСН Д−Р ──
+  @Get('tax')
+  getTax(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(TaxYearQuerySchema)) q: TaxYearQuery,
+  ) {
+    return this.tax.yearReport(ws.workspaceId, q.year);
+  }
+
+  @Post('tax/pay')
+  payTax(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodPipe(TaxPayBodySchema)) body: TaxPayBody,
+  ) {
+    return this.tax.markPaid(ws.workspaceId, user.sub, body);
+  }
+
+  @Post('tax/ausn')
+  setAusn(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(TaxAusnBodySchema)) body: TaxAusnBody,
+  ) {
+    return this.tax.setAusnMark(ws.workspaceId, body.transactionId, body.ausnMark);
+  }
 
   @Get('pnl')
   async getPnl(
