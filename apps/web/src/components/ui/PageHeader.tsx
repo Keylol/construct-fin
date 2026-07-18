@@ -1,20 +1,11 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
-export interface Crumb {
-  label: string;
-  href?: string;
-}
-
+// Хлебные крошки рендерятся ГЛОБАЛЬНО в верхнем баре (components/layout/Header)
+// из URL — единый источник; у страничного заголовка своего дубля нет.
 interface PageHeaderProps {
   title: string;
   description?: string;
-  /**
-   * @deprecated Хлебные крошки теперь рендерятся ГЛОБАЛЬНО в верхнем баре
-   * (components/layout/Header) из URL — единый источник. Проп принимается для
-   * совместимости вызовов, но больше не отображается (убран дубль навигации).
-   */
-  breadcrumbs?: Crumb[];
   actions?: ReactNode;
   className?: string;
 }

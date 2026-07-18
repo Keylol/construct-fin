@@ -58,7 +58,7 @@ export function QuickCreateCounterpartyDialog({
   const submit = async () => {
     setError(null);
     if (!name.trim()) {
-      setError('Укажи имя или название');
+      setError('Укажите имя или название');
       return;
     }
     try {

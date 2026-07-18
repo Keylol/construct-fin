@@ -57,14 +57,14 @@ function HeaderCash() {
   return (
     <Link
       href="/accounts"
-      title="Всего денег на счетах — открыть"
+      title="Денежные средства на счетах — открыть"
       className={cn(
         'hidden h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5 sm:flex',
         'transition-colors hover:border-ring',
       )}
     >
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        Касса
+        Денежные средства
       </span>
       <span className="num text-sm font-semibold">{formatRub(total)}</span>
     </Link>
@@ -124,7 +124,7 @@ export function Header({ onCommandOpen }: HeaderProps) {
         </ol>
       </nav>
 
-      {/* Касса — всего денег на счетах */}
+      {/* Денежные средства — сумма по всем счетам */}
       <HeaderCash />
 
       {/* Глобальное создание (десктоп; на мобиле — центр таб-бара) */}
@@ -168,13 +168,14 @@ const LABELS: Record<string, string> = {
   categories: 'Категории',
   counterparties: 'Контрагенты',
   import: 'Импорт',
+  salary: 'Зарплата',
   batches: 'История',
   reports: 'Отчёты',
   cashflow: 'ОДДС',
   rules: 'Правила',
-  pnl: 'P&L',
+  pnl: 'ОПиУ',
   margin: 'Валовая прибыль',
-  receivables: 'Дебиторка',
+  receivables: 'Дебиторская задолженность',
 };
 
 function buildBreadcrumbs(pathname: string): CrumbItem[] {

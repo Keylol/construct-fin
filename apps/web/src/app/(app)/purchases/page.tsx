@@ -121,13 +121,12 @@ export default function PurchasesPage() {
     <>
       <PageHeader
         title="Закупки"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки' }]}
         actions={
           <div className="flex items-center gap-2">
-            {/* Ф6: мастер разбора чека (WB/ДНС/Онлайн Трейд/ручной → склад/заказ). */}
+            {/* Ф6: мастер обработки чека (WB/ДНС/Онлайн Трейд/ручной → склад/заказ). */}
             <Button variant="secondary" onClick={() => router.push('/purchases/wb-receipt')}>
               <Receipt className="h-4 w-4" />
-              Разбор чека
+              Загрузить чек
             </Button>
             <Button onClick={() => setCreating(true)}>
               <Plus className="h-4 w-4" />
@@ -159,7 +158,7 @@ export default function PurchasesPage() {
             <EmptyState
               icon={ShoppingCart}
               title="Закупок пока нет"
-              hint="Проведи первую закупку — товар придёт на склад, деньги спишутся со счёта."
+              hint="Проведите первую закупку — товар придёт на склад, деньги спишутся со счёта."
               action={
                 <Button onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" /> Закупка

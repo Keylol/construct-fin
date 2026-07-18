@@ -252,7 +252,6 @@ export default function OrdersPage() {
     <>
       <PageHeader
         title="Заказы"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Заказы' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
@@ -609,12 +608,12 @@ function OrderFormSheet({
       const blank = !it.name.trim() && !it.unitPrice.trim() && !it.warehouseItemId;
       if (blank) return;
       if (!it.name.trim()) {
-        errors[i] = 'Укажи наименование';
+        errors[i] = 'Укажите наименование';
         return;
       }
       const price = parseAmountInput(it.unitPrice);
       if (!price) {
-        errors[i] = 'Укажи цену продажи — число больше нуля';
+        errors[i] = 'Укажите цену продажи — число больше нуля';
         return;
       }
       if (!parseDraft(it.qty).gt(0)) {
@@ -702,7 +701,7 @@ function OrderFormSheet({
     const collected = collectItems();
     if (!collected.ok) {
       setItemErrors(collected.errors);
-      setError('Исправь выделенные позиции — они не будут сохранены в таком виде');
+      setError('Исправьте выделенные позиции — они не будут сохранены в таком виде');
       return;
     }
     const cleaned = collected.items;
@@ -759,7 +758,7 @@ function OrderFormSheet({
     const collected = collectItems();
     if (!collected.ok) {
       setItemErrors(collected.errors);
-      setError('Исправь выделенные позиции — они не будут сохранены в таком виде');
+      setError('Исправьте выделенные позиции — они не будут сохранены в таком виде');
       return;
     }
     const cleaned = collected.items;
@@ -941,13 +940,14 @@ function OrderFormSheet({
                   )}
                   {wh && !it.unitCost && (
                     <p className="text-xs text-muted-foreground">
-                      Себест. со склада {formatRub(wh.avgCost)} · спишется при закрытии. Или впиши закупку вручную.
+                      Себестоимость со склада {formatRub(wh.avgCost)} · спишется при
+                      закрытии. Или впишите закупку вручную.
                     </p>
                   )}
                   {!it.warehouseItemId && it.unitCost && (
                     <p className="text-xs text-amber-600">
                       Эта себестоимость уже попадёт в прибыль как COGS при закрытии заказа.
-                      Не заводи её повторно отдельной расходной операцией — будет двойной счёт.
+                      Не заводите её повторно отдельной расходной операцией — будет двойной учёт.
                     </p>
                   )}
                 </div>
@@ -997,7 +997,7 @@ function OrderFormSheet({
             </div>
             {costTotal.gt(0) && (
               <div className="flex justify-between font-semibold text-success">
-                <span>Заработок (план)</span>
+                <span>Валовая прибыль (план)</span>
                 <span className="tabular-nums">
                   {costIsEstimate ? '≈ ' : ''}
                   {formatRub(toMoneyString(estEarnings))}
@@ -1087,7 +1087,7 @@ function OrderFormSheet({
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Реальный платёж сегодня. Оставь пустым, если предоплаты нет.
+                      Реальный платёж сегодня. Оставьте пустым, если предоплаты нет.
                     </p>
                   </div>
 
@@ -1153,7 +1153,7 @@ function OrderFormSheet({
                   </div>
                   {!planMatchesTotal && planTotal.gt(0) && (
                     <p className="text-xs text-amber-600">
-                      План не сходится с итогом заказа — проверь суммы (можно сохранить как есть).
+                      План не сходится с итогом заказа — проверьте суммы (можно сохранить как есть).
                     </p>
                   )}
                 </div>
@@ -1728,7 +1728,7 @@ function OrderDetailSheet({
                     ))}
                     <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
                       <Paperclip className="h-3.5 w-3.5" />
-                      {uploadAtt.isPending ? 'Загружаю…' : 'Прикрепить чек'}
+                      {uploadAtt.isPending ? 'Загрузка…' : 'Прикрепить чек'}
                       <input
                         type="file"
                         className="hidden"
@@ -1765,7 +1765,7 @@ function OrderDetailSheet({
                   onClick={() => reopen.mutate(order.id)}
                   disabled={reopen.isPending}
                 >
-                  {reopen.isPending ? 'Возвращаю…' : 'Вернуть в работу'}
+                  {reopen.isPending ? 'Возврат…' : 'Вернуть в работу'}
                 </Button>
               ) : (
                 <>
@@ -1773,7 +1773,7 @@ function OrderDetailSheet({
                     Изменить
                   </Button>
                   <Button onClick={() => finalize.mutate(order.id)} disabled={finalize.isPending}>
-                    {finalize.isPending ? 'Закрываю…' : 'Закрыть заказ'}
+                    {finalize.isPending ? 'Закрытие…' : 'Закрыть заказ'}
                   </Button>
                 </>
               )}
@@ -1790,7 +1790,7 @@ function OrderDetailSheet({
                 onClick={() => reopen.mutate(order.id)}
                 disabled={reopen.isPending}
               >
-                {reopen.isPending ? 'Возвращаю…' : 'Вернуть в работу'}
+                {reopen.isPending ? 'Возврат…' : 'Вернуть в работу'}
               </Button>
             </SheetFooter>
           )}
@@ -2031,7 +2031,7 @@ function ScheduleDialog({
             Отмена
           </Button>
           <Button onClick={save} disabled={setSchedule.isPending}>
-            {setSchedule.isPending ? 'Сохраняю…' : 'Сохранить'}
+            {setSchedule.isPending ? 'Сохранение…' : 'Сохранить'}
           </Button>
         </DialogFooter>
       </DialogContent>

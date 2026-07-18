@@ -124,7 +124,6 @@ export default function TransfersPage() {
     <>
       <PageHeader
         title="Переводы"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Переводы' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

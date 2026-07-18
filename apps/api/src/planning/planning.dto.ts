@@ -131,6 +131,9 @@ export type PayPlannedDto = z.infer<typeof PayPlannedSchema>;
 export const PlannedListQuerySchema = z.object({
   status: z.enum(['PLANNED', 'PAID', 'SKIPPED', 'CANCELLED']).optional(),
   source: z.enum(['RECURRING', 'SALARY', 'MANUAL']).optional(),
+  // Зарплатный раздел фильтрует по статье: SALARY покрывает и разовые выплаты
+  // (source=SALARY), и материализованные из зарплатной регулярки (source=RECURRING).
+  txKind: PlannedTxKind.optional(),
   counterpartyId: cuid.optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),

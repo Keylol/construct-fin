@@ -166,6 +166,7 @@ export class PlanningService {
         deletedAt: null,
         ...(q.status ? { status: q.status } : {}),
         ...(q.source ? { source: q.source } : {}),
+        ...(q.txKind ? { txKind: q.txKind } : {}),
         ...(q.counterpartyId ? { counterpartyId: q.counterpartyId } : {}),
         ...(q.from || q.to
           ? { dueDate: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) } }

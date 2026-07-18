@@ -18,7 +18,7 @@ export function InboxNavBadge({ collapsed }: { collapsed?: boolean }) {
   if (collapsed) {
     return (
       <span
-        aria-label={`${n} на разбор`}
+        aria-label={`${n} на обработку`}
         className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warning ring-2 ring-card"
       />
     );

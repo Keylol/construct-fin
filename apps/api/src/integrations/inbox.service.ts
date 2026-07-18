@@ -103,7 +103,7 @@ export class InboxService {
         data: { status: 'RESOLVED', transactionId: transaction.id, suggestedCategoryId: dto.categoryId },
       });
       if (claim.count === 0) {
-        throw new ConflictException('Строка уже разобрана другим действием');
+        throw new ConflictException('Строка уже обработана другим действием');
       }
     });
     return { ok: true };
@@ -123,7 +123,7 @@ export class InboxService {
       data: { status: 'RESOLVED' },
     });
     if (claim.count === 0) {
-      throw new ConflictException('Строка уже разобрана другим действием');
+      throw new ConflictException('Строка уже обработана другим действием');
     }
 
     try {
@@ -219,7 +219,7 @@ export class InboxService {
     });
     if (!line) throw new NotFoundException('Строка не найдена');
     if (line.status !== 'NEW') {
-      throw new BadRequestException('Строка уже разобрана');
+      throw new BadRequestException('Строка уже обработана');
     }
     return line;
   }

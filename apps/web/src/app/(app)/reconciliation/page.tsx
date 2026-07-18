@@ -80,7 +80,6 @@ export default function ReconciliationPage() {
     <>
       <PageHeader
         title="Сверка счетов"
-        breadcrumbs={[{ label: 'Аналитика' }, { label: 'Сверка' }]}
         actions={
           <Button onClick={() => setCreating(true)} disabled={!accountId}>
             <Plus className="h-4 w-4" />

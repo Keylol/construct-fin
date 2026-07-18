@@ -604,7 +604,7 @@ export class OrderService {
   async ship(workspaceId: string, orderId: string, userId: string, dto: ShipItemDto) {
     const shipQty = D(dto.qty);
     if (!gt(shipQty, '0')) {
-      throw new BadRequestException('qty должен быть положительным');
+      throw new BadRequestException('Количество должно быть положительным');
     }
 
     return this.uow.run(async (tx) => {
@@ -692,11 +692,11 @@ export class OrderService {
   ) {
     const returnQty = new Prisma.Decimal(dto.returnQty);
     if (!gt(returnQty, '0')) {
-      throw new BadRequestException('returnQty должен быть положительным');
+      throw new BadRequestException('Количество возврата должно быть положительным');
     }
     const refund = money(dto.refundAmount);
     if (refund.isNegative()) {
-      throw new BadRequestException('refundAmount не может быть отрицательным');
+      throw new BadRequestException('Сумма возврата не может быть отрицательной');
     }
     await this.assertAccount(workspaceId, dto.accountId);
 

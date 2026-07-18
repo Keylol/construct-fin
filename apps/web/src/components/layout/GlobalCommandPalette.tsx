@@ -20,8 +20,9 @@ const HINTS: Record<string, string> = {
   '/orders': 'Продажи клиентам',
   '/transactions': 'Список доходов/расходов',
   '/warehouse': 'Остатки, закупки',
-  '/reports': 'P&L, Cash flow',
-  '/reports/rules': 'подсказки категорий/контрагентов',
+  '/salary': 'Сотрудники и выплаты',
+  '/reports': 'ОПиУ, ОДДС',
+  '/reports/rules': 'Подсказки категорий/контрагентов',
 };
 
 /** Единый источник — NAV_GROUPS/NAV_ITEMS (nav-items.ts), палитра не отстаёт от меню. */

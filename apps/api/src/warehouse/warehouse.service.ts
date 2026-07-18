@@ -1020,7 +1020,7 @@ export class WarehouseService {
 
       const returnQty = roundQty(dto.returnQty);
       if (!gt(returnQty, '0')) {
-        throw new BadRequestException('returnQty должен быть положительным');
+        throw new BadRequestException('Количество возврата должно быть положительным');
       }
       assertNotFuture(dto.date ? new Date(dto.date) : new Date(), 'Дата возврата поставщику'); // DE4
       // Доступность по ИТОГОВОМУ остатку позиции (не по лотам поставщика) — реш. #1:
