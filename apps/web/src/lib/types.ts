@@ -501,6 +501,31 @@ export interface CashflowReport {
   series: CashflowSeries[];
 }
 
+/** Бюджет план/факт: месячные лимиты расходов / планы доходов по категориям. */
+export interface BudgetRow {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  kind: CategoryKind;
+  amount: string;
+  note: string | null;
+  fact: string;
+  usagePct: number;
+  over: boolean;
+}
+
+export interface BudgetReport {
+  month: string;
+  rows: BudgetRow[];
+  totals: {
+    expensePlan: string;
+    expenseFact: string;
+    incomePlan: string;
+    incomeFact: string;
+    overCount: number;
+  };
+}
+
 /** Точка безубыточности за период (методология ОПиУ/IJ9). */
 export interface BreakevenReport {
   period: { from: string; to: string };
