@@ -130,7 +130,8 @@ export class CategoryService {
         });
         if (!parent) throw new BadRequestException('Parent category not found');
         if (parent.parentId !== null) throw new BadRequestException('Категории поддерживают только 2 уровня');
-        if (parent.kind !== existing.kind) throw new BadRequestException('kind должен совпадать');
+        if (parent.kind !== existing.kind)
+          throw new BadRequestException('Тип (доход/расход) родителя должен совпадать');
         // нельзя сделать родителем категорию, у которой есть свои дети
         const hasChildren = await this.prisma.category.count({
           where: { workspaceId, parentId: id, deletedAt: null },

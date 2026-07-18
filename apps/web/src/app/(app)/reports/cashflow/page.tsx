@@ -163,7 +163,8 @@ export default function CashflowReportPage() {
                 <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
                   <h3 className="font-medium">{s.accountName ?? 'Без счёта'}</h3>
                   <span className="text-xs text-muted-foreground">
-                    Старт: <span className="tabular-nums">{formatRub(s.openingBalance)}</span>
+                    Остаток на начало:{' '}
+                    <span className="tabular-nums">{formatRub(s.openingBalance)}</span>
                   </span>
                 </header>
                 <table className="w-full text-base">

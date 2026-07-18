@@ -273,7 +273,7 @@ function PayDialog({
           <Button variant="secondary" onClick={onClose}>Отмена</Button>
           <Button onClick={submit} disabled={!valid || pay.isPending}>
             <Check className="h-4 w-4" />
-            {pay.isPending ? 'Отмечаю…' : 'Отметить уплату'}
+            {pay.isPending ? 'Сохранение…' : 'Отметить уплату'}
           </Button>
         </DialogFooter>
       </DialogContent>

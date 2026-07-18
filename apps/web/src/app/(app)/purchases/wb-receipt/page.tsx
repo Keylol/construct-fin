@@ -116,7 +116,7 @@ export default function ReceiptWizardPage() {
   if (!wsId) {
     return (
       <>
-        <PageHeader title="Разбор закупки" />
+        <PageHeader title="Обработка закупки" />
         <div className="p-6">
           <EmptyState icon={ReceiptIcon} title="Нет активного пространства" hint="Выберите пространство." />
         </div>
@@ -181,7 +181,8 @@ function Wizard({ wsId }: { wsId: string }) {
           setMoneyMode(res.candidates.length > 0 ? 'link' : 'create');
           setLinkTxId(res.candidates[0]?.id ?? '');
         },
-        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось разобрать документ'),
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : 'Не удалось обработать документ'),
       },
     );
   };
@@ -304,7 +305,7 @@ function Wizard({ wsId }: { wsId: string }) {
   return (
     <>
       <PageHeader
-        title="Разбор закупки"
+        title="Обработка закупки"
         breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки', href: '/purchases' }, { label: 'Чек' }]}
         actions={
           <Button variant="secondary" onClick={() => router.push('/purchases')}>
@@ -316,8 +317,8 @@ function Wizard({ wsId }: { wsId: string }) {
         <p className="max-w-3xl text-sm text-muted-foreground">
           PDF-чек (Wildberries, ДНС, Онлайн Трейд) распознаётся автоматически, либо
           введите позиции вручную. Каждую позицию отправьте на склад или в заказ; любое
-          поле можно поправить. Деньги попадают в кассу ровно один раз — привязкой к
-          операции карты или новым расходом.
+          поле можно поправить. Расход по деньгам учитывается ровно один раз — привязкой
+          к операции карты или новой расходной операцией.
         </p>
 
         {/* Шаг 1: счёт + файл / ручной ввод */}
@@ -346,7 +347,7 @@ function Wizard({ wsId }: { wsId: string }) {
             />
             <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={preview.isPending}>
               <Upload className="h-4 w-4" />
-              {preview.isPending ? 'Разбираю…' : fileName ? 'Другой файл' : 'Загрузить PDF-чек'}
+              {preview.isPending ? 'Обработка…' : fileName ? 'Другой файл' : 'Загрузить PDF-чек'}
             </Button>
             <Button variant="ghost" onClick={startManual} disabled={preview.isPending}>
               <Plus className="h-4 w-4" />
@@ -385,7 +386,7 @@ function Wizard({ wsId }: { wsId: string }) {
               </div>
               {parsed.receipt.warnings.length > 0 && (
                 <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                  <b>Проверьте разбор — есть замечания:</b>
+                  <b>Проверьте распознанные данные — есть замечания:</b>
                   <ul className="mt-1 list-disc pl-5">
                     {parsed.receipt.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
@@ -396,8 +397,8 @@ function Wizard({ wsId }: { wsId: string }) {
               )}
               {parsed.alreadyImported && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-                  Этот документ уже разобран {formatDate(parsed.alreadyImported.importedAt)} — повторно
-                  провести нельзя. Найдите его в истории ниже (можно откатить).
+                  Этот документ уже проведён {formatDate(parsed.alreadyImported.importedAt)} — повторно
+                  провести нельзя. Найдите его в истории ниже (проведение можно отменить).
                 </div>
               )}
               {missingDocKey && (
@@ -487,7 +488,7 @@ function Wizard({ wsId }: { wsId: string }) {
                   <span>
                     Создать расход на Σ строк{' '}
                     <span className="text-muted-foreground">
-                      — при импорте выписки строка подсветится как «уже учтено»
+                      — при импорте выписки строка подсветится как «проведено по чеку»
                     </span>
                   </span>
                 </label>
@@ -520,7 +521,7 @@ function Wizard({ wsId }: { wsId: string }) {
               )}
               <Button onClick={doCommit} disabled={!canCommit}>
                 <Check className="h-4 w-4" />
-                {commit.isPending ? 'Провожу…' : 'Провести'}
+                {commit.isPending ? 'Проведение…' : 'Провести'}
               </Button>
             </div>
           </>
@@ -532,28 +533,28 @@ function Wizard({ wsId }: { wsId: string }) {
       <ConfirmDialog
         open={!!confirmRevert}
         onOpenChange={(o) => !o && setConfirmRevert(null)}
-        title="Откатить разбор?"
+        title="Отменить проведение?"
         description={
           confirmRevert
             ? `Партии склада будут сняты, позиции заказов убраны, ${
                 confirmRevert.transactionCreated
                   ? 'созданный расход удалён'
-                  : 'операция карты отвязана (останется в кассе)'
+                  : 'операция карты отвязана (останется в учёте)'
               }. Действие нельзя выполнить, если товар уже продан или позиция отгружена.`
             : ''
         }
-        confirmText="Откатить"
+        confirmText="Отменить проведение"
         variant="destructive"
         loading={revert.isPending}
         onConfirm={() => {
           if (!confirmRevert) return;
           revert.mutate(confirmRevert.id, {
             onSuccess: () => {
-              toast.success('Разбор откачен');
+              toast.success('Проведение отменено');
               setConfirmRevert(null);
             },
             onError: (e) => {
-              toast.error(e instanceof Error ? e.message : 'Не удалось откатить');
+              toast.error(e instanceof Error ? e.message : 'Не удалось отменить');
               setConfirmRevert(null);
             },
           });
@@ -827,7 +828,7 @@ function ReceiptHistory({
       header: '',
       cell: (r) =>
         r.deletedAt ? null : (
-          <Button variant="ghost" size="sm" onClick={() => onRevert(r)} title="Откатить разбор">
+          <Button variant="ghost" size="sm" onClick={() => onRevert(r)} title="Отменить проведение">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
         ),
@@ -837,7 +838,7 @@ function ReceiptHistory({
 
   return (
     <div className="space-y-2">
-      <h2 className="text-sm font-semibold">Разобранные закупки</h2>
+      <h2 className="text-sm font-semibold">Проведённые закупки</h2>
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">Пока ни одной.</p>
       ) : (

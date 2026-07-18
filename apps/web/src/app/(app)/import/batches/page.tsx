@@ -95,7 +95,7 @@ export default function ImportBatchesPage() {
       header: 'Статус',
       cell: (b) =>
         b.deletedAt ? (
-          <Badge variant="muted">Откатан</Badge>
+          <Badge variant="muted">Отменён</Badge>
         ) : (
           <Badge variant="outline">Активен</Badge>
         ),
@@ -164,7 +164,7 @@ export default function ImportBatchesPage() {
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate font-medium">{b.filename}</span>
                 {b.deletedAt ? (
-                  <Badge variant="muted">Откатан</Badge>
+                  <Badge variant="muted">Отменён</Badge>
                 ) : (
                   <Badge variant="outline">Активен</Badge>
                 )}

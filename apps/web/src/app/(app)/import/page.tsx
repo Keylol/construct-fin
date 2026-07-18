@@ -183,7 +183,7 @@ export default function ImportPage() {
                 type="submit"
                 disabled={!file || !accountId || previewMut.isPending}
               >
-                {previewMut.isPending ? 'Парсим…' : 'Предпросмотр'}
+                {previewMut.isPending ? 'Обработка…' : 'Предпросмотр'}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </form>
@@ -225,7 +225,7 @@ export default function ImportPage() {
                     Импортировано: <span className="font-semibold">{batchResult.imported}</span>
                   </div>
                   <div>
-                    Пропущено (дубли):{' '}
+                    Пропущено (дубликаты):{' '}
                     <span className="font-semibold">{batchResult.skipped}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -410,9 +410,9 @@ function PreviewStage({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {r.isDuplicate && <Badge variant="muted">дубль</Badge>}
-                  {/* Ф6: расход уже создан разбором чека WB — строка не импортируется. */}
-                  {r.receiptMatch && <Badge variant="muted">учтено чеком WB</Badge>}
+                  {r.isDuplicate && <Badge variant="muted">дубликат</Badge>}
+                  {/* Ф6: расход уже создан проведением чека WB — строка не импортируется. */}
+                  {r.receiptMatch && <Badge variant="muted">проведено по чеку WB</Badge>}
                   {r.errors.length > 0 && <Badge variant="destructive">ошибка</Badge>}
                 </td>
               </tr>
@@ -435,7 +435,7 @@ function PreviewStage({
             className="h-4 w-4 rounded border-input accent-primary"
           />
           <span className="text-sm">
-            Пропустить дубли ({preview.stats.duplicates})
+            Пропустить дубликаты ({preview.stats.duplicates})
           </span>
         </label>
         <div className="text-sm">

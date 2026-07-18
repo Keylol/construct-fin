@@ -145,7 +145,7 @@ export default function WarehousePage() {
             value={items.data ? String(items.data.length) : '—'}
           />
           <KpiCard
-            label="Стоимость склада"
+            label="Стоимость запасов"
             value={stockValue.data ? formatRub(stockValue.data.value) : '—'}
           />
           <KpiCard
@@ -475,7 +475,7 @@ function WarehouseItemForm({
                     disabled={setCost.isPending || !setCostValue.trim()}
                     onClick={onSetCost}
                   >
-                    {setCost.isPending ? 'Сохраняю…' : 'Задать себестоимость'}
+                    {setCost.isPending ? 'Сохранение…' : 'Задать себестоимость'}
                   </Button>
                 </div>
               ) : (

@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { TransactionListItem } from '@/components/transactions/TransactionListItem';
 import { rangeFor } from '@/lib/periods';
+import { txDrilldownHref } from '@/lib/tx-filters';
 import { formatDayLabel } from '@/lib/dates';
 import { formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
@@ -136,7 +137,7 @@ export default function DashboardPage() {
             <Skeleton className="h-[124px] sm:col-span-2" />
           ) : (
             <KpiCard
-              label="Всего денег на счетах"
+              label="Денежные средства"
               value={<AnimatedNumber value={cash.total} />}
               size="display"
               href="/accounts"
@@ -149,7 +150,7 @@ export default function DashboardPage() {
             <Skeleton className="h-[124px]" />
           ) : (
             <KpiCard
-              label="Дебиторка"
+              label="Дебиторская задолженность"
               value={<AnimatedNumber value={receivables.data?.totalDue ?? '0'} />}
               tone={hasOverdue ? 'negative' : 'neutral'}
               hint={hasOverdue ? `в т.ч. просрочено ${formatRub(overdueTotal)}` : undefined}
@@ -170,6 +171,7 @@ export default function DashboardPage() {
                 label="Доходы"
                 value={<AnimatedNumber value={summary.data.income} />}
                 tone="positive"
+                href={txDrilldownHref({ from: range.from, to: range.to, type: 'INCOME' })}
                 chart={
                   inflowTrend.length > 1 ? (
                     <Sparkline values={inflowTrend} className="text-success" />
@@ -180,13 +182,18 @@ export default function DashboardPage() {
                 label="Расходы"
                 value={<AnimatedNumber value={summary.data.expense} />}
                 tone="negative"
+                href={txDrilldownHref({ from: range.from, to: range.to, type: 'EXPENSE' })}
                 chart={
                   outflowTrend.length > 1 ? (
                     <Sparkline values={outflowTrend} className="text-destructive" />
                   ) : undefined
                 }
               />
-              <KpiCard label="Чистый денежный поток" value={<AnimatedNumber value={summary.data.net} />} />
+              <KpiCard
+                label="Чистый денежный поток"
+                value={<AnimatedNumber value={summary.data.net} />}
+                href="/reports/cashflow"
+              />
             </>
           )}
 
@@ -195,7 +202,7 @@ export default function DashboardPage() {
             <Skeleton className="h-[92px]" />
           ) : (
             <KpiCard
-              label="Склад в деньгах"
+              label="Стоимость запасов"
               value={<AnimatedNumber value={stock.data?.value ?? '0'} />}
               href="/warehouse"
             />
@@ -206,7 +213,7 @@ export default function DashboardPage() {
             <Skeleton className="h-[92px]" />
           ) : (
             <KpiCard
-              label="Маржа за месяц"
+              label="Валовая прибыль за месяц"
               value={<AnimatedNumber value={margin.data?.totals.margin ?? '0'} />}
               hint={margin.data ? `${margin.data.totals.marginPct}%` : undefined}
               href="/reports/margin"
@@ -237,10 +244,10 @@ export default function DashboardPage() {
         {topDebtors.length > 0 && (
           <section>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">Топ должников</h2>
+              <h2 className="text-base font-semibold tracking-tight">Крупнейшие дебиторы</h2>
               <Button variant="link" asChild>
                 <Link href="/reports/receivables">
-                  Вся дебиторка
+                  Вся задолженность
                   <ArrowRight className="ml-1 h-3.5 w-3.5" />
                 </Link>
               </Button>

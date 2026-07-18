@@ -326,7 +326,11 @@ function ClientForm({
                 placeholder="телефон, email, @username"
               />
             </FormField>
-            <FormField label="Источник" htmlFor="cl-source" hint="Откуда пришёл: Avito, сарафан, Telegram…">
+            <FormField
+              label="Источник"
+              htmlFor="cl-source"
+              hint="Откуда пришёл: Avito, рекомендация, Telegram…"
+            >
               <Input
                 id="cl-source"
                 value={source}

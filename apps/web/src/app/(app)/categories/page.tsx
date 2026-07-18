@@ -338,7 +338,7 @@ function CategoryForm({
                 onChange={(e) => setIsFixedCost(e.target.checked)}
                 className="h-4 w-4 rounded border-input accent-primary"
               />
-              Постоянная издержка
+              Постоянные расходы
             </label>
             {initial && (
               <label className="flex items-center gap-2 text-sm">
