@@ -99,6 +99,12 @@ export class BalanceService {
     };
   }
 
+  /** Суммарный остаток денежных средств (для прогноза платёжного календаря). */
+  async cashTotal(workspaceId: string): Promise<Prisma.Decimal> {
+    const { total } = await this.cashByAccounts(workspaceId);
+    return total;
+  }
+
   /** Остатки активных счетов: openingBalance + Σ INCOME − Σ EXPENSE (как в сверке). */
   private async cashByAccounts(workspaceId: string) {
     const accounts = await this.prisma.account.findMany({

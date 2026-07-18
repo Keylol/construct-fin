@@ -31,6 +31,7 @@ import { TransactionService } from '../transaction/transaction.service';
 import { ImportService } from '../import/import.service';
 import { WbReceiptService } from '../wb-receipt/wb-receipt.service';
 import { PlanningService } from '../planning/planning.service';
+import { ForecastService } from '../planning/forecast.service';
 import { AccountService } from '../account/account.service';
 import { CategoryService } from '../category/category.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
@@ -60,6 +61,7 @@ export type Harness = {
   importSvc: ImportService;
   wbReceipts: WbReceiptService;
   planning: PlanningService;
+  forecast: ForecastService;
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
@@ -94,6 +96,7 @@ export function buildHarness(): Harness {
   const importSvc = new ImportService(prisma, orders, audit);
   const wbReceipts = new WbReceiptService(prisma, uow, warehouse, orders, audit);
   const planning = new PlanningService(prisma);
+  const forecast = new ForecastService(prisma, planning, balance);
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
@@ -117,6 +120,7 @@ export function buildHarness(): Harness {
     importSvc,
     wbReceipts,
     planning,
+    forecast,
     accounts,
     categories,
     counterparties,

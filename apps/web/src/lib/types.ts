@@ -901,6 +901,26 @@ export interface UpcomingPayments {
   soonSum: string;
 }
 
+/** Прогноз остатка на горизонте платёжного календаря (кассовый разрыв заранее). */
+export interface ForecastPoint {
+  date: string;
+  out: string;
+  in: string;
+  balanceOut: string;
+  balance: string;
+}
+
+export interface ForecastReport {
+  horizonDays: number;
+  asOf: string;
+  opening: string;
+  points: ForecastPoint[];
+  totals: { out: string; in: string };
+  overdueExpectedIn: string;
+  firstGapOut: string | null;
+  firstGapIn: string | null;
+}
+
 export interface CreateRecurringInput {
   title: string;
   amount: string;

@@ -21,6 +21,7 @@ import {
 } from '@/hooks/usePlanning';
 import type { PlannedPayment, RecurringPayment } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
+import { ForecastCard } from '@/components/planning/ForecastCard';
 import { PayDialog } from '@/components/planning/PayDialog';
 import { PlannedDialog } from '@/components/planning/PlannedDialog';
 import { RecurringDialog } from '@/components/planning/RecurringDialog';
@@ -90,6 +91,9 @@ export default function PlanningPage() {
           и попадает сюда в общий график. Отметка «Оплатить» создаёт операцию на счёте —
           план связывается с фактом.
         </p>
+
+        {/* Прогноз остатка: кассовый разрыв виден заранее. */}
+        <ForecastCard wsId={current.id} />
 
         {/* Сводка «горит» */}
         {up && (up.overdueCount > 0 || up.soonCount > 0) && (
