@@ -20,6 +20,8 @@ import { OrderService } from '../orders/order.service';
 import { PurchaseService } from '../purchase/purchase.service';
 import { PnlService } from '../reports/pnl.service';
 import { TaxService } from '../reports/tax.service';
+import { BalanceService } from '../reports/balance.service';
+import { BreakevenService } from '../reports/breakeven.service';
 import { TransferService } from '../transfer/transfer.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { MarginService } from '../trade-reports/margin.service';
@@ -29,6 +31,7 @@ import { TransactionService } from '../transaction/transaction.service';
 import { ImportService } from '../import/import.service';
 import { WbReceiptService } from '../wb-receipt/wb-receipt.service';
 import { PlanningService } from '../planning/planning.service';
+import { ForecastService } from '../planning/forecast.service';
 import { AccountService } from '../account/account.service';
 import { CategoryService } from '../category/category.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
@@ -47,6 +50,8 @@ export type Harness = {
   orderRepo: OrderRepository;
   pnl: PnlService;
   tax: TaxService;
+  balance: BalanceService;
+  breakeven: BreakevenService;
   transfer: TransferService;
   reconciliation: ReconciliationService;
   tradeMargin: MarginService;
@@ -56,6 +61,7 @@ export type Harness = {
   importSvc: ImportService;
   wbReceipts: WbReceiptService;
   planning: PlanningService;
+  forecast: ForecastService;
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
@@ -83,11 +89,14 @@ export function buildHarness(): Harness {
   const reconciliation = new ReconciliationService(prisma);
   const tradeMargin = new MarginService(prisma);
   const tradeReceivables = new ReceivablesService(prisma);
+  const balance = new BalanceService(prisma, tradeReceivables, tax);
+  const breakeven = new BreakevenService(pnl);
   const cashflow = new CashflowService(prisma);
   const transactions = new TransactionService(prisma, audit);
   const importSvc = new ImportService(prisma, orders, audit);
   const wbReceipts = new WbReceiptService(prisma, uow, warehouse, orders, audit);
   const planning = new PlanningService(prisma);
+  const forecast = new ForecastService(prisma, planning, balance);
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
@@ -100,6 +109,8 @@ export function buildHarness(): Harness {
     orderRepo,
     pnl,
     tax,
+    balance,
+    breakeven,
     transfer,
     reconciliation,
     tradeMargin,
@@ -109,6 +120,7 @@ export function buildHarness(): Harness {
     importSvc,
     wbReceipts,
     planning,
+    forecast,
     accounts,
     categories,
     counterparties,

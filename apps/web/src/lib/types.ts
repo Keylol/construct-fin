@@ -501,6 +501,36 @@ export interface CashflowReport {
   series: CashflowSeries[];
 }
 
+/** Точка безубыточности за период (методология ОПиУ/IJ9). */
+export interface BreakevenReport {
+  period: { from: string; to: string };
+  revenue: string;
+  variableCosts: { cogs: string; variable: string; total: string };
+  fixedCosts: string;
+  contributionMargin: string;
+  contributionMarginPct: number | null;
+  breakevenRevenue: string | null;
+  safetyMarginPct: number | null;
+  achievedPct: number | null;
+}
+
+/** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
+export interface BalanceReport {
+  asOf: string;
+  assets: {
+    cash: { total: string; accounts: { id: string; name: string; balance: string }[] };
+    receivables: string;
+    inventory: string;
+    total: string;
+  };
+  liabilities: {
+    customerAdvances: string;
+    taxDue: string;
+    total: string;
+  };
+  equity: string;
+}
+
 export interface BreakdownRow {
   id: string | null;
   name: string;
@@ -869,6 +899,26 @@ export interface UpcomingPayments {
   soonCount: number;
   overdueSum: string;
   soonSum: string;
+}
+
+/** Прогноз остатка на горизонте платёжного календаря (кассовый разрыв заранее). */
+export interface ForecastPoint {
+  date: string;
+  out: string;
+  in: string;
+  balanceOut: string;
+  balance: string;
+}
+
+export interface ForecastReport {
+  horizonDays: number;
+  asOf: string;
+  opening: string;
+  points: ForecastPoint[];
+  totals: { out: string; in: string };
+  overdueExpectedIn: string;
+  firstGapOut: string | null;
+  firstGapIn: string | null;
 }
 
 export interface CreateRecurringInput {
