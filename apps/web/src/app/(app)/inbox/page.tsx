@@ -70,7 +70,6 @@ export default function InboxPage() {
     <>
       <PageHeader
         title="Входящие"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Входящие' }]}
       />
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">

@@ -71,7 +71,6 @@ export default function TaxPage() {
     <>
       <PageHeader
         title="Налог (АУСН Д−Р)"
-        breadcrumbs={[{ label: 'Аналитика' }, { label: 'Налог' }]}
         actions={
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Предыдущий год">

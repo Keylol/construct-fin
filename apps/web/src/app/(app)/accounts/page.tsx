@@ -131,7 +131,6 @@ export default function AccountsPage() {
     <>
       <PageHeader
         title="Счета"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Счета' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

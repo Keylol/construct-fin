@@ -121,7 +121,6 @@ export default function PurchasesPage() {
     <>
       <PageHeader
         title="Закупки"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки' }]}
         actions={
           <div className="flex items-center gap-2">
             {/* Ф6: мастер обработки чека (WB/ДНС/Онлайн Трейд/ручной → склад/заказ). */}

@@ -64,7 +64,6 @@ export default function PlanningPage() {
     <>
       <PageHeader
         title="Платежи"
-        breadcrumbs={[{ label: 'Платежи' }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button

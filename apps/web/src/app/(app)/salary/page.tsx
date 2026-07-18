@@ -112,7 +112,6 @@ export default function SalaryPage() {
     <>
       <PageHeader
         title="Зарплата"
-        breadcrumbs={[{ label: 'Зарплата' }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button

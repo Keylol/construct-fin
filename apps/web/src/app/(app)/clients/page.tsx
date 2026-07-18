@@ -133,7 +133,6 @@ export default function ClientsPage() {
     <>
       <PageHeader
         title="Клиенты"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Клиенты' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

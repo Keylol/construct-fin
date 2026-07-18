@@ -125,11 +125,6 @@ export default function ImportBatchesPage() {
     <>
       <PageHeader
         title="История импортов"
-        breadcrumbs={[
-          { label: 'Учёт' },
-          { label: 'Импорт', href: '/import' },
-          { label: 'История' },
-        ]}
         actions={
           <Button asChild>
             <Link href="/import">

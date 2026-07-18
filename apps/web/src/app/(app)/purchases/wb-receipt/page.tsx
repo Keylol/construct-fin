@@ -306,7 +306,6 @@ function Wizard({ wsId }: { wsId: string }) {
     <>
       <PageHeader
         title="Обработка закупки"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Закупки', href: '/purchases' }, { label: 'Чек' }]}
         actions={
           <Button variant="secondary" onClick={() => router.push('/purchases')}>
             К закупкам

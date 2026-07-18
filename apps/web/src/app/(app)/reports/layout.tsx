@@ -22,7 +22,6 @@ export default function ReportsLayout({ children }: { children: ReactNode }) {
     <>
       <PageHeader
         title="Отчёты"
-        breadcrumbs={[{ label: 'Аналитика' }, { label: 'Отчёты' }]}
       />
       <nav
         aria-label="Разделы отчётов"

@@ -125,7 +125,6 @@ export default function WarehousePage() {
     <>
       <PageHeader
         title="Склад"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Склад' }]}
         actions={
           <>
             <Button variant="secondary" onClick={() => setPurchasing(true)}>

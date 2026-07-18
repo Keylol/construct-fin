@@ -69,7 +69,7 @@ export default function IntegrationsPage() {
   if (!isOwner) {
     return (
       <>
-        <PageHeader title="Интеграции" breadcrumbs={[{ label: 'Настройки' }, { label: 'Интеграции' }]} />
+        <PageHeader title="Интеграции" />
         <div className="p-6">
           <EmptyState
             icon={Plug}
@@ -99,7 +99,6 @@ export default function IntegrationsPage() {
     <>
       <PageHeader
         title="Интеграции"
-        breadcrumbs={[{ label: 'Настройки' }, { label: 'Интеграции' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

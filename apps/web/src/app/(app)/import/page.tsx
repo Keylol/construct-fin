@@ -113,7 +113,6 @@ export default function ImportPage() {
     <>
       <PageHeader
         title="Импорт выписки"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Импорт' }]}
         actions={
           <Button variant="secondary" asChild>
             <Link href="/import/batches">
