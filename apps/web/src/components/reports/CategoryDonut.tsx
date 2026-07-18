@@ -23,13 +23,22 @@ export interface DonutSlice {
   color: string;
 }
 
+/**
+ * Ключ строки для связки «сектор ↔ строка таблицы». Фоллбэк по имени: даже
+ * если бэк отдаст две строки без id, ключи не сколлапсируют (иначе Map
+ * цветов перекрасила бы строку таблицы).
+ */
+export function donutKey(r: Pick<BreakdownRow, 'id' | 'name'>): string {
+  return r.id ?? `none:${r.name}`;
+}
+
 /** Разложить строки отчёта на топ-7 + «Прочее» с фиксированными цветами. */
 export function donutSlices(rows: BreakdownRow[]): DonutSlice[] {
   const sorted = [...rows].sort((a, b) => Number(b.total) - Number(a.total));
   const top = sorted.slice(0, CHART_CATEGORICAL.length);
   const rest = sorted.slice(CHART_CATEGORICAL.length);
-  const slices: DonutSlice[] = top.map((r, i) => ({
-    key: r.id ?? 'none',
+  const slices: DonutSlice[] = top.map((r) => ({
+    key: donutKey(r),
     name: r.name,
     value: Number(r.total),
     share: r.share,

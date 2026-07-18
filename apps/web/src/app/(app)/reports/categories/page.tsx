@@ -14,7 +14,7 @@ import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
 import { txDrilldownHref } from '@/lib/tx-filters';
-import { CategoryDonut, donutSlices } from '@/components/reports/CategoryDonut';
+import { CategoryDonut, donutKey, donutSlices } from '@/components/reports/CategoryDonut';
 import { CHART_OTHER } from '@/lib/chart';
 
 export default function CategoriesReportPage() {
@@ -121,7 +121,7 @@ export default function CategoriesReportPage() {
                         className="mr-2 inline-block h-2.5 w-2.5 translate-y-px rounded-[3px]"
                         style={{
                           // Мелкие категории свёрнуты в сектор «Прочее» — тот же серый.
-                          background: sliceColorByKey.get(r.id ?? 'none') ?? CHART_OTHER,
+                          background: sliceColorByKey.get(donutKey(r)) ?? CHART_OTHER,
                         }}
                         aria-hidden
                       />
