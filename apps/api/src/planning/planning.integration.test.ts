@@ -107,6 +107,58 @@ describe('Регулярка + материализация', () => {
   });
 });
 
+describe('Зарплатный контур (фильтр txKind=SALARY)', () => {
+  it('собирает разовые выплаты и материализованные из зарплатной регулярки, не цепляя прочее', async () => {
+    // Обычная регулярка (не зарплата) — не должна попасть в выборку.
+    await h.planning.createRecurring(seed.workspaceId, seed.userId, {
+      title: 'Аренда офиса',
+      amount: '30000.00',
+      txKind: 'FIXED_COST',
+      cadence: 'MONTHLY',
+      dayOfMonth: 1,
+      leadDays: 3,
+      isActive: true,
+      startDate: iso(-120 * DAY),
+    });
+    // Зарплатная регулярка с сотрудником → материализация даст source=RECURRING + txKind=SALARY.
+    await h.planning.createRecurring(seed.workspaceId, seed.userId, {
+      title: 'Зарплата — Иванов',
+      amount: '50000.00',
+      txKind: 'SALARY',
+      cadence: 'MONTHLY',
+      dayOfMonth: 1,
+      leadDays: 3,
+      isActive: true,
+      startDate: iso(-120 * DAY),
+      counterpartyId: employeeId,
+    });
+    // Разовая зарплатная выплата (source=SALARY).
+    await h.planning.createPlanned(seed.workspaceId, seed.userId, {
+      title: 'Премия — Иванов',
+      amount: '10000.00',
+      txKind: 'SALARY',
+      dueDate: iso(5 * DAY),
+      source: 'SALARY',
+      leadDays: 3,
+      counterpartyId: employeeId,
+    });
+    await h.planning.materialize(seed.workspaceId, 45);
+
+    const salary = await h.planning.listPlanned(seed.workspaceId, { txKind: 'SALARY' });
+    expect(salary.length).toBeGreaterThanOrEqual(2); // премия + ≥1 материализованная
+    expect(salary.every((r) => r.txKind === 'SALARY')).toBe(true);
+    // Оба источника присутствуют.
+    expect(salary.some((r) => r.source === 'SALARY')).toBe(true);
+    expect(salary.some((r) => r.source === 'RECURRING' && r.recurringId)).toBe(true);
+    // Сотрудник дотянулся до материализованной позиции из правила.
+    expect(salary.every((r) => r.counterpartyId === employeeId)).toBe(true);
+    // Аренды в зарплатной выборке нет, но в общем списке она есть.
+    const all = await h.planning.listPlanned(seed.workspaceId, {});
+    expect(all.length).toBeGreaterThan(salary.length);
+    expect(all.some((r) => r.txKind === 'FIXED_COST')).toBe(true);
+  });
+});
+
 describe('Ближайшие платежи (upcoming)', () => {
   it('флаги overdue/soon и счётчики', async () => {
     // Просроченный (2 дня назад).

@@ -81,7 +81,7 @@ export function WorkspaceSwitcher() {
               onClick={onCreate}
               disabled={!name.trim() || create.isPending}
             >
-              {create.isPending ? 'Создаю…' : 'Создать'}
+              {create.isPending ? 'Создание…' : 'Создать'}
             </Button>
           </DialogFooter>
         </DialogContent>

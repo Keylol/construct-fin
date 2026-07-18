@@ -33,7 +33,13 @@ export function useUpcoming(wsId: string | null, horizonDays = 30) {
 
 export function usePlannedList(
   wsId: string | null,
-  filter: { status?: PlannedStatus; source?: string; counterpartyId?: string } = {},
+  filter: {
+    status?: PlannedStatus;
+    source?: string;
+    /** Фильтр по статье: SALARY — весь зарплатный контур (разовые + из регулярки). */
+    txKind?: string;
+    counterpartyId?: string;
+  } = {},
 ) {
   return useQuery({
     queryKey: [...planningKey(wsId), 'planned', filter],
@@ -41,6 +47,7 @@ export function usePlannedList(
       const p = new URLSearchParams();
       if (filter.status) p.set('status', filter.status);
       if (filter.source) p.set('source', filter.source);
+      if (filter.txKind) p.set('txKind', filter.txKind);
       if (filter.counterpartyId) p.set('counterpartyId', filter.counterpartyId);
       const qs = p.toString();
       return api.get<PlannedPayment[]>(`/workspaces/${wsId}/planning/planned${qs ? `?${qs}` : ''}`);

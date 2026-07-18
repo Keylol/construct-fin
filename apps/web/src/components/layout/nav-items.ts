@@ -1,4 +1,5 @@
 import {
+  Banknote,
   Home,
   Receipt,
   Upload,
@@ -44,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/transactions', label: 'Операции', icon: Receipt },
       { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
       { href: '/planning', label: 'Платежи', icon: Calendar },
+      { href: '/salary', label: 'Зарплата', icon: Banknote },
     ],
   },
   {

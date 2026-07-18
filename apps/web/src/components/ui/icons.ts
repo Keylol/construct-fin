@@ -25,6 +25,7 @@ export {
   Home,
   DocumentBlank as Inbox,
   Menu,
+  Money as Banknote,
   Package,
   Attachment as Paperclip,
   Edit as Pencil,

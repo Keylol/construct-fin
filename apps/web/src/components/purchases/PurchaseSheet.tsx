@@ -126,12 +126,12 @@ export function PurchaseSheet({
       const blank = !l.warehouseItemId && !l.unitPrice.trim();
       if (blank) return;
       if (!l.warehouseItemId) {
-        errors[i] = 'Выбери SKU со склада';
+        errors[i] = 'Выберите SKU со склада';
         return;
       }
       const price = parseAmountInput(l.unitPrice);
       if (!price) {
-        errors[i] = 'Укажи цену — число больше нуля';
+        errors[i] = 'Укажите цену — число больше нуля';
         return;
       }
       const q = parseQty(l.qty);
@@ -143,7 +143,7 @@ export function PurchaseSheet({
     });
     if (Object.keys(errors).length) {
       setLineErrors(errors);
-      setError('Исправь выделенные позиции — они не будут проведены в таком виде');
+      setError('Исправьте выделенные позиции — они не будут проведены в таком виде');
       return;
     }
     if (cleaned.length === 0) {

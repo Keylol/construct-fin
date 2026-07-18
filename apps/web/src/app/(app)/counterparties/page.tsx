@@ -93,7 +93,6 @@ export default function CounterpartiesPage() {
     <>
       <PageHeader
         title="Контрагенты"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Контрагенты' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

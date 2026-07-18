@@ -69,7 +69,7 @@ export default function IntegrationsPage() {
   if (!isOwner) {
     return (
       <>
-        <PageHeader title="Интеграции" breadcrumbs={[{ label: 'Настройки' }, { label: 'Интеграции' }]} />
+        <PageHeader title="Интеграции" />
         <div className="p-6">
           <EmptyState
             icon={Plug}
@@ -99,7 +99,6 @@ export default function IntegrationsPage() {
     <>
       <PageHeader
         title="Интеграции"
-        breadcrumbs={[{ label: 'Настройки' }, { label: 'Интеграции' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
@@ -110,8 +109,8 @@ export default function IntegrationsPage() {
 
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          Подключите расчётный счёт по API банка — операции будут заходить автоматически
-          и раскладываться на разбор во «Входящих». Токен хранится в зашифрованном виде,
+          Подключите расчётный счёт по API банка — операции будут поступать автоматически
+          и попадать на обработку во «Входящие». Токен хранится в зашифрованном виде,
           наружу не отдаётся.
         </p>
 
@@ -119,7 +118,7 @@ export default function IntegrationsPage() {
           <EmptyState
             icon={Plug}
             title="Пока нет подключений"
-            hint="Подключите Альфа-Банк или Т-Банк, чтобы операции заходили сами."
+            hint="Подключите Альфа-Банк или Т-Банк, чтобы операции поступали автоматически."
             action={
               <Button onClick={() => setCreating(true)}>
                 <Plus className="h-4 w-4" />
@@ -146,7 +145,9 @@ export default function IntegrationsPage() {
                   )}
                 </div>
                 <div className="min-w-[150px] text-xs text-muted-foreground">
-                  {c.lastSyncAt ? `Синк: ${formatDateTime(c.lastSyncAt)}` : 'Ещё не синхронизировано'}
+                  {c.lastSyncAt
+                    ? `Синхронизация: ${formatDateTime(c.lastSyncAt)}`
+                    : 'Ещё не синхронизировано'}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 // Человекочитаемые подписи и визуальный вес действий аудита.
 // Ключи синхронны с AuditAction в apps/api/src/audit/audit.service.ts.
 const ACTION_META: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
-  'order.finalize': { label: 'Заказ завершён', variant: 'success' },
+  'order.finalize': { label: 'Заказ закрыт', variant: 'success' },
   'order.cancel': { label: 'Заказ отменён', variant: 'destructive' },
   'order.reopen': { label: 'Заказ переоткрыт', variant: 'secondary' },
   'order.restore': { label: 'Заказ восстановлен', variant: 'secondary' },

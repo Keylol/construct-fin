@@ -62,7 +62,7 @@ export default function ClientCardPage() {
   const marginQ = useMarginReport('by-client', wsId, { preset: 'this-month' });
   const marginRow = marginQ.data?.rows.find((r) => r.key === id) ?? null;
 
-  // Долг/просрочка — строка дебиторки этого клиента.
+  // Задолженность/просрочка — строка дебиторки этого клиента.
   const receivablesQ = useReceivables(wsId);
   const receivableRow = receivablesQ.data?.clients.find((c) => c.clientId === id) ?? null;
 
@@ -166,7 +166,7 @@ export default function ClientCardPage() {
             tone={Number(marginRow?.margin ?? 0) >= 0 ? 'positive' : 'negative'}
           />
           <KpiCard
-            label="Долг"
+            label="Задолженность"
             value={
               receivablesQ.isLoading ? (
                 <Skeleton className="h-7 w-24" />

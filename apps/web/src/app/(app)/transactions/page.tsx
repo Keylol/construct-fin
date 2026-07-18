@@ -209,7 +209,6 @@ function TransactionsView() {
     <>
       <PageHeader
         title="Операции"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Операции' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />

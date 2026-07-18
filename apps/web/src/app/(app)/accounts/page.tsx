@@ -46,7 +46,7 @@ export default function AccountsPage() {
   const [editing, setEditing] = useState<Account | null>(null);
   const [creating, setCreating] = useState(false);
 
-  // «Всего денег» — сумма текущих остатков активных счетов (Decimal, не number).
+  // «Итого денежных средств» — сумма текущих остатков активных счетов (Decimal, не number).
   const totalMoney = (() => {
     if (!balances.data || !accounts.data) return null;
     let acc = D(0);
@@ -131,7 +131,6 @@ export default function AccountsPage() {
     <>
       <PageHeader
         title="Счета"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Счета' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
@@ -141,7 +140,9 @@ export default function AccountsPage() {
       />
       {totalMoney != null && (
         <div className="flex items-baseline justify-between border-t border-border bg-card px-6 py-4">
-          <span className="text-sm text-muted-foreground">Всего денег (активные счета)</span>
+          <span className="text-sm text-muted-foreground">
+            Итого денежных средств (активные счета)
+          </span>
           {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
           <span className="num text-3xl font-semibold sm:text-4xl">{formatRub(totalMoney)}</span>
         </div>
@@ -159,7 +160,7 @@ export default function AccountsPage() {
             <EmptyState
               icon={Wallet}
               title="Пока нет счетов"
-              hint="Добавьте первый счёт — наличку, карту или счёт в банке."
+              hint="Добавьте первый счёт — наличные, карту или счёт в банке."
               action={
                 <Button onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" /> Добавить счёт

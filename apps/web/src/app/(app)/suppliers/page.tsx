@@ -115,7 +115,6 @@ export default function SuppliersPage() {
     <>
       <PageHeader
         title="Поставщики"
-        breadcrumbs={[{ label: 'Справочники' }, { label: 'Поставщики' }]}
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" /> Добавить

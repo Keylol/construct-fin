@@ -70,12 +70,11 @@ export default function InboxPage() {
     <>
       <PageHeader
         title="Входящие"
-        breadcrumbs={[{ label: 'Учёт' }, { label: 'Входящие' }]}
       />
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          Операции из банка на разбор. Подтвердите категорию, привяжите приход к
-          заказу или отметьте «не учитывать».
+          Операции из банка на обработку. Подтвердите категорию, привяжите поступление
+          к заказу или отметьте «не учитывать».
         </p>
 
         {inbox.isLoading ? (
@@ -86,7 +85,7 @@ export default function InboxPage() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={InboxIcon}
-            title="Всё разобрано"
+            title="Всё обработано"
             hint="Новые операции появятся здесь после синхронизации банка."
           />
         ) : (
@@ -122,7 +121,7 @@ function InboxRow({
 
   const isIncome = line.direction === 'INCOME';
   const title =
-    line.description?.trim() || line.counterpartyName || (isIncome ? 'Приход' : 'Расход');
+    line.description?.trim() || line.counterpartyName || (isIncome ? 'Поступление' : 'Расход');
 
   const doCategorize = () => {
     if (!categoryId) return;
@@ -164,7 +163,7 @@ function InboxRow({
           </div>
         </div>
 
-        {/* Разбор в категорию */}
+        {/* Проведение в категорию */}
         <div className="flex items-center gap-2">
           <Combobox
             value={categoryId}
@@ -180,7 +179,7 @@ function InboxRow({
           </Button>
         </div>
 
-        {/* Приход → заказ */}
+        {/* Поступление → заказ */}
         {isIncome && (
           <Button variant="secondary" size="sm" onClick={() => setAttachOpen(true)}>
             <ClipboardList className="h-3.5 w-3.5" />
@@ -237,7 +236,7 @@ function AttachOrderSheet({
       { lineId: line.id, orderId },
       {
         onSuccess: () => {
-          toast.success('Приход привязан к заказу');
+          toast.success('Поступление привязано к заказу');
           onClose();
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось привязать'),
@@ -249,11 +248,12 @@ function AttachOrderSheet({
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-[420px]">
         <SheetHeader>
-          <SheetTitle>Привязать приход к заказу</SheetTitle>
+          <SheetTitle>Привязать поступление к заказу</SheetTitle>
         </SheetHeader>
         <SheetBody className="space-y-4">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
-            Приход <span className="font-semibold text-success">+{formatRub(line.amount, 2)}</span>{' '}
+            Поступление{' '}
+            <span className="font-semibold text-success">+{formatRub(line.amount, 2)}</span>{' '}
             от {formatDate(line.date)}
             {line.counterpartyName ? ` · ${line.counterpartyName}` : ''}
           </div>

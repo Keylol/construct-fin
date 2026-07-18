@@ -419,7 +419,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
               />
               {selectedCat?.isFixedCost && (
                 <Badge variant="outline" className="mt-1">
-                  Постоянная издержка
+                  Постоянные расходы
                 </Badge>
               )}
             </FormField>
@@ -491,7 +491,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                     />
                   </label>
                   {upload.isPending && (
-                    <p className="text-xs text-muted-foreground">Загружаю…</p>
+                    <p className="text-xs text-muted-foreground">Загрузка…</p>
                   )}
                 </div>
               </div>
