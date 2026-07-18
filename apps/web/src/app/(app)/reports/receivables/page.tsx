@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useReceivables } from '@/hooks/useTradeReports';
+import { AgingStack } from '@/components/reports/AgingStack';
 import { toLocalDateInput } from '@/lib/periods';
 import type { AgingBucketKey } from '@/lib/types';
 import { cn } from '@/lib/cn';
@@ -108,6 +109,9 @@ export default function ReceivablesReportPage() {
             )}
           </div>
         ) : null}
+
+        {/* Давность долгов по клиентам — стек 0–30/30–60/60+ (топ-10). */}
+        {data && <AgingStack clients={data.clients} />}
 
         {data && (
           <Card className="overflow-x-auto !p-0">

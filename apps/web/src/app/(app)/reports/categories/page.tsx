@@ -14,6 +14,8 @@ import { ExportButtons } from '@/components/reports/ExportButtons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
 import { txDrilldownHref } from '@/lib/tx-filters';
+import { CategoryDonut, donutKey, donutSlices } from '@/components/reports/CategoryDonut';
+import { CHART_OTHER } from '@/lib/chart';
 
 export default function CategoriesReportPage() {
   const ws = useCurrentWorkspace();
@@ -39,6 +41,8 @@ export default function CategoriesReportPage() {
   }
 
   const rows = query.data?.rows ?? [];
+  // Цвет сектора ↔ маркер строки: один источник (donutSlices, фиксированный порядок).
+  const sliceColorByKey = new Map(donutSlices(rows).map((s) => [s.key, s.color]));
 
   return (
     <>
@@ -78,8 +82,23 @@ export default function CategoriesReportPage() {
           </Card>
         )}
 
-        {/* Доля — полосой прямо в строке (гроссбух-стиль вместо круговой
-            диаграммы: подписи не наезжают, мелкие категории читаются). */}
+        {/* Структура периода: donut топ-7 + «Прочее», легенда с суммами. */}
+        {query.data && rows.length > 0 && (
+          <CategoryDonut
+            rows={rows}
+            title={
+              type === 'INCOME'
+                ? 'Структура доходов'
+                : type === 'EXPENSE'
+                  ? 'Структура расходов'
+                  : 'Структура оборота'
+            }
+            totalLabel={type === 'INCOME' ? 'Доходы' : type === 'EXPENSE' ? 'Расходы' : 'Оборот'}
+          />
+        )}
+
+        {/* Доля — полосой прямо в строке (дублирует donut числами: мелкие
+            категории читаются, а цветной маркер связывает строку с сектором). */}
         {query.data && rows.length > 0 && (
           <Card className="overflow-x-auto !p-0">
             <table className="w-full text-base">
@@ -98,6 +117,14 @@ export default function CategoriesReportPage() {
                     className="border-b border-border transition-colors last:border-0 hover:bg-secondary/50"
                   >
                     <td className="px-4 py-2.5">
+                      <span
+                        className="mr-2 inline-block h-2.5 w-2.5 translate-y-px rounded-[3px]"
+                        style={{
+                          // Мелкие категории свёрнуты в сектор «Прочее» — тот же серый.
+                          background: sliceColorByKey.get(donutKey(r)) ?? CHART_OTHER,
+                        }}
+                        aria-hidden
+                      />
                       {r.id !== null ? (
                         <Link
                           href={
