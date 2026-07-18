@@ -41,6 +41,7 @@ import { PnlService } from './pnl.service';
 import { CashflowService } from './cashflow.service';
 import { BreakdownService } from './breakdown.service';
 import { TaxService } from './tax.service';
+import { BalanceService } from './balance.service';
 import { renderReport } from './export';
 import {
   breakdownToTable,
@@ -56,7 +57,14 @@ export class ReportsController {
     private readonly cashflow: CashflowService,
     private readonly breakdown: BreakdownService,
     private readonly tax: TaxService,
+    private readonly balance: BalanceService,
   ) {}
+
+  /** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
+  @Get('balance')
+  getBalance(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.balance.build(ws.workspaceId);
+  }
 
   // ── Ф4: Налог АУСН Д−Р ──
   @Get('tax')

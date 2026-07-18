@@ -20,6 +20,7 @@ import { OrderService } from '../orders/order.service';
 import { PurchaseService } from '../purchase/purchase.service';
 import { PnlService } from '../reports/pnl.service';
 import { TaxService } from '../reports/tax.service';
+import { BalanceService } from '../reports/balance.service';
 import { TransferService } from '../transfer/transfer.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { MarginService } from '../trade-reports/margin.service';
@@ -47,6 +48,7 @@ export type Harness = {
   orderRepo: OrderRepository;
   pnl: PnlService;
   tax: TaxService;
+  balance: BalanceService;
   transfer: TransferService;
   reconciliation: ReconciliationService;
   tradeMargin: MarginService;
@@ -83,6 +85,7 @@ export function buildHarness(): Harness {
   const reconciliation = new ReconciliationService(prisma);
   const tradeMargin = new MarginService(prisma);
   const tradeReceivables = new ReceivablesService(prisma);
+  const balance = new BalanceService(prisma, tradeReceivables, tax);
   const cashflow = new CashflowService(prisma);
   const transactions = new TransactionService(prisma, audit);
   const importSvc = new ImportService(prisma, orders, audit);
@@ -100,6 +103,7 @@ export function buildHarness(): Harness {
     orderRepo,
     pnl,
     tax,
+    balance,
     transfer,
     reconciliation,
     tradeMargin,

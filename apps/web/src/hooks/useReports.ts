@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
+  BalanceReport,
   BreakdownReport,
   CashflowReport,
   CompareMode,
@@ -38,6 +39,15 @@ export function usePnlReport(
   return useQuery({
     queryKey: ['reports', 'pnl', wsId, qs],
     queryFn: () => api.get<PnlReport>(`/workspaces/${wsId}/reports/pnl${qs}`),
+    enabled: !!wsId,
+  });
+}
+
+/** Управленческий баланс «на сейчас» — без параметров периода. */
+export function useBalanceReport(wsId: string | null) {
+  return useQuery({
+    queryKey: ['reports', 'balance', wsId],
+    queryFn: () => api.get<BalanceReport>(`/workspaces/${wsId}/reports/balance`),
     enabled: !!wsId,
   });
 }

@@ -4,11 +4,22 @@ import { PnlService } from './pnl.service';
 import { CashflowService } from './cashflow.service';
 import { BreakdownService } from './breakdown.service';
 import { TaxService } from './tax.service';
+import { BalanceService } from './balance.service';
+import { TradeReportsModule } from '../trade-reports/trade-reports.module';
 import { WorkspaceGuard } from '../common/workspace.guard';
 
 @Module({
+  // Баланс переиспользует дебиторку (ReceivablesService) из торговых отчётов.
+  imports: [TradeReportsModule],
   controllers: [ReportsController],
-  providers: [PnlService, CashflowService, BreakdownService, TaxService, WorkspaceGuard],
-  exports: [PnlService, CashflowService, BreakdownService, TaxService],
+  providers: [
+    PnlService,
+    CashflowService,
+    BreakdownService,
+    TaxService,
+    BalanceService,
+    WorkspaceGuard,
+  ],
+  exports: [PnlService, CashflowService, BreakdownService, TaxService, BalanceService],
 })
 export class ReportsModule {}

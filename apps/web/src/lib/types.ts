@@ -501,6 +501,23 @@ export interface CashflowReport {
   series: CashflowSeries[];
 }
 
+/** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
+export interface BalanceReport {
+  asOf: string;
+  assets: {
+    cash: { total: string; accounts: { id: string; name: string; balance: string }[] };
+    receivables: string;
+    inventory: string;
+    total: string;
+  };
+  liabilities: {
+    customerAdvances: string;
+    taxDue: string;
+    total: string;
+  };
+  equity: string;
+}
+
 export interface BreakdownRow {
   id: string | null;
   name: string;

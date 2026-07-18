@@ -172,6 +172,7 @@ const LABELS: Record<string, string> = {
   batches: 'История',
   reports: 'Отчёты',
   cashflow: 'ОДДС',
+  balance: 'Баланс',
   rules: 'Правила',
   pnl: 'ОПиУ',
   margin: 'Валовая прибыль',

@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 const TABS = [
   { href: '/reports', label: 'ОПиУ' },
   { href: '/reports/cashflow', label: 'ОДДС' },
+  { href: '/reports/balance', label: 'Баланс' },
   { href: '/reports/categories', label: 'По категориям' },
   { href: '/reports/counterparties', label: 'По контрагентам' },
   { href: '/reports/margin', label: 'Валовая прибыль' },
