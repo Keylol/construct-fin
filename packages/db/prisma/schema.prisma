@@ -40,6 +40,7 @@ model User {
   createdWbReceipts     WbReceipt[]             @relation("WbReceiptCreatedBy")
   createdRecurring      RecurringPayment[]      @relation("RecurringCreatedBy")
   createdPlanned        PlannedPayment[]        @relation("PlannedCreatedBy")
+  createdBudgets        Budget[]                @relation("BudgetCreatedBy")
 }
 
 model Workspace {
@@ -77,6 +78,7 @@ model Workspace {
   wbReceipts        WbReceipt[]
   recurringPayments RecurringPayment[]
   plannedPayments   PlannedPayment[]
+  budgets           Budget[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -174,6 +176,7 @@ model Category {
   transactions      Transaction[]
   recurringPayments RecurringPayment[] @relation("RecurringCategory")
   plannedPayments   PlannedPayment[]   @relation("PlannedCategory")
+  budgets           Budget[]           @relation("BudgetCategory")
 
   @@index([workspaceId, kind, parentId])
   @@index([workspaceId, bucket])
@@ -1306,4 +1309,30 @@ model PlannedPayment {
 
   @@index([workspaceId, status, dueDate])
   @@index([recurringId])
+}
+
+/// Бюджет: месячный лимит расходов (или план доходов) по категории.
+/// Один действующий лимит на категорию — действует каждый месяц, факт
+/// считается за выбранный месяц (транзакции категории + её подкатегорий).
+/// Уникальность (workspaceId, categoryId) при deletedAt IS NULL — partial-unique
+/// сырым SQL в миграции (Budget_workspaceId_categoryId_active_key), НЕ в схеме
+/// (см. грабли drift в CLAUDE.md).
+model Budget {
+  id          String  @id @default(cuid())
+  workspaceId String
+  categoryId  String
+  /// Месячный лимит (EXPENSE-категория) или план (INCOME).
+  amount      Decimal @db.Decimal(14, 2)
+  note        String?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  Category  @relation("BudgetCategory", fields: [categoryId], references: [id])
+  createdBy User      @relation("BudgetCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId, deletedAt])
 }

@@ -174,6 +174,7 @@ const LABELS: Record<string, string> = {
   cashflow: 'ОДДС',
   balance: 'Баланс',
   breakeven: 'Безубыточность',
+  budget: 'Бюджет',
   rules: 'Правила',
   pnl: 'ОПиУ',
   margin: 'Валовая прибыль',

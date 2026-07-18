@@ -14,6 +14,7 @@ const TABS = [
   { href: '/reports/counterparties', label: 'По контрагентам' },
   { href: '/reports/margin', label: 'Валовая прибыль' },
   { href: '/reports/breakeven', label: 'Безубыточность' },
+  { href: '/reports/budget', label: 'Бюджет' },
   { href: '/reports/receivables', label: 'Дебиторская задолженность' },
   { href: '/reports/rules', label: 'Правила' },
 ] as const;
