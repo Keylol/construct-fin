@@ -28,7 +28,12 @@ import {
   useCreateCounterparty,
   useUpdateCounterparty,
 } from '@/hooks/useCounterparties';
-import { usePlannedList, useRecurring, useUpdateRecurring } from '@/hooks/usePlanning';
+import {
+  usePlannedList,
+  useRecurring,
+  useUpcoming,
+  useUpdateRecurring,
+} from '@/hooks/usePlanning';
 import type { Counterparty, PlannedPayment, RecurringPayment } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 import { PayDialog } from '@/components/planning/PayDialog';
@@ -47,7 +52,9 @@ export default function SalaryPage() {
   const wsId = current?.id ?? null;
 
   const employees = useCounterparties(wsId, undefined, false, 'EMPLOYEE');
-  const planned = usePlannedList(wsId, { status: 'PLANNED', txKind: 'SALARY' });
+  // upcoming материализует регулярку на бэке — без него выплаты из свежего
+  // графика появились бы только после захода в «Платежи». Зарплатные — фильтром.
+  const upcoming = useUpcoming(wsId, 60);
   const paid = usePlannedList(wsId, { status: 'PAID', txKind: 'SALARY' });
   const recurring = useRecurring(wsId);
 
@@ -72,6 +79,12 @@ export default function SalaryPage() {
     [recurring.data],
   );
 
+  // Ожидаемые выплаты: зарплатная часть общего горизонта (просроченные + 60 дней).
+  const plannedSalary = useMemo(
+    () => (upcoming.data?.items ?? []).filter((p) => p.txKind === 'SALARY'),
+    [upcoming.data],
+  );
+
   // «Выплачено за месяц» — сумма PAID-выплат с dueDate в текущем месяце.
   const paidThisMonth = useMemo(() => {
     const rows = paid.data ?? [];
@@ -87,8 +100,8 @@ export default function SalaryPage() {
   }, [paid.data]);
 
   const plannedSum = useMemo(
-    () => (planned.data ?? []).reduce((acc, p) => acc + Number(p.amount), 0).toFixed(2),
-    [planned.data],
+    () => plannedSalary.reduce((acc, p) => acc + Number(p.amount), 0).toFixed(2),
+    [plannedSalary],
   );
 
   if (!current) {
@@ -149,7 +162,7 @@ export default function SalaryPage() {
             label="К выплате"
             value={formatRub(plannedSum)}
             tone={Number(plannedSum) > 0 ? 'warning' : 'neutral'}
-            hint={`${planned.data?.length ?? 0} выплат(ы)`}
+            hint={`${plannedSalary.length} выплат(ы)`}
           />
           <KpiCard label="Выплачено за месяц" value={formatRub(paidThisMonth)} />
         </div>
@@ -203,9 +216,9 @@ export default function SalaryPage() {
         {/* Ожидаемые выплаты */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Ожидаемые выплаты</h2>
-          {planned.isLoading ? (
+          {upcoming.isLoading ? (
             <Skeleton className="h-24" />
-          ) : (planned.data?.length ?? 0) === 0 ? (
+          ) : plannedSalary.length === 0 ? (
             <EmptyState
               icon={Users}
               title="Нет ожидаемых выплат"
@@ -213,7 +226,7 @@ export default function SalaryPage() {
             />
           ) : (
             <Card className="divide-y divide-border/60 p-0">
-              {planned.data!.map((p) => (
+              {plannedSalary.map((p) => (
                 <PlannedRow
                   key={p.id}
                   p={p}

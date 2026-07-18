@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -97,6 +97,15 @@ export function RecurringDialog({
       if (!amount.trim() && emp.payRate) setAmount(emp.payRate);
     }
   };
+
+  // Открытие из карточки сотрудника (preset): имя подставляется, как только
+  // подгрузился список сотрудников; пользовательский ввод не перетираем.
+  useEffect(() => {
+    if (editing || !presetEmployeeId || title.trim()) return;
+    const emp = (employees.data ?? []).find((e) => e.id === presetEmployeeId);
+    if (emp) setTitle(`Зарплата — ${emp.name}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees.data]);
 
   const valid =
     title.trim() !== '' &&
