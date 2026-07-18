@@ -16,9 +16,11 @@ import { WorkspaceGuard, type WorkspaceContext } from '../common/workspace.guard
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import { PlanningService } from './planning.service';
+import { ForecastService } from './forecast.service';
 import {
   CreatePlannedSchema,
   CreateRecurringSchema,
+  ForecastQuerySchema,
   PayPlannedSchema,
   PlannedListQuerySchema,
   PlannedStatusSchema,
@@ -27,6 +29,7 @@ import {
   UpdateRecurringSchema,
   type CreatePlannedDto,
   type CreateRecurringDto,
+  type ForecastQuery,
   type PayPlannedDto,
   type PlannedListQuery,
   type PlannedStatusDto,
@@ -44,7 +47,10 @@ import {
 @Controller('workspaces/:wsId/planning')
 @UseGuards(JwtAuthGuard, WorkspaceGuard)
 export class PlanningController {
-  constructor(private readonly planning: PlanningService) {}
+  constructor(
+    private readonly planning: PlanningService,
+    private readonly forecast: ForecastService,
+  ) {}
 
   // ── Регулярка ──
   @Get('recurring')
@@ -143,5 +149,14 @@ export class PlanningController {
   @Get('count')
   count(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.planning.attentionCount(ws.workspaceId);
+  }
+
+  /** Прогноз остатка на горизонте: кассовый разрыв заранее. */
+  @Get('forecast')
+  getForecast(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(ForecastQuerySchema)) q: ForecastQuery,
+  ) {
+    return this.forecast.build(ws.workspaceId, q.days);
   }
 }

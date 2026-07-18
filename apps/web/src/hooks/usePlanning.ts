@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import type {
   CreatePlannedInput,
   CreateRecurringInput,
+  ForecastReport,
   PayPlannedInput,
   PlannedPayment,
   PlannedStatus,
@@ -52,6 +53,16 @@ export function usePlannedList(
       const qs = p.toString();
       return api.get<PlannedPayment[]>(`/workspaces/${wsId}/planning/planned${qs ? `?${qs}` : ''}`);
     },
+    enabled: !!wsId,
+  });
+}
+
+/** Прогноз остатка на горизонте (кассовый разрыв заранее). */
+export function useForecast(wsId: string | null, days = 60) {
+  return useQuery({
+    queryKey: [...planningKey(wsId), 'forecast', days],
+    queryFn: () =>
+      api.get<ForecastReport>(`/workspaces/${wsId}/planning/forecast?days=${days}`),
     enabled: !!wsId,
   });
 }

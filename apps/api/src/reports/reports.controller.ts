@@ -20,10 +20,12 @@ import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import {
   BreakdownQuerySchema,
+  BreakevenQuerySchema,
   CashflowQuerySchema,
   ExportFormatSchema,
   PnlQuerySchema,
   type BreakdownQuery,
+  type BreakevenQuery,
   type CashflowQuery,
   type ExportFormat,
   type PnlQuery,
@@ -41,6 +43,8 @@ import { PnlService } from './pnl.service';
 import { CashflowService } from './cashflow.service';
 import { BreakdownService } from './breakdown.service';
 import { TaxService } from './tax.service';
+import { BalanceService } from './balance.service';
+import { BreakevenService } from './breakeven.service';
 import { renderReport } from './export';
 import {
   breakdownToTable,
@@ -56,7 +60,25 @@ export class ReportsController {
     private readonly cashflow: CashflowService,
     private readonly breakdown: BreakdownService,
     private readonly tax: TaxService,
+    private readonly balance: BalanceService,
+    private readonly breakeven: BreakevenService,
   ) {}
+
+  /** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
+  @Get('balance')
+  getBalance(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.balance.build(ws.workspaceId);
+  }
+
+  /** Точка безубыточности за период (методология ОПиУ/IJ9). */
+  @Get('breakeven')
+  getBreakeven(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(BreakevenQuerySchema)) q: BreakevenQuery,
+  ) {
+    const period = resolvePeriod({ preset: q.preset, from: q.from, to: q.to });
+    return this.breakeven.build(ws.workspaceId, period);
+  }
 
   // ── Ф4: Налог АУСН Д−Р ──
   @Get('tax')

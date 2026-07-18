@@ -100,14 +100,25 @@ interface ClientAcc {
 export class ReceivablesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async build(workspaceId: string, asOf: Date = new Date()): Promise<ReceivablesReport> {
+  async build(
+    workspaceId: string,
+    asOf: Date = new Date(),
+    opts: {
+      /**
+       * Баланс (accrual, IJ9): дебиторка — только по ЗАКРЫТЫМ заказам, где
+       * выручка уже признана. Портфельный отчёт /reports/receivables (дефолт)
+       * считает по всем незакрытым тоже — «кто сколько должен по договорам».
+       */
+      onlyClosed?: boolean;
+    } = {},
+  ): Promise<ReceivablesReport> {
     const orders = await this.prisma.order.findMany({
       where: {
         workspaceId,
         deletedAt: null,
         // DE2: отменённые заказы (CANCELLED) — не дебиторка, даже если статус
         // оплаты остался UNPAID/PARTIAL. Иначе фантомный долг вечно стареет в 60+.
-        status: { notIn: ['CANCELLED'] },
+        status: opts.onlyClosed ? 'DONE' : { notIn: ['CANCELLED'] },
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
       },
       select: {

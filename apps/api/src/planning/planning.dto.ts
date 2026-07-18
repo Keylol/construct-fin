@@ -144,3 +144,8 @@ export const UpcomingQuerySchema = z.object({
   horizonDays: z.coerce.number().int().min(1).max(365).default(30),
 });
 export type UpcomingQuery = z.infer<typeof UpcomingQuerySchema>;
+
+export const ForecastQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(180).default(60),
+});
+export type ForecastQuery = z.infer<typeof ForecastQuerySchema>;
