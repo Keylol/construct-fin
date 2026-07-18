@@ -68,5 +68,14 @@ export const BreakdownQuerySchema = z
   .strict();
 export type BreakdownQuery = z.infer<typeof BreakdownQuerySchema>;
 
+export const BreakevenQuerySchema = z
+  .object({
+    preset: PeriodPresetSchema.optional(),
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .strict();
+export type BreakevenQuery = z.infer<typeof BreakevenQuerySchema>;
+
 export const ExportFormatSchema = z.enum(['csv', 'xlsx']);
 export type ExportFormat = z.infer<typeof ExportFormatSchema>;

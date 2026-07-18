@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import type {
   BalanceReport,
   BreakdownReport,
+  BreakevenReport,
   CashflowReport,
   CompareMode,
   PeriodPreset,
@@ -48,6 +49,16 @@ export function useBalanceReport(wsId: string | null) {
   return useQuery({
     queryKey: ['reports', 'balance', wsId],
     queryFn: () => api.get<BalanceReport>(`/workspaces/${wsId}/reports/balance`),
+    enabled: !!wsId,
+  });
+}
+
+/** Точка безубыточности за период. */
+export function useBreakevenReport(wsId: string | null, period: PeriodParams) {
+  const qs = buildQuery({ preset: period.preset, from: period.from, to: period.to });
+  return useQuery({
+    queryKey: ['reports', 'breakeven', wsId, qs],
+    queryFn: () => api.get<BreakevenReport>(`/workspaces/${wsId}/reports/breakeven${qs}`),
     enabled: !!wsId,
   });
 }

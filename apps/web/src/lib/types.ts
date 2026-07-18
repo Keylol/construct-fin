@@ -501,6 +501,19 @@ export interface CashflowReport {
   series: CashflowSeries[];
 }
 
+/** Точка безубыточности за период (методология ОПиУ/IJ9). */
+export interface BreakevenReport {
+  period: { from: string; to: string };
+  revenue: string;
+  variableCosts: { cogs: string; variable: string; total: string };
+  fixedCosts: string;
+  contributionMargin: string;
+  contributionMarginPct: number | null;
+  breakevenRevenue: string | null;
+  safetyMarginPct: number | null;
+  achievedPct: number | null;
+}
+
 /** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
 export interface BalanceReport {
   asOf: string;
