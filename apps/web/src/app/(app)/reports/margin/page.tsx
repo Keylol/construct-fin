@@ -13,6 +13,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useMarginReport } from '@/hooks/useTradeReports';
+import { MarginTopBar } from '@/components/reports/MarginTopBar';
 import { cn } from '@/lib/cn';
 
 type Method = 'by-product' | 'by-client';
@@ -80,6 +81,14 @@ export default function MarginReportPage() {
             <KpiCard label="Рентабельность, %" value={`${totals.marginPct}%`} />
           </div>
         ) : null}
+
+        {/* Топ-10 по валовой прибыли: что реально кормит бизнес. */}
+        {rows.length > 0 && (
+          <MarginTopBar
+            rows={rows}
+            title={isProduct ? 'Топ товаров по валовой прибыли' : 'Топ клиентов по валовой прибыли'}
+          />
+        )}
 
         {query.data && (
           <Card className="overflow-x-auto !p-0">

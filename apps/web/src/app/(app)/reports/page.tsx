@@ -33,6 +33,7 @@ import { BUCKET_LABEL } from '@/lib/buckets';
 import type { CompareMode } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { CHART_SEMANTIC } from '@/lib/chart';
+import { PnlWaterfall } from '@/components/reports/PnlWaterfall';
 
 const CHART_COLORS = {
   income: CHART_SEMANTIC.income,
@@ -168,6 +169,9 @@ export default function PnlReportPage() {
             />
           </Card>
         )}
+
+        {/* Водопад: из чего сложилась чистая прибыль периода. */}
+        {!reportEmpty && totals && <PnlWaterfall totals={totals} />}
 
         {!reportEmpty && data.length > 0 && (
           <Card className="!p-3">
