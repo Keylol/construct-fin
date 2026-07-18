@@ -37,7 +37,7 @@ export function donutSlices(rows: BreakdownRow[]): DonutSlice[] {
   const sorted = [...rows].sort((a, b) => Number(b.total) - Number(a.total));
   const top = sorted.slice(0, CHART_CATEGORICAL.length);
   const rest = sorted.slice(CHART_CATEGORICAL.length);
-  const slices: DonutSlice[] = top.map((r) => ({
+  const slices: DonutSlice[] = top.map((r, i) => ({
     key: donutKey(r),
     name: r.name,
     value: Number(r.total),
