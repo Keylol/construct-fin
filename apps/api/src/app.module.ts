@@ -27,6 +27,7 @@ import { AuditModule } from './audit/audit.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WbReceiptModule } from './wb-receipt/wb-receipt.module';
 import { PlanningModule } from './planning/planning.module';
+import { BudgetModule } from './budget/budget.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 import { TelegramAlertService } from './common/telegram-alert.service';
 
@@ -66,6 +67,7 @@ import { TelegramAlertService } from './common/telegram-alert.service';
     IntegrationsModule,
     WbReceiptModule,
     PlanningModule,
+    BudgetModule,
   ],
   controllers: [HealthController],
   providers: [IdempotencyInterceptor, TelegramAlertService],
