@@ -168,6 +168,7 @@ const LABELS: Record<string, string> = {
   categories: 'Категории',
   counterparties: 'Контрагенты',
   import: 'Импорт',
+  salary: 'Зарплата',
   batches: 'История',
   reports: 'Отчёты',
   cashflow: 'ОДДС',

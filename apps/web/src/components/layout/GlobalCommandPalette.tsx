@@ -20,6 +20,7 @@ const HINTS: Record<string, string> = {
   '/orders': 'Продажи клиентам',
   '/transactions': 'Список доходов/расходов',
   '/warehouse': 'Остатки, закупки',
+  '/salary': 'Сотрудники и выплаты',
   '/reports': 'ОПиУ, ОДДС',
   '/reports/rules': 'Подсказки категорий/контрагентов',
 };
