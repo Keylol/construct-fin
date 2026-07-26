@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+/**
+ * Опциональная строковая переменная окружения, устойчивая к ПУСТОМУ значению.
+ *
+ * docker-compose с `VAR: ${VAR:-}` подставляет пустую строку, когда переменной
+ * нет в .env — и это не то же самое, что «не задана». Без этой обёртки пустая
+ * строка доходила до .refine() и валила старт всего приложения (прод-инцидент
+ * 2026-07-26: api не поднялся, откат образов не помог, потому что откатываются
+ * образы, а compose уже новый). Пустое значение = «не задано».
+ */
+const optionalEnv = () =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().optional());
+
 const RawConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_PORT: z.coerce.number().int().positive().default(4000),
@@ -21,20 +33,17 @@ const RawConfigSchema = z.object({
     ),
   UPLOAD_DIR: z.string().default('./data/uploads'),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().default(10),
-  AUTH_PASSWORD_HASH: z.string().optional(),
+  AUTH_PASSWORD_HASH: optionalEnv(),
   // L5-хвост: chat_id для Telegram-алертов о 5xx (обычно telegramId владельца).
-  // Не задан → алертинг выключен (локалка/CI/тесты).
-  ALERT_TELEGRAM_CHAT_ID: z.string().optional(),
+  // Не задан (или пуст) → алертинг выключен (локалка/CI/тесты).
+  ALERT_TELEGRAM_CHAT_ID: optionalEnv(),
   // Ф1 «Полный автомат»: мастер-ключ шифрования токенов интеграций (банки/WB).
   // base64 от РОВНО 32 байт (AES-256). Не задан → модуль интеграций выключен
   // (локалка/CI/тесты без секретов). Генерация: `openssl rand -base64 32`.
-  INTEGRATION_MASTER_KEY: z
-    .string()
-    .optional()
-    .refine(
-      (v) => v === undefined || Buffer.from(v, 'base64').length === 32,
-      'INTEGRATION_MASTER_KEY должен быть base64 от 32 байт (openssl rand -base64 32)',
-    ),
+  INTEGRATION_MASTER_KEY: optionalEnv().refine(
+    (v) => v === undefined || Buffer.from(v, 'base64').length === 32,
+    'INTEGRATION_MASTER_KEY должен быть base64 от 32 байт (openssl rand -base64 32)',
+  ),
 });
 
 export type ConfigSchema = z.infer<typeof RawConfigSchema>;
