@@ -1,4 +1,5 @@
 import type { AusnMark, IntegrationProvider, TxType } from '@prisma/client';
+import type { TlsMaterial } from './adapters/bank-http';
 
 /**
  * Одна операция выписки в нормализованном виде (провайдер-агностично).
@@ -41,6 +42,11 @@ export interface FetchStatementInput {
    * подключения уже занесена руками (решение №15 генплана «Полный автомат»).
    */
   connectedAt: Date;
+  /**
+   * Клиентский сертификат mTLS этого подключения (Альфа). null — сертификат не
+   * загружен, транспорт возьмёт запасной из env. Т-Банку не нужен вовсе.
+   */
+  tls?: TlsMaterial | null;
 }
 
 /**

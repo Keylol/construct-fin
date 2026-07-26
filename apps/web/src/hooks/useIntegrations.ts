@@ -4,14 +4,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { IntegrationConnection, IntegrationProvider, SyncResult } from '@/lib/types';
 
-export interface CreateIntegrationInput {
+/** Клиентский сертификат mTLS (Альфа): PEM-содержимое файлов. */
+export interface TlsInput {
+  tlsCert?: string;
+  tlsKey?: string;
+  tlsPassphrase?: string;
+}
+
+export interface CreateIntegrationInput extends TlsInput {
   provider: IntegrationProvider;
   accountId: string;
   token: string;
-  /** Номер расчётного счёта у банка (обязателен для Альфы). */
+  /** Номер расчётного счёта у банка (обязателен для банков). */
   accountNumber?: string;
 }
-export interface UpdateIntegrationInput {
+export interface UpdateIntegrationInput extends TlsInput {
   id: string;
   token?: string;
   status?: 'ACTIVE' | 'DISABLED';

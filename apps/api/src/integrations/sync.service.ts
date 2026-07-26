@@ -7,6 +7,7 @@ import { AdapterRegistry } from './adapter-registry';
 import type { RawBankLine } from './provider-adapter';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
 import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
+import { deserializeTlsCredential } from './tls-credential';
 
 /**
  * Сколько дней хранить сырой ответ провайдера (BankStatementLine.raw).
@@ -109,6 +110,11 @@ export class SyncService {
         // с момента подключения, прошлое уже занесено руками (решение №15).
         accountNumber: conn.externalAccountId,
         connectedAt: conn.createdAt,
+        // Сертификат mTLS этого подключения (у разных ИП — разные сертификаты
+        // от банка). Null → транспорт возьмёт запасной из env.
+        tls: conn.tlsCredentialEnc
+          ? deserializeTlsCredential(this.crypto.decrypt(conn.tlsCredentialEnc))
+          : null,
       });
       const rules = await this.loadRules(conn.workspaceId);
 

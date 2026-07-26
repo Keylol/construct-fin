@@ -305,20 +305,76 @@ describe('AlfaAdapter — маппинг операции', () => {
   });
 });
 
-describe('AlfaAdapter — регистрация в реестре', () => {
-  it('без настроенного mTLS адаптер не регистрируется', () => {
-    const http: AlfaHttp = { configured: false, getJson: () => Promise.reject(new Error('нет')) };
+describe('AlfaAdapter — регистрация и сертификат подключения', () => {
+  const cfg = (values: Record<string, string | undefined>) =>
+    ({ get: vi.fn((k: string) => values[k]) }) as never;
+
+  it('на проде включается всегда — сертификат придёт от подключения', () => {
+    const http: AlfaHttp = { configured: true, getJson: () => Promise.reject(new Error('нет')) };
     const registry = { register: vi.fn() } as unknown as AdapterRegistry;
-    new AlfaAdapter(http, { get: vi.fn() } as never, registry).onModuleInit();
+    const adapter = new AlfaAdapter(http, cfg({ NODE_ENV: 'production' }), registry);
+    adapter.onModuleInit();
+    expect(registry.register).toHaveBeenCalledWith('ALFA', adapter);
+  });
+
+  it('вне прода без ALFA_TLS_* не включается — демо остаётся на FakeBank', () => {
+    const http: AlfaHttp = { configured: true, getJson: () => Promise.reject(new Error('нет')) };
+    const registry = { register: vi.fn() } as unknown as AdapterRegistry;
+    new AlfaAdapter(http, cfg({ NODE_ENV: 'test' }), registry).onModuleInit();
     expect(registry.register).not.toHaveBeenCalled();
   });
 
-  it('с сертификатом регистрируется под ALFA', () => {
+  it('вне прода с сертификатом в env включается (осознанная локальная настройка)', () => {
     const http: AlfaHttp = { configured: true, getJson: () => Promise.reject(new Error('нет')) };
     const registry = { register: vi.fn() } as unknown as AdapterRegistry;
-    const adapter = new AlfaAdapter(http, { get: vi.fn(() => BASE) } as never, registry);
+    const adapter = new AlfaAdapter(
+      http,
+      cfg({ NODE_ENV: 'development', ALFA_TLS_CERT_PATH: '/c.pem', ALFA_TLS_KEY_PATH: '/k.pem' }),
+      registry,
+    );
     adapter.onModuleInit();
     expect(registry.register).toHaveBeenCalledWith('ALFA', adapter);
+  });
+
+  it('сертификат подключения доезжает до транспорта', async () => {
+    const seen: unknown[] = [];
+    const http: AlfaHttp = {
+      configured: true,
+      getJson: (_url, _headers, tls) => {
+        seen.push(tls);
+        return Promise.resolve({ status: 200, body: '{"transactions":[]}', headers: {} });
+      },
+    };
+    const registry = { register: vi.fn() } as unknown as AdapterRegistry;
+    const adapter = new AlfaAdapter(http, { get: vi.fn(() => BASE) } as never, registry);
+    await adapter.fetchStatement({
+      token: 'key',
+      cursor: '2026-07-21',
+      accountNumber: ACCOUNT,
+      connectedAt: new Date('2026-07-01T00:00:00Z'),
+      tls: { cert: 'CERT-PEM', key: 'KEY-PEM', passphrase: 'p' },
+    });
+    expect(seen[0]).toEqual({ cert: 'CERT-PEM', key: 'KEY-PEM', passphrase: 'p' });
+  });
+
+  it('без сертификата подключения транспорт получает undefined (сработает запасной из env)', async () => {
+    const seen: unknown[] = [];
+    const http: AlfaHttp = {
+      configured: true,
+      getJson: (_url, _headers, tls) => {
+        seen.push(tls);
+        return Promise.resolve({ status: 200, body: '{"transactions":[]}', headers: {} });
+      },
+    };
+    const registry = { register: vi.fn() } as unknown as AdapterRegistry;
+    const adapter = new AlfaAdapter(http, { get: vi.fn(() => BASE) } as never, registry);
+    await adapter.fetchStatement({
+      token: 'key',
+      cursor: '2026-07-21',
+      accountNumber: ACCOUNT,
+      connectedAt: new Date('2026-07-01T00:00:00Z'),
+    });
+    expect(seen[0]).toBeUndefined();
   });
 });
 

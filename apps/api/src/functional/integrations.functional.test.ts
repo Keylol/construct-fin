@@ -60,6 +60,42 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
     expect(row.credentialEnc).not.toContain('super-secret-token');
   });
 
+  it('сертификат без ключа → 400 (загружаются только парой)', async () => {
+    const res = await H.inject({
+      method: 'POST',
+      url: base(),
+      token,
+      payload: {
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        token: 'tok-1111',
+        accountNumber: '40802810401300015422',
+        tlsCert: '-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('битый сертификат отклоняется до сохранения подключения', async () => {
+    const before = await H.prisma.integrationConnection.count();
+    const res = await H.inject({
+      method: 'POST',
+      url: base(),
+      token,
+      payload: {
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        token: 'tok-2222',
+        accountNumber: '40802810401300015422',
+        tlsCert: '-----BEGIN CERTIFICATE-----\nне-base64!!!\n-----END CERTIFICATE-----',
+        tlsKey: '-----BEGIN PRIVATE KEY-----\nZm9v\n-----END PRIVATE KEY-----',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    // Подключение с непригодным сертификатом не должно оседать в базе.
+    expect(await H.prisma.integrationConnection.count()).toBe(before);
+  });
+
   it('Альфа без номера расчётного счёта → 400 (Ф2: без него выписку не запросить)', async () => {
     const res = await H.inject({
       method: 'POST',

@@ -15,6 +15,28 @@ const accountNumber = z
   .trim()
   .regex(/^\d{20}$/, 'Номер счёта — 20 цифр');
 
+/**
+ * Клиентский сертификат mTLS: PEM-файлы целиком. Лимит с запасом на цепочку
+ * (сертификат ~2 КБ, ключ ~2 КБ, но банк может выдать связку).
+ */
+const pem = z.string().min(1).max(32_768);
+const tlsFields = {
+  /** PEM сертификата (открытая часть). */
+  tlsCert: pem.optional(),
+  /** PEM закрытого ключа — хранится только зашифрованным. */
+  tlsKey: pem.optional(),
+  /** Пароль закрытого ключа, если банк выдал его защищённым. */
+  tlsPassphrase: z.string().max(512).optional(),
+};
+
+/** Сертификат и ключ загружают только парой — половина бесполезна. */
+const tlsPairRule = (v: { tlsCert?: string; tlsKey?: string }) =>
+  (v.tlsCert === undefined) === (v.tlsKey === undefined);
+const tlsPairMessage = {
+  path: ['tlsCert'],
+  message: 'Сертификат и закрытый ключ загружаются вместе',
+};
+
 export const CreateIntegrationSchema = z
   .object({
     provider: ConnectableProvider,
@@ -23,11 +45,13 @@ export const CreateIntegrationSchema = z
     token: z.string().min(1).max(4096),
     /** Номер расчётного счёта у провайдера (обязателен для банков). */
     accountNumber: accountNumber.optional(),
+    ...tlsFields,
   })
   .refine((v) => v.accountNumber !== undefined, {
     path: ['accountNumber'],
     message: 'Укажите номер расчётного счёта',
-  });
+  })
+  .refine(tlsPairRule, tlsPairMessage);
 export type CreateIntegrationDto = z.infer<typeof CreateIntegrationSchema>;
 
 export const UpdateIntegrationSchema = z
@@ -38,9 +62,15 @@ export const UpdateIntegrationSchema = z
     status: z.enum(['ACTIVE', 'DISABLED']).optional(),
     /** Исправление номера счёта (опечатка при подключении). */
     accountNumber: accountNumber.optional(),
+    ...tlsFields,
   })
   .refine(
-    (v) => v.token !== undefined || v.status !== undefined || v.accountNumber !== undefined,
-    { message: 'Нужно передать token, status и/или accountNumber' },
-  );
+    (v) =>
+      v.token !== undefined ||
+      v.status !== undefined ||
+      v.accountNumber !== undefined ||
+      v.tlsCert !== undefined,
+    { message: 'Нужно передать token, status, accountNumber и/или сертификат' },
+  )
+  .refine(tlsPairRule, tlsPairMessage);
 export type UpdateIntegrationDto = z.infer<typeof UpdateIntegrationSchema>;

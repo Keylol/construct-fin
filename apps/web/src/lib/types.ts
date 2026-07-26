@@ -717,6 +717,10 @@ export interface IntegrationConnection {
   keyLast4: string;
   /** Номер расчётного счёта у провайдера (Альфа); null — не задан. */
   accountNumber: string | null;
+  /** Отпечаток клиентского сертификата mTLS; null — сертификат не загружен. */
+  tlsFingerprint: string | null;
+  /** Когда истекает сертификат (ISO); null — неизвестно или не загружен. */
+  tlsExpiresAt: string | null;
   account: { id: string; name: string };
   lastSyncAt: string | null;
   lastSyncError: string | null;

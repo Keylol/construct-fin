@@ -38,7 +38,9 @@ export type AuditAction =
   | 'integration.disable'
   // Смена номера счёта у подключения: меняет источник строк выписки и сбрасывает
   // курсор синка — след нужен, чтобы понимать происхождение операций.
-  | 'integration.account-change';
+  | 'integration.account-change'
+  // Загрузка/замена клиентского сертификата mTLS (только отпечаток и срок).
+  | 'integration.tls-rotate';
 
 export interface AuditEntry {
   workspaceId: string;
