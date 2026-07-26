@@ -265,7 +265,19 @@ export class TransactionService {
           counterpartyId: existing.counterpartyId,
           description: existing.description,
         },
-        changes: { ...input },
+        // Явный whitelist вместо спреда DTO: diff читает любой участник
+        // пространства и хранится бессрочно, а спред затянул бы в аудит любое
+        // новое поле запроса — включая то, которого там быть не должно.
+        changes: {
+          date: input.date ?? null,
+          amount: input.amount ?? null,
+          type: input.type ?? null,
+          kind: input.kind ?? null,
+          accountId: input.accountId ?? null,
+          categoryId: input.categoryId ?? null,
+          counterpartyId: input.counterpartyId ?? null,
+          description: input.description ?? null,
+        },
       },
     });
     return this.serialize(updated);

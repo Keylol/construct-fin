@@ -33,7 +33,7 @@ function makeService(opts: { allowedIds: bigint[]; passwordHash?: string }) {
       })),
     },
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   return { service: new AuthService(prisma as any, jwt as any, config as any), jwt, prisma };
 }
 
@@ -77,7 +77,7 @@ describe('AuthService.loginViaPassword — allowlist gate (Фаза 2 п.11)', (
   // #16: пустой allowlist = открытый вход (поведение не меняем), но логируем warn.
   it('логирует предупреждение об открытом allowlist при пустом списке', async () => {
     const { service } = makeService({ allowedIds: [], passwordHash: hash });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const warn = vi.spyOn((service as any).logger, 'warn');
     await service.loginViaPassword(PASSWORD);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('OPEN'));
@@ -93,9 +93,9 @@ describe('AuthService — не утекает деталь verify (#14) и ва�
   it('loginViaWidget: при неуспехе verify — обобщённое сообщение, причина в логах', async () => {
     vi.mocked(verifyTelegramLogin).mockReturnValue({ ok: false, reason: 'hash mismatch' });
     const { service } = makeService({ allowedIds: [] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const warn = vi.spyOn((service as any).logger, 'warn');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await expect(service.loginViaWidget({ id: 1 } as any)).rejects.toMatchObject({
       message: 'Telegram verification failed', // без 'hash mismatch'
     });
@@ -105,7 +105,7 @@ describe('AuthService — не утекает деталь verify (#14) и ва�
   it('loginViaMiniApp: при неуспехе verify — обобщённое сообщение, причина в логах', async () => {
     vi.mocked(verifyTelegramInitData).mockReturnValue({ ok: false, reason: 'no hash' });
     const { service } = makeService({ allowedIds: [] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const warn = vi.spyOn((service as any).logger, 'warn');
     await expect(service.loginViaMiniApp('raw')).rejects.toMatchObject({
       message: 'Telegram verification failed',

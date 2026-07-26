@@ -10,6 +10,8 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import type { TelegramAlertService } from './telegram-alert.service';
+import { splitUrlForLog } from './logger.config';
+import { sanitizeSecrets } from './sanitize-secrets';
 
 /**
  * Глобальный фильтр исключений.
@@ -48,11 +50,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // это тот же id, что вернётся клиенту и связывает лог с request-логом.
     if (status >= 500) {
       const method = req?.method ?? '?';
-      const url = req?.url ?? req?.raw?.url ?? '?';
+      // Только путь: значения query в лог не пишем (OAuth-код банка, поисковые
+      // строки с назначениями платежей) — тот же принцип, что в logger.config.
+      const { path: url } = splitUrlForLog(req?.url ?? req?.raw?.url ?? '?');
       const reqId = res?.getHeader?.('x-request-id') ?? req?.id ?? '?';
       this.logger.error(
         `${method} ${url} → ${status} [reqId=${reqId}]`,
-        exception instanceof Error ? exception.stack : String(exception),
+        // Стек — на сервер, но через sanitizer: сообщение исключения может нести
+        // URL с токеном или тело ответа банка (адаптеры бросают такие ошибки).
+        sanitizeSecrets(exception instanceof Error ? exception.stack : String(exception)),
       );
       // L5-хвост: алерт владельцу (no-op без ALERT_TELEGRAM_CHAT_ID; троттлинг
       // внутри сервиса). Никогда не бросает — обработку ответа не трогает.
@@ -101,10 +107,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     //    разборе запроса: FST_ERR_CTP_EMPTY_JSON_BODY — пустое тело при
     //    content-type: application/json — несёт statusCode 400). Это вина
     //    запроса, а не сервера: отдаём её код, а не маскируем дженерик-500.
+    //    ВАЖНО: текст наружу отдаём ТОЛЬКО для ошибок самого Fastify (код
+    //    FST_ERR_*). Раньше message пробрасывался для любой ошибки с числовым
+    //    statusCode — а его несут и HTTP-клиенты (got/undici-обёртки, банковские
+    //    SDK): текст ответа банка вместе с эхом URL и заголовков уехал бы прямо
+    //    в браузер. Чужим ошибкам отдаём код, но нейтральный текст.
     const sc = (exception as { statusCode?: unknown })?.statusCode;
     if (typeof sc === 'number' && sc >= 400 && sc < 500) {
+      const code = (exception as { code?: unknown })?.code;
+      const isFastifyError = typeof code === 'string' && code.startsWith('FST_ERR_');
       const msg = (exception as { message?: string })?.message;
-      return this.error(sc, msg && typeof msg === 'string' ? msg : 'Некорректный запрос');
+      return this.error(
+        sc,
+        isFastifyError && msg && typeof msg === 'string' ? msg : 'Некорректный запрос',
+      );
     }
 
     // 5. Всё остальное — внутренняя ошибка. Полный стек с контекстом запроса

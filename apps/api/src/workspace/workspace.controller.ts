@@ -5,7 +5,6 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
-  Param,
   Patch,
   Post,
   UseGuards,

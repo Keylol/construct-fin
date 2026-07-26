@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { buildLoadApp, call, type LoadApp } from './load-harness';
 import { resetDb } from '../test/money-harness';
-import { checkAllInvariants, computeAccountBalances, type Violation } from './invariants';
+import { checkAllInvariants, type Violation } from './invariants';
 
 const OPS_PER_WORKER = Number(process.env.LOADTEST_OPS ?? 1000);
 const WORKERS = Number(process.env.LOADTEST_WORKERS ?? 5);
@@ -188,7 +188,7 @@ describe('Нагрузка ядра под конкуренцией', () => {
     await Promise.all(Array.from({ length: WORKERS }, (_, i) => worker(i)));
 
     const violations = await checkAllInvariants(H.prisma, pool.ws);
-    // eslint-disable-next-line no-console
+     
     console.log(`[Сценарий 1] ops=${m.total} ok=${m.ok} 4xx=${m.rejected4xx} 5xx=${m.errors5xx} | заказов=${orders.length} | нарушений=${violations.length}`);
     if (violations.length) console.log('НАРУШЕНИЯ ИНВАРИАНТОВ:\n' + fmt(violations));
     if (m.errors5xx > 0) {
@@ -213,7 +213,7 @@ describe('Нагрузка ядра под конкуренцией', () => {
       }),
     ));
     const violations = await checkAllInvariants(H.prisma, pool.ws);
-    // eslint-disable-next-line no-console
+     
     console.log(`[Сценарий 2] ${N} одновременных оплат | нарушений=${violations.length}`);
     if (violations.length) console.log(fmt(violations));
     expect(violations, 'paidAmount должен совпадать с суммой проводок после конкурентной оплаты').toEqual([]);
@@ -239,7 +239,7 @@ describe('Нагрузка ядра под конкуренцией', () => {
     ));
     const violations = await checkAllInvariants(H.prisma, pool.ws);
     const itemAfter = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id: it.body.id } });
-    // eslint-disable-next-line no-console
+     
     console.log(`[Сценарий 3] сток=10, попыток отгрузки=${N} | qty после=${Number(itemAfter.qty.toString())} | нарушений=${violations.length}`);
     if (violations.length) console.log(fmt(violations));
     expect(Number(itemAfter.qty.toString()), 'склад не должен уйти в минус (oversell)').toBeGreaterThanOrEqual(0);
@@ -265,7 +265,7 @@ describe('Нагрузка ядра под конкуренцией', () => {
       byStatus.set(k, (byStatus.get(k) ?? 0) + 1);
     }
     const payTxs = await H.prisma.transaction.count({ where: { workspaceId: pool.ws, orderId, kind: 'ORDER_PAYMENT', deletedAt: null } });
-    // eslint-disable-next-line no-console
+     
     console.log(`[Сценарий 4] ${N} одновременных POST один ключ → проводок=${payTxs}; статусы: ${[...byStatus.entries()].map(([k, c]) => `${c}×[${k}]`).join(', ')}`);
     expect(payTxs, 'идемпотентный ключ должен дать ровно одну проводку оплаты').toBe(1);
   });

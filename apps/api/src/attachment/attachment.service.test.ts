@@ -23,7 +23,7 @@ function makeService(opts: {
       return undefined;
     },
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const service = new AttachmentService(prisma as any, config as any);
   return { service, prisma, count };
 }

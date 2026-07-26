@@ -266,7 +266,9 @@ const CAL_PREV_MONTHS: Partial<Record<PeriodPreset, number>> = {
 export function resolveComparison(
   primary: Period,
   input: ComparisonInput,
-  now: Date = new Date(),
+  // Параметр оставлен в сигнатуре для совместимости вызовов (и симметрии с
+  // resolvePeriod), но сам расчёт идёт от primary — «сейчас» не нужен.
+  _now: Date = new Date(),
 ): Period | null {
   if (input.mode === 'none') return null;
   if (input.mode === 'custom') {

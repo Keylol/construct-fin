@@ -3,11 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import {
-  Prisma,
-  type OrderStatus,
-  type OrderPaymentState,
-} from '@prisma/client';
+import { Prisma, type OrderPaymentState } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnitOfWork, type TxClient } from '../common/unit-of-work';
 import { WarehouseService, NoConsumptionsError } from '../warehouse/warehouse.service';

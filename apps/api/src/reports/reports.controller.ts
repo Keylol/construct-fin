@@ -225,6 +225,9 @@ export class ReportsController {
       `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
     reply.header('Content-Length', file.buffer.length);
+    // Выгрузка несёт весь ОПиУ и разбивку по контрагентам: не оставляем её в
+    // дисковом кэше браузера и WebView Telegram (устройство может быть общим).
+    reply.header('Cache-Control', 'no-store, private');
     return new StreamableFile(Readable.from(file.buffer));
   }
 }

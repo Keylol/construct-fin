@@ -57,6 +57,32 @@ describe('AllExceptionsFilter', () => {
     expect(body).toEqual(payload);
   });
 
+  // Hardening перед банковскими интеграциями: текст ошибки наружу отдаём только
+  // для ошибок самого Fastify. HTTP-клиенты (банковские SDK, got/undici) тоже
+  // несут statusCode — их message содержит URL с токеном и тело ответа банка.
+  it('пробрасывает текст ошибки Fastify (FST_ERR_*) как есть', () => {
+    const fastifyErr = Object.assign(new Error('Body cannot be empty'), {
+      statusCode: 400,
+      code: 'FST_ERR_CTP_EMPTY_JSON_BODY',
+    });
+    const { status, body } = run(fastifyErr);
+    expect(status).toBe(400);
+    expect(body.message).toBe('Body cannot be empty');
+  });
+
+  it('НЕ пробрасывает текст чужой ошибки с statusCode (утечка ответа банка)', () => {
+    const bankClientErr = Object.assign(
+      new Error('GET https://api.bank.ru/statement?access_token=SECRET123 → 403 {"detail":"..."}'),
+      { statusCode: 403 },
+    );
+    const { status, body } = run(bankClientErr);
+    // Код сохраняем (это вина запроса), текст — нейтральный.
+    expect(status).toBe(403);
+    expect(body.message).toBe('Некорректный запрос');
+    expect(JSON.stringify(body)).not.toContain('SECRET123');
+    expect(JSON.stringify(body)).not.toContain('api.bank.ru');
+  });
+
   it('maps Prisma unique violation (P2002) to 409', () => {
     const { status, body } = run(prismaKnown('P2002', { target: ['workspaceId', 'number'] }));
     expect(status).toBe(409);
@@ -146,13 +172,16 @@ describe('AllExceptionsFilter → TelegramAlertService (L5-хвост)', () => {
     return alert5xx;
   }
 
-  it('5xx зовёт alert5xx с методом/URL/reqId', () => {
+  // Hardening перед банковскими интеграциями: в форензик-лог и в TG-алерт
+  // уходит ТОЛЬКО путь. Значения query (OAuth-код банка, поисковые строки с
+  // назначениями платежей) не логируются и не отправляются наружу.
+  it('5xx зовёт alert5xx с методом/путём БЕЗ query/reqId', () => {
     const alert5xx = runWithAlerts(new Error('boom'));
     expect(alert5xx).toHaveBeenCalledOnce();
     expect(alert5xx).toHaveBeenCalledWith({
       status: 500,
       method: 'POST',
-      url: '/api/orders?x=1',
+      url: '/api/orders',
       reqId: 'req-123',
     });
   });

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
@@ -10,6 +11,7 @@ import type { FastifyRequest } from 'fastify';
 import { of, from, throwError, Observable } from 'rxjs';
 import { catchError, mergeMap } from 'rxjs/operators';
 import { Prisma } from '@prisma/client';
+import { sanitizeSecrets } from './sanitize-secrets';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransactionalContext, type CommitHook } from './transactional-context';
 
@@ -35,6 +37,8 @@ const KEY_HEADER = 'idempotency-key';
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly txContext: TransactionalContext,
@@ -172,8 +176,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
         data: { completedAt: new Date() },
       });
     } catch (err) {
-      // Кэш — не критично, основной запрос уже успешен.
-      console.error('[idempotency] failed to store response', err);
+      // Кэш — не критично, основной запрос уже успешен. Пишем через Logger
+      // (pino + вычистка секретов), а не console: ошибка Prisma несёт значения
+      // полей запроса.
+      this.logger.error(
+        `Не удалось сохранить ответ идемпотентности: ${sanitizeSecrets(
+          err instanceof Error ? err.message : String(err),
+        )}`,
+      );
     }
   }
 
@@ -182,7 +192,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     try {
       await this.prisma.idempotencyKey.deleteMany({ where: { key, completedAt: null } });
     } catch (err) {
-      console.error('[idempotency] failed to release key', err);
+      this.logger.error(
+        `Не удалось освободить резерв идемпотентности: ${sanitizeSecrets(
+          err instanceof Error ? err.message : String(err),
+        )}`,
+      );
     }
   }
 }

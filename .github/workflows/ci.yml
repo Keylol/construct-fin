@@ -89,8 +89,11 @@ jobs:
         run: pnpm typecheck
 
       - name: Lint
+        # continue-on-error убран: у apps/api появился flat-конфиг ESLint 9
+        # (apps/api/eslint.config.js), линт проходит и стал обязательным.
+        # Ключевые правила — no-console (лог только через pino с вычисткой
+        # секретов) и no-explicit-any в прод-коде.
         run: pnpm lint
-        continue-on-error: true # пока без ESLint для api
 
       - name: Test
         run: pnpm test
