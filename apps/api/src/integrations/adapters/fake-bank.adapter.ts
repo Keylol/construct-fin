@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type {
   BankProviderAdapter,
+  FetchStatementInput,
   FetchStatementResult,
   RawBankLine,
 } from '../provider-adapter';
@@ -59,7 +60,8 @@ export class FakeBankAdapter implements BankProviderAdapter {
     },
   ];
 
-  fetchStatement(input: { token: string; cursor: string | null }): Promise<FetchStatementResult> {
+  // accountNumber/connectedAt фейку не нужны — набор строк фиксирован.
+  fetchStatement(input: FetchStatementInput): Promise<FetchStatementResult> {
     if (input.cursor) {
       return Promise.resolve({ lines: [], nextCursor: input.cursor });
     }

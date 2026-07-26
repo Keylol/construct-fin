@@ -3,6 +3,8 @@ import { buildHarness, resetDb, seedBase, type Harness, type Seed } from '../tes
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
+import { AlfaAdapter, dayKey } from './adapters/alfa.adapter';
+import type { AlfaHttp } from './adapters/alfa-transport';
 import { SyncService } from './sync.service';
 
 /**
@@ -181,5 +183,106 @@ describe('SyncService.syncConnection', () => {
     const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
     expect(after.status).toBe('ERROR');
     expect(after.lastSyncError).toContain('boom from bank');
+  });
+});
+
+/**
+ * Ф2: тот же пайплайн, но провайдер — настоящий AlfaAdapter (сеть подменена).
+ * Проверяем стык, который юнит-тест адаптера не видит: номер счёта и дата
+ * подключения доезжают из БД в запрос к банку, а ответ банка превращается в
+ * строки выписки и авто-проводку.
+ */
+describe('SyncService + AlfaAdapter', () => {
+  const ACCOUNT_NUMBER = '40802810401300015422';
+
+  function alfaSync(bodyByDay: Record<string, unknown>, calls: string[]) {
+    const http: AlfaHttp = {
+      configured: true,
+      getJson: (url) => {
+        calls.push(url);
+        const day = new URL(url).searchParams.get('statementDate') ?? '';
+        return Promise.resolve({
+          status: 200,
+          body: JSON.stringify(bodyByDay[day] ?? { transactions: [] }),
+          headers: {},
+        });
+      },
+    };
+    const registry = new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never);
+    const adapter = new AlfaAdapter(
+      http,
+      { get: () => 'https://sandbox.alfabank.ru/api/jp' } as never,
+      registry,
+    );
+    adapter.onModuleInit();
+    return buildSync(registry);
+  }
+
+  it('выписка банка → строки Inbox; счёт и дата подключения ушли в запрос', async () => {
+    const conn = await h.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        credentialEnc: crypto.encrypt('alfa-api-key-9876'),
+        keyLast4: '9876',
+        externalAccountId: ACCOUNT_NUMBER,
+        createdById: seed.userId,
+      },
+    });
+    const today = dayKey(new Date());
+    const calls: string[] = [];
+    const alfa = alfaSync(
+      {
+        [today]: {
+          transactions: [
+            {
+              transactionId: 'alfa-1',
+              direction: 'CREDIT',
+              operationDate: `${today}T08:00:00Z`,
+              paymentPurpose: 'Оплата по счёту 7',
+              amount: { amount: 25000.4, currencyName: 'RUR' },
+              rurTransfer: { payerName: 'ООО «Клиент»', payerInn: '7701234567' },
+            },
+          ],
+        },
+      },
+      calls,
+    );
+
+    const res = await alfa.syncConnection(conn.id);
+    expect(res).toEqual({ fetched: 1, created: 1, autoPosted: 0 });
+
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { connectionId: conn.id },
+    });
+    expect(line.externalId).toBe('alfa-1');
+    expect(line.direction).toBe('INCOME');
+    expect(num(line.amount)).toBe(25000.4);
+    expect(line.counterpartyName).toBe('ООО «Клиент»');
+    expect(line.counterpartyInn).toBe('7701234567');
+    expect(line.status).toBe('NEW');
+
+    // Номер счёта подставлен в запрос; синк начался с дня создания подключения.
+    expect(calls[0]).toContain(`accountNumber=${ACCOUNT_NUMBER}`);
+    expect(new URL(calls[0]!).searchParams.get('statementDate')).toBe(dayKey(conn.createdAt));
+  });
+
+  it('подключение Альфы без номера счёта → ERROR с понятным текстом', async () => {
+    const conn = await h.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        credentialEnc: crypto.encrypt('alfa-api-key-0000'),
+        keyLast4: '0000',
+        createdById: seed.userId,
+      },
+    });
+    const alfa = alfaSync({}, []);
+
+    await expect(alfa.syncConnection(conn.id)).rejects.toThrow(/номера расчётного счёта/);
+    const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(after.status).toBe('ERROR');
   });
 });

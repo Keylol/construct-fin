@@ -105,6 +105,10 @@ export class SyncService {
       const { lines, nextCursor } = await adapter.fetchStatement({
         token,
         cursor: conn.syncCursor,
+        // Номер счёта у провайдера (Альфа) и дата подключения: история тянется
+        // с момента подключения, прошлое уже занесено руками (решение №15).
+        accountNumber: conn.externalAccountId,
+        connectedAt: conn.createdAt,
       });
       const rules = await this.loadRules(conn.workspaceId);
 

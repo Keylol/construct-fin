@@ -38,7 +38,12 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
       method: 'POST',
       url: base(),
       token,
-      payload: { provider: 'ALFA', accountId: seed.accountId, token: 'super-secret-token-9876' },
+      payload: {
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        token: 'super-secret-token-9876',
+        accountNumber: '40802810401300015422',
+      },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json<Record<string, unknown>>();
@@ -55,12 +60,59 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
     expect(row.credentialEnc).not.toContain('super-secret-token');
   });
 
+  it('Альфа без номера расчётного счёта → 400 (Ф2: без него выписку не запросить)', async () => {
+    const res = await H.inject({
+      method: 'POST',
+      url: base(),
+      token,
+      payload: { provider: 'ALFA', accountId: seed.accountId, token: 'tok-0000' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('номер счёта возвращается в ответе и меняется PATCH-ем со сбросом курсора', async () => {
+    const created = await H.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        credentialEnc: 'v1.a.b.c',
+        keyLast4: '0000',
+        externalAccountId: '40802810401300015422',
+        syncCursor: '2026-07-20',
+        createdById: seed.userId,
+      },
+    });
+
+    const list = await H.inject({ method: 'GET', url: base(), token });
+    expect(list.json<{ accountNumber: string }[]>()[0]!.accountNumber).toBe('40802810401300015422');
+
+    const res = await H.inject({
+      method: 'PATCH',
+      url: `${base()}/${created.id}`,
+      token,
+      payload: { accountNumber: '40802810401300019999' },
+    });
+    expect(res.statusCode).toBe(200);
+    const row = await H.prisma.integrationConnection.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(row.externalAccountId).toBe('40802810401300019999');
+    // Другой счёт — другой источник строк: курсор прошлого счёта сброшен.
+    expect(row.syncCursor).toBeNull();
+  });
+
   it('POST с чужим accountId → 400', async () => {
     const res = await H.inject({
       method: 'POST',
       url: base(),
       token,
-      payload: { provider: 'ALFA', accountId: 'nonexistent', token: 'x' },
+      payload: {
+        provider: 'ALFA',
+        accountId: 'nonexistent',
+        token: 'x',
+        accountNumber: '40802810401300015422',
+      },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -78,7 +130,12 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
       method: 'POST',
       url: base(),
       token: memberToken,
-      payload: { provider: 'ALFA', accountId: seed.accountId, token: 'x' },
+      payload: {
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        token: 'x',
+        accountNumber: '40802810401300015422',
+      },
     });
     expect(create.statusCode).toBe(403);
   });
@@ -132,7 +189,12 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
       method: 'POST',
       url: base(),
       token,
-      payload: { provider: 'ALFA', accountId: seed.accountId, token: 'tok-for-sync-1111' },
+      payload: {
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        token: 'tok-for-sync-1111',
+        accountNumber: '40802810401300015422',
+      },
     });
     const connId = create.json<{ id: string }>().id;
 

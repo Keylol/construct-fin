@@ -44,6 +44,26 @@ const RawConfigSchema = z.object({
     (v) => v === undefined || Buffer.from(v, 'base64').length === 32,
     'INTEGRATION_MASTER_KEY должен быть base64 от 32 байт (openssl rand -base64 32)',
   ),
+  // Ф2 «Альфа». База API: пром `https://baas.alfabank.ru/api/jp`, песочница
+  // `https://sandbox.alfabank.ru/api/jp`. Не задана → пром.
+  ALFA_API_BASE_URL: optionalEnv().refine(
+    (v) => v === undefined || /^https:\/\//.test(v),
+    'ALFA_API_BASE_URL должен быть https-адресом',
+  ),
+  // mTLS: банк пускает только по клиентскому сертификату. Пути к файлам на
+  // сервере (сам сертификат в репозиторий и в БД не попадает). Не заданы →
+  // адаптер Альфы не регистрируется, подключение отвечает 503.
+  ALFA_TLS_CERT_PATH: optionalEnv(),
+  ALFA_TLS_KEY_PATH: optionalEnv(),
+  ALFA_TLS_CA_PATH: optionalEnv(),
+  ALFA_TLS_KEY_PASSPHRASE: optionalEnv(),
+  // Ф3 «Т-Банк». Пром `https://business.tbank.ru/openapi/api`, песочница
+  // `https://business.tbank.ru/openapi/sandbox/api` (токен там фиксированный —
+  // TBankSandboxToken, сертификат не нужен). Не задана → пром.
+  TBANK_API_BASE_URL: optionalEnv().refine(
+    (v) => v === undefined || /^https:\/\//.test(v),
+    'TBANK_API_BASE_URL должен быть https-адресом',
+  ),
 });
 
 export type ConfigSchema = z.infer<typeof RawConfigSchema>;

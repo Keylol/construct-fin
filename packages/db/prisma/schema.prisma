@@ -1017,6 +1017,10 @@ model IntegrationConnection {
   credentialEnc String
   /// Маска ключа для UI (последние 4 символа) — сам ключ наружу не отдаётся.
   keyLast4      String
+  /// Идентификатор счёта на стороне провайдера: у Альфы — номер расчётного
+  /// счёта, он обязателен в запросе выписки (Ф2). Не секрет (реквизит есть в
+  /// каждом платёжном поручении), поэтому хранится открыто и виден в UI.
+  externalAccountId String?
   status        IntegrationStatus   @default(ACTIVE)
   /// Курсор инкрементальной синхронизации (provider-специфичный, напр. дата/id).
   syncCursor    String?

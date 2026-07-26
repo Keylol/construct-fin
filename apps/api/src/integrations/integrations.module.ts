@@ -4,6 +4,10 @@ import { AuditModule } from '../audit/audit.module';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
+import { AlfaAdapter } from './adapters/alfa.adapter';
+import { ALFA_HTTP, AlfaTransport } from './adapters/alfa-transport';
+import { TbankAdapter } from './adapters/tbank.adapter';
+import { TBANK_HTTP, TbankTransport } from './adapters/tbank-transport';
 import { SyncService } from './sync.service';
 import { IntegrationsService } from './integrations.service';
 import { IntegrationsController } from './integrations.controller';
@@ -25,6 +29,14 @@ import { InboxController } from './inbox.controller';
     CryptoService,
     AdapterRegistry,
     FakeBankAdapter,
+    AlfaTransport,
+    // Транспорт Альфы прячем за токеном: адаптер зависит от интерфейса AlfaHttp,
+    // и тест подставляет объект без сети, не поднимая mTLS.
+    { provide: ALFA_HTTP, useExisting: AlfaTransport },
+    AlfaAdapter,
+    TbankTransport,
+    { provide: TBANK_HTTP, useExisting: TbankTransport },
+    TbankAdapter,
     SyncService,
     IntegrationsService,
     InboxService,

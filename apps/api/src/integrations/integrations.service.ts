@@ -13,6 +13,7 @@ const PUBLIC_SELECT = {
   provider: true,
   status: true,
   keyLast4: true,
+  externalAccountId: true,
   syncCursor: true,
   lastSyncAt: true,
   lastSyncError: true,
@@ -54,6 +55,7 @@ export class IntegrationsService {
         accountId: dto.accountId,
         credentialEnc,
         keyLast4: CryptoService.mask(dto.token),
+        externalAccountId: dto.accountNumber ?? null,
         createdById: userId,
       },
       select: PUBLIC_SELECT,
@@ -66,7 +68,13 @@ export class IntegrationsService {
       action: 'integration.create',
       entityType: 'IntegrationConnection',
       entityId: created.id,
-      diff: { provider: dto.provider, accountId: dto.accountId, keyLast4: created.keyLast4 },
+      diff: {
+        provider: dto.provider,
+        accountId: dto.accountId,
+        keyLast4: created.keyLast4,
+        // Номер счёта — в аудит маской: сам реквизит в этой таблице не нужен.
+        accountNumberLast4: dto.accountNumber ? dto.accountNumber.slice(-4) : null,
+      },
     });
     return this.serialize(created);
   }
@@ -86,6 +94,12 @@ export class IntegrationsService {
             }
           : {}),
         ...(dto.status ? { status: dto.status } : {}),
+        // Смена номера счёта = другой источник строк: курсор прошлого счёта
+        // больше не значит ничего, тянем заново с даты подключения. Дубли
+        // невозможны — идемпотентность по (connectionId, externalId).
+        ...(dto.accountNumber
+          ? { externalAccountId: dto.accountNumber, syncCursor: null, lastSyncError: null }
+          : {}),
       },
       select: PUBLIC_SELECT,
     });
@@ -98,6 +112,16 @@ export class IntegrationsService {
         entityId: id,
         // Только маска нового ключа — сам токен в аудит не попадает.
         diff: { provider: updated.provider, keyLast4: updated.keyLast4 },
+      });
+    }
+    if (dto.accountNumber) {
+      await this.audit.record(undefined, {
+        workspaceId,
+        actorId: userId,
+        action: 'integration.account-change',
+        entityType: 'IntegrationConnection',
+        entityId: id,
+        diff: { accountNumberLast4: dto.accountNumber.slice(-4), syncCursorReset: true },
       });
     }
     if (dto.status) {
@@ -157,6 +181,7 @@ export class IntegrationsService {
     provider: string;
     status: string;
     keyLast4: string;
+    externalAccountId: string | null;
     syncCursor: string | null;
     lastSyncAt: Date | null;
     lastSyncError: string | null;
@@ -168,6 +193,7 @@ export class IntegrationsService {
       provider: r.provider,
       status: r.status,
       keyLast4: r.keyLast4,
+      accountNumber: r.externalAccountId,
       account: r.account,
       lastSyncAt: r.lastSyncAt?.toISOString() ?? null,
       lastSyncError: r.lastSyncError,

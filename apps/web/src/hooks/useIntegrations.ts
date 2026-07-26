@@ -8,11 +8,14 @@ export interface CreateIntegrationInput {
   provider: IntegrationProvider;
   accountId: string;
   token: string;
+  /** Номер расчётного счёта у банка (обязателен для Альфы). */
+  accountNumber?: string;
 }
 export interface UpdateIntegrationInput {
   id: string;
   token?: string;
   status?: 'ACTIVE' | 'DISABLED';
+  accountNumber?: string;
 }
 
 export function useIntegrations(wsId: string | null) {
