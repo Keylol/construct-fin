@@ -16,6 +16,56 @@ export function normalizeRequestId(incoming: string | string[] | undefined): str
 }
 
 /**
+ * Разбор url для лога: путь отдельно, ИМЕНА query-параметров отдельно, значения
+ * НЕ логируются вообще.
+ *
+ * Значения в query — это то, чего в логе быть не должно: OAuth-callback банка
+ * несёт `?code=…`/`?access_token=…`, а поиск по операциям — назначения платежей
+ * и имена контрагентов. Имён параметров хватает для отладки маршрутов.
+ */
+export function splitUrlForLog(rawUrl: string): { path: string; queryKeys: string[] } {
+  const qIdx = rawUrl.indexOf('?');
+  if (qIdx === -1) return { path: rawUrl, queryKeys: [] };
+  return {
+    path: rawUrl.slice(0, qIdx),
+    queryKeys: [...new Set(new URLSearchParams(rawUrl.slice(qIdx + 1)).keys())],
+  };
+}
+
+/**
+ * Заголовки запроса/ответа в логе — по БЕЛОМУ списку.
+ *
+ * Раньше логировались все заголовки с вычеркиванием `authorization`/`cookie`
+ * (чёрный список). Чёрный список не масштабируется: любой новый секретный
+ * заголовок (`x-api-key` банка, `x-telegram-init-data`, `proxy-authorization`)
+ * попадал бы в лог до того, как кто-то вспомнит дописать его в redact. Белый
+ * список безопасен по умолчанию.
+ */
+const REQ_HEADER_ALLOWLIST = [
+  'host',
+  'user-agent',
+  'content-type',
+  'content-length',
+  'referer',
+  'x-request-id',
+] as const;
+
+const RES_HEADER_ALLOWLIST = ['content-type', 'content-length', 'x-request-id'] as const;
+
+function pickHeaders(
+  headers: Record<string, unknown> | undefined,
+  allow: readonly string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!headers) return out;
+  for (const key of allow) {
+    const v = headers[key];
+    if (v !== undefined) out[key] = v;
+  }
+  return out;
+}
+
+/**
  * Конфиг структурного логирования (L5, наблюдаемость).
  *
  * Один JSON-поток на stdout для request-логов и логов Nest (Logger.*), с общим
@@ -38,11 +88,34 @@ export const loggerParams: Params = {
       ignore: (req: IncomingMessage): boolean => req.url === '/health',
     },
 
-    // Никогда не писать секреты в лог: заголовок авторизации, куки (в них JWT),
-    // а также исходящий set-cookie.
-    redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
-      remove: true,
+    // Сериализация запроса/ответа по БЕЛОМУ списку (заменила чёрный список
+    // redact): в лог попадают только путь без query, имена query-параметров и
+    // разрешённые заголовки. Значения query, тела, cookie, Authorization,
+    // x-api-key, set-cookie в лог не попадают в принципе — не потому что
+    // вычеркнуты, а потому что не собираются.
+    serializers: {
+      req: (req: {
+        id?: unknown;
+        method?: string;
+        url?: string;
+        headers?: Record<string, unknown>;
+        remoteAddress?: string;
+        socket?: { remoteAddress?: string };
+      }) => {
+        const { path, queryKeys } = splitUrlForLog(req.url ?? '');
+        return {
+          id: req.id,
+          method: req.method,
+          url: path,
+          ...(queryKeys.length > 0 ? { queryKeys } : {}),
+          remoteAddress: req.remoteAddress ?? req.socket?.remoteAddress,
+          headers: pickHeaders(req.headers, REQ_HEADER_ALLOWLIST),
+        };
+      },
+      res: (res: { statusCode?: number; headers?: Record<string, unknown>; getHeaders?: () => Record<string, unknown> }) => ({
+        statusCode: res.statusCode,
+        headers: pickHeaders(res.headers ?? res.getHeaders?.(), RES_HEADER_ALLOWLIST),
+      }),
     },
 
     // В dev — человекочитаемый однострочный вывод; в проде/тестах — сырой JSON на

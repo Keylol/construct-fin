@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TxClient } from '../common/unit-of-work';
+import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
 
 /**
  * Доменные действия, фиксируемые в AuditLog. Имена — kebab-case "entity.action".
@@ -29,7 +30,12 @@ export type AuditAction =
   | 'transaction.update'
   | 'transaction.delete'
   | 'wbReceipt.commit'
-  | 'wbReceipt.revert';
+  | 'wbReceipt.revert'
+  // Интеграции: самые security-значимые операции в системе — подключение банка
+  // и ротация его токена. Пишутся БЕЗ значения секрета (только provider и маска).
+  | 'integration.create'
+  | 'integration.token-rotate'
+  | 'integration.disable';
 
 export interface AuditEntry {
   workspaceId: string;
@@ -44,6 +50,8 @@ type AuditClient = PrismaService | TxClient;
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -69,11 +77,22 @@ export class AuditService {
           action: entry.action,
           entityType: entry.entityType,
           entityId: entry.entityId,
-          diff: (entry.diff ?? {}) as Prisma.InputJsonValue,
+          // Страховка на весь домен: diff читает любой участник пространства и
+          // хранится он бессрочно, поэтому секреты вычищаем ЗДЕСЬ, а не надеясь
+          // на дисциплину вызывающих (спред DTO в diff — распространённый
+          // паттерн, однажды он принесёт сюда token).
+          diff: (entry.diff === undefined
+            ? {}
+            : sanitizeSecretsDeep(entry.diff)) as Prisma.InputJsonValue,
         },
       });
     } catch (err) {
-      console.error('[audit] failed to record', entry.action, err);
+      // Ошибка Prisma несёт значения полей запроса — прогоняем через sanitize.
+      this.logger.error(
+        `[audit] failed to record ${entry.action}: ${sanitizeSecrets(
+          err instanceof Error ? err.message : String(err),
+        )}`,
+      );
       // Внутри tx — пробрасываем: tx уже aborted, глотание лишь маскирует причину.
       if (insideTx) throw err;
     }

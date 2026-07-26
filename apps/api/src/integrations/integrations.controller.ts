@@ -51,13 +51,13 @@ export class IntegrationsController {
     @Param('id') id: string,
     @Body(new ZodPipe(UpdateIntegrationSchema)) body: UpdateIntegrationDto,
   ) {
-    return this.service.update(ws.workspaceId, id, body);
+    return this.service.update(ws.workspaceId, id, ws.userId, body);
   }
 
   @Delete(':id')
   @HttpCode(204)
   async delete(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    await this.service.softDelete(ws.workspaceId, id);
+    await this.service.softDelete(ws.workspaceId, id, ws.userId);
   }
 
   /** «Обновить сейчас» — ручной синк выписки. */

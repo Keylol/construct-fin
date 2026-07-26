@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrderModule } from '../orders/order.module';
+import { AuditModule } from '../audit/audit.module';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
@@ -16,7 +17,9 @@ import { InboxController } from './inbox.controller';
  * OwnerGuard), экран «Входящие» (InboxService — разбор строк выписки).
  */
 @Module({
-  imports: [OrderModule], // InboxService.attachOrder → OrderService.addPayment
+  // OrderModule: InboxService.attachOrder → OrderService.addPayment.
+  // AuditModule: след подключения/ротации токена банка (integration.*).
+  imports: [OrderModule, AuditModule],
   controllers: [IntegrationsController, InboxController],
   providers: [
     CryptoService,

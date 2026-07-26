@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Prisma, TransactionKind, type CategoryBucket } from '@prisma/client';
 import { TransactionService, KINDS_FOR_BUCKET, TRANSFER_KINDS } from './transaction.service';
 import { bucketForSystemKind } from '../reports/pnl.service';

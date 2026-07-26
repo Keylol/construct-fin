@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from './crypto.service';
 import { SyncService, type SyncResult } from './sync.service';
 import type { CreateIntegrationDto, UpdateIntegrationDto } from './integrations.dto';
+import { AuditService } from '../audit/audit.service';
 
 // Публичная выборка — credentialEnc НАМЕРЕННО не выбирается: секрет не покидает
 // слой БД (defense-in-depth, а не только фильтрация в serialize).
@@ -30,6 +31,7 @@ export class IntegrationsService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly sync: SyncService,
+    private readonly audit: AuditService,
   ) {}
 
   async list(workspaceId: string) {
@@ -56,10 +58,20 @@ export class IntegrationsService {
       },
       select: PUBLIC_SELECT,
     });
+    // Аудит подключения банка: значение секрета НЕ пишем — только провайдер,
+    // счёт и маска. Раньше самые security-значимые операции не оставляли следа.
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId: userId,
+      action: 'integration.create',
+      entityType: 'IntegrationConnection',
+      entityId: created.id,
+      diff: { provider: dto.provider, accountId: dto.accountId, keyLast4: created.keyLast4 },
+    });
     return this.serialize(created);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateIntegrationDto) {
+  async update(workspaceId: string, id: string, userId: string, dto: UpdateIntegrationDto) {
     await this.assertOwned(workspaceId, id);
     const updated = await this.prisma.integrationConnection.update({
       where: { id },
@@ -77,14 +89,43 @@ export class IntegrationsService {
       },
       select: PUBLIC_SELECT,
     });
+    if (dto.token) {
+      await this.audit.record(undefined, {
+        workspaceId,
+        actorId: userId,
+        action: 'integration.token-rotate',
+        entityType: 'IntegrationConnection',
+        entityId: id,
+        // Только маска нового ключа — сам токен в аудит не попадает.
+        diff: { provider: updated.provider, keyLast4: updated.keyLast4 },
+      });
+    }
+    if (dto.status) {
+      await this.audit.record(undefined, {
+        workspaceId,
+        actorId: userId,
+        action: 'integration.disable',
+        entityType: 'IntegrationConnection',
+        entityId: id,
+        diff: { status: dto.status },
+      });
+    }
     return this.serialize(updated);
   }
 
-  async softDelete(workspaceId: string, id: string) {
+  async softDelete(workspaceId: string, id: string, userId: string) {
     await this.assertOwned(workspaceId, id);
     await this.prisma.integrationConnection.update({
       where: { id },
       data: { deletedAt: new Date(), status: 'DISABLED' },
+    });
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId: userId,
+      action: 'integration.disable',
+      entityType: 'IntegrationConnection',
+      entityId: id,
+      diff: { deleted: true },
     });
   }
 

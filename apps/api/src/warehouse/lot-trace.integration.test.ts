@@ -52,7 +52,7 @@ async function setupTracedAB() {
 
 describe('F5: openLots — открытые партии позиции', () => {
   it('FIFO-порядок, поставщик и счёт закупки на каждой партии', async () => {
-    const { itemId, ivanov, petrov } = await setupTracedAB();
+    const { itemId, ivanov } = await setupTracedAB();
     const lots = await h.warehouse.openLots(seed.workspaceId, itemId);
     expect(lots).toHaveLength(2);
     expect(lots[0]).toMatchObject({
@@ -88,7 +88,7 @@ describe('F5: openLots — открытые партии позиции', () => 
 
 describe('F5: lotTraceForOrder — трасса строк заказа', () => {
   it('finalize через две партии → строка ссылается на обе с поставщиками', async () => {
-    const { itemId, ivanov, petrov } = await setupTracedAB();
+    const { itemId } = await setupTracedAB();
     const order = await h.orders.create(seed.workspaceId, {
       items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '7', unitPrice: '300' }],
     });

@@ -96,6 +96,8 @@ export class AttachmentController {
     reply
       .header('content-type', mimeType)
       .header('content-disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+      // Чеки и счета — не в кэш браузера/WebView (см. экспорт отчётов).
+      .header('cache-control', 'no-store, private')
       .send(buffer);
   }
 

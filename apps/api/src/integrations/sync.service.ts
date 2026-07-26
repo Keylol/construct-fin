@@ -6,6 +6,14 @@ import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import type { RawBankLine } from './provider-adapter';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
+import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
+
+/**
+ * Сколько дней хранить сырой ответ провайдера (BankStatementLine.raw).
+ * Дальше — обнуление кроном purgeStaleRaw(): форензика нужна по свежим синкам,
+ * а реквизиты контрагентов бессрочно в каждом бэкапе — нет.
+ */
+const RAW_TTL_DAYS = 30;
 
 export interface SyncResult {
   fetched: number;
@@ -52,10 +60,34 @@ export class SyncService {
         await this.syncConnection(c.id);
       } catch (e) {
         this.logger.error(
-          `Плановый синк подключения ${c.id} упал: ${e instanceof Error ? e.message : e}`,
+          `Плановый синк подключения ${c.id} упал: ${sanitizeSecrets(
+            e instanceof Error ? e.message : String(e),
+          )}`,
         );
       }
     }
+  }
+
+  /**
+   * TTL сырых ответов провайдера: раз в сутки обнуляем `raw` у строк выписки
+   * старше RAW_TTL_DAYS.
+   *
+   * `raw` нужен для разбора «почему адаптер так прочитал операцию» — это вопрос
+   * первых дней после синка. Дальше колонка превращается в бессрочный склад
+   * реквизитов контрагентов (счета, БИК, назначения) в каждом бэкапе. Сами
+   * строки выписки не трогаем — только сырой ответ.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async purgeStaleRaw(): Promise<{ purged: number }> {
+    const cutoff = new Date(Date.now() - RAW_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const res = await this.prisma.bankStatementLine.updateMany({
+      where: { createdAt: { lt: cutoff }, raw: { not: Prisma.DbNull } },
+      data: { raw: Prisma.DbNull },
+    });
+    if (res.count > 0) {
+      this.logger.log(`TTL raw: обнулено сырых ответов — ${res.count} (старше ${RAW_TTL_DAYS} дн.)`);
+    }
+    return { purged: res.count };
   }
 
   /** Синхронизировать одно подключение. Возвращает счётчики для UI-кнопки. */
@@ -106,7 +138,10 @@ export class SyncService {
       });
       return { fetched: lines.length, created, autoPosted };
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      // Текст ошибки провайдера хранится в БД и показывается в UI интеграций —
+      // прогоняем через sanitize: сообщения HTTP-клиентов несут URL с
+      // ?access_token=…, заголовок Authorization и тело ответа банка.
+      const message = sanitizeSecrets(e instanceof Error ? e.message : String(e));
       await this.prisma.integrationConnection.update({
         where: { id: conn.id },
         data: { status: 'ERROR', lastSyncError: message.slice(0, 500) },
@@ -212,7 +247,14 @@ export class SyncService {
       status: over.status,
       suggestedCategoryId: over.suggestedCategoryId,
       transactionId: over.transactionId ?? null,
-      raw: (line.raw ?? null) as Prisma.InputJsonValue,
+      // Сырой ответ провайдера — только через sanitize: адаптер может отдать в
+      // raw весь HTTP-response, включая эхо заголовка Authorization и полей
+      // client_secret/access_token. Колонка попадает в каждый дамп БД, поэтому
+      // секреты в неё не должны доехать даже случайно. Обнуляется по TTL —
+      // см. purgeStaleRaw().
+      raw: (line.raw == null
+        ? null
+        : sanitizeSecretsDeep(line.raw)) as Prisma.InputJsonValue,
     };
   }
 

@@ -63,6 +63,14 @@ services:
       UPLOAD_DIR: /app/data/uploads
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
+      # Ф1: мастер-ключ шифрования секретов интеграций (банковские токены).
+      # Без проброса переменная не доходила до приложения даже будучи заданной в
+      # .env.production → CryptoService получал null и весь модуль интеграций
+      # отвечал 503. Не задан — фича штатно выключена (это допустимо).
+      INTEGRATION_MASTER_KEY: ${INTEGRATION_MASTER_KEY:-}
+      # Ф5/L5: чат владельца для TG-напоминаний о платежах и алертов 5xx.
+      # Не задан — крон и алерты no-op.
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-}
     volumes:
       - uploads:/app/data/uploads
     ports:
