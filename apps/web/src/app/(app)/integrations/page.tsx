@@ -134,6 +134,7 @@ export default function IntegrationsPage() {
                   <div className="font-medium">{PROVIDER_LABELS[c.provider]}</div>
                   <div className="text-xs text-muted-foreground">
                     {c.account.name} · ключ …{c.keyLast4}
+                    {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
                   </div>
                 </div>
                 <div className="min-w-[140px]">
@@ -210,17 +211,28 @@ function CreateConnectionSheet({
   const [provider, setProvider] = useState<IntegrationProvider>('ALFA');
   const [accountId, setAccountId] = useState('');
   const [token, setToken] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+
+  // Оба банка принимают номер расчётного счёта параметром запроса выписки.
+  const needsAccountNumber = provider === 'ALFA' || provider === 'TBANK';
+  const accountNumberOk = !needsAccountNumber || /^\d{20}$/.test(accountNumber.trim());
 
   const reset = () => {
     setProvider('ALFA');
     setAccountId('');
     setToken('');
+    setAccountNumber('');
   };
 
   const submit = () => {
-    if (!accountId || !token.trim()) return;
+    if (!accountId || !token.trim() || !accountNumberOk) return;
     create.mutate(
-      { provider, accountId, token: token.trim() },
+      {
+        provider,
+        accountId,
+        token: token.trim(),
+        ...(needsAccountNumber ? { accountNumber: accountNumber.trim() } : {}),
+      },
       {
         onSuccess: () => {
           toast.success('Банк подключён');
@@ -255,12 +267,36 @@ function CreateConnectionSheet({
               ))}
             </Select>
           </FormField>
-          <FormField label="Токен API" hint="Из личного кабинета банка. Хранится зашифрованным.">
+          {needsAccountNumber && (
+            <FormField
+              label="Номер расчётного счёта"
+              hint="20 цифр, как в реквизитах. По нему банк отдаёт выписку."
+              error={
+                accountNumber.trim() !== '' && !accountNumberOk ? 'Номер счёта — 20 цифр' : undefined
+              }
+            >
+              <Input
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 20))}
+                placeholder="40802810000000000000"
+                inputMode="numeric"
+                autoComplete="off"
+              />
+            </FormField>
+          )}
+          <FormField
+            label={provider === 'ALFA' ? 'API Key' : 'Токен API'}
+            hint={
+              provider === 'ALFA'
+                ? 'Выпускается на Портале разработчика Альфа-Банка. Хранится зашифрованным.'
+                : 'ЛК Т-Бизнеса → Интеграции → Выпуск токена, доступ «Счета и выписки». Хранится зашифрованным.'
+            }
+          >
             <Input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="Вставьте токен"
+              placeholder="Вставьте ключ"
               autoComplete="off"
             />
           </FormField>
@@ -269,7 +305,10 @@ function CreateConnectionSheet({
           <Button variant="secondary" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={submit} disabled={!accountId || !token.trim() || create.isPending}>
+          <Button
+            onClick={submit}
+            disabled={!accountId || !token.trim() || !accountNumberOk || create.isPending}
+          >
             Подключить
           </Button>
         </SheetFooter>

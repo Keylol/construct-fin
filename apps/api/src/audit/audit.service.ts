@@ -35,7 +35,10 @@ export type AuditAction =
   // и ротация его токена. Пишутся БЕЗ значения секрета (только provider и маска).
   | 'integration.create'
   | 'integration.token-rotate'
-  | 'integration.disable';
+  | 'integration.disable'
+  // Смена номера счёта у подключения: меняет источник строк выписки и сбрасывает
+  // курсор синка — след нужен, чтобы понимать происхождение операций.
+  | 'integration.account-change';
 
 export interface AuditEntry {
   workspaceId: string;

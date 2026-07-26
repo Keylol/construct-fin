@@ -715,6 +715,8 @@ export interface IntegrationConnection {
   provider: IntegrationProvider;
   status: IntegrationStatus;
   keyLast4: string;
+  /** Номер расчётного счёта у провайдера (Альфа); null — не задан. */
+  accountNumber: string | null;
   account: { id: string; name: string };
   lastSyncAt: string | null;
   lastSyncError: string | null;

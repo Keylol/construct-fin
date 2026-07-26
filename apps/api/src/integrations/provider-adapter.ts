@@ -26,6 +26,23 @@ export interface FetchStatementResult {
   nextCursor: string | null;
 }
 
+export interface FetchStatementInput {
+  /** Секрет подключения: API Key (Альфа) или токен провайдера. */
+  token: string;
+  /** Курсор прошлого синка; null — первый проход. */
+  cursor: string | null;
+  /**
+   * Внешний идентификатор счёта у провайдера (у Альфы — номер расчётного счёта).
+   * null для провайдеров, которым он не нужен (FakeBank).
+   */
+  accountNumber?: string | null;
+  /**
+   * Когда подключение создано. Первый синк начинается с этого дня: история до
+   * подключения уже занесена руками (решение №15 генплана «Полный автомат»).
+   */
+  connectedAt: Date;
+}
+
 /**
  * Адаптер провайдера выписки. Реализации: FakeBankAdapter (Ф1, тесты/демо),
  * AlfaAdapter (Ф2), TbankAdapter (Ф3), WbPdfAdapter (Ф6). Чистый ввод-вывод:
@@ -34,5 +51,5 @@ export interface FetchStatementResult {
  */
 export interface BankProviderAdapter {
   readonly provider: IntegrationProvider | 'FAKE';
-  fetchStatement(input: { token: string; cursor: string | null }): Promise<FetchStatementResult>;
+  fetchStatement(input: FetchStatementInput): Promise<FetchStatementResult>;
 }

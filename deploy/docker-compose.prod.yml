@@ -71,8 +71,22 @@ services:
       # Ф5/L5: чат владельца для TG-напоминаний о платежах и алертов 5xx.
       # Не задан — крон и алерты no-op.
       ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-}
+      # Ф2 «Альфа»: адрес API (пром/песочница) и клиентский сертификат mTLS.
+      # Пути — внутри контейнера, файлы монтируются с хоста только на чтение.
+      # Сертификата нет → адаптер не регистрируется, подключения Альфы отвечают
+      # 503 (штатно выключено, как и мастер-ключ выше).
+      ALFA_API_BASE_URL: ${ALFA_API_BASE_URL:-}
+      ALFA_TLS_CERT_PATH: ${ALFA_TLS_CERT_PATH:-}
+      ALFA_TLS_KEY_PATH: ${ALFA_TLS_KEY_PATH:-}
+      ALFA_TLS_CA_PATH: ${ALFA_TLS_CA_PATH:-}
+      ALFA_TLS_KEY_PASSPHRASE: ${ALFA_TLS_KEY_PASSPHRASE:-}
+      # Ф3 «Т-Банк»: адрес T-API (пром/песочница). Сертификат не нужен, токен
+      # задаётся в UI и лежит в БД зашифрованным. Не задан → пром.
+      TBANK_API_BASE_URL: ${TBANK_API_BASE_URL:-}
     volumes:
       - uploads:/app/data/uploads
+      # Сертификаты банка: каталог на хосте (chmod 600, вне репозитория).
+      - ${ALFA_TLS_DIR:-./certs}:/app/certs:ro
     ports:
       - "127.0.0.1:4000:4000"
     networks: [internal]

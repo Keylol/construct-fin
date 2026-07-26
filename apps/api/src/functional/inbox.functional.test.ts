@@ -38,7 +38,12 @@ async function seedInbox(): Promise<string> {
     method: 'POST',
     url: `/workspaces/${ws()}/integrations`,
     token,
-    payload: { provider: 'ALFA', accountId: seed.accountId, token: 'tok-1234' },
+    payload: {
+      provider: 'ALFA',
+      accountId: seed.accountId,
+      token: 'tok-1234',
+      accountNumber: '40802810401300015422',
+    },
   });
   const connId = create.json<{ id: string }>().id;
   await H.inject({ method: 'POST', url: `/workspaces/${ws()}/integrations/${connId}/sync`, token });
