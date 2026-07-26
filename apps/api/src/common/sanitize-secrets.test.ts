@@ -6,6 +6,37 @@
 import { describe, it, expect } from 'vitest';
 import { sanitizeSecrets, sanitizeSecretsDeep } from './sanitize-secrets';
 
+describe('sanitizeSecrets — PEM (Ф2: сертификаты и ключи mTLS)', () => {
+  it('вырезает блок закрытого ключа целиком', () => {
+    const pem = [
+      '-----BEGIN PRIVATE KEY-----',
+      'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC+t/vk0k7Vz9pQ',
+      'aB+cd/efGH123456789+/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP',
+      '-----END PRIVATE KEY-----',
+    ].join('\n');
+    const out = sanitizeSecrets(`TLS handshake failed with key ${pem} at line 3`);
+    expect(out).not.toContain('MIIEvQIBADAN');
+    expect(out).not.toContain('BEGIN PRIVATE KEY');
+    // Полезный контекст ошибки при этом сохраняется.
+    expect(out).toContain('TLS handshake failed');
+    expect(out).toContain('at line 3');
+  });
+
+  it('вырезает и сертификат (он же выдаёт компанию-владельца)', () => {
+    const pem = '-----BEGIN CERTIFICATE-----\nZm9vYmFy+abc/def\n-----END CERTIFICATE-----';
+    expect(sanitizeSecrets(pem)).not.toContain('Zm9vYmFy');
+  });
+
+  it('base64 с + и / внутри PEM не просачивается кусками', () => {
+    // Именно этот случай не покрывался LONG_OPAQUE_RE: в нём нет + и /,
+    // поэтому короткие фрагменты строки ключа оставались в тексте.
+    const pem = '-----BEGIN RSA PRIVATE KEY-----\nabc+def/ghi\njkl+mno/pqr\n-----END RSA PRIVATE KEY-----';
+    const out = sanitizeSecrets(pem);
+    expect(out).not.toContain('abc+def');
+    expect(out).not.toContain('jkl+mno');
+  });
+});
+
 describe('sanitizeSecrets', () => {
   it('вычищает токен из query-строки URL (OAuth-callback банка)', () => {
     const out = sanitizeSecrets(

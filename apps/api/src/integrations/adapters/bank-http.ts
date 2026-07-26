@@ -14,10 +14,26 @@ export interface BankHttpResponse {
   headers: Record<string, string | string[] | undefined>;
 }
 
+/**
+ * Материал для mTLS-соединения: сертификат клиента и его ключ. Приходит от
+ * конкретного подключения (у разных ИП — разные сертификаты от банка), либо
+ * из env как запасной вариант.
+ */
+export interface TlsMaterial {
+  cert: string;
+  key: string;
+  ca?: string;
+  passphrase?: string;
+}
+
 export interface BankHttp {
-  /** Настроен ли транспорт (Альфе нужен сертификат; Т-Банку — ничего). */
+  /** Настроен ли транспорт (Т-Банку нужен только токен подключения). */
   readonly configured: boolean;
-  getJson(url: string, headers: Record<string, string>): Promise<BankHttpResponse>;
+  getJson(
+    url: string,
+    headers: Record<string, string>,
+    tls?: TlsMaterial,
+  ): Promise<BankHttpResponse>;
 }
 
 /**

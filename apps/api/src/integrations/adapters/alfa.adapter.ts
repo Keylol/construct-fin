@@ -11,7 +11,7 @@ import type {
   RawBankLine,
 } from '../provider-adapter';
 import { ALFA_HTTP, type AlfaHttp } from './alfa-transport';
-import { assertHeaderSafe } from './bank-http';
+import { assertHeaderSafe, type TlsMaterial } from './bank-http';
 import { AdapterRegistry } from '../adapter-registry';
 
 /**
@@ -79,15 +79,22 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
   ) {}
 
   /**
-   * Включаем Альфу только когда на сервере лежит клиентский сертификат mTLS:
-   * без него запрос всё равно оборвётся на TLS-рукопожатии, и честнее отдать
-   * понятное «провайдер не подключён», чем сетевую ошибку в каждом синке.
+   * На проде адаптер включается всегда: сертификат mTLS принадлежит подключению
+   * (у разных ИП — разные сертификаты от банка), и есть ли он, выясняется в
+   * момент синка — тогда же владелец получит понятное сообщение.
+   *
+   * Вне прода реальный адаптер вытеснил бы FakeBankAdapter, на котором держится
+   * демо и интеграционные тесты полного цикла «выписка → Inbox». Поэтому в
+   * dev/test он включается, только если сертификат задан в env явно — то есть
+   * когда локальную работу с банком настроили осознанно.
    */
   onModuleInit(): void {
-    if (!this.http.configured) {
-      this.logger.warn(
-        'Alfa API выключен: не заданы ALFA_TLS_CERT_PATH/ALFA_TLS_KEY_PATH (сертификат mTLS)',
-      );
+    const isProd = this.config.get('NODE_ENV', { infer: true }) === 'production';
+    const envCert =
+      !!this.config.get('ALFA_TLS_CERT_PATH', { infer: true }) &&
+      !!this.config.get('ALFA_TLS_KEY_PATH', { infer: true });
+    if (!isProd && !envCert) {
+      this.logger.warn('Alfa API вне прода не включён (нет ALFA_TLS_*) — работает FakeBank');
       return;
     }
     this.registry.register('ALFA', this);
@@ -111,7 +118,7 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
 
     const lines: RawBankLine[] = [];
     for (const day of days) {
-      const dayLines = await this.fetchDay(input.token, accountNumber, day);
+      const dayLines = await this.fetchDay(input.token, accountNumber, day, input.tls ?? null);
       lines.push(...dayLines);
     }
 
@@ -155,6 +162,7 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
     apiKey: string,
     accountNumber: string,
     day: string,
+    tls: TlsMaterial | null,
   ): Promise<RawBankLine[]> {
     const base = this.config.get('ALFA_API_BASE_URL', { infer: true }) ?? DEFAULT_BASE_URL;
     const out: RawBankLine[] = [];
@@ -164,12 +172,16 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
         accountNumber,
       )}&statementDate=${day}&page=${page}`;
 
-      const res = await this.http.getJson(url, {
-        Authorization: `ApiKey ${apiKey}`,
-        Accept: 'application/json',
-        // Корреляция запроса на стороне банка — пригодится в разборе инцидентов.
-        'x-fapi-interaction-id': randomUUID(),
-      });
+      const res = await this.http.getJson(
+        url,
+        {
+          Authorization: `ApiKey ${apiKey}`,
+          Accept: 'application/json',
+          // Корреляция запроса на стороне банка — пригодится в разборе инцидентов.
+          'x-fapi-interaction-id': randomUUID(),
+        },
+        tls ?? undefined,
+      );
 
       if (res.status !== 200) throw httpError(res.status, res.body, day);
 

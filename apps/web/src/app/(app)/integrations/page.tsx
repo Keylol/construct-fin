@@ -136,6 +136,7 @@ export default function IntegrationsPage() {
                     {c.account.name} · ключ …{c.keyLast4}
                     {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
                   </div>
+                  {c.tlsExpiresAt && <CertNote expiresAt={c.tlsExpiresAt} />}
                 </div>
                 <div className="min-w-[140px]">
                   <StatusDot tone={STATUS[c.status].tone} label={STATUS[c.status].label} />
@@ -196,6 +197,23 @@ export default function IntegrationsPage() {
   );
 }
 
+/**
+ * Срок действия клиентского сертификата. Предупреждаем заранее: истёкший
+ * сертификат означает отказ TLS-рукопожатия, то есть молчаливо вставший синк.
+ */
+function CertNote({ expiresAt }: { expiresAt: string }) {
+  const days = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+  const tone =
+    days < 0 ? 'text-destructive' : days <= 30 ? 'text-warning' : 'text-muted-foreground';
+  const text =
+    days < 0
+      ? `Сертификат истёк ${formatDateTime(expiresAt)}`
+      : days <= 30
+        ? `Сертификат истекает через ${days} дн.`
+        : `Сертификат до ${formatDateTime(expiresAt)}`;
+  return <div className={`text-xs ${tone}`}>{text}</div>;
+}
+
 function CreateConnectionSheet({
   open,
   onClose,
@@ -212,26 +230,54 @@ function CreateConnectionSheet({
   const [accountId, setAccountId] = useState('');
   const [token, setToken] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [tlsCert, setTlsCert] = useState('');
+  const [tlsKey, setTlsKey] = useState('');
+  const [tlsPassphrase, setTlsPassphrase] = useState('');
+  const [fileError, setFileError] = useState<string | null>(null);
 
   // Оба банка принимают номер расчётного счёта параметром запроса выписки.
   const needsAccountNumber = provider === 'ALFA' || provider === 'TBANK';
   const accountNumberOk = !needsAccountNumber || /^\d{20}$/.test(accountNumber.trim());
+  // Альфа пускает только по клиентскому сертификату, и он свой у каждой
+  // компании — поэтому загружается в само подключение, а не в настройки сервера.
+  const needsTls = provider === 'ALFA';
+  const tlsOk = !needsTls || (tlsCert.trim() !== '' && tlsKey.trim() !== '');
+
+  const readFile = (file: File | undefined, set: (v: string) => void) => {
+    setFileError(null);
+    if (!file) return;
+    file
+      .text()
+      .then((text) => set(text))
+      .catch(() => setFileError('Не удалось прочитать файл'));
+  };
 
   const reset = () => {
     setProvider('ALFA');
     setAccountId('');
     setToken('');
     setAccountNumber('');
+    setTlsCert('');
+    setTlsKey('');
+    setTlsPassphrase('');
+    setFileError(null);
   };
 
   const submit = () => {
-    if (!accountId || !token.trim() || !accountNumberOk) return;
+    if (!accountId || !token.trim() || !accountNumberOk || !tlsOk) return;
     create.mutate(
       {
         provider,
         accountId,
         token: token.trim(),
         ...(needsAccountNumber ? { accountNumber: accountNumber.trim() } : {}),
+        ...(needsTls
+          ? {
+              tlsCert,
+              tlsKey,
+              ...(tlsPassphrase ? { tlsPassphrase } : {}),
+            }
+          : {}),
       },
       {
         onSuccess: () => {
@@ -300,6 +346,44 @@ function CreateConnectionSheet({
               autoComplete="off"
             />
           </FormField>
+          {needsTls && (
+            <>
+              <FormField
+                label="Сертификат (.cer)"
+                hint="Клиентский сертификат из архива банка. Свой для каждой компании."
+                error={fileError ?? undefined}
+              >
+                <input
+                  type="file"
+                  accept=".cer,.crt,.pem"
+                  onChange={(e) => readFile(e.target.files?.[0], setTlsCert)}
+                  className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-muted file:px-3 file:py-1.5 file:text-sm"
+                />
+                {tlsCert && <p className="mt-1 text-xs text-success">Файл загружен</p>}
+              </FormField>
+              <FormField
+                label="Закрытый ключ (.key)"
+                hint="Хранится в зашифрованном виде и наружу не отдаётся."
+              >
+                <input
+                  type="file"
+                  accept=".key,.pem"
+                  onChange={(e) => readFile(e.target.files?.[0], setTlsKey)}
+                  className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-muted file:px-3 file:py-1.5 file:text-sm"
+                />
+                {tlsKey && <p className="mt-1 text-xs text-success">Файл загружен</p>}
+              </FormField>
+              <FormField label="Пароль ключа" hint="Только если ключ защищён паролем.">
+                <Input
+                  type="password"
+                  value={tlsPassphrase}
+                  onChange={(e) => setTlsPassphrase(e.target.value)}
+                  placeholder="Необязательно"
+                  autoComplete="off"
+                />
+              </FormField>
+            </>
+          )}
         </SheetBody>
         <SheetFooter>
           <Button variant="secondary" onClick={onClose}>
@@ -307,7 +391,7 @@ function CreateConnectionSheet({
           </Button>
           <Button
             onClick={submit}
-            disabled={!accountId || !token.trim() || !accountNumberOk || create.isPending}
+            disabled={!accountId || !token.trim() || !accountNumberOk || !tlsOk || create.isPending}
           >
             Подключить
           </Button>

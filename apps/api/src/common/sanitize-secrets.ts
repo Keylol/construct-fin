@@ -27,6 +27,7 @@ const SECRET_KEYS = [
   'apikey',
   'authorization',
   'credentialenc',
+  'tlscredentialenc',
   'private_key',
   'passphrase',
 ];
@@ -63,6 +64,16 @@ const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/g
  */
 const QUERY_CODE_RE = /([?&]code=)[^&\s"'}]+/gi;
 
+/**
+ * PEM-блок целиком (Ф2: клиентские сертификаты и закрытые ключи mTLS).
+ *
+ * Отдельное правило нужно потому, что тело PEM — обычный base64 с `+` и `/`,
+ * которых нет в LONG_OPAQUE_RE: часть строк ключа прошла бы маскировку, а часть
+ * утекла бы в `lastSyncError` и в лог. Вырезаем от BEGIN до END, вместе с
+ * заголовками — по ним всё равно ничего не диагностируют.
+ */
+const PEM_BLOCK_RE = /-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----/g;
+
 /** Telegram bot token: `<bot_id>:AA<...>` — он же HMAC-ключ проверки логина. */
 const TELEGRAM_TOKEN_RE = /\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/g;
 
@@ -80,6 +91,9 @@ export function sanitizeSecrets(input: string | undefined | null): string {
   // `Authorization: Bearer <jwt>` съедается как пара ключ-значение, где
   // значением оказывается слово «Bearer», а сам токен остаётся в тексте.
   return input
+    // PEM — первым: внутри него встречаются все остальные формы, и вырезать
+    // блок целиком проще, чем собирать его обрывки.
+    .replace(PEM_BLOCK_RE, MASK)
     .replace(TELEGRAM_TOKEN_RE, MASK)
     .replace(QUERY_CODE_RE, `$1${MASK}`)
     .replace(JWT_RE, MASK)
