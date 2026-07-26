@@ -26,7 +26,6 @@ const SECRET_KEYS = [
   'api_key',
   'apikey',
   'authorization',
-  'code',
   'credentialenc',
   'private_key',
   'passphrase',
@@ -54,6 +53,16 @@ const BEARER_RE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
  */
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/g;
 
+/**
+ * OAuth-код авторизации — ТОЛЬКО в query-контексте (`?code=…`, `&code=…`).
+ *
+ * Слово `code` намеренно не входит в SECRET_KEYS: там оно маскировало бы
+ * `Prisma error code: P2002` и `error code=42`, то есть именно те коды, по
+ * которым разбирают инцидент. В query же `code` — это одноразовый код обмена
+ * на токен, и он секрет.
+ */
+const QUERY_CODE_RE = /([?&]code=)[^&\s"'}]+/gi;
+
 /** Telegram bot token: `<bot_id>:AA<...>` — он же HMAC-ключ проверки логина. */
 const TELEGRAM_TOKEN_RE = /\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/g;
 
@@ -72,6 +81,7 @@ export function sanitizeSecrets(input: string | undefined | null): string {
   // значением оказывается слово «Bearer», а сам токен остаётся в тексте.
   return input
     .replace(TELEGRAM_TOKEN_RE, MASK)
+    .replace(QUERY_CODE_RE, `$1${MASK}`)
     .replace(JWT_RE, MASK)
     .replace(BEARER_RE, (_m, scheme: string) => `${scheme} ${MASK}`)
     .replace(KEY_VALUE_RE, (_m, q1: string, key: string, _q2: string) => `${q1}${key}${q1}=${MASK}`)

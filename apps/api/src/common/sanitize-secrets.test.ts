@@ -49,6 +49,25 @@ describe('sanitizeSecrets', () => {
     expect(sanitizeSecrets(msg)).toBe(msg);
   });
 
+  // Регресс: слово `code` в тексте — это код ошибки, по которому и разбирают
+  // инцидент. Маскировать его нельзя; секрет — только `code` в query-строке.
+  it('НЕ маскирует коды ошибок в тексте (Prisma/HTTP)', () => {
+    expect(sanitizeSecrets('Prisma error code: P2002 on Transaction')).toBe(
+      'Prisma error code: P2002 on Transaction',
+    );
+    expect(sanitizeSecrets('HTTP 403, error code=42, retry later')).toBe(
+      'HTTP 403, error code=42, retry later',
+    );
+  });
+
+  it('маскирует OAuth-код именно в query-строке', () => {
+    const out = sanitizeSecrets('callback https://app/cb?code=OAUTH-SECRET-XYZ&state=1');
+    expect(out).not.toContain('OAUTH-SECRET-XYZ');
+    expect(out).toContain('code=[REDACTED]');
+    // Остальные параметры не задеты — они нужны для разбора.
+    expect(out).toContain('state=1');
+  });
+
   it('пустой ввод не ломает', () => {
     expect(sanitizeSecrets(undefined)).toBe('');
     expect(sanitizeSecrets(null)).toBe('');

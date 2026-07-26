@@ -112,8 +112,14 @@ export const loggerParams: Params = {
           headers: pickHeaders(req.headers, REQ_HEADER_ALLOWLIST),
         };
       },
-      res: (res: { statusCode?: number; headers?: Record<string, unknown>; getHeaders?: () => Record<string, unknown> }) => ({
-        statusCode: res.statusCode,
+      res: (res: {
+        statusCode?: number;
+        headers?: Record<string, unknown>;
+        getHeaders?: () => Record<string, unknown>;
+      }) => ({
+        // Fastify всегда проставляет statusCode; ?? 0 — чтобы поле не пропало
+        // из JSON-записи лога, если сериализатор позовут на недооформленном res.
+        statusCode: res.statusCode ?? 0,
         headers: pickHeaders(res.headers ?? res.getHeaders?.(), RES_HEADER_ALLOWLIST),
       }),
     },
