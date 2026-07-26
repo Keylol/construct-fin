@@ -204,8 +204,12 @@ describe('parseAlfaXlsx', () => {
 });
 
 describe('parseWbPdf', () => {
-  it('parses real WB fixture', async () => {
-    const buf = readFileSync(resolve(FIXTURES, 'wb-sample.pdf'));
+  // Базовый контракт парсера (source/непустые строки/оба направления) проверяем
+  // на ОБЕЗЛИЧЕННОЙ фикстуре. Реальные выписки живут только локально в
+  // fixtures/imports/private/ (gitignore) — репозиторий публичный, персональные
+  // данные (ФИО, адрес, паспорт) в него попадать не должны.
+  it('parses WB statement fixture: базовый контракт', async () => {
+    const buf = readFileSync(resolve(FIXTURES, 'wb-statement-synth.pdf'));
     const res = await parseWbPdf(buf);
     expect(res.source).toBe('WB_PDF');
     expect(res.rows.length).toBeGreaterThan(0);
