@@ -152,6 +152,23 @@ describe('TbankAdapter — пагинация и ошибки', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('ПУСТАЯ TBANK_API_BASE_URL из compose → берётся пром, а не пустая база', async () => {
+    // Тот же класс, что прод-инцидент с пустой env: ConfigService отдаёт
+    // пустую строку, и `??` не подхватывает дефолт.
+    const calls: string[] = [];
+    const http: BankHttp = {
+      configured: true,
+      getJson: (url) => {
+        calls.push(url);
+        return Promise.resolve({ status: 200, body: '{"operations":[]}', headers: {} });
+      },
+    };
+    const registry = { register: vi.fn() } as unknown as AdapterRegistry;
+    const adapter = new TbankAdapter(http, { get: vi.fn(() => '') } as never, registry);
+    await adapter.fetchStatement({ ...base, cursor: null });
+    expect(calls[0]!.startsWith('https://business.tbank.ru/openapi/api/v1/statement?')).toBe(true);
+  });
+
   it('ошибка банка → человеческий текст с кодом обращения, без тела ответа', async () => {
     const { adapter } = stub(() => ({
       status: 403,
