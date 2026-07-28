@@ -40,7 +40,9 @@ export type AuditAction =
   // курсор синка — след нужен, чтобы понимать происхождение операций.
   | 'integration.account-change'
   // Загрузка/замена клиентского сертификата mTLS (только отпечаток и срок).
-  | 'integration.tls-rotate';
+  | 'integration.tls-rotate'
+  // «Перезагрузить выписку»: снос банковских строк и проводок + сброс курсора.
+  | 'integration.reset';
 
 export interface AuditEntry {
   workspaceId: string;

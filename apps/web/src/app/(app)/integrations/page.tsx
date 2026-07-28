@@ -9,6 +9,7 @@ import {
   useCreateIntegration,
   useDeleteIntegration,
   useSyncIntegration,
+  useResetIntegration,
 } from '@/hooks/useIntegrations';
 import type { IntegrationConnection, IntegrationProvider, IntegrationStatus } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -51,9 +52,11 @@ export default function IntegrationsPage() {
   const accounts = useAccounts(wsId);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<IntegrationConnection | null>(null);
+  const [resetting, setResetting] = useState<IntegrationConnection | null>(null);
 
   const del = useDeleteIntegration(wsId ?? '');
   const sync = useSyncIntegration(wsId ?? '');
+  const reset = useResetIntegration(wsId ?? '');
 
   if (!current) {
     return (
@@ -161,6 +164,15 @@ export default function IntegrationsPage() {
                     <RotateCcw className="h-3.5 w-3.5" />
                     Обновить
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setResetting(c)}
+                    disabled={reset.isPending}
+                    title="Снести загруженное из банка и вытянуть заново"
+                  >
+                    Перезагрузить
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => setDeleting(c)} aria-label="Удалить">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -176,6 +188,30 @@ export default function IntegrationsPage() {
         onClose={() => setCreating(false)}
         wsId={wsId ?? ''}
         accounts={(accounts.data ?? []).filter((a) => !a.isArchived).map((a) => ({ id: a.id, name: a.name }))}
+      />
+
+      <ConfirmDialog
+        open={resetting !== null}
+        onOpenChange={(o) => !o && setResetting(null)}
+        title="Перезагрузить выписку?"
+        description="Операции, загруженные из банка по этому подключению, будут удалены, а выписка запрошена заново — по текущим правилам обработки. Операции, внесённые вручную, и оплаты заказов останутся нетронутыми."
+        confirmText="Перезагрузить"
+        onConfirm={() => {
+          if (!resetting) return;
+          reset.mutate(resetting.id, {
+            onSuccess: (r) =>
+              toast.success(
+                `Удалено операций: ${r.transactionsRemoved}, строк выписки: ${r.linesDeleted}` +
+                  (r.orderPaymentsKept > 0
+                    ? `. Оплаты заказов сохранены: ${r.orderPaymentsKept}`
+                    : '') +
+                  '. Нажмите «Обновить», чтобы загрузить заново.',
+              ),
+            onError: (e) =>
+              toast.error(e instanceof Error ? e.message : 'Не удалось перезагрузить выписку'),
+          });
+          setResetting(null);
+        }}
       />
 
       <ConfirmDialog

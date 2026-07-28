@@ -6,6 +6,8 @@ import { FakeBankAdapter } from './adapters/fake-bank.adapter';
 import { AlfaAdapter, dayKey } from './adapters/alfa.adapter';
 import type { AlfaHttp } from './adapters/alfa-transport';
 import { SyncService } from './sync.service';
+import { IntegrationsService } from './integrations.service';
+import { InboxService } from './inbox.service';
 
 /**
  * Интеграционные тесты синка выписки (Ф1-B) против реальной БД.
@@ -183,6 +185,112 @@ describe('SyncService.syncConnection', () => {
     const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
     expect(after.status).toBe('ERROR');
     expect(after.lastSyncError).toContain('boom from bank');
+  });
+});
+
+describe('IntegrationsService.resetStatement — перезагрузка выписки', () => {
+  function svc() {
+    return new IntegrationsService(h.prisma as never, crypto, sync, h.audit as never);
+  }
+
+  it('сносит строки и снятые с них проводки, обнуляет курсор', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id); // 4 строки FakeBank
+    // Разберём одну строку в обычную проводку.
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { connectionId: conn.id },
+    });
+    const cat = await h.categories.create(seed.workspaceId, {
+      name: 'Прочее',
+      kind: 'EXPENSE',
+      isFixedCost: false,
+    });
+    const inbox = new InboxService(h.prisma as never, h.orders as never);
+    await inbox.categorize(seed.workspaceId, seed.userId, line.id, { categoryId: cat.id });
+
+    const res = await svc().resetStatement(seed.workspaceId, conn.id, seed.userId);
+
+    expect(res).toEqual({ linesDeleted: 4, transactionsRemoved: 1, orderPaymentsKept: 0 });
+    expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(0);
+    // Проводка снята мягко — правило проекта, физически строка остаётся.
+    const tx = await h.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, categoryId: cat.id },
+    });
+    expect(tx.deletedAt).not.toBeNull();
+
+    const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(after.syncCursor).toBeNull();
+    expect(after.status).toBe('ACTIVE');
+  });
+
+  it('после сброса повторный синк тянет выписку заново', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    await svc().resetStatement(seed.workspaceId, conn.id, seed.userId);
+
+    const second = await sync.syncConnection(conn.id);
+    expect(second.created).toBe(4); // всё пришло снова
+    expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(4);
+  });
+
+  it('ОПЛАТЫ ЗАКАЗОВ и их строки уцелевают — иначе повторный синк создал бы вторую оплату', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const income = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { connectionId: conn.id, direction: 'INCOME' },
+    });
+    const client = await h.prisma.counterparty.create({
+      data: { workspaceId: seed.workspaceId, name: 'Клиент', role: 'CLIENT' },
+    });
+    const order = await h.orders.create(seed.workspaceId, {
+      clientId: client.id,
+      items: [{ name: 'Товар', qty: '1', unitPrice: '15000' }],
+    });
+    const inbox = new InboxService(h.prisma as never, h.orders as never);
+    await inbox.attachOrder(seed.workspaceId, seed.userId, income.id, order.id);
+
+    const res = await svc().resetStatement(seed.workspaceId, conn.id, seed.userId);
+
+    expect(res.orderPaymentsKept).toBe(1);
+    expect(res.linesDeleted).toBe(3);
+    // Строка оплаты осталась — она же защищает от повторного втягивания.
+    const left = await h.prisma.bankStatementLine.findMany({ where: { connectionId: conn.id } });
+    expect(left).toHaveLength(1);
+    expect(left[0]!.id).toBe(income.id);
+    // Оплата заказа на месте, заказ не пострадал.
+    const payment = await h.prisma.transaction.findFirstOrThrow({
+      where: { orderId: order.id, kind: 'ORDER_PAYMENT' },
+    });
+    expect(payment.deletedAt).toBeNull();
+  });
+
+  it('операции, заведённые руками, сброс не трогает', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const manual = await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: new Date('2026-07-01T00:00:00Z'),
+        amount: '999.00',
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+
+    await svc().resetStatement(seed.workspaceId, conn.id, seed.userId);
+
+    const after = await h.prisma.transaction.findUniqueOrThrow({ where: { id: manual.id } });
+    expect(after.deletedAt).toBeNull();
+  });
+
+  it('чужое подключение сбросить нельзя', async () => {
+    const conn = await makeConnection();
+    await expect(svc().resetStatement('чужое-пространство', conn.id, seed.userId)).rejects.toThrow(
+      /не найдено/,
+    );
+    expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(0);
   });
 });
 

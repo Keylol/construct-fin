@@ -51,6 +51,29 @@ export function useUpdateIntegration(wsId: string) {
   });
 }
 
+export interface ResetResult {
+  linesDeleted: number;
+  transactionsRemoved: number;
+  orderPaymentsKept: number;
+}
+
+/**
+ * «Перезагрузить выписку»: снести загруженное из банка и вытянуть заново —
+ * например, после того как завели правила автокатегоризации.
+ */
+export function useResetIntegration(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<ResetResult>(`/workspaces/${wsId}/integrations/${id}/reset`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integrations', wsId] });
+      qc.invalidateQueries({ queryKey: ['inbox', wsId] });
+      qc.invalidateQueries({ queryKey: ['transactions', wsId] });
+    },
+  });
+}
+
 export function useDeleteIntegration(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
