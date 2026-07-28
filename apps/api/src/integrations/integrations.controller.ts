@@ -66,4 +66,14 @@ export class IntegrationsController {
   syncNow(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
     return this.service.syncNow(ws.workspaceId, id);
   }
+
+  /**
+   * «Перезагрузить выписку» — снести загруженное из банка и вытянуть заново
+   * (например, после того как завели правила автокатегоризации).
+   */
+  @Post(':id/reset')
+  @HttpCode(200)
+  reset(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.resetStatement(ws.workspaceId, id, ws.userId);
+  }
 }

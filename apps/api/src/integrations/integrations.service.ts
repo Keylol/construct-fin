@@ -186,6 +186,77 @@ export class IntegrationsService {
   }
 
   /**
+   * «Перезагрузить выписку»: снести всё, что приехало из банка по этому
+   * подключению, и обнулить курсор — следующий синк вытянет операции заново, по
+   * актуальным правилам автокатегоризации и актуальному маппингу адаптера.
+   *
+   * Нужен, когда правила завели уже ПОСЛЕ первого синка: иначе строки навсегда
+   * остались бы разобранными по-старому, а повторно банк их не отдаст —
+   * идемпотентность по (connectionId, externalId) не пустит.
+   *
+   * Что НЕ трогаем:
+   *   • оплаты заказов (kind != OTHER) — за ними стоят paidAmount и статус
+   *     заказа, снимать их молча нельзя (решение владельца). Их строки выписки
+   *     тоже остаются: удалив строку, мы открыли бы дорогу повторному втягиванию
+   *     той же операции и второй оплате того же заказа;
+   *   • операции, заведённые руками — они с выпиской не связаны вовсе.
+   *
+   * Проводки снимаются soft-delete (правило проекта), строки выписки удаляются
+   * физически: это staging-слой, его смысл — быть перезагружаемым.
+   */
+  async resetStatement(workspaceId: string, id: string, userId: string) {
+    await this.assertOwned(workspaceId, id);
+
+    const lines = await this.prisma.bankStatementLine.findMany({
+      where: { connectionId: id },
+      select: { id: true, transaction: { select: { id: true, kind: true } } },
+    });
+
+    // Оставляем строку, если из неё родилась НЕ обычная проводка: сейчас это
+    // оплаты заказов (ORDER_PAYMENT), у которых свои инварианты.
+    const isOrderPayment = (l: (typeof lines)[number]) =>
+      l.transaction !== null && l.transaction.kind !== 'OTHER';
+    const keep = lines.filter(isOrderPayment);
+    const drop = lines.filter((l) => !isOrderPayment(l));
+    const txToRemove = drop.flatMap((l) => (l.transaction ? [l.transaction.id] : []));
+
+    await this.prisma.$transaction(async (tx) => {
+      if (txToRemove.length > 0) {
+        await tx.transaction.updateMany({
+          where: { id: { in: txToRemove }, workspaceId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+      }
+      if (drop.length > 0) {
+        await tx.bankStatementLine.deleteMany({ where: { id: { in: drop.map((l) => l.id) } } });
+      }
+      await tx.integrationConnection.update({
+        where: { id },
+        data: { syncCursor: null, lastSyncError: null, status: 'ACTIVE' },
+      });
+    });
+
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId: userId,
+      action: 'integration.reset',
+      entityType: 'IntegrationConnection',
+      entityId: id,
+      diff: {
+        linesDeleted: drop.length,
+        transactionsRemoved: txToRemove.length,
+        orderPaymentsKept: keep.length,
+      },
+    });
+
+    return {
+      linesDeleted: drop.length,
+      transactionsRemoved: txToRemove.length,
+      orderPaymentsKept: keep.length,
+    };
+  }
+
+  /**
    * Готовит поля сертификата к записи: валидирует PEM, достаёт публичные
    * метаданные и шифрует пару cert+key. Пустой объект, если сертификат не
    * загружали (Т-Банк, либо Альфа на сертификате из env).
