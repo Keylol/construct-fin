@@ -98,8 +98,21 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
       return;
     }
     this.registry.register('ALFA', this);
-    const base = this.config.get('ALFA_API_BASE_URL', { infer: true }) ?? DEFAULT_BASE_URL;
-    this.logger.log(`Alfa API подключён: ${base}`);
+    this.logger.log(`Alfa API подключён: ${this.baseUrl()}`);
+  }
+
+  /**
+   * База API: своя из env либо пром по умолчанию.
+   *
+   * Через `||`, а НЕ через `??`: docker-compose с `VAR: ${VAR:-}` подставляет
+   * пустую строку, когда переменной нет в .env, и ConfigService отдаёт именно
+   * пустую строку. С `??` дефолт не подхватился бы, база стала бы пустой, а
+   * запрос ушёл бы по относительному пути в никуда. Тот же класс, что прод-
+   * инцидент 2026-07-26 с INTEGRATION_MASTER_KEY.
+   */
+  private baseUrl(): string {
+    const base = this.config.get('ALFA_API_BASE_URL', { infer: true })?.trim() || DEFAULT_BASE_URL;
+    return base.replace(/\/$/, '');
   }
 
   async fetchStatement(input: FetchStatementInput): Promise<FetchStatementResult> {
@@ -164,11 +177,11 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
     day: string,
     tls: TlsMaterial | null,
   ): Promise<RawBankLine[]> {
-    const base = this.config.get('ALFA_API_BASE_URL', { infer: true }) ?? DEFAULT_BASE_URL;
+    const base = this.baseUrl();
     const out: RawBankLine[] = [];
 
     for (let page = 1; page <= MAX_PAGES_PER_DAY; page++) {
-      const url = `${base.replace(/\/$/, '')}/v1/statement/transactions?accountNumber=${encodeURIComponent(
+      const url = `${base}/v1/statement/transactions?accountNumber=${encodeURIComponent(
         accountNumber,
       )}&statementDate=${day}&page=${page}`;
 

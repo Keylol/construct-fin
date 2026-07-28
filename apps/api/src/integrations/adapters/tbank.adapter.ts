@@ -160,8 +160,16 @@ export class TbankAdapter implements BankProviderAdapter, OnModuleInit {
     return new Date(parsed - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
   }
 
+  /**
+   * База API: своя из env либо пром по умолчанию.
+   *
+   * Через `||`, а НЕ через `??`: docker-compose с `VAR: ${VAR:-}` подставляет
+   * пустую строку, когда переменной нет в .env, и ConfigService отдаёт именно
+   * пустую строку. С `??` дефолт не подхватился бы, база стала бы пустой, а
+   * запрос ушёл бы по относительному пути в никуда.
+   */
   private baseUrl(): string {
-    const base = this.config.get('TBANK_API_BASE_URL', { infer: true }) ?? DEFAULT_BASE_URL;
+    const base = this.config.get('TBANK_API_BASE_URL', { infer: true })?.trim() || DEFAULT_BASE_URL;
     return base.replace(/\/$/, '');
   }
 

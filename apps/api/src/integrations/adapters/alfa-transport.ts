@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Agent, request as httpsRequest } from 'node:https';
+import { rootCertificates } from 'node:tls';
 import type { ConfigSchema } from '../../config';
 import type { BankHttp, BankHttpResponse, TlsMaterial } from './bank-http';
+import { RUSSIAN_TRUSTED_ROOT_CA } from './russian-trusted-root-ca';
 
 /**
  * Транспорт к Alfa API (Ф2). Отдельный класс, потому что у него две обязанности,
@@ -33,6 +35,8 @@ export class AlfaTransport implements BankHttp {
   private readonly logger = new Logger(AlfaTransport.name);
   /** Агент на сертификат: TLS-рукопожатие на каждый день выписки — дорого. */
   private readonly agents = new Map<string, Agent>();
+  /** Цепочка Минцифры читается с диска один раз. */
+  private caCache: string | null = null;
 
   constructor(private readonly config: ConfigService<ConfigSchema, true>) {}
 
@@ -108,7 +112,17 @@ export class AlfaTransport implements BankHttp {
     const agent = new Agent({
       cert: material.cert,
       key: material.key,
-      ...(material.ca ? { ca: material.ca } : {}),
+      // Доверенные корни ДОПОЛНЯЕМ, а не заменяем: `ca` в Node вытесняет
+      // системный набор целиком, и соединение с любым обычным сервером (или с
+      // самим банком, если он сменит УЦ) сломалось бы. Сертификаты Минцифры
+      // нужны потому, что баас Альфы подписан Russian Trusted Root CA, которого
+      // в стандартном наборе Node нет.
+      ca: [
+        ...rootCertificates,
+        RUSSIAN_TRUSTED_ROOT_CA,
+        ...this.extraCa(),
+        ...(material.ca ? [material.ca] : []),
+      ],
       ...(material.passphrase ? { passphrase: material.passphrase } : {}),
       keepAlive: true,
       maxSockets: 4,
@@ -124,6 +138,29 @@ export class AlfaTransport implements BankHttp {
     }
     this.agents.set(cacheKey, agent);
     return agent;
+  }
+
+  /**
+   * Дополнительные доверенные корни из env (`ALFA_TLS_CA_PATH`).
+   *
+   * Сюда кладут цепочку Минцифры: сервер Альфы подписан Russian Trusted Root CA,
+   * которого нет ни в Node, ни в базовом образе. Без неё рукопожатие падает с
+   * «self-signed certificate in certificate chain» — ошибкой, по которой
+   * причина не угадывается. Цепочка общая для всех клиентов банка, поэтому
+   * живёт в настройках сервера, а не в подключении (в отличие от клиентского
+   * сертификата, который у каждой компании свой).
+   */
+  private extraCa(): string[] {
+    const caPath = this.config.get('ALFA_TLS_CA_PATH', { infer: true })?.trim();
+    if (!caPath) return [];
+    if (this.caCache === null) {
+      try {
+        this.caCache = readFileSync(caPath, 'utf8');
+      } catch {
+        throw new Error(`Alfa API: не удалось прочитать цепочку УЦ по пути ${caPath}`);
+      }
+    }
+    return [this.caCache];
   }
 
   /** Сертификат из env: путь к файлам на сервере. Читается один раз на агент. */

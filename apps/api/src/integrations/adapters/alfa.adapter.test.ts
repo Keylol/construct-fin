@@ -127,6 +127,29 @@ describe('AlfaAdapter — цикл по дням и курсор', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('ПУСТАЯ ALFA_API_BASE_URL из compose → берётся пром, а не пустая база', async () => {
+    // docker-compose с `VAR: ${VAR:-}` подставляет пустую строку, и
+    // ConfigService отдаёт именно её. С `??` дефолт не подхватывался, база
+    // становилась пустой и запрос уходил по относительному пути в никуда.
+    const calls: string[] = [];
+    const http: AlfaHttp = {
+      configured: true,
+      getJson: (url) => {
+        calls.push(url);
+        return Promise.resolve({ status: 200, body: '{"transactions":[]}', headers: {} });
+      },
+    };
+    const registry = { register: vi.fn() } as unknown as AdapterRegistry;
+    const adapter = new AlfaAdapter(http, { get: vi.fn(() => '') } as never, registry);
+    await adapter.fetchStatement({
+      token: 'key',
+      cursor: '2026-07-21',
+      accountNumber: ACCOUNT,
+      connectedAt: new Date('2026-07-01T00:00:00Z'),
+    });
+    expect(calls[0]!.startsWith('https://baas.alfabank.ru/api/jp/v1/statement/transactions?')).toBe(true);
+  });
+
   it('ключ с пробелом/кириллицей → человеческая ошибка, в сеть не идём', async () => {
     // Заголовок Authorization — latin1: иначе HTTP-клиент падает технической
     // ошибкой «Cannot convert argument to a ByteString», непонятной владельцу.
