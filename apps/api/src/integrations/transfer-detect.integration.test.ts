@@ -26,6 +26,7 @@ async function secondAccount(name = 'Т-Банк …7867') {
   const account = await h.accounts.create(seed.workspaceId, {
     name,
     type: 'BANK',
+    class: 'OPERATING',
     openingBalance: '0',
   });
   const conn = await h.prisma.integrationConnection.create({
@@ -295,6 +296,7 @@ describe('перевод на счёт без выписки (карты физ�
     const card = await h.accounts.create(seed.workspaceId, {
       name: 'ВБ Каменск …8975',
       type: 'BANK',
+    class: 'OPERATING',
       openingBalance: '0',
     });
     const out = await seedLine({
@@ -327,6 +329,7 @@ describe('перевод на счёт без выписки (карты физ�
     const card = await h.accounts.create(seed.workspaceId, {
       name: 'ВБ Антропов …4510',
       type: 'BANK',
+    class: 'OPERATING',
       openingBalance: '0',
     });
     const inc = await seedLine({
