@@ -331,7 +331,6 @@ describe('усыновление ручных операций', () => {
         type: l.direction,
         kind: 'OTHER',
         description: l.description,
-        counterpartyName: undefined,
         importHash: computeRowHash({
           workspaceId: seed.workspaceId,
           accountId: seed.accountId,
