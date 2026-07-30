@@ -46,6 +46,10 @@ function buildService(opts: { accountIds?: string[] } = {}) {
       }),
       updateMany: vi.fn().mockResolvedValue({ count: 2 }),
     },
+    // Отвязка подтверждённых строк выписки при отмене перевода.
+    bankStatementLine: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 
   const prisma = {
