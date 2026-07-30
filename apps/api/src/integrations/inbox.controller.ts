@@ -9,10 +9,14 @@ import {
   CategorizeSchema,
   AttachOrderSchema,
   UndoBulkSchema,
+  ConfirmTransferSchema,
+  MarkTransferSchema,
   type ListInboxQuery,
   type CategorizeDto,
   type AttachOrderDto,
   type UndoBulkDto,
+  type ConfirmTransferDto,
+  type MarkTransferDto,
 } from './inbox.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -53,6 +57,33 @@ export class InboxController {
     @Body(new ZodPipe(UndoBulkSchema)) body: UndoBulkDto,
   ) {
     return this.service.undoBulk(ws.workspaceId, body);
+  }
+
+  /** Пары строк, похожие на две ноги одного перевода. Только предложение. */
+  @Get('transfer-candidates')
+  transferCandidates(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.service.transferCandidates(ws.workspaceId);
+  }
+
+  /** Подтвердить пару → создать перевод, обе строки уходят из разбора. */
+  @Post('confirm-transfer')
+  @HttpCode(200)
+  confirmTransfer(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(ConfirmTransferSchema)) body: ConfirmTransferDto,
+  ) {
+    return this.service.confirmTransfer(ws.workspaceId, ws.userId, body);
+  }
+
+  /** Перевод на счёт, выписку которого банк не отдаёт (вторая нога — наша). */
+  @Post(':id/mark-transfer')
+  @HttpCode(200)
+  markTransfer(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(MarkTransferSchema)) body: MarkTransferDto,
+  ) {
+    return this.service.markAsTransfer(ws.workspaceId, ws.userId, id, body.counterAccountId);
   }
 
   @Post(':id/categorize')

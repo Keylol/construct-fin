@@ -37,3 +37,18 @@ export type CategorizeDto = z.infer<typeof CategorizeSchema>;
 /** Привязать приход к существующему заказу (оплата заказа). */
 export const AttachOrderSchema = z.object({ orderId: cuid });
 export type AttachOrderDto = z.infer<typeof AttachOrderSchema>;
+
+/**
+ * Подтвердить, что две строки — один перевод между своими счетами. Комиссию не
+ * принимаем: сервер считает её как разницу фактических сумм, иначе присланное
+ * значение могло бы разойтись с выпиской и увести баланс счёта.
+ */
+export const ConfirmTransferSchema = z.object({
+  outLineId: cuid,
+  inLineId: cuid,
+});
+export type ConfirmTransferDto = z.infer<typeof ConfirmTransferSchema>;
+
+/** Одна строка — перевод на счёт, выписку которого банк не отдаёт. */
+export const MarkTransferSchema = z.object({ counterAccountId: cuid });
+export type MarkTransferDto = z.infer<typeof MarkTransferSchema>;

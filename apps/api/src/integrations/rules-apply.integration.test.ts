@@ -32,7 +32,7 @@ beforeAll(() => {
     crypto,
     new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never),
   );
-  inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+  inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
 });
 afterAll(async () => {
   await h.prisma.$disconnect();

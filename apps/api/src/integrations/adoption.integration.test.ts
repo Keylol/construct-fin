@@ -276,7 +276,7 @@ describe('усыновление ручных операций', () => {
       where: { connectionId: conn.id },
     });
 
-    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
     await inbox.undo(seed.workspaceId, stored.id);
 
     const after = await h.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: stored.id } });

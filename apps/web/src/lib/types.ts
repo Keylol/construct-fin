@@ -795,6 +795,25 @@ export interface InboxPage {
   nextCursor: string | null;
 }
 
+/** Строка в подсказке «похоже на перевод» — короткая форма для карточки. */
+export interface TransferCandidateLine {
+  id: string;
+  date: string;
+  amount: string;
+  description: string | null;
+  counterpartyName: string | null;
+  account: { id: string; name: string };
+}
+
+export interface TransferCandidate {
+  /** Разница сумм, объяснимая комиссией банка. */
+  fee: string;
+  /** exact — суммы совпали до копейки; with_fee — расход больше на комиссию. */
+  confidence: 'exact' | 'with_fee';
+  out: TransferCandidateLine;
+  in: TransferCandidateLine;
+}
+
 // ── Разбор закупок (Ф6 «Полный автомат»): WB / ДНС / Онлайн Трейд / ручной ──
 export type WbLineTarget = 'WAREHOUSE' | 'ORDER' | 'SKIPPED';
 export type ReceiptSource = 'WB_CARD' | 'DNS' | 'ONLINE_TRADE' | 'MANUAL';

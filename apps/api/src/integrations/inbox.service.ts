@@ -8,13 +8,22 @@ import { AusnMark, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
 import { RuleService } from '../rule/rule.service';
+import { TransferService } from '../transfer/transfer.service';
 import { applyRules, type RuleDef } from '../rule/engine';
 import { computeRowHash } from '../common/import-hash';
-import type { CategorizeDto, ListInboxQuery, UndoBulkDto } from './inbox.dto';
+import { matchTransferPairs } from './transfer-match';
+import type {
+  CategorizeDto,
+  ConfirmTransferDto,
+  ListInboxQuery,
+  UndoBulkDto,
+} from './inbox.dto';
 
 /** Потолок строк на один прогон правил: держим ответ быстрым, остаток — следующим
  * вызовом (`remaining` в ответе). */
 const APPLY_BATCH = 500;
+/** Потолок строк для поиска пар: подбор идёт в памяти и квадратичен по числу строк. */
+const TRANSFER_SCAN_LIMIT = 500;
 
 /**
  * Экран «Входящие» (Ф1-C2): разбор строк банковской выписки в статусе NEW.
@@ -31,6 +40,7 @@ export class InboxService {
     private readonly prisma: PrismaService,
     private readonly orders: OrderService,
     private readonly rules: RuleService,
+    private readonly transfers: TransferService,
   ) {}
 
   /** Список строк выбранного статуса (по умолчанию NEW), курсор-пагинация. */
@@ -430,6 +440,197 @@ export class InboxService {
       }
     }
     return { undone, skipped };
+  }
+
+  /**
+   * Строки на разборе, похожие на две ноги одного перевода между своими счетами.
+   * Только предложение: подтверждает человек (`confirmTransfer`).
+   */
+  async transferCandidates(workspaceId: string) {
+    const lines = await this.prisma.bankStatementLine.findMany({
+      where: { workspaceId, status: 'NEW' },
+      include: {
+        connection: {
+          select: { accountId: true, account: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: TRANSFER_SCAN_LIMIT,
+    });
+    const pairs = matchTransferPairs(
+      lines.map((l) => ({
+        id: l.id,
+        accountId: l.connection.accountId,
+        date: l.date,
+        amount: l.amount.toString(),
+        direction: l.direction,
+        line: l,
+      })),
+    );
+    return {
+      items: pairs.map((p) => ({
+        fee: p.fee,
+        confidence: p.confidence,
+        out: this.candidateView(p.out.line),
+        in: this.candidateView(p.in.line),
+      })),
+    };
+  }
+
+  private candidateView(l: {
+    id: string;
+    date: Date;
+    amount: Prisma.Decimal;
+    description: string | null;
+    counterpartyName: string | null;
+    connection: { account: { id: string; name: string } };
+  }) {
+    return {
+      id: l.id,
+      date: l.date.toISOString(),
+      amount: l.amount.toString(),
+      description: l.description,
+      counterpartyName: l.counterpartyName,
+      account: l.connection.account,
+    };
+  }
+
+  /**
+   * Подтвердить, что две строки — один перевод: создаётся `Transfer` с двумя
+   * ногами (и комиссией, если суммы разошлись), обе строки уходят из разбора и
+   * привязываются каждая к своей ноге.
+   *
+   * Ноги ищем по `transferGroupId` после создания: `TransferService` их не
+   * возвращает, а знать их надо — иначе строка останется без провенанса.
+   */
+  async confirmTransfer(workspaceId: string, userId: string, dto: ConfirmTransferDto) {
+    if (dto.outLineId === dto.inLineId) {
+      throw new BadRequestException('Нужны две разные строки');
+    }
+    const [outLine, inLine] = await Promise.all([
+      this.loadNew(workspaceId, dto.outLineId),
+      this.loadNew(workspaceId, dto.inLineId),
+    ]);
+    if (outLine.direction !== 'EXPENSE' || inLine.direction !== 'INCOME') {
+      throw new BadRequestException('Перевод — это списание с одного счёта и приход на другой');
+    }
+    if (outLine.connection.accountId === inLine.connection.accountId) {
+      throw new BadRequestException('Обе строки на одном счёте — это не перевод');
+    }
+    // Комиссию считаем сами по фактическим суммам: присланное значение могло бы
+    // разойтись с выпиской и увести баланс счёта.
+    const fee = outLine.amount.minus(inLine.amount);
+    if (fee.isNegative()) {
+      throw new BadRequestException('Пришло больше, чем ушло — это не перевод');
+    }
+
+    // Застолбить обе строки ДО создания перевода: иначе параллельный разбор
+    // одной из них оставил бы половину перевода без строки.
+    const claim = await this.prisma.bankStatementLine.updateMany({
+      where: { id: { in: [outLine.id, inLine.id] }, status: 'NEW' },
+      data: { status: 'RESOLVED' },
+    });
+    if (claim.count !== 2) {
+      await this.prisma.bankStatementLine.updateMany({
+        where: { id: { in: [outLine.id, inLine.id] }, transactionId: null },
+        data: { status: 'NEW' },
+      });
+      throw new ConflictException('Одна из строк уже обработана другим действием');
+    }
+
+    try {
+      const transfer = await this.transfers.create(workspaceId, userId, {
+        fromAccountId: outLine.connection.accountId,
+        toAccountId: inLine.connection.accountId,
+        amount: inLine.amount.toString(),
+        fee: fee.toFixed(2),
+        date: outLine.date.toISOString(),
+        note: outLine.description ?? inLine.description ?? undefined,
+      });
+      const legs = await this.prisma.transaction.findMany({
+        where: { workspaceId, transferGroupId: transfer.id, deletedAt: null },
+        select: { id: true, kind: true },
+      });
+      const outLeg = legs.find((l) => l.kind === 'TRANSFER_OUT');
+      const inLeg = legs.find((l) => l.kind === 'TRANSFER_IN');
+      await this.prisma.$transaction([
+        this.prisma.bankStatementLine.update({
+          where: { id: outLine.id },
+          data: { transferId: transfer.id, transactionId: outLeg?.id ?? null },
+        }),
+        this.prisma.bankStatementLine.update({
+          where: { id: inLine.id },
+          data: { transferId: transfer.id, transactionId: inLeg?.id ?? null },
+        }),
+      ]);
+      return { ok: true, transferId: transfer.id, fee: fee.toFixed(2) };
+    } catch (e) {
+      // Счёт архивирован/удалён и т.п. — возвращаем обе строки на разбор.
+      await this.prisma.bankStatementLine.updateMany({
+        where: { id: { in: [outLine.id, inLine.id] } },
+        data: { status: 'NEW' },
+      });
+      throw e;
+    }
+  }
+
+  /**
+   * Одна строка — перевод на счёт, выписку которого банк не отдаёт (карты
+   * физлиц: `ВБ Антропов`, `ВБ Каменск` — 58 операций в истории). Второй ноги в
+   * выписке не будет никогда, поэтому её создаём сами и привязываем строку к
+   * своей стороне.
+   */
+  async markAsTransfer(
+    workspaceId: string,
+    userId: string,
+    lineId: string,
+    counterAccountId: string,
+  ) {
+    const line = await this.loadNew(workspaceId, lineId);
+    if (counterAccountId === line.connection.accountId) {
+      throw new BadRequestException('Нельзя перевести счёт сам на себя');
+    }
+    const isOut = line.direction === 'EXPENSE';
+    const claim = await this.prisma.bankStatementLine.updateMany({
+      where: { id: line.id, status: 'NEW' },
+      data: { status: 'RESOLVED' },
+    });
+    if (claim.count === 0) {
+      throw new ConflictException('Строка уже обработана другим действием');
+    }
+
+    try {
+      const transfer = await this.transfers.create(workspaceId, userId, {
+        // Направление строки задаёт стороны: списание — уходит с её счёта,
+        // приход — приходит на её счёт.
+        fromAccountId: isOut ? line.connection.accountId : counterAccountId,
+        toAccountId: isOut ? counterAccountId : line.connection.accountId,
+        amount: line.amount.toString(),
+        fee: '0',
+        date: line.date.toISOString(),
+        note: line.description ?? undefined,
+      });
+      const leg = await this.prisma.transaction.findFirst({
+        where: {
+          workspaceId,
+          transferGroupId: transfer.id,
+          kind: isOut ? 'TRANSFER_OUT' : 'TRANSFER_IN',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      await this.prisma.bankStatementLine.update({
+        where: { id: line.id },
+        data: { transferId: transfer.id, transactionId: leg?.id ?? null },
+      });
+      return { ok: true, transferId: transfer.id };
+    } catch (e) {
+      await this.prisma.bankStatementLine.update({
+        where: { id: line.id },
+        data: { status: 'NEW' },
+      });
+      throw e;
+    }
   }
 
   /** Загрузить строку в статусе NEW (с accountId подключения) или 404/400. */
