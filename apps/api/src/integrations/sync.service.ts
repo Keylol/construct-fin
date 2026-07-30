@@ -181,16 +181,22 @@ export class SyncService {
 
     let suggestedCategoryId: string | null = null;
     let suggestedCounterpartyId: string | null = null;
+    let appliedRuleId: string | null = null;
     try {
       const suggestion = applyRules(rules, {
         description: line.description,
         counterpartyName: line.counterpartyName,
+        counterpartyInn: line.counterpartyInn,
+        // Счёт известен из подключения (ниже он же идёт в проводку). Без него условие
+        // ACCOUNT_EQUALS в банк-синке не срабатывало никогда.
+        accountId: conn.accountId,
         type: line.direction,
         amount: line.amount,
         source: 'IMPORT',
       });
       suggestedCategoryId = suggestion.categoryId ?? null;
       suggestedCounterpartyId = suggestion.counterpartyId ?? null;
+      appliedRuleId = suggestion.categoryRuleId ?? null;
     } catch (e) {
       this.logger.warn(
         `Правило упало на строке ${line.externalId} — уходит в Inbox без категории: ${
@@ -213,6 +219,9 @@ export class SyncService {
             categoryId: suggestedCategoryId,
             counterpartyId: suggestedCounterpartyId,
             description: line.description,
+            // Маркировку АУСН переносим так же, как ручной разбор (inbox.service.ts):
+            // без неё авто-проведённые строки выпадали из расчёта налога.
+            ausnMark: line.ausnMark,
             createdById: conn.createdById,
           },
           select: { id: true },
@@ -221,6 +230,7 @@ export class SyncService {
           data: this.lineData(conn, line, {
             status: 'AUTO_POSTED',
             suggestedCategoryId,
+            appliedRuleId,
             transactionId: transaction.id,
           }),
         });
@@ -240,6 +250,7 @@ export class SyncService {
     over: {
       status: 'NEW' | 'AUTO_POSTED';
       suggestedCategoryId: string | null;
+      appliedRuleId?: string | null;
       transactionId?: string;
     },
   ): Prisma.BankStatementLineUncheckedCreateInput {
@@ -256,6 +267,7 @@ export class SyncService {
       ausnMark: line.ausnMark ?? null,
       status: over.status,
       suggestedCategoryId: over.suggestedCategoryId,
+      appliedRuleId: over.appliedRuleId ?? null,
       transactionId: over.transactionId ?? null,
       // Сырой ответ провайдера — только через sanitize: адаптер может отдать в
       // raw весь HTTP-response, включая эхо заголовка Authorization и полей

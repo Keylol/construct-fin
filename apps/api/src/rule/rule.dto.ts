@@ -13,11 +13,26 @@ const moneyString = z
   .regex(/^-?\d+(\.\d{1,2})?$/, 'сумма — десятичная строка с ≤2 знаками');
 const cuid = z.string().cuid();
 
+// ИНН нормализуем к цифрам ещё на входе: правило хранится в JSON без FK, и мусорное
+// значение («7701234567 » с хвостом, скопированное из выписки) молча не сматчилось бы.
+// 10 цифр — организация, 12 — ИП/физлицо; иных длин у ИНН не бывает.
+const inn = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/\D/g, ''))
+  .refine(
+    (s) => s.length === 10 || s.length === 12,
+    'ИНН — 10 цифр (организация) или 12 (ИП)',
+  );
+
 // z.union (а не discriminatedUnion): член AMOUNT_RANGE несёт .refine (хотя бы одна
 // граница), из-за чего становится ZodEffects — discriminatedUnion такое не принимает.
 export const RuleConditionSchema = z.union([
   z.object({ type: z.literal('DESCRIPTION_CONTAINS'), value: z.string().trim().min(1).max(200) }),
   z.object({ type: z.literal('COUNTERPARTY_EQUALS'), counterpartyId: cuid }),
+  // Список ИНН, а не одно значение: ИЛИ внутри правила нет, а одна категория обычно
+  // собирает нескольких контрагентов (все поставщики → «Закупка товара»).
+  z.object({ type: z.literal('COUNTERPARTY_INN_IN'), values: z.array(inn).min(1).max(100) }),
   z.object({ type: z.literal('ACCOUNT_EQUALS'), accountId: cuid }),
   z.object({ type: z.literal('TYPE_EQUALS'), value: z.enum(['INCOME', 'EXPENSE']) }),
   z
@@ -59,11 +74,22 @@ export type CreateRuleDto = z.infer<typeof CreateRuleSchema>;
 export const UpdateRuleSchema = CreateRuleSchema.partial();
 export type UpdateRuleDto = z.infer<typeof UpdateRuleSchema>;
 
+/**
+ * Предпросмотр черновика правила: условия ещё не сохранены, поэтому принимаем их
+ * россыпью. Действия не нужны — предпросмотр отвечает только на вопрос «сколько
+ * строк выписки зацепит», ничего не проставляя.
+ */
+export const PreviewRuleSchema = z.object({
+  conditions: z.array(RuleConditionSchema).min(1).max(10),
+});
+export type PreviewRuleDto = z.infer<typeof PreviewRuleSchema>;
+
 /** Контекст для подсказок: частично заполненная форма операции / строка импорта. */
 export const SuggestSchema = z.object({
   description: z.string().max(500).nullish(),
   counterpartyId: cuid.nullish(),
   counterpartyName: z.string().max(200).nullish(),
+  counterpartyInn: z.string().max(20).nullish(),
   accountId: cuid.nullish(),
   amount: moneyString.nullish(),
   type: z.enum(['INCOME', 'EXPENSE']).nullish(),

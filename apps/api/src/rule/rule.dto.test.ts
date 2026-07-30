@@ -49,6 +49,25 @@ describe('CreateRuleSchema — валидация словаря', () => {
     expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '10.999' }).success).toBe(false);
   });
 
+  it('COUNTERPARTY_INN_IN — нормализует к цифрам, длину проверяет', () => {
+    const ok = RuleConditionSchema.safeParse({
+      type: 'COUNTERPARTY_INN_IN',
+      values: [' 7701 234 567 ', '660312345678'],
+    });
+    expect(ok.success).toBe(true);
+    // форматирование срезается ещё на входе — в JSON правила ложатся одни цифры
+    if (ok.success) {
+      expect(ok.data).toMatchObject({ values: ['7701234567', '660312345678'] });
+    }
+    // 10 (организация) и 12 (ИП) — единственные допустимые длины
+    expect(
+      RuleConditionSchema.safeParse({ type: 'COUNTERPARTY_INN_IN', values: ['12345'] }).success,
+    ).toBe(false);
+    expect(
+      RuleConditionSchema.safeParse({ type: 'COUNTERPARTY_INN_IN', values: [] }).success,
+    ).toBe(false);
+  });
+
   it('инвертированный диапазон |min|>|max| отвергается (иначе тихо не матчит)', () => {
     expect(RuleConditionSchema.safeParse({ type: 'AMOUNT_RANGE', min: '5000', max: '1000' }).success).toBe(false);
     // Отрицательные границы по модулю тоже инвертированы (|−5000| > |−1000|).

@@ -1,16 +1,26 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { InboxPage } from '@/lib/types';
+import type { ApplyRulesResult, BankLineStatus, InboxPage } from '@/lib/types';
 
 /** Ключ, инвалидируемый после любого действия разбора и после синка. */
 const inboxKey = (wsId: string | null) => ['inbox', wsId];
 
-export function useInbox(wsId: string | null) {
-  return useQuery({
-    queryKey: [...inboxKey(wsId), 'list'],
-    queryFn: () => api.get<InboxPage>(`/workspaces/${wsId}/inbox?limit=100`),
+/**
+ * Строки выписки выбранного статуса. Постранично: после перезалива истории строк
+ * бывает больше сотни, а одной страницей хвост просто не виден.
+ */
+export function useInbox(wsId: string | null, status: BankLineStatus = 'NEW') {
+  return useInfiniteQuery({
+    queryKey: [...inboxKey(wsId), 'list', status],
+    queryFn: ({ pageParam }) =>
+      api.get<InboxPage>(
+        `/workspaces/${wsId}/inbox?limit=100&status=${status}` +
+          (pageParam ? `&cursor=${pageParam}` : ''),
+      ),
+    initialPageParam: '' as string,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!wsId,
   });
 }
@@ -62,5 +72,32 @@ export function useAttachOrderInbox(wsId: string) {
 export function useDismissInbox(wsId: string) {
   return useInboxAction<string>(wsId, (lineId) =>
     api.post(`/workspaces/${wsId}/inbox/${lineId}/dismiss`, {}),
+  );
+}
+
+/** Отменить проведение: снять проводку, вернуть строку на разбор. */
+export function useUndoInbox(wsId: string) {
+  return useInboxAction<string>(wsId, (lineId) =>
+    api.post(`/workspaces/${wsId}/inbox/${lineId}/undo`, {}),
+  );
+}
+
+/**
+ * Прогнать правила по строкам, уже лежащим на разборе. Правила срабатывают только
+ * при приезде строки, поэтому набор правил, заведённый позже, без этого не действует.
+ */
+export function useApplyRules(wsId: string) {
+  return useInboxAction<void>(wsId, () =>
+    api.post<ApplyRulesResult>(`/workspaces/${wsId}/inbox/apply-rules`, {}),
+  );
+}
+
+/** Массовый откат авто-проведённого — списком строк либо целиком по правилу. */
+export function useUndoBulk(wsId: string) {
+  return useInboxAction<{ lineIds?: string[]; appliedRuleId?: string }>(wsId, (body) =>
+    api.post<{ undone: number; skipped: number }>(
+      `/workspaces/${wsId}/inbox/undo-bulk`,
+      body,
+    ),
   );
 }

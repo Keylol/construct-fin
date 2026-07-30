@@ -60,6 +60,22 @@ describe('движок правил: сопоставление условий',
     ).toBeUndefined();
   });
 
+  it('COUNTERPARTY_INN_IN — список ИНН, сравнение по цифрам', () => {
+    const r = rule({
+      conditions: [{ type: 'COUNTERPARTY_INN_IN', values: ['7701234567', '660312345678'] }],
+      actions: [{ type: 'SET_CATEGORY', categoryId: 'cat-goods' }],
+    });
+    expect(applyRules([r], { ...base, counterpartyInn: '7701234567' }).categoryId).toBe('cat-goods');
+    // второй ИНН из списка — одна категория собирает нескольких поставщиков
+    expect(applyRules([r], { ...base, counterpartyInn: '660312345678' }).categoryId).toBe('cat-goods');
+    // незначащее форматирование не ломает правило
+    expect(applyRules([r], { ...base, counterpartyInn: ' 7701 234 567 ' }).categoryId).toBe('cat-goods');
+    expect(applyRules([r], { ...base, counterpartyInn: '7709999999' }).categoryId).toBeUndefined();
+    // банк не отдал ИНН (частая ситуация у переводов физлицам) → не матчим
+    expect(applyRules([r], { ...base, counterpartyInn: null }).categoryId).toBeUndefined();
+    expect(applyRules([r], { ...base }).categoryId).toBeUndefined();
+  });
+
   it('пустой набор условий НЕ срабатывает (защита от «правила на всё»)', () => {
     const r = rule({ conditions: [], actions: [{ type: 'SET_CATEGORY', categoryId: 'cat-any' }] });
     expect(applyRules([r], { ...base, description: 'что угодно' }).categoryId).toBeUndefined();
@@ -100,6 +116,26 @@ describe('движок правил: приоритет и слияние дей
     expect(s.categoryId).toBe('cat-market');
     expect(s.counterpartyId).toBe('cp-ozon');
     expect(s.matchedRuleIds.sort()).toEqual(['r1', 'r2']);
+  });
+
+  it('categoryRuleId — правило, давшее категорию (для отката авто-проведённого)', () => {
+    const cat = rule({
+      id: 'r-cat',
+      priority: 5,
+      conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'комиссия' }],
+      actions: [{ type: 'SET_CATEGORY', categoryId: 'cat-bank' }],
+    });
+    const cp = rule({
+      id: 'r-cp',
+      priority: 10, // выше по приоритету, но категорию НЕ ставит
+      conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'комиссия' }],
+      actions: [{ type: 'SET_COUNTERPARTY', counterpartyId: 'cp-bank' }],
+    });
+    const s = applyRules([cat, cp], { ...base, description: 'комиссия банка' });
+    // именно r-cat превратит строку в проводку — его и надо помнить, хотя
+    // сработали оба и r-cp был первым по приоритету
+    expect(s.categoryRuleId).toBe('r-cat');
+    expect(s.matchedRuleIds.sort()).toEqual(['r-cat', 'r-cp']);
   });
 
   it('нет совпадений → пустая подсказка', () => {
