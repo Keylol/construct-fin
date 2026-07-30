@@ -209,6 +209,14 @@ export class SyncService {
     if (twin) {
       claimed.add(twin.id);
       await this.adoptLine(conn, line, twin);
+      // След в логе: на перезаливе истории таких склеек сотни, и если каскад
+      // ошибётся, разбираться придётся именно здесь. Суммы и назначения не
+      // пишем — только идентификаторы и дата, лог не место для реквизитов.
+      this.logger.log(
+        `Узнана ранее внесённая операция: строка ${line.externalId} (${line.date
+          .toISOString()
+          .slice(0, 10)}) → ${twin.id}`,
+      );
       return 'ADOPTED';
     }
 
