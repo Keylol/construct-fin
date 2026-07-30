@@ -231,7 +231,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
   it('list и count видят только свои строки', async () => {
     await seedLine(A);
     await seedLine(B);
-    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
 
     const list = await inbox.list(A.workspaceId, { limit: 50, status: 'NEW' });
     expect(list.items).toHaveLength(1);
@@ -241,7 +241,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
   it('categorize/dismiss/undo чужой строки → 404, строка не меняется', async () => {
     const lineB = await seedLine(B);
     const catA = await h.categories.create(A.workspaceId, { name: 'Услуги A', kind: 'INCOME', isFixedCost: false });
-    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
 
     await expect(
       inbox.categorize(A.workspaceId, A.userId, lineB.id, { categoryId: catA.id }),
@@ -257,7 +257,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
   it('свою строку нельзя провести по чужой категории', async () => {
     const lineA = await seedLine(A);
     const catB = await h.categories.create(B.workspaceId, { name: 'Услуги B', kind: 'INCOME', isFixedCost: false });
-    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
 
     await expect(
       inbox.categorize(A.workspaceId, A.userId, lineA.id, { categoryId: catB.id }),
@@ -274,7 +274,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
       clientId: clientB.id,
       items: [{ name: 'Товар B', qty: '1', unitPrice: '1000' }],
     });
-    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never);
+    const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never);
 
     await expect(inbox.attachOrder(A.workspaceId, A.userId, lineA.id, orderB.id)).rejects.toThrow();
 

@@ -2,7 +2,12 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApplyRulesResult, BankLineStatus, InboxPage } from '@/lib/types';
+import type {
+  ApplyRulesResult,
+  BankLineStatus,
+  InboxPage,
+  TransferCandidate,
+} from '@/lib/types';
 
 /** Ключ, инвалидируемый после любого действия разбора и после синка. */
 const inboxKey = (wsId: string | null) => ['inbox', wsId];
@@ -89,6 +94,41 @@ export function useUndoInbox(wsId: string) {
 export function useApplyRules(wsId: string) {
   return useInboxAction<void>(wsId, () =>
     api.post<ApplyRulesResult>(`/workspaces/${wsId}/inbox/apply-rules`, {}),
+  );
+}
+
+/**
+ * Пары строк, похожие на две ноги одного перевода между своими счетами.
+ * Без склейки такой перевод задваивает обороты: расход в одном банке и доход в
+ * другом там, где деньги из бизнеса не выходили.
+ */
+export function useTransferCandidates(wsId: string | null) {
+  return useQuery({
+    queryKey: [...inboxKey(wsId), 'transfer-candidates'],
+    queryFn: () =>
+      api.get<{ items: TransferCandidate[] }>(
+        `/workspaces/${wsId}/inbox/transfer-candidates`,
+      ),
+    enabled: !!wsId,
+  });
+}
+
+/** Подтвердить пару → создаётся перевод, обе строки уходят из разбора. */
+export function useConfirmTransfer(wsId: string) {
+  return useInboxAction<{ outLineId: string; inLineId: string }>(wsId, (body) =>
+    api.post<{ ok: true; transferId: string; fee: string }>(
+      `/workspaces/${wsId}/inbox/confirm-transfer`,
+      body,
+    ),
+  );
+}
+
+/** Перевод на счёт, выписку которого банк не отдаёт (карты физлиц). */
+export function useMarkTransfer(wsId: string) {
+  return useInboxAction<{ lineId: string; counterAccountId: string }>(
+    wsId,
+    ({ lineId, counterAccountId }) =>
+      api.post(`/workspaces/${wsId}/inbox/${lineId}/mark-transfer`, { counterAccountId }),
   );
 }
 

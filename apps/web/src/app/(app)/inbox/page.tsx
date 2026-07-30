@@ -21,8 +21,17 @@ import {
   useDismissInbox,
   useApplyRules,
   useUndoInbox,
+  useTransferCandidates,
+  useConfirmTransfer,
+  useMarkTransfer,
 } from '@/hooks/useInbox';
-import type { ApplyRulesResult, BankLineStatus, InboxLine } from '@/lib/types';
+import { useAccounts } from '@/hooks/useAccounts';
+import type {
+  ApplyRulesResult,
+  BankLineStatus,
+  InboxLine,
+  TransferCandidate,
+} from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -129,6 +138,8 @@ export default function InboxPage() {
           </Tabs>
         </div>
 
+        {tab === 'NEW' && <TransferSuggestions wsId={current.id} />}
+
         {inbox.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-20" />
@@ -172,6 +183,84 @@ export default function InboxPage() {
   );
 }
 
+/**
+ * «Похоже на перевод»: расход на одном счёте и приход на другом, которые
+ * выглядят как две стороны одного перемещения денег. Разобранные порознь, они
+ * задвоят обороты — покажут расход и доход там, где деньги из бизнеса не
+ * выходили. Автоматически не склеиваем: ложная склейка спрячет настоящую
+ * операцию, поэтому решает человек.
+ */
+function TransferSuggestions({ wsId }: { wsId: string }) {
+  const candidates = useTransferCandidates(wsId);
+  const confirm = useConfirmTransfer(wsId);
+  const [hidden, setHidden] = useState<string[]>([]);
+
+  const items = (candidates.data?.items ?? []).filter(
+    (c) => !hidden.includes(`${c.out.id}:${c.in.id}`),
+  );
+  if (items.length === 0) return null;
+
+  const accept = (c: TransferCandidate) => {
+    confirm.mutate(
+      { outLineId: c.out.id, inLineId: c.in.id },
+      {
+        onSuccess: () =>
+          toast.success(
+            Number(c.fee) > 0
+              ? `Перевод создан, комиссия ${formatRub(c.fee, 2)} учтена расходом`
+              : 'Перевод создан, обороты не задвоились',
+          ),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось создать перевод'),
+      },
+    );
+  };
+
+  return (
+    <div className="mb-4 space-y-2">
+      {items.map((c) => (
+        <div
+          key={`${c.out.id}:${c.in.id}`}
+          className="rounded-md border border-primary/30 bg-primary/5 p-3"
+        >
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+            <ArrowRight className="h-4 w-4 text-primary" />
+            Похоже на перевод между своими счетами
+            {c.confidence === 'with_fee' && (
+              <span className="text-xs font-normal text-muted-foreground">
+                — суммы разошлись на {formatRub(c.fee, 2)}, спишем как комиссию
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              <span className="text-destructive">−{formatRub(c.out.amount, 2)}</span> ·{' '}
+              {c.out.account.name} · {formatDate(c.out.date)}
+            </span>
+            <ArrowRight className="h-3 w-3" />
+            <span>
+              <span className="text-success">+{formatRub(c.in.amount, 2)}</span> ·{' '}
+              {c.in.account.name} · {formatDate(c.in.date)}
+            </span>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => accept(c)} disabled={confirm.isPending}>
+              <Check className="h-3.5 w-3.5" />
+              Это перевод
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setHidden((prev) => [...prev, `${c.out.id}:${c.in.id}`])}
+            >
+              Не перевод
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function InboxRow({
   line,
   wsId,
@@ -183,6 +272,7 @@ function InboxRow({
 }) {
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId ?? '');
   const [attachOpen, setAttachOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const categorize = useCategorizeInbox(wsId);
   const dismiss = useDismissInbox(wsId);
   const undo = useUndoInbox(wsId);
@@ -282,6 +372,11 @@ function InboxRow({
               </Button>
             )}
 
+            <Button variant="secondary" size="sm" onClick={() => setTransferOpen(true)}>
+              <ArrowRight className="h-3.5 w-3.5" />
+              Перевод
+            </Button>
+
             <Button variant="ghost" size="sm" onClick={doDismiss} disabled={dismiss.isPending}>
               <X className="h-3.5 w-3.5" />
               Не учитывать
@@ -298,7 +393,103 @@ function InboxRow({
           line={line}
         />
       )}
+
+      {!isSettled && (
+        <MarkTransferSheet
+          open={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          wsId={wsId}
+          line={line}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Перевод на счёт, выписку которого банк не отдаёт: карты физлиц (ВБ) второй
+ * строкой никогда не приедут, поэтому встречную сторону заводим сами.
+ */
+function MarkTransferSheet({
+  open,
+  onClose,
+  wsId,
+  line,
+}: {
+  open: boolean;
+  onClose: () => void;
+  wsId: string;
+  line: InboxLine;
+}) {
+  const accounts = useAccounts(wsId);
+  const mark = useMarkTransfer(wsId);
+  const [counterAccountId, setCounterAccountId] = useState('');
+
+  const isOut = line.direction === 'EXPENSE';
+  // Счёт самой строки исключаем: перевод сам на себя невозможен.
+  const options = useMemo<ComboboxOption[]>(
+    () =>
+      (accounts.data ?? [])
+        .filter((a) => !a.isArchived && a.id !== line.account.id)
+        .map((a) => ({ value: a.id, label: a.name })),
+    [accounts.data, line.account.id],
+  );
+
+  const submit = () => {
+    if (!counterAccountId) return;
+    mark.mutate(
+      { lineId: line.id, counterAccountId },
+      {
+        onSuccess: () => {
+          toast.success('Перевод создан — в доходы и расходы он не попадёт');
+          onClose();
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось создать перевод'),
+      },
+    );
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" className="w-[420px]">
+        <SheetHeader>
+          <SheetTitle>{isOut ? 'Перевод на другой счёт' : 'Поступление с другого счёта'}</SheetTitle>
+        </SheetHeader>
+        <SheetBody className="space-y-4">
+          <div className="rounded-md bg-secondary/40 p-3 text-sm">
+            <span className={isOut ? 'font-semibold text-destructive' : 'font-semibold text-success'}>
+              {isOut ? '−' : '+'}
+              {formatRub(line.amount, 2)}
+            </span>{' '}
+            от {formatDate(line.date)} · {line.account.name}
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <span>{isOut ? 'Куда переведены деньги' : 'Откуда пришли деньги'}</span>
+            <Combobox
+              value={counterAccountId}
+              onChange={setCounterAccountId}
+              options={options}
+              placeholder="Выберите счёт"
+              searchPlaceholder="Название счёта…"
+              className="h-9"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Перевод между своими счетами не доход и не расход: в отчёт о прибыли он не
+            попадёт, изменятся только остатки счетов. Используйте, когда выписку второго
+            счёта банк не отдаёт — например, для карт.
+          </p>
+        </SheetBody>
+        <SheetFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button onClick={submit} disabled={!counterAccountId || mark.isPending}>
+            Создать перевод
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
