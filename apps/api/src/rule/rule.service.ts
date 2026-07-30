@@ -30,12 +30,27 @@ export interface PreviewSample {
 export class RuleService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(workspaceId: string) {
-    return this.prisma.rule.findMany({
-      where: { workspaceId, deletedAt: null },
-      orderBy: [{ priority: 'desc' }, { name: 'asc' }],
-      take: 500,
-    });
+  /**
+   * Список правил + счётчик строк, которые каждое провело (по `appliedRuleId`
+   * строк выписки). Счётчик — обратная связь оператору: правило с нулём после
+   * перезалива либо написано мимо реальных формулировок, либо его перекрывает
+   * более приоритетное. У Firefly III такой счётчик — штатная часть движка.
+   */
+  async list(workspaceId: string) {
+    const [rules, usage] = await Promise.all([
+      this.prisma.rule.findMany({
+        where: { workspaceId, deletedAt: null },
+        orderBy: [{ priority: 'desc' }, { name: 'asc' }],
+        take: 500,
+      }),
+      this.prisma.bankStatementLine.groupBy({
+        by: ['appliedRuleId'],
+        where: { workspaceId, appliedRuleId: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+    const counts = new Map(usage.map((u) => [u.appliedRuleId!, u._count._all]));
+    return rules.map((r) => ({ ...r, appliedCount: counts.get(r.id) ?? 0 }));
   }
 
   async create(workspaceId: string, input: CreateRuleDto) {
