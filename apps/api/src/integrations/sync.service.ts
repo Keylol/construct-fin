@@ -6,6 +6,7 @@ import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import type { RawBankLine } from './provider-adapter';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
+import { computeRowHash } from '../common/import-hash';
 import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
 import { deserializeTlsCredential } from './tls-credential';
 
@@ -254,6 +255,9 @@ export class SyncService {
             // Маркировку АУСН переносим так же, как ручной разбор (inbox.service.ts):
             // без неё авто-проведённые строки выпадали из расчёта налога.
             ausnMark: line.ausnMark,
+            // Отпечаток — чтобы CSV-выгрузка того же периода, импортированная
+            // позже, увидела эту операцию своим механизмом дедупа.
+            importHash: this.rowHash(conn, line),
             createdById: conn.createdById,
           },
           select: { id: true },
@@ -292,6 +296,20 @@ export class SyncService {
     line: RawBankLine,
     claimed: Set<string>,
   ): Promise<{ id: string; counterpartyId: string | null; ausnMark: AusnMark | null } | null> {
+    // Ступень 0 — точное совпадение отпечатка: ту же операцию уже импортировали
+    // из CSV-выгрузки того же банка. Достовернее любого поиска по сумме и дате,
+    // поэтому идёт первой.
+    const byHash = await this.prisma.transaction.findFirst({
+      where: {
+        workspaceId: conn.workspaceId,
+        importHash: this.rowHash(conn, line),
+        deletedAt: null,
+        bankLine: { is: null },
+      },
+      select: { id: true, counterpartyId: true, ausnMark: true },
+    });
+    if (byHash && !claimed.has(byHash.id)) return byHash;
+
     const windowMs = ADOPT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const candidates = await this.prisma.transaction.findMany({
       where: {
@@ -333,6 +351,19 @@ export class SyncService {
         : b,
     );
     return { id: best.id, counterpartyId: best.counterpartyId, ausnMark: best.ausnMark };
+  }
+
+  /** Отпечаток строки выписки в той же форме, что считает CSV-импорт. */
+  private rowHash(conn: { workspaceId: string; accountId: string }, line: RawBankLine): string {
+    return computeRowHash({
+      workspaceId: conn.workspaceId,
+      accountId: conn.accountId,
+      date: line.date,
+      amount: line.amount,
+      type: line.direction,
+      counterpartyName: line.counterpartyName ?? null,
+      description: line.description ?? null,
+    });
   }
 
   /**

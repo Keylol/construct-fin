@@ -11,6 +11,7 @@ import { OrderService } from '../orders/order.service';
 import { AuditService } from '../audit/audit.service';
 import type { ImportSource } from '@construct/db';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
+import { computeRowHash } from '../common/import-hash';
 import {
   detectSourceByFilename,
   parseAlfaXlsx,
@@ -93,6 +94,7 @@ export class ImportService {
     return createHash('sha256').update(buffer).digest('hex');
   }
 
+  /** Отпечаток строки; общий с банк-синком — см. common/import-hash.ts. */
   private computeRowHash(input: {
     workspaceId: string;
     accountId: string;
@@ -102,16 +104,7 @@ export class ImportService {
     counterpartyName: string | null;
     description: string | null;
   }): string {
-    const canonical = [
-      input.workspaceId,
-      input.accountId,
-      input.date.toISOString().slice(0, 10),
-      input.amount,
-      input.type,
-      (input.counterpartyName ?? '').trim().toLowerCase(),
-      (input.description ?? '').trim().toLowerCase().slice(0, 80),
-    ].join('|');
-    return createHash('sha256').update(canonical).digest('hex');
+    return computeRowHash(input);
   }
 
   private async runParser(opts: {

@@ -4,6 +4,7 @@ import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { SyncService } from './sync.service';
 import { InboxService } from './inbox.service';
+import { computeRowHash } from '../common/import-hash';
 import type {
   BankProviderAdapter,
   FetchStatementResult,
@@ -314,6 +315,80 @@ describe('усыновление ручных операций', () => {
     expect(
       await h.prisma.transaction.count({ where: { type: 'INCOME', deletedAt: null } }),
     ).toBe(1);
+  });
+
+  it('операцию из CSV-импорта узнаёт по отпечатку, даже когда дата разошлась', async () => {
+    const conn = await makeConnection();
+    const l = line({ date: new Date('2026-05-14T00:00:00.000Z') });
+    // Импорт той же выгрузки: отпечаток считается по счёту, дню, сумме,
+    // направлению, контрагенту и назначению — ровно как в CSV-импорте.
+    const imported = await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: l.date,
+        amount: l.amount,
+        type: l.direction,
+        kind: 'OTHER',
+        description: l.description,
+        counterpartyName: undefined,
+        importHash: computeRowHash({
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          date: l.date,
+          amount: l.amount,
+          type: l.direction,
+          counterpartyName: l.counterpartyName ?? null,
+          description: l.description ?? null,
+        }),
+        createdById: seed.userId,
+      },
+    });
+
+    const res = await syncWith([l]).syncConnection(conn.id);
+
+    expect(res.adopted).toBe(1);
+    const stored = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { connectionId: conn.id },
+    });
+    expect(stored.transactionId).toBe(imported.id);
+  });
+
+  it('проводка из синка несёт отпечаток — повторный CSV-импорт увидит дубль', async () => {
+    const cat = await h.categories.create(seed.workspaceId, {
+      name: 'Закупка товара',
+      kind: 'EXPENSE',
+      isFixedCost: false,
+      bucket: 'COGS',
+    });
+    await h.prisma.rule.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        name: 'ИНН → Закупка',
+        appliesTo: 'BOTH',
+        conditions: [{ type: 'COUNTERPARTY_INN_IN', values: ['7701234567'] }],
+        actions: [{ type: 'SET_CATEGORY', categoryId: cat.id }],
+      },
+    });
+    const conn = await makeConnection();
+    const l = line();
+
+    await syncWith([l]).syncConnection(conn.id);
+
+    const tx = await h.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+    });
+    expect(tx.importHash).toBe(
+      computeRowHash({
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: l.date,
+        amount: l.amount,
+        type: l.direction,
+        counterpartyName: l.counterpartyName ?? null,
+        description: l.description ?? null,
+      }),
+    );
   });
 
   it('чужую операцию не усыновляет (изоляция пространств)', async () => {

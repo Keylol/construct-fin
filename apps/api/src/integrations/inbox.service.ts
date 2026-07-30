@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
 import { RuleService } from '../rule/rule.service';
 import { applyRules, type RuleDef } from '../rule/engine';
+import { computeRowHash } from '../common/import-hash';
 import type { CategorizeDto, ListInboxQuery, UndoBulkDto } from './inbox.dto';
 
 /** Потолок строк на один прогон правил: держим ответ быстрым, остаток — следующим
@@ -118,6 +119,17 @@ export class InboxService {
           // Ф4: переносим АУСН-маркировку банка на проводку (приоритетна в базе
           // налога; оператор может переопределить позже через PATCH).
           ausnMark: line.ausnMark,
+          // Отпечаток строки — чтобы CSV-выгрузка того же периода, загруженная
+          // позже, распознала эту операцию как уже существующую.
+          importHash: computeRowHash({
+            workspaceId,
+            accountId: line.connection.accountId,
+            date: line.date,
+            amount: line.amount.toString(),
+            type: line.direction,
+            counterpartyName: line.counterpartyName,
+            description: line.description,
+          }),
           createdById: userId,
         },
         select: { id: true },
