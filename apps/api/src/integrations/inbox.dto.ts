@@ -52,3 +52,7 @@ export type ConfirmTransferDto = z.infer<typeof ConfirmTransferSchema>;
 /** Одна строка — перевод на счёт, выписку которого банк не отдаёт. */
 export const MarkTransferSchema = z.object({ counterAccountId: cuid });
 export type MarkTransferDto = z.infer<typeof MarkTransferSchema>;
+
+/** Погасить ожидаемый (плановый) платёж этой строкой выписки. */
+export const PayPlannedFromLineSchema = z.object({ plannedPaymentId: cuid });
+export type PayPlannedFromLineDto = z.infer<typeof PayPlannedFromLineSchema>;

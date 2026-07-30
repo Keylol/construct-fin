@@ -807,6 +807,18 @@ export interface TransferCandidateLine {
   account: { id: string; name: string };
 }
 
+/** Пара «строка выписки ↔ ожидаемый платёж» для подсказки гашения плана. */
+export interface PlannedLineSuggestion {
+  line: TransferCandidateLine;
+  plan: {
+    id: string;
+    title: string;
+    dueDate: string;
+    amount: string;
+    counterpartyName: string | null;
+  };
+}
+
 export interface TransferCandidate {
   /** Разница сумм, объяснимая комиссией банка. */
   fee: string;

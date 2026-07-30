@@ -11,12 +11,14 @@ import {
   UndoBulkSchema,
   ConfirmTransferSchema,
   MarkTransferSchema,
+  PayPlannedFromLineSchema,
   type ListInboxQuery,
   type CategorizeDto,
   type AttachOrderDto,
   type UndoBulkDto,
   type ConfirmTransferDto,
   type MarkTransferDto,
+  type PayPlannedFromLineDto,
 } from './inbox.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -63,6 +65,23 @@ export class InboxController {
   @Get('transfer-candidates')
   transferCandidates(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.service.transferCandidates(ws.workspaceId);
+  }
+
+  /** Строки, похожие на ожидаемые платежи. Только предложение. */
+  @Get('planned-suggestions')
+  plannedSuggestions(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.service.plannedSuggestions(ws.workspaceId);
+  }
+
+  /** Погасить план строкой: проводка с видом/категорией плана + закрытие плана. */
+  @Post(':id/pay-planned')
+  @HttpCode(200)
+  payPlanned(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(PayPlannedFromLineSchema)) body: PayPlannedFromLineDto,
+  ) {
+    return this.service.payPlannedFromLine(ws.workspaceId, ws.userId, id, body.plannedPaymentId);
   }
 
   /** Подтвердить пару → создать перевод, обе строки уходят из разбора. */

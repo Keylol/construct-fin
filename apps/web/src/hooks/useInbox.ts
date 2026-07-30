@@ -7,6 +7,7 @@ import type {
   BankLineStatus,
   InboxPage,
   TransferCandidate,
+  PlannedLineSuggestion,
 } from '@/lib/types';
 
 /** Ключ, инвалидируемый после любого действия разбора и после синка. */
@@ -49,9 +50,10 @@ function useInboxAction<TArgs>(
     mutationFn: fn,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: inboxKey(wsId) });
-      // Разбор создаёт/снимает проводки и оплаты — освежаем зависимые данные.
+      // Разбор создаёт/снимает проводки, оплаты и гасит планы — освежаем всё зависимое.
       qc.invalidateQueries({ queryKey: ['transactions', wsId] });
       qc.invalidateQueries({ queryKey: ['orders', wsId] });
+      qc.invalidateQueries({ queryKey: ['planning', wsId] });
       qc.invalidateQueries({ queryKey: ['reports'] });
     },
   });
@@ -129,6 +131,27 @@ export function useMarkTransfer(wsId: string) {
     wsId,
     ({ lineId, counterAccountId }) =>
       api.post(`/workspaces/${wsId}/inbox/${lineId}/mark-transfer`, { counterAccountId }),
+  );
+}
+
+/** Строки, похожие на ожидаемые платежи, — подсказка гашения плана. */
+export function usePlannedSuggestions(wsId: string | null) {
+  return useQuery({
+    queryKey: [...inboxKey(wsId), 'planned-suggestions'],
+    queryFn: () =>
+      api.get<{ items: PlannedLineSuggestion[] }>(
+        `/workspaces/${wsId}/inbox/planned-suggestions`,
+      ),
+    enabled: !!wsId,
+  });
+}
+
+/** Погасить план строкой: проводка с видом/категорией плана + закрытие плана. */
+export function usePayPlannedFromLine(wsId: string) {
+  return useInboxAction<{ lineId: string; plannedPaymentId: string }>(
+    wsId,
+    ({ lineId, plannedPaymentId }) =>
+      api.post(`/workspaces/${wsId}/inbox/${lineId}/pay-planned`, { plannedPaymentId }),
   );
 }
 

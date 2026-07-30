@@ -9,9 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
 import { RuleService } from '../rule/rule.service';
 import { TransferService } from '../transfer/transfer.service';
+import { PlanningService } from '../planning/planning.service';
 import { applyRules, type RuleDef } from '../rule/engine';
 import { computeRowHash } from '../common/import-hash';
 import { matchTransferPairs } from './transfer-match';
+import { matchPlannedPayments } from './planned-match';
 import type {
   CategorizeDto,
   ConfirmTransferDto,
@@ -41,6 +43,7 @@ export class InboxService {
     private readonly orders: OrderService,
     private readonly rules: RuleService,
     private readonly transfers: TransferService,
+    private readonly planning: PlanningService,
   ) {}
 
   /** Список строк выбранного статуса (по умолчанию NEW), курсор-пагинация. */
@@ -252,12 +255,26 @@ export class InboxService {
       return { ok: true };
     }
     // Оплаты заказа завязаны на инварианты заказа — отменяются в его карточке.
-    if (line.transaction.kind !== 'OTHER') {
+    if (line.transaction.kind === 'ORDER_PAYMENT') {
       throw new BadRequestException(
         'Операция создана из заказа — отмените её в карточке заказа',
       );
     }
+    // Ноги перевода живут парой — снять половину нельзя, целиком перевод
+    // отменяется на странице «Переводы».
+    if (line.transaction.kind === 'TRANSFER_IN' || line.transaction.kind === 'TRANSFER_OUT') {
+      throw new BadRequestException(
+        'Строка привязана к переводу — отмените сам перевод на странице «Переводы»',
+      );
+    }
     await this.prisma.$transaction(async (tx) => {
+      // Проводка могла гасить плановый платёж — вернуть его в «ожидается»,
+      // иначе план остался бы «оплаченным» удалённой проводкой и настоящая
+      // оплата прошла бы мимо него.
+      await tx.plannedPayment.updateMany({
+        where: { workspaceId, matchedTransactionId: line.transaction!.id, deletedAt: null },
+        data: { status: 'PLANNED', matchedTransactionId: null, autoTx: false },
+      });
       await tx.transaction.update({
         where: { id: line.transaction!.id },
         data: { deletedAt: new Date() },
@@ -631,6 +648,154 @@ export class InboxService {
       });
       throw e;
     }
+  }
+
+  /**
+   * Строки на разборе, похожие на ожидаемые (плановые) платежи. Без этой связки
+   * оплата, на которую заведён план, задваивается: строка становится обычной
+   * проводкой, план продолжает висеть и его закрывают руками второй раз.
+   * Только предложение — гасит человек (`payPlannedFromLine`).
+   */
+  async plannedSuggestions(workspaceId: string) {
+    const [lines, plans] = await Promise.all([
+      this.prisma.bankStatementLine.findMany({
+        where: { workspaceId, status: 'NEW', direction: 'EXPENSE' },
+        include: {
+          connection: { select: { account: { select: { id: true, name: true } } } },
+        },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: TRANSFER_SCAN_LIMIT,
+      }),
+      this.prisma.plannedPayment.findMany({
+        where: { workspaceId, status: 'PLANNED', deletedAt: null },
+        include: { counterparty: { select: { inn: true, name: true } } },
+        orderBy: { dueDate: 'asc' },
+        take: TRANSFER_SCAN_LIMIT,
+      }),
+    ]);
+
+    const pairs = matchPlannedPayments(
+      lines.map((l) => ({
+        id: l.id,
+        date: l.date,
+        amount: l.amount.toString(),
+        counterpartyInn: l.counterpartyInn,
+        raw: l,
+      })),
+      plans.map((p) => ({
+        id: p.id,
+        dueDate: p.dueDate,
+        amount: p.amount.toString(),
+        counterpartyInn: p.counterparty?.inn ?? null,
+        raw: p,
+      })),
+    );
+    return {
+      items: pairs.map(({ line, plan }) => ({
+        line: {
+          id: line.raw.id,
+          date: line.raw.date.toISOString(),
+          amount: line.raw.amount.toString(),
+          description: line.raw.description,
+          counterpartyName: line.raw.counterpartyName,
+          account: line.raw.connection.account,
+        },
+        plan: {
+          id: plan.raw.id,
+          title: plan.raw.title,
+          dueDate: plan.raw.dueDate.toISOString(),
+          amount: plan.raw.amount.toString(),
+          counterpartyName: plan.raw.counterparty?.name ?? null,
+        },
+      })),
+    };
+  }
+
+  /**
+   * Погасить план строкой выписки: из строки рождается проводка с видом и
+   * категорией плана, план закрывается привязкой (autoTx=false — отмена плана
+   * лишь отвяжет проводку, она принадлежит строке).
+   */
+  async payPlannedFromLine(
+    workspaceId: string,
+    userId: string,
+    lineId: string,
+    plannedPaymentId: string,
+  ) {
+    const line = await this.loadNew(workspaceId, lineId);
+    if (line.direction !== 'EXPENSE') {
+      throw new BadRequestException('План гасится списанием, а не поступлением');
+    }
+    const plan = await this.prisma.plannedPayment.findFirst({
+      where: { id: plannedPaymentId, workspaceId, deletedAt: null },
+      select: { id: true, title: true, txKind: true, categoryId: true, counterpartyId: true, status: true },
+    });
+    if (!plan) throw new NotFoundException('Плановый платёж не найден');
+    if (plan.status !== 'PLANNED') {
+      throw new BadRequestException('Этот план уже оплачен, пропущен или отменён');
+    }
+
+    // Проводка из строки + захват строки — атомарно (паттерн categorize).
+    let transactionId: string | null = null;
+    await this.prisma.$transaction(async (tx) => {
+      const created = await tx.transaction.create({
+        data: {
+          workspaceId,
+          accountId: line.connection.accountId,
+          date: line.date,
+          // Суммой правды остаётся банк: план мог устареть, деньги — нет.
+          amount: line.amount,
+          type: 'EXPENSE',
+          kind: plan.txKind,
+          categoryId: plan.categoryId,
+          counterpartyId: plan.counterpartyId,
+          description: line.description ?? plan.title,
+          ausnMark: line.ausnMark,
+          importHash: computeRowHash({
+            workspaceId,
+            accountId: line.connection.accountId,
+            date: line.date,
+            amount: line.amount.toString(),
+            type: line.direction,
+            counterpartyName: line.counterpartyName,
+            description: line.description,
+          }),
+          createdById: userId,
+        },
+        select: { id: true },
+      });
+      const claim = await tx.bankStatementLine.updateMany({
+        where: { id: line.id, status: 'NEW' },
+        data: { status: 'RESOLVED', transactionId: created.id },
+      });
+      if (claim.count === 0) {
+        throw new ConflictException('Строка уже обработана другим действием');
+      }
+      transactionId = created.id;
+    });
+
+    try {
+      // Закрытие плана — существующим механизмом привязки (CAS + защита от
+      // привязки одной операции к двум планам).
+      await this.planning.payPlanned(workspaceId, userId, plan.id, {
+        transactionId: transactionId!,
+      });
+    } catch (e) {
+      // План увели параллельно — возвращаем всё как было: строку на разбор,
+      // проводку в корзину. Деньги не задвоены, план не тронут.
+      await this.prisma.$transaction([
+        this.prisma.transaction.update({
+          where: { id: transactionId! },
+          data: { deletedAt: new Date() },
+        }),
+        this.prisma.bankStatementLine.update({
+          where: { id: line.id },
+          data: { status: 'NEW', transactionId: null },
+        }),
+      ]);
+      throw e;
+    }
+    return { ok: true, transactionId };
   }
 
   /** Загрузить строку в статусе NEW (с accountId подключения) или 404/400. */
