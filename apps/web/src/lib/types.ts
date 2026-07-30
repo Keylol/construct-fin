@@ -373,6 +373,7 @@ export interface ImportBatch {
 export type RuleConditionType =
   | 'DESCRIPTION_CONTAINS'
   | 'COUNTERPARTY_EQUALS'
+  | 'COUNTERPARTY_INN_IN'
   | 'ACCOUNT_EQUALS'
   | 'TYPE_EQUALS'
   | 'AMOUNT_RANGE'
@@ -381,6 +382,7 @@ export type RuleConditionType =
 export type RuleCondition =
   | { type: 'DESCRIPTION_CONTAINS'; value: string }
   | { type: 'COUNTERPARTY_EQUALS'; counterpartyId: string }
+  | { type: 'COUNTERPARTY_INN_IN'; values: string[] }
   | { type: 'ACCOUNT_EQUALS'; accountId: string }
   | { type: 'TYPE_EQUALS'; value: TxType }
   | { type: 'AMOUNT_RANGE'; min?: string | null; max?: string | null }
@@ -413,7 +415,35 @@ export interface RuleSuggestion {
   categoryId?: string;
   counterpartyId?: string;
   accountId?: string;
+  categoryRuleId?: string;
   matchedRuleIds: string[];
+}
+
+/** Ответ POST /rules/preview: сколько строк выписки зацепит черновик правила. */
+export interface RulePreview {
+  matched: number;
+  /** Из них ещё на разборе — столько проведёт «Применить правила». */
+  matchedPending: number;
+  scanned: number;
+  total: number;
+  truncated: boolean;
+  samples: {
+    id: string;
+    date: string;
+    amount: string;
+    direction: TxType;
+    counterpartyName: string | null;
+    description: string | null;
+    status: string;
+  }[];
+}
+
+/** Ответ POST /inbox/apply-rules. */
+export interface ApplyRulesResult {
+  scanned: number;
+  posted: number;
+  skipped: number;
+  remaining: number;
 }
 
 // ──────────── Reports ────────────
@@ -735,6 +765,8 @@ export interface SyncResult {
 
 export type AusnMark = 'INCOME' | 'EXPENSE' | 'NOT_COUNTED';
 
+export type BankLineStatus = 'NEW' | 'AUTO_POSTED' | 'RESOLVED' | 'DISMISSED';
+
 export interface InboxLine {
   id: string;
   date: string;
@@ -744,7 +776,10 @@ export interface InboxLine {
   counterpartyInn: string | null;
   description: string | null;
   ausnMark: AusnMark | null;
+  status: BankLineStatus;
   suggestedCategoryId: string | null;
+  /** Правило, проведшее строку автоматически (имя null, если правило удалили). */
+  appliedRule: { id: string; name: string | null } | null;
   provider: IntegrationProvider;
   account: { id: string; name: string };
 }

@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Inbox as InboxIcon, Check, X, ClipboardList, ArrowRight } from '@/components/ui/icons';
+import {
+  Inbox as InboxIcon,
+  Check,
+  X,
+  ClipboardList,
+  ArrowRight,
+  Sparkles,
+  RotateCcw,
+} from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCategories } from '@/hooks/useCategories';
 import { useOrders } from '@/hooks/useOrders';
@@ -11,13 +19,16 @@ import {
   useCategorizeInbox,
   useAttachOrderInbox,
   useDismissInbox,
+  useApplyRules,
+  useUndoInbox,
 } from '@/hooks/useInbox';
-import type { InboxLine } from '@/lib/types';
+import type { ApplyRulesResult, BankLineStatus, InboxLine } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { toast } from '@/components/ui/Toaster';
 import {
   Sheet,
@@ -40,7 +51,9 @@ const AUSN_LABELS: Record<string, string> = {
 export default function InboxPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const inbox = useInbox(wsId);
+  const [tab, setTab] = useState<BankLineStatus>('NEW');
+  const inbox = useInbox(wsId, tab);
+  const applyRules = useApplyRules(current?.id ?? '');
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
 
@@ -64,18 +77,53 @@ export default function InboxPage() {
     );
   }
 
-  const items = inbox.data?.items ?? [];
+  const items = inbox.data?.pages.flatMap((p) => p.items) ?? [];
+
+  const doApplyRules = () => {
+    applyRules.mutate(undefined, {
+      onSuccess: (res) => {
+        const r = res as ApplyRulesResult;
+        if (r.posted === 0) {
+          toast.info('Ни одна строка не подошла под действующие правила');
+          return;
+        }
+        toast.success(
+          `Проведено ${r.posted}, осталось на разборе ${r.remaining}` +
+            (r.remaining > 0 && r.scanned === r.posted + r.skipped && r.remaining > r.skipped
+              ? ' — нажмите ещё раз, чтобы продолжить'
+              : ''),
+        );
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось применить правила'),
+    });
+  };
 
   return (
     <>
       <PageHeader
         title="Входящие"
+        actions={
+          <Button variant="secondary" onClick={doApplyRules} disabled={applyRules.isPending}>
+            <Sparkles className="h-4 w-4" />
+            Применить правила
+          </Button>
+        }
       />
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          Операции из банка на обработку. Подтвердите категорию, привяжите поступление
-          к заказу или отметьте «не учитывать».
+          {tab === 'NEW'
+            ? 'Операции из банка на обработку. Подтвердите категорию, привяжите поступление к заказу или отметьте «не учитывать».'
+            : 'Операции, проведённые правилами без вашего участия. Проверьте и отмените, если правило ошиблось.'}
         </p>
+
+        <div className="mb-4">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as BankLineStatus)}>
+            <TabsList>
+              <TabsTrigger value="NEW">На разбор</TabsTrigger>
+              <TabsTrigger value="AUTO_POSTED">Проведено правилами</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
         {inbox.isLoading ? (
           <div className="space-y-2">
@@ -85,8 +133,12 @@ export default function InboxPage() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={InboxIcon}
-            title="Всё обработано"
-            hint="Новые операции появятся здесь после синхронизации банка."
+            title={tab === 'NEW' ? 'Всё обработано' : 'Правила пока ничего не проводили'}
+            hint={
+              tab === 'NEW'
+                ? 'Новые операции появятся здесь после синхронизации банка.'
+                : 'Как только правило распознает строку выписки, она появится здесь.'
+            }
           />
         ) : (
           <div className="space-y-2">
@@ -98,6 +150,17 @@ export default function InboxPage() {
                 catOptions={line.direction === 'INCOME' ? catOptions.INCOME : catOptions.EXPENSE}
               />
             ))}
+            {inbox.hasNextPage && (
+              <div className="pt-2 text-center">
+                <Button
+                  variant="secondary"
+                  onClick={() => void inbox.fetchNextPage()}
+                  disabled={inbox.isFetchingNextPage}
+                >
+                  Показать ещё
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -118,8 +181,10 @@ function InboxRow({
   const [attachOpen, setAttachOpen] = useState(false);
   const categorize = useCategorizeInbox(wsId);
   const dismiss = useDismissInbox(wsId);
+  const undo = useUndoInbox(wsId);
 
   const isIncome = line.direction === 'INCOME';
+  const isAutoPosted = line.status === 'AUTO_POSTED';
   const title =
     line.description?.trim() || line.counterpartyName || (isIncome ? 'Поступление' : 'Расход');
 
@@ -138,6 +203,13 @@ function InboxRow({
     dismiss.mutate(line.id, {
       onSuccess: () => toast.success('Операция скрыта'),
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось скрыть'),
+    });
+  };
+
+  const doUndo = () => {
+    undo.mutate(line.id, {
+      onSuccess: () => toast.success('Проведение отменено, строка вернулась на разбор'),
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось отменить'),
     });
   };
 
@@ -160,40 +232,52 @@ function InboxRow({
           <div className="mt-0.5 text-xs text-muted-foreground">
             {formatDate(line.date)} · {line.account.name}
             {line.ausnMark && ` · ${AUSN_LABELS[line.ausnMark]}`}
+            {isAutoPosted &&
+              ` · правило: ${line.appliedRule?.name ?? 'удалено'}`}
           </div>
         </div>
 
-        {/* Проведение в категорию */}
-        <div className="flex items-center gap-2">
-          <Combobox
-            value={categoryId}
-            onChange={setCategoryId}
-            options={catOptions}
-            placeholder="Категория"
-            searchPlaceholder="Категория…"
-            className="h-9 w-[180px]"
-          />
-          <Button size="sm" onClick={doCategorize} disabled={!categoryId || categorize.isPending}>
-            <Check className="h-3.5 w-3.5" />
-            Провести
+        {isAutoPosted ? (
+          // Проведённое правилом уже стало проводкой — здесь только ревизия.
+          <Button variant="secondary" size="sm" onClick={doUndo} disabled={undo.isPending}>
+            <RotateCcw className="h-3.5 w-3.5" />
+            Отменить проведение
           </Button>
-        </div>
+        ) : (
+          <>
+            {/* Проведение в категорию */}
+            <div className="flex items-center gap-2">
+              <Combobox
+                value={categoryId}
+                onChange={setCategoryId}
+                options={catOptions}
+                placeholder="Категория"
+                searchPlaceholder="Категория…"
+                className="h-9 w-[180px]"
+              />
+              <Button size="sm" onClick={doCategorize} disabled={!categoryId || categorize.isPending}>
+                <Check className="h-3.5 w-3.5" />
+                Провести
+              </Button>
+            </div>
 
-        {/* Поступление → заказ */}
-        {isIncome && (
-          <Button variant="secondary" size="sm" onClick={() => setAttachOpen(true)}>
-            <ClipboardList className="h-3.5 w-3.5" />
-            К заказу
-          </Button>
+            {/* Поступление → заказ */}
+            {isIncome && (
+              <Button variant="secondary" size="sm" onClick={() => setAttachOpen(true)}>
+                <ClipboardList className="h-3.5 w-3.5" />
+                К заказу
+              </Button>
+            )}
+
+            <Button variant="ghost" size="sm" onClick={doDismiss} disabled={dismiss.isPending}>
+              <X className="h-3.5 w-3.5" />
+              Не учитывать
+            </Button>
+          </>
         )}
-
-        <Button variant="ghost" size="sm" onClick={doDismiss} disabled={dismiss.isPending}>
-          <X className="h-3.5 w-3.5" />
-          Не учитывать
-        </Button>
       </div>
 
-      {isIncome && (
+      {isIncome && !isAutoPosted && (
         <AttachOrderSheet
           open={attachOpen}
           onClose={() => setAttachOpen(false)}

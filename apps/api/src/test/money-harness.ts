@@ -36,6 +36,7 @@ import { BudgetService } from '../budget/budget.service';
 import { AccountService } from '../account/account.service';
 import { CategoryService } from '../category/category.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
+import { RuleService } from '../rule/rule.service';
 import { Role } from '@prisma/client';
 
 export const TEST_DATABASE_URL =
@@ -67,6 +68,7 @@ export type Harness = {
   accounts: AccountService;
   categories: CategoryService;
   counterparties: CounterpartyService;
+  rules: RuleService;
   audit: AuditService;
 };
 
@@ -103,6 +105,7 @@ export function buildHarness(): Harness {
   const accounts = new AccountService(prisma);
   const categories = new CategoryService(prisma);
   const counterparties = new CounterpartyService(prisma);
+  const rules = new RuleService(prisma);
 
   return {
     prisma,
@@ -128,6 +131,7 @@ export function buildHarness(): Harness {
     accounts,
     categories,
     counterparties,
+    rules,
     audit,
   };
 }

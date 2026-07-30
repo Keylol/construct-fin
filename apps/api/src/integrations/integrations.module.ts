@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { OrderModule } from '../orders/order.module';
 import { AuditModule } from '../audit/audit.module';
+import { RuleModule } from '../rule/rule.module';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
@@ -23,7 +24,8 @@ import { InboxController } from './inbox.controller';
 @Module({
   // OrderModule: InboxService.attachOrder → OrderService.addPayment.
   // AuditModule: след подключения/ротации токена банка (integration.*).
-  imports: [OrderModule, AuditModule],
+  // RuleModule: InboxService.applyRulesToPending → общая загрузка активных правил.
+  imports: [OrderModule, AuditModule, RuleModule],
   controllers: [IntegrationsController, InboxController],
   providers: [
     CryptoService,

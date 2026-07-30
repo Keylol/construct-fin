@@ -3,8 +3,13 @@ import { D } from '../common/money';
 /**
  * Движок правил «условие → действие» (конфигурируемость Блок 1, обобщение
  * CategoryRule). Чистая функция БЕЗ БД/побочных эффектов — только СОПОСТАВЛЯЕТ
- * контекст операции с правилами и возвращает ПОДСКАЗКИ (что подставить в форму/
- * импорт). Деньги не двигает: пользователь подтверждает применённое.
+ * контекст операции с правилами и возвращает, что подставить.
+ *
+ * Сам движок денег не двигает, но его РЕЗУЛЬТАТ двигает: в ручной форме и в
+ * превью импорта это подсказка, которую подтверждает человек, а в банк-синке
+ * распознанная строка проводится сразу (`AUTO_POSTED`, см. sync.service.ts) —
+ * так задумано мастер-планом «авто-проводки + Inbox остатка». Обратимость даёт
+ * вкладка «Проведено правилами» во «Входящих» и откат (undo / undo-bulk).
  *
  * Условия и действия — из ФИКСИРОВАННОГО словаря (не произвольный код/DSL): это
  * держит фичу в Тир-1 безопасности (нельзя испортить деньги конфигом). Условия
@@ -14,6 +19,7 @@ import { D } from '../common/money';
 export type RuleCondition =
   | { type: 'DESCRIPTION_CONTAINS'; value: string }
   | { type: 'COUNTERPARTY_EQUALS'; counterpartyId: string }
+  | { type: 'COUNTERPARTY_INN_IN'; values: string[] }
   | { type: 'ACCOUNT_EQUALS'; accountId: string }
   | { type: 'TYPE_EQUALS'; value: 'INCOME' | 'EXPENSE' }
   | { type: 'AMOUNT_RANGE'; min?: string | null; max?: string | null }
@@ -38,6 +44,12 @@ export interface RuleContext {
   counterpartyId?: string | null;
   /** Имя контрагента (импорт даёт имя, не id) — для текстового условия. */
   counterpartyName?: string | null;
+  /**
+   * ИНН контрагента из выписки. Самый устойчивый признак для категоризации:
+   * наименование и назначение банк форматирует как придётся («ООО "Ромашка"»,
+   * «ООО РОМАШКА», с городом и без), а ИНН у одного контрагента всегда один.
+   */
+  counterpartyInn?: string | null;
   accountId?: string | null;
   amount?: string | null;
   type?: 'INCOME' | 'EXPENSE' | null;
@@ -49,7 +61,22 @@ export interface RuleSuggestion {
   categoryId?: string;
   counterpartyId?: string;
   accountId?: string;
+  /**
+   * Правило, давшее категорию. Именно оно превращает строку выписки в проводку, и
+   * именно его надо знать, чтобы потом ревизовать и откатить результат конкретного
+   * правила. `matchedRuleIds` для этого не годится — там все сработавшие.
+   */
+  categoryRuleId?: string;
   matchedRuleIds: string[];
+}
+
+/**
+ * ИНН сравниваем по одним цифрам: банки отдают его то с пробелами, то пустой строкой
+ * вместо null, а пользователь копирует значение откуда придётся (из выписки, из карточки
+ * контрагента, из письма). Незначащее форматирование не должно ломать правило.
+ */
+function digitsOnly(raw?: string | null): string {
+  return (raw ?? '').replace(/\D/g, '');
 }
 
 function matchesCondition(c: RuleCondition, ctx: RuleContext): boolean {
@@ -65,6 +92,13 @@ function matchesCondition(c: RuleCondition, ctx: RuleContext): boolean {
     }
     case 'COUNTERPARTY_EQUALS':
       return !!ctx.counterpartyId && ctx.counterpartyId === c.counterpartyId;
+    case 'COUNTERPARTY_INN_IN': {
+      // Список, а не одно значение: ИЛИ внутри правила нет, а одна категория обычно
+      // собирает нескольких контрагентов («Закупка товара» — все поставщики). Иначе
+      // на каждого поставщика пришлось бы заводить отдельное правило.
+      const inn = digitsOnly(ctx.counterpartyInn);
+      return !!inn && c.values.some((v) => digitsOnly(v) === inn);
+    }
     case 'ACCOUNT_EQUALS':
       return !!ctx.accountId && ctx.accountId === c.accountId;
     case 'TYPE_EQUALS':
@@ -87,8 +121,14 @@ function matchesCondition(c: RuleCondition, ctx: RuleContext): boolean {
 }
 
 /** Правило срабатывает, только если ВСЕ его условия истинны (И). Пустой набор
- * условий НЕ срабатывает (защита от «правило на всё»; DTO это тоже запрещает). */
-function ruleMatches(rule: RuleDef, ctx: RuleContext): boolean {
+ * условий НЕ срабатывает (защита от «правило на всё»; DTO это тоже запрещает).
+ *
+ * Экспортируется ради предпросмотра («сколько строк зацепит черновик правила»):
+ * там нужен именно матчинг без действий, и второй реализации быть не должно. */
+export function ruleMatches(
+  rule: Pick<RuleDef, 'conditions'>,
+  ctx: RuleContext,
+): boolean {
   if (rule.conditions.length === 0) return false;
   return rule.conditions.every((c) => matchesCondition(c, ctx));
 }
@@ -113,6 +153,7 @@ export function applyRules(rules: RuleDef[], ctx: RuleContext): RuleSuggestion {
         case 'SET_CATEGORY':
           if (out.categoryId === undefined) {
             out.categoryId = action.categoryId;
+            out.categoryRuleId = rule.id;
             used = true;
           }
           break;

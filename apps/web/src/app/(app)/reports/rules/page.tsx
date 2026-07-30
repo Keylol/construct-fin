@@ -28,6 +28,7 @@ import {
   useCreateRule,
   useUpdateRule,
   useDeleteRule,
+  useRulePreview,
   type CreateRuleInput,
 } from '@/hooks/useRules';
 import type {
@@ -37,14 +38,18 @@ import type {
   RuleAppliesTo,
   RuleCondition,
   RuleConditionType,
+  RulePreview,
   Account,
   Category,
   Counterparty,
 } from '@/lib/types';
+import { formatRub } from '@construct/shared';
+import { formatDate } from '@/lib/dates';
 
 const CONDITION_LABELS: Record<RuleConditionType, string> = {
   DESCRIPTION_CONTAINS: 'Описание содержит',
   COUNTERPARTY_EQUALS: 'Контрагент — это',
+  COUNTERPARTY_INN_IN: 'ИНН контрагента — один из',
   ACCOUNT_EQUALS: 'Счёт — это',
   TYPE_EQUALS: 'Тип операции',
   AMOUNT_RANGE: 'Сумма в диапазоне',
@@ -69,6 +74,8 @@ function defaultCondition(type: RuleConditionType): RuleCondition {
       return { type, value: '' };
     case 'COUNTERPARTY_EQUALS':
       return { type, counterpartyId: '' };
+    case 'COUNTERPARTY_INN_IN':
+      return { type, values: [] };
     case 'ACCOUNT_EQUALS':
       return { type, accountId: '' };
     case 'TYPE_EQUALS':
@@ -77,6 +84,68 @@ function defaultCondition(type: RuleConditionType): RuleCondition {
       return { type, min: '', max: '' };
     case 'SOURCE_EQUALS':
       return { type, value: 'IMPORT' };
+  }
+}
+
+/** Охват черновика по загруженной выписке: сколько зацепит и что именно. */
+function PreviewPanel({ preview }: { preview: RulePreview }) {
+  if (preview.total === 0) {
+    return (
+      <p className="rounded-md bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+        Выписка ещё не загружена — проверить правило не на чем.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md bg-secondary/40 px-3 py-2 text-xs">
+      {preview.matched === 0 ? (
+        <span className="text-muted-foreground">
+          Ни одна из {preview.total} загруженных строк не подходит под эти условия.
+        </span>
+      ) : (
+        <>
+          <span className="text-foreground">
+            Подходит <span className="font-semibold tabular-nums">{preview.matched}</span> из{' '}
+            {preview.total} строк
+            {preview.matchedPending > 0 && (
+              <>
+                , из них на разборе{' '}
+                <span className="font-semibold tabular-nums">{preview.matchedPending}</span>
+              </>
+            )}
+            {preview.truncated && ' (проверены только последние строки)'}
+          </span>
+          <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+            {preview.samples.map((s) => (
+              <li key={s.id} className="truncate">
+                {formatDate(s.date)} · {s.direction === 'INCOME' ? '+' : '−'}
+                {formatRub(s.amount, 2)} ·{' '}
+                {s.description?.trim() || s.counterpartyName || 'без назначения'}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Условие заполнено настолько, что его уже можно проверить предпросмотром. */
+function isConditionFilled(c: RuleCondition): boolean {
+  switch (c.type) {
+    case 'DESCRIPTION_CONTAINS':
+      return c.value.trim().length > 0;
+    case 'COUNTERPARTY_EQUALS':
+      return !!c.counterpartyId;
+    case 'COUNTERPARTY_INN_IN':
+      return c.values.some((v) => v.length === 10 || v.length === 12);
+    case 'ACCOUNT_EQUALS':
+      return !!c.accountId;
+    case 'AMOUNT_RANGE':
+      return (c.min != null && c.min !== '') || (c.max != null && c.max !== '');
+    case 'TYPE_EQUALS':
+    case 'SOURCE_EQUALS':
+      return true;
   }
 }
 
@@ -147,6 +216,10 @@ export default function RulesPage() {
         return `описание содержит «${c.value}»`;
       case 'COUNTERPARTY_EQUALS':
         return `контрагент = ${cpName.get(c.counterpartyId) ?? '—'}`;
+      case 'COUNTERPARTY_INN_IN':
+        return c.values.length === 1
+          ? `ИНН = ${c.values[0]}`
+          : `ИНН — один из ${c.values.length}`;
       case 'ACCOUNT_EQUALS':
         return `счёт = ${accName.get(c.accountId) ?? '—'}`;
       case 'TYPE_EQUALS':
@@ -261,9 +334,11 @@ export default function RulesPage() {
         <div className="flex items-center justify-between gap-3">
           <p className="max-w-3xl text-sm text-muted-foreground">
             Правило срабатывает, когда выполнены <strong>все</strong> его условия, и
-            подсказывает, что подставить — категорию, контрагента или счёт. Работает
-            при импорте и/или ручном вводе; правило с большим приоритетом применяется
-            первым. Ничего не двигает автоматически — вы подтверждаете подсказку.
+            подставляет категорию, контрагента или счёт. При ручном вводе это
+            подсказка — вы подтверждаете её сами. А вот{' '}
+            <strong>строку из банка правило проводит сразу</strong>, без подтверждения:
+            результат смотрите во «Входящих» на вкладке «Проведено правилами», там же
+            его можно отменить. Правило с большим приоритетом применяется первым.
           </p>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> Новое правило
@@ -367,10 +442,39 @@ function RuleFormDialog({
     { type: 'SET_CATEGORY', categoryId: '' },
   ]);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<RulePreview | null>(null);
+  const requestPreview = useRulePreview(wsId);
+
+  // Предпросмотр по мере правки условий: сработавшее правило сразу создаёт
+  // проводки, поэтому охват надо видеть ДО сохранения, а не по факту.
+  useEffect(() => {
+    if (!open) return;
+    const ready = conditions.filter(isConditionFilled);
+    if (ready.length === 0) {
+      setPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      requestPreview(ready)
+        .then((r) => {
+          if (!cancelled) setPreview(r);
+        })
+        // Предпросмотр — подсказка, а не часть сохранения: молча гаснет.
+        .catch(() => {
+          if (!cancelled) setPreview(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, conditions, requestPreview]);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setPreview(null);
     if (editing) {
       setName(editing.name);
       setAppliesTo(editing.appliesTo);
@@ -446,6 +550,12 @@ function RuleFormDialog({
         return 'Заполните текст в условии «Описание содержит»';
       if (c.type === 'COUNTERPARTY_EQUALS' && !c.counterpartyId)
         return 'Выберите контрагента в условии';
+      if (c.type === 'COUNTERPARTY_INN_IN') {
+        if (c.values.length === 0) return 'Укажите хотя бы один ИНН';
+        // Зеркалим серверную проверку: ИНН — 10 цифр (организация) или 12 (ИП).
+        const bad = c.values.find((v) => v.length !== 10 && v.length !== 12);
+        if (bad) return `ИНН «${bad}» — нужно 10 цифр (организация) или 12 (ИП)`;
+      }
       if (c.type === 'ACCOUNT_EQUALS' && !c.accountId) return 'Выберите счёт в условии';
       if (c.type === 'AMOUNT_RANGE') {
         const hasMin = c.min != null && c.min !== '';
@@ -585,6 +695,8 @@ function RuleFormDialog({
                   <Plus className="h-3.5 w-3.5" /> Условие
                 </Button>
               )}
+
+              {preview && <PreviewPanel preview={preview} />}
             </div>
 
             {/* ─── Действия ─── */}
@@ -693,6 +805,28 @@ function ConditionRow({
             searchPlaceholder="Имя или контакт…"
             recentKey={`${wsId}:counterparty`}
           />
+        )}
+        {condition.type === 'COUNTERPARTY_INN_IN' && (
+          <div>
+            <Input
+              value={condition.values.join(', ')}
+              onChange={(e) =>
+                onChange({
+                  type: 'COUNTERPARTY_INN_IN',
+                  // Разделители любые (запятая, пробел, перенос) — ИНН обычно
+                  // копируют пачкой из выписки; оставляем одни цифры.
+                  values: e.target.value
+                    .split(/[^0-9]+/)
+                    .filter(Boolean),
+                })
+              }
+              inputMode="numeric"
+              placeholder="7701234567, 660312345678"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Несколько ИНН через запятую — сработает на любом из них.
+            </p>
+          </div>
         )}
         {condition.type === 'ACCOUNT_EQUALS' && (
           <Select

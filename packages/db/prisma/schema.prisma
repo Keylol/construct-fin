@@ -913,7 +913,9 @@ enum ImportSource {
 /// «условие → действие». conditions/actions — JSON из фиксированного zod-словаря
 /// (см. rule.dto.ts); id категорий/контрагентов/счетов внутри JSON проверяются на
 /// принадлежность workspace в сервисе (FK внутри JSON не enforce-ится, это норма
-/// для rule-движка). Только ПОДСКАЗКИ — деньги не двигает.
+/// для rule-движка). При ручном вводе и в превью импорта — подсказка, которую
+/// подтверждает человек; строку банковской выписки правило проводит СРАЗУ
+/// (BankStatementLine.status=AUTO_POSTED + appliedRuleId), откат — через Inbox.
 model Rule {
   id          String    @id @default(cuid())
   workspaceId String
@@ -1077,6 +1079,10 @@ model BankStatementLine {
   status              BankLineStatus @default(NEW)
   /// Подсказка Rule-движка (для UI и авто-проводки).
   suggestedCategoryId String?
+  /// Правило, автоматически проведшее строку (status=AUTO_POSTED). Без FK — как и
+  /// suggestedCategoryId: правило живёт с soft-delete, а ссылка нужна историческая,
+  /// чтобы ревизовать и массово откатить результат конкретного правила.
+  appliedRuleId       String?
   /// Проводка, созданная из строки (авто или вручную из Inbox). 1:1 — одна
   /// строка порождает не более одной проводки.
   transactionId       String?        @unique
@@ -1095,6 +1101,8 @@ model BankStatementLine {
   @@unique([connectionId, externalId])
   @@index([workspaceId, status, date])
   @@index([connectionId, status])
+  // Массовый откат «всё, что провело правило X» и счётчик срабатываний.
+  @@index([workspaceId, appliedRuleId])
   // transactionId не индексируем отдельно — @unique уже создаёт уникальный индекс.
   @@index([transferId])
 }

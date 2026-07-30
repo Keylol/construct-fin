@@ -18,9 +18,11 @@ import {
   CreateRuleSchema,
   UpdateRuleSchema,
   SuggestSchema,
+  PreviewRuleSchema,
   type CreateRuleDto,
   type UpdateRuleDto,
   type SuggestDto,
+  type PreviewRuleDto,
 } from './rule.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -50,6 +52,16 @@ export class RuleController {
     @Body(new ZodPipe(SuggestSchema)) body: SuggestDto,
   ) {
     return this.service.suggest(ws.workspaceId, body);
+  }
+
+  /** «Зацепит N строк из M, вот примеры» — до сохранения правила. */
+  @Post('preview')
+  @HttpCode(200)
+  preview(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(PreviewRuleSchema)) body: PreviewRuleDto,
+  ) {
+    return this.service.preview(ws.workspaceId, body.conditions);
   }
 
   @Patch(':id')

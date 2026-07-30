@@ -8,9 +8,11 @@ import {
   ListInboxSchema,
   CategorizeSchema,
   AttachOrderSchema,
+  UndoBulkSchema,
   type ListInboxQuery,
   type CategorizeDto,
   type AttachOrderDto,
+  type UndoBulkDto,
 } from './inbox.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
 
@@ -34,6 +36,23 @@ export class InboxController {
   @Get('count')
   count(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.service.count(ws.workspaceId);
+  }
+
+  /** Прогнать правила по строкам, уже лежащим на разборе. */
+  @Post('apply-rules')
+  @HttpCode(200)
+  applyRules(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.service.applyRulesToPending(ws.workspaceId, ws.userId);
+  }
+
+  /** Массовый откат авто-проведённого — списком строк или целиком по правилу. */
+  @Post('undo-bulk')
+  @HttpCode(200)
+  undoBulk(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(UndoBulkSchema)) body: UndoBulkDto,
+  ) {
+    return this.service.undoBulk(ws.workspaceId, body);
   }
 
   @Post(':id/categorize')

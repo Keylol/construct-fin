@@ -222,6 +222,10 @@ export class ImportService {
         description: r.description,
         counterpartyName: r.counterpartyName,
         type: r.type,
+        // Сумма и счёт известны здесь же (importHash выше считается по ним) — без них
+        // условия AMOUNT_RANGE и ACCOUNT_EQUALS в импорте не срабатывали никогда.
+        amount: r.amount,
+        accountId: opts.accountId,
         source: 'IMPORT',
       });
       const suggestedCategoryId = suggestion.categoryId ?? null;

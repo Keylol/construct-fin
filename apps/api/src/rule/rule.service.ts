@@ -1,8 +1,30 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { applyRules, type RuleCondition, type RuleAction, type RuleSuggestion } from './engine';
+import {
+  applyRules,
+  ruleMatches,
+  type RuleCondition,
+  type RuleAction,
+  type RuleDef,
+  type RuleSuggestion,
+} from './engine';
 import type { CreateRuleDto, UpdateRuleDto, SuggestDto } from './rule.dto';
+
+/** Потолок строк на один предпросмотр: матчинг идёт в памяти, а ответ должен быть
+ * быстрым. Выше потолка счётчик занижается — об этом говорит флаг `truncated`. */
+const PREVIEW_SCAN_LIMIT = 5000;
+const PREVIEW_SAMPLES = 5;
+
+export interface PreviewSample {
+  id: string;
+  date: Date;
+  amount: string;
+  direction: 'INCOME' | 'EXPENSE';
+  counterpartyName: string | null;
+  description: string | null;
+  status: string;
+}
 
 @Injectable()
 export class RuleService {
@@ -79,22 +101,14 @@ export class RuleService {
    * какие правила сработали. Деньги НЕ трогаем — фронт показывает подсказку.
    */
   async suggest(workspaceId: string, input: SuggestDto): Promise<RuleSuggestion> {
-    const scope = input.source === 'IMPORT' ? ['IMPORT', 'BOTH'] : ['MANUAL', 'BOTH'];
-    const rules = await this.prisma.rule.findMany({
-      where: { workspaceId, deletedAt: null, isActive: true, appliesTo: { in: scope } },
-    });
+    const rules = await this.loadActive(workspaceId, input.source);
     const suggestion = applyRules(
-      rules.map((r) => ({
-        id: r.id,
-        name: r.name,
-        priority: r.priority,
-        conditions: r.conditions as unknown as RuleCondition[],
-        actions: r.actions as unknown as RuleAction[],
-      })),
+      rules,
       {
         description: input.description,
         counterpartyId: input.counterpartyId,
         counterpartyName: input.counterpartyName,
+        counterpartyInn: input.counterpartyInn,
         accountId: input.accountId,
         amount: input.amount,
         type: input.type,
@@ -106,6 +120,99 @@ export class RuleService {
     // подсказки — иначе фронт подставит удалённую категорию/контрагента/счёт, и
     // сохранение упадёт с невнятной ошибкой «не найдено в workspace».
     return this.pruneDeadRefs(workspaceId, suggestion);
+  }
+
+  /**
+   * Активные правила, применимые к источнику (appliesTo ⊇ source), в форме движка.
+   * Общая точка загрузки: фильтр `appliesTo` и приведение JSON→типы иначе расползаются
+   * копиями по каждому потребителю движка.
+   */
+  async loadActive(workspaceId: string, source: 'IMPORT' | 'MANUAL'): Promise<RuleDef[]> {
+    const scope = source === 'IMPORT' ? ['IMPORT', 'BOTH'] : ['MANUAL', 'BOTH'];
+    const rows = await this.prisma.rule.findMany({
+      where: { workspaceId, deletedAt: null, isActive: true, appliesTo: { in: scope } },
+      select: { id: true, name: true, priority: true, conditions: true, actions: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      priority: r.priority,
+      conditions: r.conditions as unknown as RuleCondition[],
+      actions: r.actions as unknown as RuleAction[],
+    }));
+  }
+
+  /**
+   * Предпросмотр черновика правила по УЖЕ загруженным строкам выписки: «зацепит N
+   * строк из M, вот примеры». Без него правило пишется вслепую — а сработавшее
+   * правило сразу создаёт проводки, и ошибку видно только по факту.
+   *
+   * Матчинг гоняем в JS тем же `ruleMatches`, что и боевой путь: условия лежат в
+   * JSON и в SQL не транслируются, а второй реализации матчинга быть не должно.
+   */
+  async preview(workspaceId: string, conditions: RuleCondition[]) {
+    const [lines, total] = await Promise.all([
+      this.prisma.bankStatementLine.findMany({
+        where: { workspaceId },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: PREVIEW_SCAN_LIMIT,
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          direction: true,
+          counterpartyName: true,
+          counterpartyInn: true,
+          description: true,
+          status: true,
+          connection: { select: { accountId: true } },
+        },
+      }),
+      this.prisma.bankStatementLine.count({ where: { workspaceId } }),
+    ]);
+
+    const samples: PreviewSample[] = [];
+    let matched = 0;
+    let matchedPending = 0;
+    for (const line of lines) {
+      const hit = ruleMatches(
+        { conditions },
+        {
+          description: line.description,
+          counterpartyName: line.counterpartyName,
+          counterpartyInn: line.counterpartyInn,
+          accountId: line.connection.accountId,
+          amount: line.amount.toString(),
+          type: line.direction,
+          source: 'IMPORT',
+        },
+      );
+      if (!hit) continue;
+      matched++;
+      if (line.status === 'NEW') matchedPending++;
+      if (samples.length < PREVIEW_SAMPLES) {
+        samples.push({
+          id: line.id,
+          date: line.date,
+          amount: line.amount.toString(),
+          direction: line.direction,
+          counterpartyName: line.counterpartyName,
+          description: line.description,
+          status: line.status,
+        });
+      }
+    }
+
+    return {
+      matched,
+      /** Из них ещё не разобрано — именно столько строк проведёт «Применить правила». */
+      matchedPending,
+      scanned: lines.length,
+      total,
+      /** Строк больше, чем влезло в проход: счётчик занижен, но не врёт по знаку. */
+      truncated: total > lines.length,
+      samples,
+    };
   }
 
   private async pruneDeadRefs(

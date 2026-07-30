@@ -8,6 +8,7 @@ import type {
   RuleAction,
   RuleAppliesTo,
   RuleCondition,
+  RulePreview,
   RuleSuggestion,
 } from '@/lib/types';
 
@@ -64,6 +65,20 @@ export function useDeleteRule(wsId: string) {
     mutationFn: (id: string) => api.del<void>(`/workspaces/${wsId}/rules/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rules', wsId] }),
   });
+}
+
+/**
+ * Предпросмотр черновика правила по загруженным строкам выписки. Императивный по
+ * той же причине, что и подсказки: дёргается по мере правки условий.
+ */
+export function useRulePreview(wsId: string | null) {
+  return useCallback(
+    (conditions: RuleCondition[]): Promise<RulePreview | null> => {
+      if (!wsId || conditions.length === 0) return Promise.resolve(null);
+      return api.post<RulePreview>(`/workspaces/${wsId}/rules/preview`, { conditions });
+    },
+    [wsId],
+  );
 }
 
 /**
