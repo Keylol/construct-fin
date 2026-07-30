@@ -87,12 +87,19 @@ export default function IntegrationsPage() {
 
   const runSync = (c: IntegrationConnection) => {
     sync.mutate(c.id, {
-      onSuccess: (r) =>
-        toast.success(
-          r.created > 0
-            ? `Загружено новых операций: ${r.created}${r.autoPosted ? `, из них проведено: ${r.autoPosted}` : ''}`
-            : 'Новых операций нет',
-        ),
+      onSuccess: (r) => {
+        if (r.created === 0) {
+          toast.success('Новых операций нет');
+          return;
+        }
+        // Усыновление показываем отдельной цифрой: при перезалива истории это
+        // главный показатель — столько строк совпало с уже внесённым вручную,
+        // и настолько же меньше ручного разбора.
+        const parts = [`Загружено: ${r.created}`];
+        if (r.adopted) parts.push(`узнано ранее внесённых: ${r.adopted}`);
+        if (r.autoPosted) parts.push(`проведено правилами: ${r.autoPosted}`);
+        toast.success(parts.join(', '));
+      },
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Синхронизация не удалась'),
     });
   };

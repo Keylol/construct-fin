@@ -62,6 +62,7 @@ export class InboxService {
         description: l.description,
         ausnMark: l.ausnMark,
         status: l.status,
+        adopted: l.adopted,
         suggestedCategoryId: l.suggestedCategoryId,
         appliedRule: l.appliedRuleId
           ? { id: l.appliedRuleId, name: ruleNames.get(l.appliedRuleId) ?? null }
@@ -217,6 +218,16 @@ export class InboxService {
     if (!line) throw new NotFoundException('Строка не найдена');
     if (!line.transaction) {
       throw new BadRequestException('У строки нет созданной проводки — отменять нечего');
+    }
+    // Усыновление: операция существовала до строки и принадлежит человеку —
+    // отменяем только привязку. Удалить её значило бы стереть чужую запись
+    // вместе с категорией, которую оператор проставил руками.
+    if (line.adopted) {
+      await this.prisma.bankStatementLine.update({
+        where: { id: line.id },
+        data: { status: 'NEW', transactionId: null, adopted: false },
+      });
+      return { ok: true };
     }
     // Оплаты заказа завязаны на инварианты заказа — отменяются в его карточке.
     if (line.transaction.kind !== 'OTHER') {
