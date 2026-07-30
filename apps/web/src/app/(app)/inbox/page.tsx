@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { toast } from '@/components/ui/Toaster';
 import { InboxRow } from '@/components/inbox/InboxRow';
 import { TransferSuggestions } from '@/components/inbox/TransferSuggestions';
+import { PlannedSuggestions } from '@/components/inbox/PlannedSuggestions';
 
 const TAB_HINTS: Record<BankLineStatus, string> = {
   NEW: 'Операции из банка на обработку. Подтвердите категорию, привяжите поступление к заказу или отметьте «не учитывать».',
@@ -99,7 +100,12 @@ export default function InboxPage() {
           </Tabs>
         </div>
 
-        {tab === 'NEW' && <TransferSuggestions wsId={current.id} />}
+        {tab === 'NEW' && (
+          <>
+            <TransferSuggestions wsId={current.id} />
+            <PlannedSuggestions wsId={current.id} />
+          </>
+        )}
 
         {inbox.isLoading ? (
           <div className="space-y-2">

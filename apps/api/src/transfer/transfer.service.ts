@@ -146,6 +146,14 @@ export class TransferService {
         where: { workspaceId, transferGroupId: id, deletedAt: null },
         data: { deletedAt: now },
       });
+      // Строки выписки, подтверждённые как ноги этого перевода, возвращаются на
+      // разбор: их проводки только что погашены, и без отвязки строки остались
+      // бы «обработанными» со ссылкой на удалённые операции. FK SetNull здесь
+      // не спасает — удаление мягкое.
+      await tx.bankStatementLine.updateMany({
+        where: { workspaceId, transferId: id },
+        data: { status: 'NEW', transactionId: null, transferId: null },
+      });
     });
   }
 

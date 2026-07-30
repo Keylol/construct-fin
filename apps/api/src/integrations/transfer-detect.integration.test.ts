@@ -85,6 +85,7 @@ beforeAll(() => {
     h.orders as never,
     h.rules as never,
     h.transfer as never,
+    h.planning as never,
   );
 });
 afterAll(async () => {
