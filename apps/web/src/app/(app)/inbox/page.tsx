@@ -111,9 +111,12 @@ export default function InboxPage() {
       />
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          {tab === 'NEW'
-            ? 'Операции из банка на обработку. Подтвердите категорию, привяжите поступление к заказу или отметьте «не учитывать».'
-            : 'Операции, проведённые правилами без вашего участия. Проверьте и отмените, если правило ошиблось.'}
+          {tab === 'NEW' &&
+            'Операции из банка на обработку. Подтвердите категорию, привяжите поступление к заказу или отметьте «не учитывать».'}
+          {tab === 'AUTO_POSTED' &&
+            'Операции, проведённые правилами без вашего участия. Проверьте и отмените, если правило ошиблось.'}
+          {tab === 'RESOLVED' &&
+            'Разобранные строки, а также узнанные при загрузке — те, что совпали с операциями, внесёнными вами раньше. Отмена снимает только связь: сама операция остаётся.'}
         </p>
 
         <div className="mb-4">
@@ -121,6 +124,7 @@ export default function InboxPage() {
             <TabsList>
               <TabsTrigger value="NEW">На разбор</TabsTrigger>
               <TabsTrigger value="AUTO_POSTED">Проведено правилами</TabsTrigger>
+              <TabsTrigger value="RESOLVED">Обработано</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -185,6 +189,9 @@ function InboxRow({
 
   const isIncome = line.direction === 'INCOME';
   const isAutoPosted = line.status === 'AUTO_POSTED';
+  // Разобранные строки (в т.ч. узнанные при загрузке) уже стали операциями —
+  // здесь только просмотр и отмена связи.
+  const isSettled = isAutoPosted || line.status === 'RESOLVED';
   const title =
     line.description?.trim() || line.counterpartyName || (isIncome ? 'Поступление' : 'Расход');
 
@@ -208,7 +215,12 @@ function InboxRow({
 
   const doUndo = () => {
     undo.mutate(line.id, {
-      onSuccess: () => toast.success('Проведение отменено, строка вернулась на разбор'),
+      onSuccess: () =>
+        toast.success(
+          line.adopted
+            ? 'Связь снята: ваша операция осталась, строка вернулась на разбор'
+            : 'Проведение отменено, строка вернулась на разбор',
+        ),
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось отменить'),
     });
   };
@@ -232,16 +244,17 @@ function InboxRow({
           <div className="mt-0.5 text-xs text-muted-foreground">
             {formatDate(line.date)} · {line.account.name}
             {line.ausnMark && ` · ${AUSN_LABELS[line.ausnMark]}`}
-            {isAutoPosted &&
-              ` · правило: ${line.appliedRule?.name ?? 'удалено'}`}
+            {isAutoPosted && ` · правило: ${line.appliedRule?.name ?? 'удалено'}`}
+            {line.adopted && ' · узнана: совпала с вашей операцией'}
           </div>
         </div>
 
-        {isAutoPosted ? (
-          // Проведённое правилом уже стало проводкой — здесь только ревизия.
+        {isSettled ? (
+          // Строка уже стала операцией — здесь только ревизия. Для узнанной
+          // отмена снимает лишь связь, сама операция человека остаётся.
           <Button variant="secondary" size="sm" onClick={doUndo} disabled={undo.isPending}>
             <RotateCcw className="h-3.5 w-3.5" />
-            Отменить проведение
+            {line.adopted ? 'Отменить связь' : 'Отменить проведение'}
           </Button>
         ) : (
           <>
@@ -277,7 +290,7 @@ function InboxRow({
         )}
       </div>
 
-      {isIncome && !isAutoPosted && (
+      {isIncome && !isSettled && (
         <AttachOrderSheet
           open={attachOpen}
           onClose={() => setAttachOpen(false)}

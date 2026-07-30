@@ -19,6 +19,7 @@ const PUBLIC_SELECT = {
   // публичные метаданные: какой сертификат стоит и до какого числа он годен.
   tlsFingerprint: true,
   tlsExpiresAt: true,
+  backfillFrom: true,
   syncCursor: true,
   lastSyncAt: true,
   lastSyncError: true,
@@ -62,6 +63,9 @@ export class IntegrationsService {
         credentialEnc,
         keyLast4: CryptoService.mask(dto.token),
         externalAccountId: dto.accountNumber ?? null,
+        // Дату можно задать сразу при подключении — тогда первый же синк пойдёт
+        // за историей, а не только за операциями с сегодняшнего дня.
+        backfillFrom: dto.backfillFrom ?? null,
         ...tls,
         createdById: userId,
       },
@@ -89,7 +93,7 @@ export class IntegrationsService {
   }
 
   async update(workspaceId: string, id: string, userId: string, dto: UpdateIntegrationDto) {
-    await this.assertOwned(workspaceId, id);
+    const existing = await this.assertOwned(workspaceId, id);
     const updated = await this.prisma.integrationConnection.update({
       where: { id },
       data: {
@@ -112,6 +116,17 @@ export class IntegrationsService {
         // Замена сертификата (ротация по сроку или переход на боевой после
         // песочницы) — как и ротация токена, сбрасывает прошлую ошибку.
         ...(dto.tlsCert ? { ...this.buildTls(dto), status: 'ACTIVE', lastSyncError: null } : {}),
+        // Сдвиг даты выгрузки НАЗАД обязан сбросить курсор: иначе синк продолжит
+        // с уже пройденного места и прошлое так и не приедет. Сдвиг вперёд курсор
+        // не трогает — уже загруженное остаётся, просто дальше не углубляемся.
+        ...(dto.backfillFrom !== undefined
+          ? {
+              backfillFrom: dto.backfillFrom,
+              ...(this.movesBackfillEarlier(dto.backfillFrom, existing)
+                ? { syncCursor: null, lastSyncError: null }
+                : {}),
+            }
+          : {}),
       },
       select: PUBLIC_SELECT,
     });
@@ -287,9 +302,25 @@ export class IntegrationsService {
   private async assertOwned(workspaceId: string, id: string) {
     const conn = await this.prisma.integrationConnection.findFirst({
       where: { id, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, backfillFrom: true, createdAt: true },
     });
     if (!conn) throw new NotFoundException('Подключение не найдено');
+    return conn;
+  }
+
+  /**
+   * Стало ли начало выгрузки раньше прежнего? Точкой отсчёта, когда backfillFrom
+   * не был задан, служит дата подключения — синк стартовал именно с неё.
+   */
+  private movesBackfillEarlier(
+    next: Date | null | undefined,
+    existing: { backfillFrom: Date | null; createdAt: Date },
+  ): boolean {
+    // Снятие даты возвращает старт к дате подключения — это всегда «позже или
+    // так же», курсор трогать незачем.
+    if (next == null) return false;
+    const current = existing.backfillFrom ?? existing.createdAt;
+    return next.getTime() < current.getTime();
   }
 
   /** Публичная форма — БЕЗ credentialEnc (секрет наружу не уходит). */
@@ -301,6 +332,7 @@ export class IntegrationsService {
     externalAccountId: string | null;
     tlsFingerprint: string | null;
     tlsExpiresAt: Date | null;
+    backfillFrom: Date | null;
     syncCursor: string | null;
     lastSyncAt: Date | null;
     lastSyncError: string | null;
@@ -316,6 +348,7 @@ export class IntegrationsService {
       // Публичная часть сертификата: показать, какой стоит и когда истекает.
       tlsFingerprint: r.tlsFingerprint,
       tlsExpiresAt: r.tlsExpiresAt?.toISOString() ?? null,
+      backfillFrom: r.backfillFrom?.toISOString() ?? null,
       account: r.account,
       lastSyncAt: r.lastSyncAt?.toISOString() ?? null,
       lastSyncError: r.lastSyncError,

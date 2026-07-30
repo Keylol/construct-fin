@@ -16,6 +16,15 @@ const accountNumber = z
   .regex(/^\d{20}$/, 'Номер счёта — 20 цифр');
 
 /**
+ * Дата, с которой тянуть выписку. Приходит с фронта строкой (`YYYY-MM-DD` из
+ * поля даты либо ISO) — приводим к Date здесь, чтобы сервис работал с датой, а
+ * не с текстом. Будущее не имеет смысла: выписки за завтра не существует.
+ */
+const backfillFrom = z.coerce
+  .date()
+  .refine((d) => d.getTime() <= Date.now(), 'Дата начала выгрузки не может быть в будущем');
+
+/**
  * Клиентский сертификат mTLS: PEM-файлы целиком. Лимит с запасом на цепочку
  * (сертификат ~2 КБ, ключ ~2 КБ, но банк может выдать связку).
  */
@@ -45,6 +54,8 @@ export const CreateIntegrationSchema = z
     token: z.string().min(1).max(4096),
     /** Номер расчётного счёта у провайдера (обязателен для банков). */
     accountNumber: accountNumber.optional(),
+    /** Тянуть выписку с этой даты, а не с момента подключения (перезалив). */
+    backfillFrom: backfillFrom.optional(),
     ...tlsFields,
   })
   .refine((v) => v.accountNumber !== undefined, {
@@ -62,6 +73,12 @@ export const UpdateIntegrationSchema = z
     status: z.enum(['ACTIVE', 'DISABLED']).optional(),
     /** Исправление номера счёта (опечатка при подключении). */
     accountNumber: accountNumber.optional(),
+    /**
+     * Дата начала выгрузки. null снимает её (старт снова с даты подключения),
+     * поэтому тип nullable, а не просто optional: «не передали» и «сбросить» —
+     * разные намерения.
+     */
+    backfillFrom: backfillFrom.nullable().optional(),
     ...tlsFields,
   })
   .refine(
@@ -69,8 +86,9 @@ export const UpdateIntegrationSchema = z
       v.token !== undefined ||
       v.status !== undefined ||
       v.accountNumber !== undefined ||
+      v.backfillFrom !== undefined ||
       v.tlsCert !== undefined,
-    { message: 'Нужно передать token, status, accountNumber и/или сертификат' },
+    { message: 'Нужно передать token, status, accountNumber, дату выгрузки и/или сертификат' },
   )
   .refine(tlsPairRule, tlsPairMessage);
 export type UpdateIntegrationDto = z.infer<typeof UpdateIntegrationSchema>;

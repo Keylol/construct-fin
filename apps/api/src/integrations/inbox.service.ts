@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderService } from '../orders/order.service';
 import { RuleService } from '../rule/rule.service';
 import { applyRules, type RuleDef } from '../rule/engine';
+import { computeRowHash } from '../common/import-hash';
 import type { CategorizeDto, ListInboxQuery, UndoBulkDto } from './inbox.dto';
 
 /** Потолок строк на один прогон правил: держим ответ быстрым, остаток — следующим
@@ -62,6 +63,7 @@ export class InboxService {
         description: l.description,
         ausnMark: l.ausnMark,
         status: l.status,
+        adopted: l.adopted,
         suggestedCategoryId: l.suggestedCategoryId,
         appliedRule: l.appliedRuleId
           ? { id: l.appliedRuleId, name: ruleNames.get(l.appliedRuleId) ?? null }
@@ -117,6 +119,17 @@ export class InboxService {
           // Ф4: переносим АУСН-маркировку банка на проводку (приоритетна в базе
           // налога; оператор может переопределить позже через PATCH).
           ausnMark: line.ausnMark,
+          // Отпечаток строки — чтобы CSV-выгрузка того же периода, загруженная
+          // позже, распознала эту операцию как уже существующую.
+          importHash: computeRowHash({
+            workspaceId,
+            accountId: line.connection.accountId,
+            date: line.date,
+            amount: line.amount.toString(),
+            type: line.direction,
+            counterpartyName: line.counterpartyName,
+            description: line.description,
+          }),
           createdById: userId,
         },
         select: { id: true },
@@ -217,6 +230,16 @@ export class InboxService {
     if (!line) throw new NotFoundException('Строка не найдена');
     if (!line.transaction) {
       throw new BadRequestException('У строки нет созданной проводки — отменять нечего');
+    }
+    // Усыновление: операция существовала до строки и принадлежит человеку —
+    // отменяем только привязку. Удалить её значило бы стереть чужую запись
+    // вместе с категорией, которую оператор проставил руками.
+    if (line.adopted) {
+      await this.prisma.bankStatementLine.update({
+        where: { id: line.id },
+        data: { status: 'NEW', transactionId: null, adopted: false },
+      });
+      return { ok: true };
     }
     // Оплаты заказа завязаны на инварианты заказа — отменяются в его карточке.
     if (line.transaction.kind !== 'OTHER') {

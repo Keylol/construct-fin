@@ -126,7 +126,11 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
     assertHeaderSafe(input.token);
 
     const today = dayKey(new Date());
-    const days = this.daysToFetch(input.cursor, input.connectedAt, today);
+    const days = this.daysToFetch(
+      input.cursor,
+      input.backfillFrom ?? input.connectedAt,
+      today,
+    );
     if (days.length === 0) return { lines: [], nextCursor: input.cursor };
 
     const lines: RawBankLine[] = [];
@@ -144,12 +148,12 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
 
   /**
    * Календарные дни, которые нужно запросить: от дня после курсора (или от даты
-   * подключения — историю до неё банк не отдаёт по решению №15 генплана) до
-   * сегодня включительно, но не больше MAX_DAYS_PER_SYNC за раз.
+   * старта — подключения либо явной backfillFrom) до сегодня включительно, но не
+   * больше MAX_DAYS_PER_SYNC за раз.
    */
-  private daysToFetch(cursor: string | null, connectedAt: Date, today: string): string[] {
+  private daysToFetch(cursor: string | null, startFrom: Date, today: string): string[] {
     const floor = this.historyFloor();
-    let from = cursor ? nextDay(cursor) : dayKey(connectedAt);
+    let from = cursor ? nextDay(cursor) : dayKey(startFrom);
     if (from < floor) from = floor;
 
     const out: string[] = [];

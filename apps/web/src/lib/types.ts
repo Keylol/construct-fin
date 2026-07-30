@@ -751,6 +751,8 @@ export interface IntegrationConnection {
   tlsFingerprint: string | null;
   /** Когда истекает сертификат (ISO); null — неизвестно или не загружен. */
   tlsExpiresAt: string | null;
+  /** С какой даты тянуть выписку (ISO); null — с даты подключения. */
+  backfillFrom: string | null;
   account: { id: string; name: string };
   lastSyncAt: string | null;
   lastSyncError: string | null;
@@ -761,6 +763,8 @@ export interface SyncResult {
   fetched: number;
   created: number;
   autoPosted: number;
+  /** Строк, привязанных к операциям, которые уже были внесены вручную. */
+  adopted: number;
 }
 
 export type AusnMark = 'INCOME' | 'EXPENSE' | 'NOT_COUNTED';
@@ -777,6 +781,8 @@ export interface InboxLine {
   description: string | null;
   ausnMark: AusnMark | null;
   status: BankLineStatus;
+  /** Строка привязана к операции, внесённой раньше вручную (перезалив истории). */
+  adopted: boolean;
   suggestedCategoryId: string | null;
   /** Правило, проведшее строку автоматически (имя null, если правило удалили). */
   appliedRule: { id: string; name: string | null } | null;

@@ -80,6 +80,23 @@ describe('AlfaAdapter — цикл по дням и курсор', () => {
     expect(res.nextCursor).toBe('2026-07-21');
   });
 
+  it('backfillFrom перекрывает дату подключения — тянем историю глубже', async () => {
+    const { adapter, calls } = build({});
+    const res = await adapter.fetchStatement({
+      token: 'key',
+      cursor: null,
+      accountNumber: ACCOUNT,
+      connectedAt: new Date('2026-07-20T10:00:00Z'),
+      // Перезалив: просим с 1 июля, хотя подключение создано 20-го.
+      backfillFrom: new Date('2026-07-01T00:00:00Z'),
+    });
+
+    const days = calls.map((u) => new URL(u).searchParams.get('statementDate'));
+    expect(days[0]).toBe('2026-07-01');
+    expect(days).toHaveLength(22); // 01…22 июля
+    expect(res.nextCursor).toBe('2026-07-21');
+  });
+
   it('повторный синк начинается со дня ПОСЛЕ курсора', async () => {
     const { adapter, calls } = build({});
     await adapter.fetchStatement({

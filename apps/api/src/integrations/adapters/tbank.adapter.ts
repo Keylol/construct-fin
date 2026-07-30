@@ -105,7 +105,7 @@ export class TbankAdapter implements BankProviderAdapter, OnModuleInit {
 
     assertHeaderSafe(input.token);
 
-    const from = this.windowStart(input.cursor, input.connectedAt);
+    const from = this.windowStart(input.cursor, input.backfillFrom ?? input.connectedAt);
     const lines: RawBankLine[] = [];
     // Одна операция может прийти дважды в пределах синка: окно перекрытия и
     // курсорная пагинация допускают пересечение порций. Дальше по конвейеру
@@ -151,12 +151,12 @@ export class TbankAdapter implements BankProviderAdapter, OnModuleInit {
   }
 
   /** Начало запрашиваемого периода: курсор минус окно перекрытия. */
-  private windowStart(cursor: string | null, connectedAt: Date): string {
-    if (!cursor) return connectedAt.toISOString();
+  private windowStart(cursor: string | null, startFrom: Date): string {
+    if (!cursor) return startFrom.toISOString();
     const parsed = Date.parse(cursor);
     // Битый курсор (ручная правка в БД) не должен ронять синк — начинаем заново
-    // с даты подключения, дубли отсечёт идемпотентность.
-    if (Number.isNaN(parsed)) return connectedAt.toISOString();
+    // с даты старта, дубли отсечёт идемпотентность.
+    if (Number.isNaN(parsed)) return startFrom.toISOString();
     return new Date(parsed - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
   }
 

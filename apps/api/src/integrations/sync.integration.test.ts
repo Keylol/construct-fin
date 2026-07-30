@@ -167,7 +167,7 @@ describe('SyncService.syncConnection', () => {
       data: { status: 'DISABLED' },
     });
     const res = await sync.syncConnection(conn.id);
-    expect(res).toEqual({ fetched: 0, created: 0, autoPosted: 0 });
+    expect(res).toEqual({ fetched: 0, created: 0, autoPosted: 0, adopted: 0 });
     expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(0);
   });
 
@@ -359,7 +359,7 @@ describe('SyncService + AlfaAdapter', () => {
     );
 
     const res = await alfa.syncConnection(conn.id);
-    expect(res).toEqual({ fetched: 1, created: 1, autoPosted: 0 });
+    expect(res).toEqual({ fetched: 1, created: 1, autoPosted: 0, adopted: 0 });
 
     const line = await h.prisma.bankStatementLine.findFirstOrThrow({
       where: { connectionId: conn.id },
