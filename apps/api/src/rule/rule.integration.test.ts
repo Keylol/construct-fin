@@ -55,6 +55,62 @@ describe('RuleService: CRUD + кросс-тенант', () => {
     expect(list.map((x) => x.id)).toContain(r.id);
   });
 
+  it('список несёт счётчик проведённых строк, чужие строки не считаются', async () => {
+    const categoryId = await makeCategory();
+    const r = await svc.create(seed.workspaceId, {
+      name: 'Правило со статистикой',
+      priority: 0,
+      isActive: true,
+      appliesTo: 'BOTH',
+      conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'x' }],
+      actions: [{ type: 'SET_CATEGORY', categoryId }],
+    });
+    // Две строки провело наше правило + одна чужого пространства с тем же id
+    // правила (краевой случай ручной порчи данных — в счётчик не попадает).
+    const conn = await h.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        credentialEnc: 'v1.a.b.c',
+        keyLast4: '0000',
+        createdById: seed.userId,
+      },
+    });
+    const mkLine = (externalId: string, workspaceId: string) =>
+      h.prisma.bankStatementLine.create({
+        data: {
+          workspaceId,
+          connectionId: conn.id,
+          externalId,
+          date: new Date('2026-07-01T00:00:00.000Z'),
+          amount: '10.00',
+          direction: 'EXPENSE',
+          status: 'AUTO_POSTED',
+          appliedRuleId: r.id,
+        },
+      });
+    await mkLine('s-1', seed.workspaceId);
+    await mkLine('s-2', seed.workspaceId);
+    const other = await seedBase(h.prisma, tg + 700000n);
+    await mkLine('s-3', other.workspaceId);
+
+    const list = await svc.list(seed.workspaceId);
+    const row = list.find((x) => x.id === r.id)!;
+    expect(row.appliedCount).toBe(2);
+    // Правило без срабатываний отдаёт ноль, а не undefined.
+    const fresh = await svc.create(seed.workspaceId, {
+      name: 'Ещё не срабатывало',
+      priority: 0,
+      isActive: true,
+      appliesTo: 'BOTH',
+      conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'y' }],
+      actions: [{ type: 'SET_CATEGORY', categoryId }],
+    });
+    const list2 = await svc.list(seed.workspaceId);
+    expect(list2.find((x) => x.id === fresh.id)!.appliedCount).toBe(0);
+  });
+
   it('кросс-тенант: категория действия из чужого workspace → 400', async () => {
     // Чужой workspace + его категория.
     const otherTg = tg + 500000n;

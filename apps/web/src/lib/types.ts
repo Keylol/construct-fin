@@ -406,6 +406,8 @@ export interface Rule {
   appliesTo: RuleAppliesTo;
   conditions: RuleCondition[];
   actions: RuleAction[];
+  /** Сколько строк выписки это правило провело автоматически. */
+  appliedCount: number;
   createdAt: string;
   updatedAt: string;
 }
