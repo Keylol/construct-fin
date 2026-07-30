@@ -751,6 +751,8 @@ export interface IntegrationConnection {
   tlsFingerprint: string | null;
   /** Когда истекает сертификат (ISO); null — неизвестно или не загружен. */
   tlsExpiresAt: string | null;
+  /** С какой даты тянуть выписку (ISO); null — с даты подключения. */
+  backfillFrom: string | null;
   account: { id: string; name: string };
   lastSyncAt: string | null;
   lastSyncError: string | null;

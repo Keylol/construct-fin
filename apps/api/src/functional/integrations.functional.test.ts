@@ -138,6 +138,49 @@ describe('Интеграции: CRUD + OwnerGuard (Ф1-C1)', () => {
     expect(row.syncCursor).toBeNull();
   });
 
+  it('дата выгрузки: сдвиг назад сбрасывает курсор, вперёд — нет, будущее → 400', async () => {
+    const created = await H.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'ALFA',
+        accountId: seed.accountId,
+        credentialEnc: 'v1.a.b.c',
+        keyLast4: '0000',
+        externalAccountId: '40802810401300015422',
+        backfillFrom: new Date('2026-06-01T00:00:00Z'),
+        syncCursor: '2026-07-20',
+        createdById: seed.userId,
+      },
+    });
+    const patch = (backfillFrom: string) =>
+      H.inject({
+        method: 'PATCH',
+        url: `${base()}/${created.id}`,
+        token,
+        payload: { backfillFrom },
+      });
+    const row = () =>
+      H.prisma.integrationConnection.findUniqueOrThrow({ where: { id: created.id } });
+
+    // Назад: прошлое ещё не загружено, курсор обязан обнулиться — иначе синк
+    // продолжит с уже пройденного места и история не приедет.
+    expect((await patch('2026-05-01')).statusCode).toBe(200);
+    const back = await row();
+    expect(back.backfillFrom?.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+    expect(back.syncCursor).toBeNull();
+
+    // Вперёд: загруженное остаётся на месте, курсор не трогаем.
+    await H.prisma.integrationConnection.update({
+      where: { id: created.id },
+      data: { syncCursor: '2026-07-25' },
+    });
+    expect((await patch('2026-06-15')).statusCode).toBe(200);
+    expect((await row()).syncCursor).toBe('2026-07-25');
+
+    // Выписки за завтра не существует.
+    expect((await patch('2027-01-01')).statusCode).toBe(400);
+  });
+
   it('POST с чужим accountId → 400', async () => {
     const res = await H.inject({
       method: 'POST',

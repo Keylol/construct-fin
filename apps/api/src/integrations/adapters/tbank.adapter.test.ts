@@ -79,6 +79,16 @@ describe('TbankAdapter — запрос и курсор', () => {
     expect(res.nextCursor).toBe('2026-07-20T09:15:00.000Z');
   });
 
+  it('backfillFrom перекрывает дату подключения — тянем историю глубже', async () => {
+    const { adapter, calls } = stub([ok({ operations: [] })]);
+    await adapter.fetchStatement({
+      ...base,
+      cursor: null,
+      backfillFrom: new Date('2026-05-01T00:00:00Z'),
+    });
+    expect(new URL(calls[0]!).searchParams.get('from')).toBe('2026-05-01T00:00:00.000Z');
+  });
+
   it('повторный синк перезапрашивает окно перекрытия назад от курсора', async () => {
     const { adapter, calls } = stub([ok({ operations: [] })]);
     await adapter.fetchStatement({ ...base, cursor: '2026-07-20T09:15:00.000Z' });

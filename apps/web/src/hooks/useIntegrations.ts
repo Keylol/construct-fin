@@ -17,12 +17,16 @@ export interface CreateIntegrationInput extends TlsInput {
   token: string;
   /** Номер расчётного счёта у банка (обязателен для банков). */
   accountNumber?: string;
+  /** Тянуть выписку с этой даты (YYYY-MM-DD), а не с момента подключения. */
+  backfillFrom?: string;
 }
 export interface UpdateIntegrationInput extends TlsInput {
   id: string;
   token?: string;
   status?: 'ACTIVE' | 'DISABLED';
   accountNumber?: string;
+  /** null снимает дату — выгрузка снова начнётся с даты подключения. */
+  backfillFrom?: string | null;
 }
 
 export function useIntegrations(wsId: string | null) {

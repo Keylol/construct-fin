@@ -106,10 +106,12 @@ export class SyncService {
       const { lines, nextCursor } = await adapter.fetchStatement({
         token,
         cursor: conn.syncCursor,
-        // Номер счёта у провайдера (Альфа) и дата подключения: история тянется
-        // с момента подключения, прошлое уже занесено руками (решение №15).
+        // Номер счёта у провайдера (Альфа) и дата подключения: по умолчанию
+        // история тянется с момента подключения (решение №15), но backfillFrom
+        // перекрывает это — им забирают прошлое при перезаливе.
         accountNumber: conn.externalAccountId,
         connectedAt: conn.createdAt,
+        backfillFrom: conn.backfillFrom,
         // Сертификат mTLS этого подключения (у разных ИП — разные сертификаты
         // от банка). Null → транспорт возьмёт запасной из env.
         tls: conn.tlsCredentialEnc

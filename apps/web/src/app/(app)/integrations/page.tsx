@@ -7,6 +7,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import {
   useIntegrations,
   useCreateIntegration,
+  useUpdateIntegration,
   useDeleteIntegration,
   useSyncIntegration,
   useResetIntegration,
@@ -29,7 +30,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/Sheet';
-import { formatDateTime } from '@/lib/dates';
+import { formatDate, formatDateTime } from '@/lib/dates';
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   ALFA: 'Альфа-Банк',
@@ -140,6 +141,7 @@ export default function IntegrationsPage() {
                     {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
                   </div>
                   {c.tlsExpiresAt && <CertNote expiresAt={c.tlsExpiresAt} />}
+                  <BackfillNote connection={c} wsId={wsId!} />
                 </div>
                 <div className="min-w-[140px]">
                   <StatusDot tone={STATUS[c.status].tone} label={STATUS[c.status].label} />
@@ -250,6 +252,74 @@ function CertNote({ expiresAt }: { expiresAt: string }) {
   return <div className={`text-xs ${tone}`}>{text}</div>;
 }
 
+/**
+ * С какой даты тянуть выписку, с правкой на месте. Банк хранит историю годами,
+ * но без явной даты синк стартует с момента подключения — прошлое остаётся
+ * недостижимым. Сдвиг даты назад сбрасывает курсор на сервере, поэтому
+ * следующее «Обновить» пойдёт за историей (по ~31 дню за проход у Альфы).
+ */
+function BackfillNote({
+  connection,
+  wsId,
+}: {
+  connection: IntegrationConnection;
+  wsId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const update = useUpdateIntegration(wsId);
+
+  const current = connection.backfillFrom;
+  const open = () => {
+    setValue(current ? current.slice(0, 10) : '');
+    setEditing(true);
+  };
+  const save = () => {
+    update.mutate(
+      { id: connection.id, backfillFrom: value || null },
+      {
+        onSuccess: () => {
+          toast.success(
+            value
+              ? 'Дата задана. Нажмите «Обновить» — история пойдёт частями'
+              : 'Дата снята: выгрузка снова с момента подключения',
+          );
+          setEditing(false);
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось сохранить дату'),
+      },
+    );
+  };
+
+  if (editing) {
+    return (
+      <div className="mt-1 flex items-center gap-1">
+        <Input
+          type="date"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="h-7 w-[150px] text-xs"
+        />
+        <Button size="sm" onClick={save} disabled={update.isPending}>
+          Сохранить
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+          Отмена
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={open}
+      className="mt-0.5 text-xs text-muted-foreground underline decoration-dotted hover:text-foreground"
+    >
+      {current ? `Выписка с ${formatDate(current)}` : 'Выписка с момента подключения'}
+    </button>
+  );
+}
+
 function CreateConnectionSheet({
   open,
   onClose,
@@ -266,6 +336,7 @@ function CreateConnectionSheet({
   const [accountId, setAccountId] = useState('');
   const [token, setToken] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [backfillFrom, setBackfillFrom] = useState('');
   const [tlsCert, setTlsCert] = useState('');
   const [tlsKey, setTlsKey] = useState('');
   const [tlsPassphrase, setTlsPassphrase] = useState('');
@@ -293,6 +364,7 @@ function CreateConnectionSheet({
     setAccountId('');
     setToken('');
     setAccountNumber('');
+    setBackfillFrom('');
     setTlsCert('');
     setTlsKey('');
     setTlsPassphrase('');
@@ -307,6 +379,7 @@ function CreateConnectionSheet({
         accountId,
         token: token.trim(),
         ...(needsAccountNumber ? { accountNumber: accountNumber.trim() } : {}),
+        ...(backfillFrom ? { backfillFrom } : {}),
         ...(needsTls
           ? {
               tlsCert,
@@ -366,6 +439,17 @@ function CreateConnectionSheet({
               />
             </FormField>
           )}
+          <FormField
+            label="Загружать выписку с даты"
+            hint="Пусто — с момента подключения. Укажите дату, чтобы забрать историю: она приедет частями, по ~31 дню за каждое «Обновить»."
+          >
+            <Input
+              type="date"
+              value={backfillFrom}
+              onChange={(e) => setBackfillFrom(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+            />
+          </FormField>
           <FormField
             label={provider === 'ALFA' ? 'API Key' : 'Токен API'}
             hint={
