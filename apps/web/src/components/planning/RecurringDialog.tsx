@@ -209,7 +209,7 @@ export function RecurringDialog({
               </Select>
             </FormField>
             {cadence === 'MONTHLY' ? (
-              <FormField label="Число месяца" hint="1–31, лишнее подтянется к концу месяца">
+              <FormField label="Число месяца" hint="1–31; если в месяце меньше дней — последний день месяца">
                 <Input
                   type="number"
                   min={1}

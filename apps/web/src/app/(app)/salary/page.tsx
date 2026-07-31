@@ -36,6 +36,7 @@ import {
 } from '@/hooks/usePlanning';
 import type { Counterparty, PlannedPayment, RecurringPayment } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
+import { plural } from '@/lib/plural';
 import { PayDialog } from '@/components/planning/PayDialog';
 import { PlannedDialog } from '@/components/planning/PlannedDialog';
 import { RecurringDialog } from '@/components/planning/RecurringDialog';
@@ -112,7 +113,7 @@ export default function SalaryPage() {
           <EmptyState
             icon={Users}
             title="Нет активного пространства"
-            hint="Выберите пространство."
+            hint="Выберите или создайте пространство."
           />
         </div>
       </>
@@ -162,7 +163,7 @@ export default function SalaryPage() {
             label="К выплате"
             value={formatRub(plannedSum)}
             tone={Number(plannedSum) > 0 ? 'warning' : 'neutral'}
-            hint={`${plannedSalary.length} выплат(ы)`}
+            hint={`${plannedSalary.length} ${plural(plannedSalary.length, 'выплата', 'выплаты', 'выплат')}`}
           />
           <KpiCard label="Выплачено за месяц" value={formatRub(paidThisMonth)} />
         </div>

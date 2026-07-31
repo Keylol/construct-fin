@@ -26,7 +26,7 @@ export function PreviewPanel({ preview }: { preview: RulePreview }) {
             {preview.total} строк
             {preview.matchedPending > 0 && (
               <>
-                , из них на разборе{' '}
+                , из них в обработке{' '}
                 <span className="font-semibold tabular-nums">{preview.matchedPending}</span>
               </>
             )}

@@ -69,8 +69,8 @@ export default function PnlReportPage() {
   const data =
     query.data?.primary.buckets.map((b, i) => ({
       label: b.label,
-      Доход: Number(b.income),
-      Расход: -Number(b.expense),
+      Доходы: Number(b.income),
+      Расходы: -Number(b.expense),
       cmpDoxod: query.data?.comparison
         ? Number(query.data.comparison.buckets[i]?.income ?? 0)
         : undefined,
@@ -149,9 +149,9 @@ export default function PnlReportPage() {
             </div>
             {Number(totals.cogs) > 0 && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <KpiCard label="Себестоимость заказов" value={formatRub(totals.cogs)} tone="negative" />
+                <KpiCard label="Себестоимость продаж" value={formatRub(totals.cogs)} tone="negative" />
                 <KpiCard
-                  label="Валовая прибыль (Доходы − Себестоимость)"
+                  label="Валовая прибыль (Выручка − Себестоимость)"
                   value={formatRub(totals.grossProfit)}
                   tone={Number(totals.grossProfit) >= 0 ? 'positive' : 'negative'}
                 />
@@ -201,19 +201,19 @@ export default function PnlReportPage() {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Доход" fill={CHART_COLORS.income} radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="Расход" fill={CHART_COLORS.expense} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Доходы" fill={CHART_COLORS.income} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Расходы" fill={CHART_COLORS.expense} radius={[2, 2, 0, 0]} />
                   {compareWith !== 'none' && (
                     <>
                       <Bar
                         dataKey="cmpDoxod"
-                        name="Доход (сравн.)"
+                        name="Доходы (сравн.)"
                         fill={CHART_COLORS.incomeCmp}
                         radius={[2, 2, 0, 0]}
                       />
                       <Bar
                         dataKey="cmpRashod"
-                        name="Расход (сравн.)"
+                        name="Расходы (сравн.)"
                         fill={CHART_COLORS.expenseCmp}
                         radius={[2, 2, 0, 0]}
                       />
@@ -231,7 +231,7 @@ export default function PnlReportPage() {
               <span className="text-sm font-medium">По группам</span>
               {/* IJ9: базис отчёта — по реализации (деньги — в ОДДС) */}
               <span className="text-xs text-muted-foreground">
-                выручка и себестоимость — по дате выдачи заказа
+                выручка и себестоимость — по дате закрытия заказа
               </span>
             </div>
             <table className="w-full text-base">

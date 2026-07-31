@@ -261,7 +261,7 @@ function BudgetRowView({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) 
           >
             {row.usagePct}%
           </span>
-          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Править">
+          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Изменить">
             <Pencil className="h-3.5 w-3.5" />
           </Button>
         </div>

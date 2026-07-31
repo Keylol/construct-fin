@@ -49,7 +49,7 @@ export default function BreakevenPage() {
       <div className="space-y-6 px-6 py-6">
         <p className="max-w-3xl text-sm text-muted-foreground">
           Точка безубыточности — выручка, при которой прибыль за период равна нулю:
-          постоянные расходы ÷ маржинальность. Всё, что выше точки, приносит прибыль.
+          постоянные расходы ÷ доля маржинального дохода. Всё, что выше точки, приносит прибыль.
         </p>
 
         {query.isLoading || !r ? (

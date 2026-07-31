@@ -36,7 +36,7 @@ const MONTH_NAMES = [
 const STATUS_META: Record<TaxMonthRow['status'], { label: string; cls: string }> = {
   PAID: { label: 'уплачен', cls: 'bg-success/15 text-success' },
   PARTIAL: { label: 'частично', cls: 'bg-warning/15 text-warning' },
-  UNPAID: { label: 'к уплате', cls: 'bg-destructive/15 text-destructive' },
+  UNPAID: { label: 'не уплачен', cls: 'bg-destructive/15 text-destructive' },
   NONE: { label: '—', cls: 'bg-secondary text-muted-foreground' },
 };
 
@@ -59,7 +59,7 @@ export default function TaxPage() {
       <>
         <PageHeader title="Налог" />
         <div className="p-6">
-          <EmptyState icon={Calculator} title="Нет активного пространства" hint="Выберите пространство." />
+          <EmptyState icon={Calculator} title="Нет активного пространства" hint="Выберите или создайте пространство." />
         </div>
       </>
     );
@@ -70,7 +70,7 @@ export default function TaxPage() {
   return (
     <>
       <PageHeader
-        title="Налог (АУСН Д−Р)"
+        title="Налог"
         actions={
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Предыдущий год">
@@ -85,10 +85,10 @@ export default function TaxPage() {
       />
       <div className="space-y-4 px-6 py-4">
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Налог считается сам по операциям: доход и расход по кассовому методу,
-          20% с базы (доходы−расходы), минимум 3% с доходов, срок уплаты — до 25-го
+          Налог рассчитывается автоматически по операциям: доход и расход по кассовому
+          методу, 20% с базы (доходы−расходы), минимум 3% с доходов, срок уплаты — до 25-го
           следующего месяца. Маркировку операции (доход/расход/не учитывать) можно
-          поправить в карточке операции.
+          изменить в карточке операции.
         </p>
 
         {report.isLoading ? (
@@ -239,7 +239,7 @@ function PayDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="w-[420px]">
         <DialogHeader>
-          <DialogTitle>Уплата налога за {MONTH_NAMES[row.monthNo - 1]} {row.year}</DialogTitle>
+          <DialogTitle>Уплата налога за {MONTH_NAMES[row.monthNo - 1]?.toLowerCase()} {row.year}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">

@@ -52,7 +52,7 @@ export default function PlanningPage() {
           <EmptyState
             icon={Calendar}
             title="Нет активного пространства"
-            hint="Выберите пространство."
+            hint="Выберите или создайте пространство."
           />
         </div>
       </>
@@ -151,7 +151,7 @@ export default function PlanningPage() {
             <EmptyState
               icon={Repeat}
               title="Пока нет регулярных платежей"
-              hint="Аренда, интернет, подписки — добавьте шаблон, и позиции появятся сами."
+              hint="Аренда, интернет, подписки — добавьте регулярный платёж, и ожидаемые платежи появятся сами."
             />
           ) : (
             <Card className="divide-y divide-border/60 p-0">
@@ -252,7 +252,7 @@ function RecurringRow({
         open={confirmDel}
         onOpenChange={setConfirmDel}
         title="Удалить регулярный платёж?"
-        description="Будущие ожидаемые позиции этого правила будут отменены. Уже оплаченные останутся."
+        description="Будущие ожидаемые платежи будут отменены. Уже оплаченные останутся."
         confirmText="Удалить"
         onConfirm={async () => {
           await del.mutateAsync(r.id);

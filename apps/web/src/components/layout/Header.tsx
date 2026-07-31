@@ -82,6 +82,11 @@ export function Header({ onCommandOpen }: HeaderProps) {
   }, []);
 
   const breadcrumbs = buildBreadcrumbs(pathname);
+  // Крошка из одного сегмента дословно повторяет заголовок, который страница
+  // рисует сама («Закупки» в плашке и сразу под ней «Закупки»). Дубль убираем
+  // здесь один раз, а не на двадцати страницах; путь из нескольких сегментов
+  // («Отчёты › Правила») остаётся — там крошки несут навигацию.
+  const showBreadcrumbs = breadcrumbs.length > 1;
 
   return (
     <header
@@ -91,7 +96,9 @@ export function Header({ onCommandOpen }: HeaderProps) {
     >
       {/* Мобильное меню живёт в нижнем таб-баре («Ещё») — гамбургер не нужен. */}
 
-      {/* Breadcrumbs */}
+      {/* Breadcrumbs (только вложенные пути — см. showBreadcrumbs выше) */}
+      {!showBreadcrumbs && <div className="min-w-0 flex-1" />}
+      {showBreadcrumbs && (
       <nav aria-label="Хлебные крошки" className="min-w-0 flex-1">
         <ol className="flex items-center gap-1 text-sm">
           {breadcrumbs.map((c, i) => {
@@ -123,6 +130,7 @@ export function Header({ onCommandOpen }: HeaderProps) {
           })}
         </ol>
       </nav>
+      )}
 
       {/* Денежные средства — сумма по всем счетам */}
       <HeaderCash />
@@ -158,6 +166,8 @@ interface CrumbItem {
 }
 
 const LABELS: Record<string, string> = {
+  transfers: 'Переводы',
+  'wb-receipt': 'Обработка закупки',
   dashboard: 'Главная',
   orders: 'Заказы',
   clients: 'Клиенты',
@@ -165,8 +175,8 @@ const LABELS: Record<string, string> = {
   warehouse: 'Склад',
   transactions: 'Операции',
   accounts: 'Счета',
-  categories: 'Категории',
-  counterparties: 'Контрагенты',
+  categories: 'По категориям',
+  counterparties: 'По контрагентам',
   import: 'Импорт',
   salary: 'Зарплата',
   batches: 'История',

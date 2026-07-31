@@ -57,7 +57,7 @@ export function InboxRow({
 
   const doDismiss = () => {
     dismiss.mutate(line.id, {
-      onSuccess: () => toast.success('Операция скрыта'),
+      onSuccess: () => toast.success('Строка отмечена «не учитывать»'),
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось скрыть'),
     });
   };

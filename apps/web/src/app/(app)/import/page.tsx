@@ -20,8 +20,9 @@ import {
   useImportCommit,
   useImportPreview,
 } from '@/hooks/useImport';
-import type { Order, PreviewResult } from '@/lib/types';
+import type { AccountType, Order, PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
+import { plural } from '@/lib/plural';
 
 type Stage = 'upload' | 'preview' | 'done';
 
@@ -31,6 +32,12 @@ const SOURCE_LABEL: Record<PreviewResult['source'], string> = {
   TINKOFF_PDF: 'Т-Банк (pdf)',
   GENERIC_CSV: 'CSV',
   GENERIC_XLSX: 'Excel',
+};
+
+const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
+  CASH: 'Наличные',
+  BANK: 'Банк',
+  OTHER: 'Другое',
 };
 
 export default function ImportPage() {
@@ -112,7 +119,7 @@ export default function ImportPage() {
   return (
     <>
       <PageHeader
-        title="Импорт выписки"
+        title="Импорт"
         actions={
           <Button variant="secondary" asChild>
             <Link href="/import/batches">
@@ -137,7 +144,7 @@ export default function ImportPage() {
                   <option value="">— выберите счёт —</option>
                   {accountOptions.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.type})
+                      {a.name} ({ACCOUNT_TYPE_LABEL[a.type]})
                     </option>
                   ))}
                 </Select>
@@ -228,7 +235,7 @@ export default function ImportPage() {
                     <span className="font-semibold">{batchResult.skipped}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Batch ID: <code>{batchResult.batchId}</code>
+                    № импорта: <code>{batchResult.batchId}</code>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -342,9 +349,9 @@ function PreviewStage({
           <Stat label="Источник" value={SOURCE_LABEL[preview.source]} />
           <Stat label="Кодировка" value={preview.encoding} />
           <Stat label="Всего строк" value={String(preview.stats.total)} />
-          <Stat label="Валидных" value={String(preview.stats.valid)} />
+          <Stat label="Распознано" value={String(preview.stats.valid)} />
           <Stat label="Не распознано" value={String(preview.stats.invalid)} />
-          <Stat label="Дубли" value={String(preview.stats.duplicates)} />
+          <Stat label="Дубликаты" value={String(preview.stats.duplicates)} />
         </div>
       </Card>
 
@@ -379,7 +386,9 @@ function PreviewStage({
                 >
                   {r.type === 'INCOME' ? '+' : '−'} {formatRub(r.amount)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">{r.type}</td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {r.type === 'INCOME' ? 'Доход' : 'Расход'}
+                </td>
                 <td
                   className="max-w-[200px] truncate px-3 py-2"
                   title={r.counterpartyName ?? ''}
@@ -420,7 +429,7 @@ function PreviewStage({
         </table>
         {preview.rows.length > 50 && (
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            Показано первые 50 из {preview.rows.length}
+            Показаны первые 50 из {preview.rows.length}
           </p>
         )}
       </Card>
@@ -438,7 +447,8 @@ function PreviewStage({
           </span>
         </label>
         <div className="text-sm">
-          К импорту: <span className="font-semibold">{willImport}</span> операций
+          К импорту: <span className="font-semibold">{willImport}</span>{' '}
+          {plural(willImport, 'операция', 'операции', 'операций')}
         </div>
         {commitError && <p className="text-sm text-destructive">{commitError}</p>}
         <div className="flex gap-2">
@@ -446,7 +456,7 @@ function PreviewStage({
             Назад
           </Button>
           <Button onClick={onCommit} disabled={isCommitting || willImport === 0}>
-            {isCommitting ? 'Импортируем…' : `Импортировать ${willImport}`}
+            {isCommitting ? 'Импорт…' : `Импортировать ${willImport}`}
           </Button>
         </div>
       </Card>

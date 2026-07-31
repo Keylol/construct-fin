@@ -113,7 +113,7 @@ export default function AccountsPage() {
     {
       // Главная колонка страницы: сколько денег на счёте СЕЙЧАС.
       key: 'balance',
-      header: 'Остаток сейчас',
+      header: 'Текущий остаток',
       align: 'right',
       cell: (a) => {
         const b = balances.data?.get(a.id);
@@ -160,7 +160,7 @@ export default function AccountsPage() {
             <EmptyState
               icon={Wallet}
               title="Пока нет счетов"
-              hint="Добавьте первый счёт — наличные, карту или счёт в банке."
+              hint="Добавьте первый счёт — наличные или счёт в банке."
               action={
                 <Button onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" /> Добавить счёт
@@ -323,7 +323,7 @@ function AccountForm({
                 id="acc-note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="опционально"
+                placeholder="необязательно"
               />
             </FormField>
             {initial && (
@@ -368,9 +368,9 @@ function AccountForm({
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
+        title={`Архивировать «${initial?.name ?? ''}»?`}
         description="Счёт переместится в архив, операции по нему останутся."
-        confirmText="Удалить"
+        confirmText="В архив"
         onConfirm={onDelete}
         loading={del.isPending}
       />

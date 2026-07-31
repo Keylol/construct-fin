@@ -61,12 +61,12 @@ export default function ReconciliationPage() {
   if (!current) {
     return (
       <>
-        <PageHeader title="Сверка счетов" />
+        <PageHeader title="Сверка" />
         <div className="p-6">
           <EmptyState
             icon={Scale}
             title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
+            hint="Выберите пространство."
           />
         </div>
       </>
@@ -79,11 +79,11 @@ export default function ReconciliationPage() {
   return (
     <>
       <PageHeader
-        title="Сверка счетов"
+        title="Сверка"
         actions={
           <Button onClick={() => setCreating(true)} disabled={!accountId}>
             <Plus className="h-4 w-4" />
-            Зафиксировать остаток
+            Снимок остатка
           </Button>
         }
       />
@@ -121,7 +121,7 @@ export default function ReconciliationPage() {
           <EmptyState
             icon={Scale}
             title="Выберите счёт"
-            hint="Сверка показывает расчётный остаток против зафиксированного факта."
+            hint="Сверка показывает расчётный остаток против снимка остатка."
           />
         ) : report.isLoading ? (
           <div className="grid gap-3 sm:grid-cols-3">
@@ -243,7 +243,7 @@ export default function ReconciliationPage() {
                 </table>
               ) : (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Снимков пока нет. Зафиксируйте фактический остаток по выписке.
+                  Снимков пока нет. Сделайте снимок фактического остатка по выписке.
                 </p>
               )}
             </Card>
@@ -263,7 +263,7 @@ export default function ReconciliationPage() {
         open={!!confirmDel}
         onOpenChange={(o) => !o && setConfirmDel(null)}
         title="Удалить снимок?"
-        description="Зафиксированный остаток будет удалён. Операции по счёту не затрагиваются."
+        description="Снимок будет удалён. Операции по счёту не затрагиваются."
         confirmText="Удалить"
         onConfirm={async () => {
           if (confirmDel) await del.mutateAsync(confirmDel.id);
@@ -324,7 +324,7 @@ function CheckForm({
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" hideClose>
         <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Зафиксировать остаток</SheetTitle>
+          <SheetTitle>Снимок остатка</SheetTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
@@ -361,7 +361,7 @@ function CheckForm({
               id="rc-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="опционально"
+              placeholder="Необязательно"
             />
           </FormField>
           {error && <p className="text-sm text-destructive">{error}</p>}

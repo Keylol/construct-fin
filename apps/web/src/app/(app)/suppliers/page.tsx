@@ -341,9 +341,9 @@ function SupplierForm({
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
+        title={`Архивировать «${initial?.name ?? ''}»?`}
         description="Поставщик переместится в архив, его закупки сохранятся."
-        confirmText="Удалить"
+        confirmText="В архив"
         onConfirm={onDelete}
         loading={del.isPending}
       />
