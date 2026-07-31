@@ -34,7 +34,7 @@ export function TransferSuggestions({ wsId }: { wsId: string }) {
           toast.success(
             Number(c.fee) > 0
               ? `Перевод создан, комиссия ${formatRub(c.fee, 2)} учтена расходом`
-              : 'Перевод создан, обороты не задвоились',
+              : 'Перевод создан — суммы не попадут в обороты дважды',
           ),
         onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось создать перевод'),
       },

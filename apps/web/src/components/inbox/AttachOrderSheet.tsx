@@ -96,7 +96,7 @@ export function AttachOrderSheet({
             Отмена
           </Button>
           <Button onClick={submit} disabled={!orderId || attach.isPending}>
-            Привязать оплату
+            Привязать поступление
           </Button>
         </SheetFooter>
       </SheetContent>

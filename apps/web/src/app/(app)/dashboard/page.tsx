@@ -25,6 +25,7 @@ import { TransactionListItem } from '@/components/transactions/TransactionListIt
 import { rangeFor } from '@/lib/periods';
 import { txDrilldownHref } from '@/lib/tx-filters';
 import { formatDayLabel } from '@/lib/dates';
+import { plural } from '@/lib/plural';
 import { formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
@@ -77,7 +78,7 @@ export default function DashboardPage() {
           <EmptyState
             icon={Wallet}
             title="Нет активного пространства"
-            hint="Создайте первое пространство через переключатель в меню."
+            hint="Выберите или создайте пространство."
           />
         </div>
       </>
@@ -114,7 +115,7 @@ export default function DashboardPage() {
       key: 'overdue',
       href: '/reports/receivables',
       tone: 'destructive',
-      text: `Просроченные платежи: ${formatRub(overdueTotal)} у ${overdueClients.length} клиент(ов)`,
+      text: `Просроченные платежи: ${formatRub(overdueTotal)} у ${overdueClients.length} ${plural(overdueClients.length, 'клиента', 'клиентов', 'клиентов')}`,
     });
   }
   if (noCostItems.length > 0) {
@@ -328,7 +329,7 @@ export default function DashboardPage() {
             <div className="rounded-lg border border-border bg-card">
               <EmptyState
                 icon={ReceiptText}
-                title="Пока операций нет"
+                title="Пока нет операций"
                 hint="Перейдите в раздел «Операции» и добавьте первую."
                 action={
                   <Button asChild>

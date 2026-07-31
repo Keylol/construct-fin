@@ -13,11 +13,12 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useImportBatches, useRevertImportBatch } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
 import { formatDateTime } from '@/lib/dates';
+import { plural } from '@/lib/plural';
 
 const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
-  ALFA_XLSX: 'Альфа xlsx',
-  WB_PDF: 'WB pdf',
-  TINKOFF_PDF: 'Т-Банк pdf',
+  ALFA_XLSX: 'Альфа-Банк (xlsx)',
+  WB_PDF: 'Wildberries (pdf)',
+  TINKOFF_PDF: 'Т-Банк (pdf)',
   GENERIC_CSV: 'CSV',
   GENERIC_XLSX: 'Excel',
 };
@@ -32,7 +33,7 @@ export default function ImportBatchesPage() {
   if (!wsId) {
     return (
       <>
-        <PageHeader title="История импортов" />
+        <PageHeader title="История" />
         <div className="p-6">
           <EmptyState
             icon={History}
@@ -124,7 +125,7 @@ export default function ImportBatchesPage() {
   return (
     <>
       <PageHeader
-        title="История импортов"
+        title="История"
         actions={
           <Button asChild>
             <Link href="/import">
@@ -167,7 +168,7 @@ export default function ImportBatchesPage() {
               <div className="text-xs text-muted-foreground tabular-nums">
                 {formatDateTime(b.createdAt)} · {SOURCE_LABEL[b.source]} ·
                 {' '}
-                {b.rowsImported} операций
+                {b.rowsImported} {plural(b.rowsImported, 'операция', 'операции', 'операций')}
               </div>
             </div>
           )}
@@ -182,7 +183,7 @@ export default function ImportBatchesPage() {
         title="Отменить импорт?"
         description={
           confirmRevert
-            ? `Все ${confirmRevert.rowsImported} операций из «${confirmRevert.filename}» будут удалены, оплаты привязанных заказов пересчитаны. Файл можно будет импортировать заново.`
+            ? `Все ${confirmRevert.rowsImported} ${plural(confirmRevert.rowsImported, 'операция', 'операции', 'операций')} из «${confirmRevert.filename}» будут удалены, оплаты привязанных заказов пересчитаны. Файл можно будет импортировать заново.`
             : ''
         }
         confirmText="Отменить импорт"

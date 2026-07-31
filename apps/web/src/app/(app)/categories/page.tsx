@@ -311,7 +311,7 @@ function CategoryForm({
               />
             </FormField>
             <FormField
-              label="Родитель"
+              label="Родительская категория"
               htmlFor="cat-parent"
               hint="Поддерживается 2 уровня: только корневые могут быть родителями."
             >
@@ -380,9 +380,9 @@ function CategoryForm({
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
+        title={`Архивировать «${initial?.name ?? ''}»?`}
         description="Категория переместится в архив, связи с операциями сохранятся."
-        confirmText="Удалить"
+        confirmText="В архив"
         onConfirm={onDelete}
         loading={del.isPending}
       />

@@ -126,7 +126,7 @@ export function PurchaseSheet({
       const blank = !l.warehouseItemId && !l.unitPrice.trim();
       if (blank) return;
       if (!l.warehouseItemId) {
-        errors[i] = 'Выберите SKU со склада';
+        errors[i] = 'Выберите артикул со склада';
         return;
       }
       const price = parseAmountInput(l.unitPrice);
@@ -147,7 +147,7 @@ export function PurchaseSheet({
       return;
     }
     if (cleaned.length === 0) {
-      setError('Добавьте хотя бы одну позицию: SKU + количество + цена');
+      setError('Добавьте хотя бы одну позицию: артикул + количество + цена');
       return;
     }
     try {
@@ -262,7 +262,7 @@ export function PurchaseSheet({
                           value={l.warehouseItemId}
                           onChange={(v) => patchLine(i, { warehouseItemId: v })}
                           options={skuOptions}
-                          placeholder="— SKU —"
+                          placeholder="— Артикул —"
                           searchPlaceholder="Название, цвет или артикул…"
                           recentKey={`${wsId}:sku`}
                           aria-invalid={rowError ? true : undefined}

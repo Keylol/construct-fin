@@ -385,9 +385,9 @@ function ClientForm({
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
+        title={`Архивировать «${initial?.name ?? ''}»?`}
         description="Клиент переместится в архив, его заказы сохранятся."
-        confirmText="Удалить"
+        confirmText="В архив"
         onConfirm={onDelete}
         loading={del.isPending}
       />

@@ -127,7 +127,7 @@ export default function TransfersPage() {
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
-            Перевод
+            Добавить
           </Button>
         }
       />
@@ -330,7 +330,7 @@ function TransferForm({
               id="tr-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="опционально"
+              placeholder="необязательно"
             />
           </FormField>
           {error && <p className="text-sm text-destructive">{error}</p>}

@@ -9,6 +9,7 @@ import { useRevertPlanned, useSetPlannedStatus } from '@/hooks/usePlanning';
 import type { PlannedPayment } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
+import { plural } from '@/lib/plural';
 import { dueChipClass, dueLabel } from './shared';
 
 /** Строка ожидаемого платежа: срок-чип, название, сумма, оплата/правка/пропуск. */
@@ -136,7 +137,9 @@ export function SummaryCard({
     >
       <div>
         <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className="text-sm text-muted-foreground">{count} платеж(ей)</div>
+        <div className="text-sm text-muted-foreground">
+          {count} {plural(count, 'платёж', 'платежа', 'платежей')}
+        </div>
       </div>
       <div
         className={cn(

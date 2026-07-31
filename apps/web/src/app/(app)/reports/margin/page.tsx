@@ -99,8 +99,8 @@ export default function MarginReportPage() {
                   {isProduct && <th className="px-4 py-2 text-right font-medium">Кол-во</th>}
                   <th className="px-4 py-2 text-right font-medium">Выручка</th>
                   <th className="px-4 py-2 text-right font-medium">Себестоимость</th>
-                  <th className="px-4 py-2 text-right font-medium">Вал. прибыль</th>
-                  <th className="px-4 py-2 text-right font-medium">Рент., %</th>
+                  <th className="px-4 py-2 text-right font-medium">Валовая прибыль</th>
+                  <th className="px-4 py-2 text-right font-medium">Рентабельность, %</th>
                 </tr>
               </thead>
               <tbody>

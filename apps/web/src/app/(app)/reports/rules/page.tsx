@@ -135,7 +135,7 @@ export default function RulesPage() {
       // значит, что правило написано мимо реальных формулировок либо его
       // перекрывает более приоритетное.
       key: 'appliedCount',
-      header: 'Провело строк',
+      header: 'Проведено строк',
       align: 'right',
       cell: (r) =>
         r.appliedCount > 0 ? (

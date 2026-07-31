@@ -155,7 +155,7 @@ export default function ClientCardPage() {
             tone="positive"
           />
           <KpiCard
-            label="Прибыль за месяц"
+            label="Валовая прибыль за месяц"
             value={
               marginQ.isLoading ? (
                 <Skeleton className="h-7 w-24" />
@@ -166,7 +166,7 @@ export default function ClientCardPage() {
             tone={Number(marginRow?.margin ?? 0) >= 0 ? 'positive' : 'negative'}
           />
           <KpiCard
-            label="Задолженность"
+            label="Дебиторская задолженность"
             value={
               receivablesQ.isLoading ? (
                 <Skeleton className="h-7 w-24" />

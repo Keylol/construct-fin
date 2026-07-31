@@ -100,7 +100,7 @@ export default function WarehousePage() {
       align: 'right',
       cell: (i) =>
         Number(i.avgCost) === 0 && Number(i.qty) > 0 ? (
-          <Badge variant="outline">цена не задана</Badge>
+          <Badge variant="outline">себестоимость не задана</Badge>
         ) : (
           <span className="tabular-nums text-muted-foreground">{formatRub(i.avgCost)}</span>
         ),
@@ -154,7 +154,7 @@ export default function WarehousePage() {
                 ? String(items.data.filter((i) => Number(i.avgCost) === 0 && Number(i.qty) > 0).length)
                 : '—'
             }
-            hint="Позиции с остатком, но без цены"
+            hint="Позиции с остатком, но без себестоимости"
             tone={
               items.data && items.data.some((i) => Number(i.avgCost) === 0 && Number(i.qty) > 0)
                 ? 'negative'
@@ -172,7 +172,7 @@ export default function WarehousePage() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по названию или SKU"
+              placeholder="Поиск по названию или артикулу"
               className="h-9 pl-8"
             />
           </div>
@@ -524,7 +524,7 @@ function WarehouseItemForm({
               <div className="space-y-2 rounded-md border border-border bg-secondary/40 p-3">
                 <div className="text-sm font-medium">Списание (брак / порча / недостача)</div>
                 <p className="text-xs text-muted-foreground">
-                  Списывает партии по FIFO и фиксирует убыток в прибыли. Деньги не двигаются —
+                  Списывает партии по ФИФО и фиксирует убыток в прибыли. Деньги не двигаются —
                   они ушли при закупке.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -610,9 +610,9 @@ function WarehouseItemForm({
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
+        title={`Архивировать «${initial?.name ?? ''}»?`}
         description="Позиция переместится в архив, история закупок сохранится."
-        confirmText="Удалить"
+        confirmText="В архив"
         onConfirm={onDelete}
         loading={del.isPending}
       />
@@ -621,7 +621,7 @@ function WarehouseItemForm({
         open={confirmWo}
         onOpenChange={setConfirmWo}
         title={`Списать ${woQty.trim()} ${initial?.unit ?? ''} «${initial?.name ?? ''}»?`}
-        description={`Причина: ${woReason.trim() || '—'}. Партии уйдут по FIFO, убыток зафиксируется в прибыли. Деньги не двигаются.`}
+        description={`Причина: ${woReason.trim() || '—'}. Партии уйдут по ФИФО, убыток зафиксируется в прибыли. Деньги не двигаются.`}
         confirmText="Списать"
         onConfirm={onWriteOff}
         loading={writeOff.isPending}

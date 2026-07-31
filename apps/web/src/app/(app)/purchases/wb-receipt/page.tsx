@@ -118,7 +118,7 @@ export default function ReceiptWizardPage() {
       <>
         <PageHeader title="Обработка закупки" />
         <div className="p-6">
-          <EmptyState icon={ReceiptIcon} title="Нет активного пространства" hint="Выберите пространство." />
+          <EmptyState icon={ReceiptIcon} title="Нет активного пространства" hint="Выберите или создайте пространство." />
         </div>
       </>
     );
@@ -809,7 +809,7 @@ function ReceiptHistory({
       header: 'Деньги',
       cell: (r) =>
         r.deletedAt ? (
-          <Badge variant="muted">откачен</Badge>
+          <Badge variant="muted">проведение отменено</Badge>
         ) : r.transactionCreated ? (
           <Badge variant="muted">расход создан</Badge>
         ) : (

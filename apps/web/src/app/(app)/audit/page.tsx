@@ -98,7 +98,7 @@ export default function AuditPage() {
     <div>
       <PageHeader
         title="Журнал аудита"
-        description="История критичных операций: заказы, закупки, закрытие периода, правки и удаления операций."
+        description="История критичных действий: заказы, закупки, закрытие периода, правки и удаления операций."
       />
       <div className="px-6 py-5">
         <DataTable

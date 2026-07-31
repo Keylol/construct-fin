@@ -71,7 +71,7 @@ import { formatDate } from '@/lib/dates';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   OPEN: 'В работе',
-  DONE: 'Выполнен',
+  DONE: 'Закрыт',
   CANCELLED: 'Отменён',
 };
 // Тон точки/штампа (решение №15/№3): статус — вторичный сигнал, не пилюля.
@@ -222,7 +222,7 @@ export default function OrdersPage() {
           <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} />
           {/* F2: платёж по графику пропущен — видно без открытия карточки. */}
           {o.scheduleSummary && o.scheduleSummary.overdueAmount !== '0.00' && (
-            <StatusDot tone="destructive" label="просрочен" />
+            <StatusDot tone="destructive" label="Просрочен" />
           )}
         </div>
       ),
@@ -286,7 +286,7 @@ export default function OrdersPage() {
           >
             <option value="">Все</option>
             <option value="OPEN">В работе</option>
-            <option value="DONE">Выполнен</option>
+            <option value="DONE">Закрыт</option>
             <option value="CANCELLED">Отменён</option>
           </Select>
         </label>
@@ -845,7 +845,7 @@ function OrderFormSheet({
               <div className="flex-1">Наименование</div>
               <div className="w-16">Кол-во</div>
               <div className="w-24">Цена прод.</div>
-              <div className="w-24">Закупка</div>
+              <div className="w-24">Закуп. цена</div>
               <div className="w-24 text-right">Сумма</div>
             </div>
             {items.map((it, i) => {
@@ -922,7 +922,7 @@ function OrderFormSheet({
                         inputMode="decimal"
                         value={it.unitCost ?? ''}
                         onChange={(e) => patchItem(i, { unitCost: e.target.value })}
-                        placeholder="Закупка"
+                        placeholder="Закуп. цена"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
@@ -941,12 +941,12 @@ function OrderFormSheet({
                   {wh && !it.unitCost && (
                     <p className="text-xs text-muted-foreground">
                       Себестоимость со склада {formatRub(wh.avgCost)} · спишется при
-                      закрытии. Или впишите закупку вручную.
+                      закрытии. Или впишите закупочную цену вручную.
                     </p>
                   )}
                   {!it.warehouseItemId && it.unitCost && (
                     <p className="text-xs text-amber-600">
-                      Эта себестоимость уже попадёт в прибыль как COGS при закрытии заказа.
+                      Эта сумма уже попадёт в прибыль как себестоимость при закрытии заказа.
                       Не заводите её повторно отдельной расходной операцией — будет двойной учёт.
                     </p>
                   )}
@@ -1689,7 +1689,7 @@ function OrderDetailSheet({
                   <p className="text-sm text-muted-foreground">Загрузка…</p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Партии появятся после закрытия заказа — склад спишется по FIFO при выдаче.
+                    Партии появятся после закрытия заказа — склад спишется по ФИФО при выдаче.
                   </p>
                 )}
                   </TabsContent>
@@ -1765,7 +1765,7 @@ function OrderDetailSheet({
                   onClick={() => reopen.mutate(order.id)}
                   disabled={reopen.isPending}
                 >
-                  {reopen.isPending ? 'Возврат…' : 'Вернуть в работу'}
+                  {reopen.isPending ? 'Возвращаем в работу…' : 'Вернуть в работу'}
                 </Button>
               ) : (
                 <>
@@ -1790,7 +1790,7 @@ function OrderDetailSheet({
                 onClick={() => reopen.mutate(order.id)}
                 disabled={reopen.isPending}
               >
-                {reopen.isPending ? 'Возврат…' : 'Вернуть в работу'}
+                {reopen.isPending ? 'Возвращаем в работу…' : 'Вернуть в работу'}
               </Button>
             </SheetFooter>
           )}

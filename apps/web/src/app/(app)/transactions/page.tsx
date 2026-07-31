@@ -227,9 +227,9 @@ function TransactionsView() {
             </>
           ) : (
             <>
-              <KpiCard label="Доход" value={formatRub(summary.data.income)} tone="positive" />
-              <KpiCard label="Расход" value={formatRub(summary.data.expense)} tone="negative" />
-              <KpiCard label="Чистый" value={formatRub(summary.data.net)} />
+              <KpiCard label="Доходы" value={formatRub(summary.data.income)} tone="positive" />
+              <KpiCard label="Расходы" value={formatRub(summary.data.expense)} tone="negative" />
+              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
             </>
           )}
         </div>
@@ -266,10 +266,10 @@ function TransactionsView() {
             if (!t.editable) {
               toast.info(
                 t.transferGroupId
-                  ? 'Операция перевода — правится в разделе «Переводы»'
+                  ? 'Операция перевода — редактируется в разделе «Переводы»'
                   : t.orderId
-                    ? 'Операция по заказу — правится в карточке заказа'
-                    : 'Автоматическая операция — правится в своём разделе',
+                    ? 'Операция по заказу — редактируется в карточке заказа'
+                    : 'Автоматическая операция — редактируется в разделе «Заказы», «Закупки» или «Склад»',
               );
               return;
             }

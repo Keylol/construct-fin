@@ -78,7 +78,7 @@ export default function SupplierCardPage() {
         actions={
           <Button asChild variant="secondary">
             <Link href={txDrilldownHref({ counterpartyId: id }) as LinkHref}>
-              Все операции <ArrowRight className="h-4 w-4" />
+              Все операции поставщика <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
         }
