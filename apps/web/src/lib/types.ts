@@ -39,10 +39,27 @@ export interface Transfer {
   updatedAt: string;
 }
 
+/**
+ * Бухгалтерская группа категории — по ней строится ОПиУ. Ключевое различие:
+ * COGS — себестоимость проданного, PURCHASES — закупка товара (расход виден,
+ * но в валовую прибыль не входит, иначе себестоимость посчиталась бы дважды:
+ * закупкой и при закрытии заказа).
+ */
+export type CategoryBucket =
+  | 'REVENUE'
+  | 'COGS'
+  | 'PURCHASES'
+  | 'FIXED'
+  | 'VARIABLE'
+  | 'TAX'
+  | 'CAPITAL'
+  | 'OTHER';
+
 export interface Category {
   id: string;
   name: string;
   kind: CategoryKind;
+  bucket: CategoryBucket;
   parentId: string | null;
   isFixedCost: boolean;
   isArchived: boolean;

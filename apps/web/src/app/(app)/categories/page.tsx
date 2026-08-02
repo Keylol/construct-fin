@@ -10,7 +10,12 @@ import {
   useUpdateCategory,
   useDeleteCategory,
 } from '@/hooks/useCategories';
-import type { Category, CategoryKind, CategoryTreeNode } from '@/lib/types';
+import type {
+  Category,
+  CategoryBucket,
+  CategoryKind,
+  CategoryTreeNode,
+} from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -30,6 +35,57 @@ import {
   SheetTitle,
 } from '@/components/ui/Sheet';
 import { cn } from '@/lib/cn';
+
+/**
+ * Группа решает, куда категория попадёт в ОПиУ. Пояснения даны через последствие
+ * («войдёт в валовую прибыль» / «не войдёт»), а не через бухгалтерский термин:
+ * выбирает их владелец, а ошибка здесь тихо искажает прибыль.
+ */
+const BUCKET_LABEL: Record<CategoryBucket, string> = {
+  REVENUE: 'Выручка',
+  COGS: 'Себестоимость проданного',
+  PURCHASES: 'Закупка товара',
+  FIXED: 'Постоянные расходы',
+  VARIABLE: 'Переменные расходы',
+  TAX: 'Налоги',
+  CAPITAL: 'Вложения и изъятия',
+  OTHER: 'Прочее',
+};
+
+const BUCKET_HINT: Record<CategoryBucket, string> = {
+  REVENUE: 'Доход от продаж — формирует выручку в ОПиУ.',
+  COGS: 'Себестоимость проданного. Если товар продаётся через заказы, её считает сам заказ — тогда закупку помечайте группой «Закупка товара», иначе расход учтётся дважды.',
+  PURCHASES: 'Расход на товар. Виден в отчётах и в движении денег, но в валовую прибыль не входит — её даёт закрытый заказ.',
+  FIXED: 'Не зависят от объёма продаж: аренда, подписки, оклады.',
+  VARIABLE: 'Растут вместе с продажами: реклама, доставка, комиссии.',
+  TAX: 'Налоги и взносы.',
+  CAPITAL: 'Вложения и изъятия собственника. В прибыль не входят, видны только в движении денег.',
+  OTHER: 'Не подходит под остальные группы.',
+};
+
+// Совпадает с ALLOWED_BUCKETS на сервере (M13): выручка — только доходу,
+// себестоимость и закупки — только расходу. Разойдётся — форма начнёт получать 400.
+const INCOME_BUCKETS: CategoryBucket[] = ['REVENUE', 'CAPITAL', 'OTHER'];
+const EXPENSE_BUCKETS: CategoryBucket[] = [
+  'COGS',
+  'PURCHASES',
+  'FIXED',
+  'VARIABLE',
+  'TAX',
+  'CAPITAL',
+  'OTHER',
+];
+
+/**
+ * Варианты для выбора. Текущее значение добавляем, даже если оно вне списка:
+ * категории, заведённые до проверки kind↔bucket, могут держать недопустимую пару
+ * (например «Закупка товара (возврат)» — доход с себестоимостью). Молча подменить
+ * её первым вариантом значило бы переписать группу без ведома владельца.
+ */
+function bucketOptions(kind: CategoryKind, current: CategoryBucket): CategoryBucket[] {
+  const allowed = kind === 'INCOME' ? INCOME_BUCKETS : EXPENSE_BUCKETS;
+  return allowed.includes(current) ? allowed : [current, ...allowed];
+}
 
 export default function CategoriesPage() {
   const { current } = useCurrentWorkspace();
@@ -179,6 +235,9 @@ function CategoryNode({
         >
           {node.name}
         </button>
+        {/* Группа отчёта видна в списке: именно она решает, попадёт ли расход в
+            валовую прибыль, и ошибку в ней иначе замечают только по кривому ОПиУ. */}
+        <Badge variant="muted">{BUCKET_LABEL[node.bucket]}</Badge>
         {node.isFixedCost && <Badge variant="outline">Постоянная</Badge>}
         {node.isArchived && <Badge variant="muted">В архиве</Badge>}
         {depth === 0 && (
@@ -230,6 +289,7 @@ function CategoryForm({
   const del = useDeleteCategory(wsId);
   const [name, setName] = useState('');
   const [parent, setParent] = useState<string>('');
+  const [bucket, setBucket] = useState<CategoryBucket>('OTHER');
   const [isFixedCost, setIsFixedCost] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -239,16 +299,18 @@ function CategoryForm({
     if (initial) {
       setName(initial.name);
       setParent(initial.parentId ?? '');
+      setBucket(initial.bucket);
       setIsFixedCost(initial.isFixedCost);
       setIsArchived(initial.isArchived);
     } else {
       setName('');
       setParent(parentId ?? '');
+      setBucket(kind === 'INCOME' ? 'REVENUE' : 'OTHER');
       setIsFixedCost(false);
       setIsArchived(false);
     }
     setError(null);
-  }, [initial, parentId, open]);
+  }, [initial, parentId, kind, open]);
 
   const onSave = async () => {
     setError(null);
@@ -257,6 +319,7 @@ function CategoryForm({
         await update.mutateAsync({
           id: initial.id,
           name: name.trim(),
+          bucket,
           parentId: parent || null,
           isFixedCost,
           isArchived,
@@ -265,6 +328,7 @@ function CategoryForm({
         await create.mutateAsync({
           name: name.trim(),
           kind,
+          bucket,
           parentId: parent || null,
           isFixedCost,
         });
@@ -309,6 +373,23 @@ function CategoryForm({
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
               />
+            </FormField>
+            <FormField
+              label="Группа в отчёте"
+              htmlFor="cat-bucket"
+              hint={BUCKET_HINT[bucket]}
+            >
+              <Select
+                id="cat-bucket"
+                value={bucket}
+                onChange={(e) => setBucket(e.target.value as CategoryBucket)}
+              >
+                {bucketOptions(kind, bucket).map((b) => (
+                  <option key={b} value={b}>
+                    {BUCKET_LABEL[b]}
+                  </option>
+                ))}
+              </Select>
             </FormField>
             <FormField
               label="Родительская категория"

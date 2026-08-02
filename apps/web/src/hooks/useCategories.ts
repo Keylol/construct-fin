@@ -2,17 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Category, CategoryKind, CategoryTreeNode } from '@/lib/types';
+import type { Category, CategoryBucket, CategoryKind, CategoryTreeNode } from '@/lib/types';
 
 export interface CreateCategoryInput {
   name: string;
   kind: CategoryKind;
+  bucket?: CategoryBucket;
   parentId?: string | null;
   isFixedCost?: boolean;
 }
 
 export interface UpdateCategoryInput {
   name?: string;
+  bucket?: CategoryBucket;
   parentId?: string | null;
   isFixedCost?: boolean;
   isArchived?: boolean;
