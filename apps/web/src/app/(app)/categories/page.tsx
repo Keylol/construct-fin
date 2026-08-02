@@ -236,10 +236,23 @@ function CategoryNode({
           {node.name}
         </button>
         {/* Группа отчёта видна в списке: именно она решает, попадёт ли расход в
-            валовую прибыль, и ошибку в ней иначе замечают только по кривому ОПиУ. */}
-        <Badge variant="muted">{BUCKET_LABEL[node.bucket]}</Badge>
-        {node.isFixedCost && <Badge variant="outline">Постоянная</Badge>}
-        {node.isArchived && <Badge variant="muted">В архиве</Badge>}
+            валовую прибыль, и ошибку в ней иначе замечают только по кривому ОПиУ.
+            shrink-0 обязателен — иначе длинная подпись группы («Себестоимость
+            проданного») сжимает соседнее название категории до нуля. На узких
+            экранах группу прячем: название важнее, а группа видна в карточке. */}
+        <Badge variant="muted" className="hidden shrink-0 sm:inline-flex">
+          {BUCKET_LABEL[node.bucket]}
+        </Badge>
+        {node.isFixedCost && (
+          <Badge variant="outline" className="shrink-0">
+            Постоянная
+          </Badge>
+        )}
+        {node.isArchived && (
+          <Badge variant="muted" className="shrink-0">
+            В архиве
+          </Badge>
+        )}
         {depth === 0 && (
           <button
             type="button"
