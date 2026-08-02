@@ -26,6 +26,9 @@ export const PreviewQuerySchema = z.object({
 });
 export type PreviewQuery = z.infer<typeof PreviewQuerySchema>;
 
+// Категории и привязки к заказам здесь больше нет: импорт кладёт строки во
+// «Входящие» сырыми, а размечает их человек там же, где строки из банка. Это
+// убрало вторую точку разметки (превью) с её собственными правилами валидации.
 export const CommitRowSchema = z
   .object({
     date: z.string().min(8),
@@ -33,9 +36,6 @@ export const CommitRowSchema = z
     type: z.enum(['INCOME', 'EXPENSE']),
     description: z.string().nullable(),
     counterpartyName: z.string().nullable(),
-    categoryId: z.string().nullable(),
-    /// F3 (5d): привязка строки к заказу — строка станет ORDER_PAYMENT.
-    orderId: z.string().cuid().nullable().optional(),
     importHash: z.string().min(1),
     isDuplicate: z.boolean(),
   })

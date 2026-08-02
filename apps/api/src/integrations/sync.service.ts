@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AusnMark, Prisma } from '@prisma/client';
+import { AusnMark, Prisma, type IntegrationProvider } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
@@ -16,6 +16,14 @@ import { deserializeTlsCredential } from './tls-credential';
  * а реквизиты контрагентов бессрочно в каждом бэкапе — нет.
  */
 const RAW_TTL_DAYS = 30;
+
+/**
+ * Провайдеры без сетевой выписки: строки приносит импорт файла, а не адаптер.
+ * Синк обязан их пропускать — иначе планировщик пойдёт за адаптером, получит в
+ * production 503, а вне production подставит FakeBankAdapter и нафантазирует
+ * операций на реальном счёте.
+ */
+const OFFLINE_PROVIDERS: IntegrationProvider[] = ['FILE'];
 
 /**
  * Окно поиска ручного «двойника» строки выписки, в днях. Ручные записи датируют
@@ -63,7 +71,7 @@ export class SyncService {
   @Cron(CronExpression.EVERY_HOUR)
   async syncAllActive(): Promise<void> {
     const connections = await this.prisma.integrationConnection.findMany({
-      where: { status: 'ACTIVE', deletedAt: null },
+      where: { status: 'ACTIVE', deletedAt: null, provider: { notIn: OFFLINE_PROVIDERS } },
       select: { id: true },
     });
     for (const c of connections) {
@@ -110,6 +118,15 @@ export class SyncService {
     if (!conn) throw new NotFoundException('Подключение не найдено');
     if (conn.status === 'DISABLED') {
       return { fetched: 0, created: 0, autoPosted: 0, adopted: 0 };
+    }
+    // Файловому подключению тянуть неоткуда: ни токена, ни адаптера. Молча
+    // возвращаем нули, а не 503 — «обновить» на таком счёте не ошибка
+    // пользователя, просто выписку приносит импорт.
+    if (OFFLINE_PROVIDERS.includes(conn.provider)) {
+      return { fetched: 0, created: 0, autoPosted: 0, adopted: 0 };
+    }
+    if (!conn.credentialEnc) {
+      throw new NotFoundException('У подключения нет ключа доступа');
     }
 
     try {

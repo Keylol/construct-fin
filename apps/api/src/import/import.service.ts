@@ -243,17 +243,27 @@ export class ImportService {
     }
 
     if (previewRows.length > 0) {
-      const dupTxs = await this.prisma.transaction.findMany({
-        where: {
-          workspaceId: opts.workspaceId,
-          importHash: { in: previewRows.map((r) => r.importHash) },
-          deletedAt: null,
-        },
-        select: { importHash: true },
-      });
-      const dupSet = new Set(
-        dupTxs.map((t) => t.importHash).filter((h): h is string => !!h),
-      );
+      const hashes = previewRows.map((r) => r.importHash);
+      // Дубли ищем в двух местах. Строки «Входящих» — то, что кладёт импорт
+      // сейчас. Проводки с importHash — наследие прежнего поведения (файл сразу
+      // создавал операции); без этой половины повторная загрузка старого файла
+      // завела бы вторую копию тех же денег.
+      const [dupLines, dupTxs] = await Promise.all([
+        this.prisma.bankStatementLine.findMany({
+          where: { workspaceId: opts.workspaceId, externalId: { in: hashes } },
+          select: { externalId: true },
+        }),
+        this.prisma.transaction.findMany({
+          where: {
+            workspaceId: opts.workspaceId,
+            importHash: { in: hashes },
+            deletedAt: null,
+          },
+          select: { importHash: true },
+        }),
+      ]);
+      const dupSet = new Set<string>(dupLines.map((l) => l.externalId));
+      for (const t of dupTxs) if (t.importHash) dupSet.add(t.importHash);
       for (const r of previewRows) {
         if (dupSet.has(r.importHash)) r.isDuplicate = true;
       }
@@ -404,6 +414,42 @@ export class ImportService {
     }
   }
 
+  /**
+   * Подключение, в которое ложится файловая выписка счёта. Нужно потому, что
+   * строка «Входящих» без подключения не существует (connectionId обязателен), а
+   * счёт вроде карты ВБ банк по API не отдаёт вовсе. Первый импорт на счёт
+   * заводит подключение сам — отдельного шага настройки для этого нет смысла
+   * требовать. Токена у него нет, адаптера тоже: синк такие подключения
+   * пропускает (см. syncAllActive), выписку приносит только импорт.
+   */
+  private async resolveFileConnection(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    accountId: string,
+    userId: string,
+  ): Promise<string> {
+    const existing = await tx.integrationConnection.findFirst({
+      where: { workspaceId, accountId, provider: 'FILE', deletedAt: null },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const created = await tx.integrationConnection.create({
+      data: {
+        workspaceId,
+        accountId,
+        provider: 'FILE',
+        // Ключа нет: выписку приносит человек файлом, а не токен по сети.
+        credentialEnc: null,
+        keyLast4: null,
+        status: 'ACTIVE',
+        createdById: userId,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
   async commit(opts: {
     workspaceId: string;
     userId: string;
@@ -417,115 +463,39 @@ export class ImportService {
     });
     if (!account) throw new NotFoundException('Account not found');
 
-    // Cross-tenant guard: categoryId строк берётся из тела запроса. Без проверки
-    // принадлежности workspace можно повесить на свои проводки чужую категорию
-    // (утечка имени в отчёты by-category, порча группировок). Счёт уже проверен выше.
-    const categoryIds = Array.from(
-      new Set(body.rows.map((r) => r.categoryId).filter((c): c is string => !!c)),
-    );
-    if (categoryIds.length > 0) {
-      const found = await this.prisma.category.findMany({
-        where: { id: { in: categoryIds }, workspaceId, deletedAt: null },
-        select: { id: true, kind: true },
-      });
-      if (found.length !== categoryIds.length) {
-        throw new BadRequestException('Категория не найдена в этом пространстве');
-      }
-      // C16: категория расхода не должна попадать на приходную строку (и наоборот)
-      // — иначе операция уедет в чужой бакет P&L. Сверяем построчно по kind↔type.
-      const kindById = new Map(found.map((c) => [c.id, c.kind]));
-      for (const r of body.rows) {
-        if (r.categoryId && kindById.get(r.categoryId) !== r.type) {
-          throw new BadRequestException(
-            `Строка «${r.description ?? r.amount}»: категория не соответствует типу операции (${r.type})`,
-          );
-        }
-      }
-    }
-
     const rowsToImport = body.skipDuplicates
       ? body.rows.filter((r) => !r.isDuplicate)
       : body.rows;
     const skipped = body.rows.length - rowsToImport.length;
 
     if (rowsToImport.length === 0) {
-      throw new BadRequestException('Nothing to import — all rows are duplicates');
+      throw new BadRequestException('Импортировать нечего — все строки дубликаты');
     }
 
-    // F3 (5d): привязка строк к заказам. Cross-tenant guard + валидация:
-    // привязывать можно только ПРИХОД (оплата заказа) и только к живому заказу.
-    const orderIds = Array.from(
-      new Set(rowsToImport.map((r) => r.orderId).filter((o): o is string => !!o)),
-    );
-    if (orderIds.length > 0) {
-      for (const r of rowsToImport) {
-        if (r.orderId && r.type !== 'INCOME') {
-          throw new BadRequestException(
-            'К заказу можно привязать только приходную строку (оплату)',
-          );
-        }
-      }
-    }
-
-    // Дедуп контрагентов по lowercase-ключу, а НЕ по точному регистру: иначе
-    // «Ромашка» и «РОМАШКА» из одного файла попадали бы в namesNeeded оба и
-    // createMany завёл бы два отдельных контрагента (дубли пачкают отчёты
-    // by-counterparty и авто-резолв). Храним первое встреченное написание как
-    // каноническое. (DB-бэкстоп — партиал-unique по (workspaceId, lower(name)) —
-    // остаётся отдельной миграцией, см. заметку в отчёте.)
-    const canonicalByLc = new Map<string, string>();
-    for (const r of rowsToImport) {
-      const n = r.counterpartyName?.trim();
-      if (!n) continue;
-      const lc = n.toLowerCase();
-      if (!canonicalByLc.has(lc)) canonicalByLc.set(lc, n);
-    }
-    const namesNeeded = Array.from(canonicalByLc.values());
-    const existing =
-      namesNeeded.length > 0
-        ? await this.prisma.counterparty.findMany({
-            where: {
-              workspaceId,
-              deletedAt: null,
-              name: {
-                in: namesNeeded.map((n) => n.toLowerCase()),
-                mode: 'insensitive',
-              },
-            },
-            select: { id: true, name: true },
-          })
-        : [];
-    const cpByLcName = new Map<string, string>();
-    for (const cp of existing) cpByLcName.set(cp.name.toLowerCase(), cp.id);
+    // Подсказку категории считаем на сервере, а не берём из тела запроса: превью
+    // теперь только показывает, что распозналось, и разметку не собирает. Строку
+    // проводит человек во «Входящих» — подсказка ему помогает, но ничего не решает.
+    const ruleRows = await this.prisma.rule.findMany({
+      where: {
+        workspaceId,
+        isActive: true,
+        deletedAt: null,
+        appliesTo: { in: ['IMPORT', 'BOTH'] },
+      },
+      select: { id: true, name: true, priority: true, conditions: true, actions: true },
+    });
+    const rules = ruleRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      priority: r.priority,
+      conditions: r.conditions as unknown as RuleCondition[],
+      actions: r.actions as unknown as RuleAction[],
+    }));
 
     return this.prisma.$transaction(async (tx) => {
-      // F3: валидация заказов ПОД транзакцией (TOCTOU — параллельная отмена
-      // между проверкой и вставкой), паттерн assertAccountTx.
-      const orderById = new Map<
-        string,
-        { clientId: string | null; status: string; number: string }
-      >();
-      if (orderIds.length > 0) {
-        const foundOrders = await tx.order.findMany({
-          where: { id: { in: orderIds }, workspaceId, deletedAt: null },
-          select: { id: true, clientId: true, status: true, number: true },
-        });
-        if (foundOrders.length !== orderIds.length) {
-          throw new BadRequestException('Заказ не найден в этом пространстве');
-        }
-        for (const o of foundOrders) {
-          if (o.status === 'CANCELLED') {
-            throw new BadRequestException(
-              `Заказ ${o.number} отменён — привязать оплату нельзя`,
-            );
-          }
-          orderById.set(o.id, o);
-        }
-      }
-
       // Защита от повторного импорта того же файла: внутри транзакции проверяем,
       // что батч с этим fileHash ещё не заводился (Фаза 4 п.18). Дополняет
-      // строковый partial-unique по importHash (п.17): даёт понятный ранний отказ
+      // уникальность (connectionId, externalId): даёт понятный ранний отказ
       // вместо отката по дублю на середине вставки.
       const dupBatch = await tx.importBatch.findFirst({
         where: { workspaceId, fileHash: body.fileHash, deletedAt: null },
@@ -535,25 +505,6 @@ export class ImportService {
         throw new ConflictException(
           'Этот файл уже импортирован (совпал fileHash). Удалите прежний импорт, чтобы повторить.',
         );
-      }
-
-      // Недостающие контрагенты — одним createMany вместо N последовательных
-      // create. createMany не возвращает id, поэтому после вставки до-вычитываем
-      // только созданные имена и достраиваем карту name→id.
-      const toCreate = namesNeeded.filter((n) => !cpByLcName.has(n.toLowerCase()));
-      if (toCreate.length > 0) {
-        await tx.counterparty.createMany({
-          data: toCreate.map((name) => ({ workspaceId, name })),
-        });
-        const created = await tx.counterparty.findMany({
-          where: {
-            workspaceId,
-            deletedAt: null,
-            name: { in: toCreate.map((n) => n.toLowerCase()), mode: 'insensitive' },
-          },
-          select: { id: true, name: true },
-        });
-        for (const cp of created) cpByLcName.set(cp.name.toLowerCase(), cp.id);
       }
 
       const batch = await tx.importBatch.create({
@@ -569,41 +520,40 @@ export class ImportService {
         },
       });
 
-      // Проводки — одним createMany вместо N последовательных INSERT (для выписки
-      // на тысячи строк это тысячи round-trip → один батч). Partial-unique по
-      // importHash остаётся: дубль внутри батча/повтор файла откатит транзакцию.
-      await tx.transaction.createMany({
-        data: rowsToImport.map((r) => {
-          // F3: привязанная строка — оплата заказа: kind=ORDER_PAYMENT, контрагент =
-          // клиент заказа КАК ЕСТЬ (включая null для заказа без клиента — семантика
-          // addPayment; банк/эквайер из выписки контрагентом оплаты не становится).
-          const order = r.orderId ? orderById.get(r.orderId) : undefined;
-          return {
-            workspaceId,
-            accountId: body.accountId,
-            date: new Date(r.date),
-            amount: r.amount,
-            type: r.type,
-            ...(order ? { kind: 'ORDER_PAYMENT' as const, orderId: r.orderId } : {}),
-            description: r.description,
-            counterpartyId: order
-              ? order.clientId
-              : r.counterpartyName
-                ? cpByLcName.get(r.counterpartyName.trim().toLowerCase()) ?? null
-                : null,
-            categoryId: r.categoryId,
-            importBatchId: batch.id,
-            importHash: r.importHash,
-            createdById: userId,
-          };
-        }),
-      });
+      const connectionId = await this.resolveFileConnection(
+        tx,
+        workspaceId,
+        body.accountId,
+        userId,
+      );
 
-      // F3: у привязанных заказов пересчитываем оплату в ЭТОЙ ЖЕ транзакции —
-      // paidAmount/paymentStatus консистентны с созданными проводками.
-      for (const orderId of orderById.keys()) {
-        await this.orders.recalcPaymentState(workspaceId, orderId, tx);
-      }
+      // Строки — одним createMany вместо N последовательных INSERT (для выписки
+      // на тысячи строк это тысячи round-trip → один батч). externalId = importHash:
+      // тот же отпечаток, по которому превью метит дубликаты, и уникальность
+      // (connectionId, externalId) не даёт завести строку дважды.
+      await tx.bankStatementLine.createMany({
+        data: rowsToImport.map((r) => ({
+          workspaceId,
+          connectionId,
+          externalId: r.importHash,
+          date: new Date(r.date),
+          amount: r.amount,
+          direction: r.type,
+          counterpartyName: r.counterpartyName,
+          description: r.description,
+          status: 'NEW' as const,
+          suggestedCategoryId:
+            applyRules(rules, {
+              description: r.description,
+              counterpartyName: r.counterpartyName,
+              type: r.type,
+              amount: r.amount,
+              accountId: body.accountId,
+              source: 'IMPORT',
+            }).categoryId ?? null,
+          importBatchId: batch.id,
+        })),
+      });
 
       return {
         batchId: batch.id,
@@ -653,17 +603,43 @@ export class ImportService {
         });
         if (!batch) throw new NotFoundException('Импорт не найден или уже отменён');
 
+        // Строки этого пакета вместе с тем, во что они успели превратиться.
+        const lines = await tx.bankStatementLine.findMany({
+          where: { workspaceId, importBatchId: batchId },
+          select: {
+            id: true,
+            adopted: true,
+            transferId: true,
+            transaction: { select: { id: true, orderId: true } },
+          },
+        });
+
+        // Строка, ставшая ногой перевода, в одиночку не откатывается: у перевода
+        // две стороны, и снос одной оставил бы вторую висеть без пары. Перевод
+        // отменяется в своём разделе — там это делается целиком.
+        if (lines.some((l) => l.transferId)) {
+          throw new ConflictException(
+            'Часть строк этого импорта уже сведена в переводы. Сначала отмените переводы, потом импорт.',
+          );
+        }
+
         // Затронутые заказы — до soft-delete (после проводки станут deletedAt и
         // из выборки выпадут). Только привязанные оплаты (orderId != null).
-        const linked = await tx.transaction.findMany({
+        // Учитываем оба поколения пакетов: строки «Входящих» (сейчас) и проводки,
+        // привязанные к батчу напрямую (файл раньше создавал операции сразу).
+        const linkedTx = await tx.transaction.findMany({
           where: { workspaceId, importBatchId: batchId, deletedAt: null, orderId: { not: null } },
           select: { orderId: true },
           distinct: ['orderId'],
         });
-        const orderIds = linked
-          .map((t) => t.orderId)
-          .filter((x): x is string => !!x)
-          .sort(); // детерминированный порядок локов — анти-deadlock между двумя откатами
+        const orderIds = Array.from(
+          new Set(
+            [
+              ...linkedTx.map((t) => t.orderId),
+              ...lines.map((l) => l.transaction?.orderId ?? null),
+            ].filter((x): x is string => !!x),
+          ),
+        ).sort(); // детерминированный порядок локов — анти-deadlock между двумя откатами
 
         // Лок заказов FOR UPDATE ДО пересчёта — сериализует откат с параллельной
         // addPayment/deletePayment того же заказа (иначе last-writer-wins по paidAmount).
@@ -671,7 +647,29 @@ export class ImportService {
           await this.orders.lockForUpdate(tx, workspaceId, orderId);
         }
 
-        const del = await tx.transaction.updateMany({
+        // Проводки, порождённые строками пакета. Усыновлённые (adopted) не трогаем:
+        // такая операция существовала ДО импорта и принадлежит человеку — удалить
+        // её значило бы стереть чужую запись вместе с категорией (та же развилка,
+        // что в inbox.undo).
+        const ownTxIds = lines
+          .filter((l) => l.transaction && !l.adopted)
+          .map((l) => l.transaction!.id);
+        const delFromLines = ownTxIds.length
+          ? await tx.transaction.updateMany({
+              where: { id: { in: ownTxIds }, deletedAt: null },
+              data: { deletedAt: new Date() },
+            })
+          : { count: 0 };
+
+        // Сами строки. У BankStatementLine нет soft-delete: строка — копия записи
+        // банка/файла, а не запись пользователя, и её возвращает повторная загрузка.
+        const delLines = await tx.bankStatementLine.deleteMany({
+          where: { workspaceId, importBatchId: batchId },
+        });
+
+        // Наследие: пакеты, залитые до перехода на «Входящие», держат проводки
+        // напрямую через importBatchId.
+        const delLegacy = await tx.transaction.updateMany({
           where: { workspaceId, importBatchId: batchId, deletedAt: null },
           data: { deletedAt: new Date() },
         });
@@ -686,6 +684,7 @@ export class ImportService {
           await this.orders.recalcPaymentState(workspaceId, orderId, tx);
         }
 
+        const reverted = delLines.count + delLegacy.count;
         await this.audit.record(tx, {
           workspaceId,
           actorId: userId,
@@ -694,12 +693,14 @@ export class ImportService {
           entityId: batchId,
           diff: {
             filename: batch.filename,
-            reverted: del.count,
+            reverted,
+            linesRemoved: delLines.count,
+            transactionsRemoved: delFromLines.count + delLegacy.count,
             ordersRecalced: orderIds.length,
           },
         });
 
-        return { reverted: del.count, ordersRecalced: orderIds.length };
+        return { reverted, ordersRecalced: orderIds.length };
       },
       // Как UoW.run: откат может лочить несколько заказов — дефолтных 5с мало под нагрузкой.
       { timeout: 15000 },

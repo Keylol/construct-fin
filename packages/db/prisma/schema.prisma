@@ -894,6 +894,9 @@ model ImportBatch {
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
+  /// Строки выписки, заведённые этим пакетом: с Ф7 файловый импорт кладёт
+  /// операции не сразу, а во «Входящие» — откат пакета снимает именно их.
+  bankLines    BankStatementLine[]
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, deletedAt])
@@ -1016,9 +1019,12 @@ model IntegrationConnection {
   /// Счёт, на который ложатся операции этого подключения.
   accountId     String
   /// Зашифрованный токен (AES-256-GCM, формат `v1.<nonce>.<tag>.<ct>`).
-  credentialEnc String
+  /// Null у файловых подключений (provider=FILE): выписку приносит импорт, а не
+  /// API, поэтому ключа не существует. У банковских — всегда заполнен.
+  credentialEnc String?
   /// Маска ключа для UI (последние 4 символа) — сам ключ наружу не отдаётся.
-  keyLast4      String
+  /// Null там же, где credentialEnc.
+  keyLast4      String?
   /// Идентификатор счёта на стороне провайдера: у Альфы — номер расчётного
   /// счёта, он обязателен в запросе выписки (Ф2). Не секрет (реквизит есть в
   /// каждом платёжном поручении), поэтому хранится открыто и виден в UI.
@@ -1103,6 +1109,9 @@ model BankStatementLine {
   transferId          String?
   /// Сырой ответ провайдера — для форензики/повторного разбора.
   raw                 Json?
+  /// Пакет импорта, принёсший строку (только у файловых подключений). Откат
+  /// пакета снимает его строки; у банковских строк всегда null.
+  importBatchId       String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -1110,10 +1119,12 @@ model BankStatementLine {
   connection  IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   transaction Transaction?          @relation("BankLineTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
   transfer    Transfer?             @relation("BankLineTransfer", fields: [transferId], references: [id], onDelete: SetNull)
+  importBatch ImportBatch?          @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   @@unique([connectionId, externalId])
   @@index([workspaceId, status, date])
   @@index([connectionId, status])
+  @@index([importBatchId])
   // Массовый откат «всё, что провело правило X» и счётчик срабатываний.
   @@index([workspaceId, appliedRuleId])
   // transactionId не индексируем отдельно — @unique уже создаёт уникальный индекс.
@@ -1124,6 +1135,11 @@ enum IntegrationProvider {
   ALFA // Альфа-Бизнес API (р/с ИП)
   TBANK // Т-Бизнес OpenAPI (р/с ИП)
   WB_CARD // карта ВБ-банка (физлицо) — через PDF-парсинг
+  // Счёт, выписка которого загружается файлом (карта ВБ, любой банк без API).
+  // Токена и адаптера нет, поэтому синк такие подключения не трогает — строки
+  // приносит импорт. Подключение нужно затем, чтобы файловая выписка шла тем же
+  // конвейером, что банковская: «Входящие» → правила → детектор переводов.
+  FILE
 }
 
 enum IntegrationStatus {

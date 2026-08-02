@@ -99,11 +99,11 @@ describe('warehouse — чужие ссылки отклоняются', () => {
   });
 });
 
-describe('import.commit — категория чужого workspace отклоняется', () => {
-  it('строка с чужим categoryId → ошибка, ничего не импортируется', async () => {
-    const catB = await h.prisma.category.create({
-      data: { workspaceId: B.workspaceId, name: 'Чужая категория', kind: 'EXPENSE', bucket: 'OTHER' },
-    });
+describe('import.commit — счёт чужого workspace отклоняется', () => {
+  // Категорию импорт больше не принимает (разметка ушла во «Входящие»), и вектор
+  // «повесить чужую категорию» исчез вместе с полем. Остался счёт: это он решает,
+  // в чьё пространство лягут строки и чей баланс сдвинется при их разборе.
+  it('импорт на счёт другого пространства → ошибка, строк не появляется', async () => {
     await expect(
       h.importSvc.commit({
         workspaceId: A.workspaceId,
@@ -112,7 +112,7 @@ describe('import.commit — категория чужого workspace откло
           filename: 'x.csv',
           fileHash: 'hash-xt-1',
           source: 'GENERIC_CSV',
-          accountId: A.accountId,
+          accountId: B.accountId, // чужой счёт
           skipDuplicates: true,
           rows: [
             {
@@ -121,14 +121,14 @@ describe('import.commit — категория чужого workspace откло
               type: 'EXPENSE',
               description: null,
               counterpartyName: null,
-              categoryId: catB.id, // чужая категория
               importHash: 'ih-xt-1',
               isDuplicate: false,
             },
           ],
         },
       }),
-    ).rejects.toThrow(/Категория не найдена/);
-    expect(await h.prisma.transaction.count({ where: { workspaceId: A.workspaceId } })).toBe(0);
+    ).rejects.toThrow(/Account not found/);
+    expect(await h.prisma.bankStatementLine.count({ where: { workspaceId: A.workspaceId } })).toBe(0);
+    expect(await h.prisma.bankStatementLine.count({ where: { workspaceId: B.workspaceId } })).toBe(0);
   });
 });
