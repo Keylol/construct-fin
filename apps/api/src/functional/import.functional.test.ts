@@ -53,7 +53,6 @@ function commitBody(over: Record<string, unknown> = {}) {
         type: 'INCOME',
         description: 'оплата',
         counterpartyName: null,
-        categoryId: null,
         importHash: `row-${tg}-1`,
         isDuplicate: false,
       },
@@ -63,7 +62,7 @@ function commitBody(over: Record<string, unknown> = {}) {
 }
 
 describe('Функциональные мутации: импорт (import)', () => {
-  it('POST /import/commit → 201 и создаёт ImportBatch + Transaction в БД', async () => {
+  it('POST /import/commit → 201 и создаёт ImportBatch + строки «Входящих» в БД', async () => {
     const ws = seed.workspaceId;
     const res = await H.inject({
       method: 'POST',
@@ -85,13 +84,21 @@ describe('Функциональные мутации: импорт (import)', (
     expect(batch.rowsImported).toBe(1);
     expect(batch.rowsSkipped).toBe(0);
 
-    const txs = await H.prisma.transaction.findMany({ where: { importBatchId: out.batchId } });
-    expect(txs).toHaveLength(1);
-    expect(txs[0]!.accountId).toBe(seed.accountId);
-    expect(txs[0]!.type).toBe('INCOME');
-    expect(txs[0]!.amount.toString()).toBe('100');
-    expect(txs[0]!.importHash).toBe(`row-${tg}-1`);
-    expect(txs[0]!.createdById).toBe(seed.userId);
+    const lines = await H.prisma.bankStatementLine.findMany({
+      where: { importBatchId: out.batchId },
+      include: { connection: { select: { provider: true, accountId: true } } },
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.connection.accountId).toBe(seed.accountId);
+    expect(lines[0]!.connection.provider).toBe('FILE');
+    expect(lines[0]!.direction).toBe('INCOME');
+    expect(lines[0]!.amount.toString()).toBe('100');
+    expect(lines[0]!.externalId).toBe(`row-${tg}-1`);
+    expect(lines[0]!.status).toBe('NEW');
+
+    // Денег коммит не двигает: строку проводит человек во «Входящих».
+    const txs = await H.prisma.transaction.count({ where: { workspaceId: ws, deletedAt: null } });
+    expect(txs).toBe(0);
   });
 
   it('POST /import/commit → 400 когда все строки — дубликаты (нечего импортировать)', async () => {

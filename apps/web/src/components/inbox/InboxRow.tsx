@@ -92,6 +92,9 @@ export function InboxRow({
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {formatDate(line.date)} · {line.account.name}
+            {/* Откуда строка: банк тянет сам, файловую принёс импорт. Важно при
+                расхождении с банком — видно, что сверять. */}
+            {line.provider === 'FILE' && ' · из файла'}
             {line.ausnMark && ` · ${AUSN_LABELS[line.ausnMark]}`}
             {isAutoPosted && ` · правило: ${line.appliedRule?.name ?? 'удалено'}`}
             {line.adopted && ' · узнана: совпала с вашей операцией'}

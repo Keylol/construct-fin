@@ -1,6 +1,10 @@
 /**
- * Интеграционные тесты commit-импорта (Фаза 4 п.18): защита от повторного
- * импорта того же файла по fileHash. Реальная БД construct_v6_test.
+ * Интеграционные тесты commit-импорта. Реальная БД construct_v6_test.
+ *
+ * Импорт файла кладёт выписку во «Входящие», а не создаёт операции: счёт вроде
+ * карты ВБ банк по API не отдаёт, и раньше такая выписка выпадала из общего
+ * конвейера (правила, детектор переводов, привязка к заказу). Поэтому проверяем
+ * именно строки, а разметку — там, где она теперь живёт: в inbox-тестах.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { ConflictException } from '@nestjs/common';
@@ -47,7 +51,6 @@ function body(over: Partial<CommitBody> = {}): CommitBody {
         type: 'EXPENSE',
         description: 'обед',
         counterpartyName: null,
-        categoryId: null,
         importHash: 'row-1',
         isDuplicate: false,
       },
@@ -55,6 +58,114 @@ function body(over: Partial<CommitBody> = {}): CommitBody {
     ...over,
   };
 }
+
+describe('Import commit: выписка попадает во «Входящие»', () => {
+  it('строки заводятся на разбор, операций не создаётся', async () => {
+    const res = await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body(),
+    });
+    expect(res.imported).toBe(1);
+
+    const lines = await h.prisma.bankStatementLine.findMany({
+      where: { workspaceId: seed.workspaceId },
+      select: {
+        status: true,
+        direction: true,
+        amount: true,
+        externalId: true,
+        importBatchId: true,
+        description: true,
+      },
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.status).toBe('NEW');
+    expect(lines[0]?.direction).toBe('EXPENSE');
+    expect(lines[0]?.amount.toFixed(2)).toBe('100.00');
+    // externalId = importHash: тот же отпечаток, по которому превью метит дубли.
+    expect(lines[0]?.externalId).toBe('row-1');
+    expect(lines[0]?.importBatchId).toBe(res.batchId);
+
+    // Денег импорт больше не двигает — это делает разбор строки.
+    const txCount = await h.prisma.transaction.count({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+    });
+    expect(txCount).toBe(0);
+  });
+
+  it('строки ложатся в файловое подключение счёта, а не в банковское', async () => {
+    await svc.commit({ workspaceId: seed.workspaceId, userId: seed.userId, body: body() });
+
+    const conns = await h.prisma.integrationConnection.findMany({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+      select: { id: true, provider: true, accountId: true, credentialEnc: true },
+    });
+    expect(conns).toHaveLength(1);
+    expect(conns[0]?.provider).toBe('FILE');
+    expect(conns[0]?.accountId).toBe(seed.accountId);
+    // Ключа у файлового подключения нет: выписку приносит человек, а не токен.
+    expect(conns[0]?.credentialEnc).toBeNull();
+  });
+
+  it('второй импорт на тот же счёт переиспользует подключение', async () => {
+    await svc.commit({ workspaceId: seed.workspaceId, userId: seed.userId, body: body() });
+    await svc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: body({
+        fileHash: 'FILE-2',
+        rows: [
+          {
+            date: '2026-05-04',
+            amount: '400.00',
+            type: 'INCOME',
+            description: 'второй файл',
+            counterpartyName: null,
+            importHash: 'row-4',
+            isDuplicate: false,
+          },
+        ],
+      }),
+    });
+
+    const conns = await h.prisma.integrationConnection.count({
+      where: { workspaceId: seed.workspaceId, provider: 'FILE', deletedAt: null },
+    });
+    expect(conns).toBe(1);
+    const lines = await h.prisma.bankStatementLine.count({
+      where: { workspaceId: seed.workspaceId },
+    });
+    expect(lines).toBe(2);
+  });
+
+  it('правило подставляет подсказку категории строке', async () => {
+    const category = await h.prisma.category.create({
+      data: { workspaceId: seed.workspaceId, name: 'Питание', kind: 'EXPENSE', bucket: 'VARIABLE' },
+    });
+    await h.prisma.rule.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        name: 'Обеды',
+        priority: 10,
+        isActive: true,
+        appliesTo: 'IMPORT',
+        conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'обед' }],
+        actions: [{ type: 'SET_CATEGORY', categoryId: category.id }],
+      },
+    });
+
+    await svc.commit({ workspaceId: seed.workspaceId, userId: seed.userId, body: body() });
+
+    const line = await h.prisma.bankStatementLine.findFirst({
+      where: { workspaceId: seed.workspaceId },
+      select: { suggestedCategoryId: true, status: true },
+    });
+    // Подсказка — не проводка: строку всё равно подтверждает человек.
+    expect(line?.suggestedCategoryId).toBe(category.id);
+    expect(line?.status).toBe('NEW');
+  });
+});
 
 describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
   it('первый импорт файла проходит', async () => {
@@ -76,7 +187,6 @@ describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
               type: 'INCOME',
               description: 'другая строка',
               counterpartyName: null,
-              categoryId: null,
               importHash: 'row-2',
               isDuplicate: false,
             },
@@ -92,7 +202,8 @@ describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
       where: { id: first.batchId },
       data: { deletedAt: new Date() },
     });
-    // Другой importHash, чтобы не упереться в partial-unique п.17 (старые строки активны).
+    // Другой importHash: уникальность (connectionId, externalId) не даст завести
+    // строку с тем же отпечатком дважды, пока прежняя жива.
     const again = await svc.commit({
       workspaceId: seed.workspaceId,
       userId: seed.userId,
@@ -104,7 +215,6 @@ describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
             type: 'EXPENSE',
             description: 'повтор',
             counterpartyName: null,
-            categoryId: null,
             importHash: 'row-3',
             isDuplicate: false,
           },
@@ -112,88 +222,6 @@ describe('Import commit: дедуп по fileHash (Фаза 4 п.18)', () => {
       }),
     });
     expect(again.imported).toBe(1);
-  });
-});
-
-describe('Import commit: дедуп контрагентов по lowercase (M10)', () => {
-  it('«Ромашка» и «РОМАШКА» из одного файла → один контрагент, общий id', async () => {
-    const res = await svc.commit({
-      workspaceId: seed.workspaceId,
-      userId: seed.userId,
-      body: body({
-        rows: [
-          {
-            date: '2026-05-01',
-            amount: '100.00',
-            type: 'EXPENSE',
-            description: 'оплата 1',
-            counterpartyName: 'Ромашка',
-            categoryId: null,
-            importHash: 'cp-row-1',
-            isDuplicate: false,
-          },
-          {
-            date: '2026-05-02',
-            amount: '200.00',
-            type: 'EXPENSE',
-            description: 'оплата 2',
-            counterpartyName: 'РОМАШКА',
-            categoryId: null,
-            importHash: 'cp-row-2',
-            isDuplicate: false,
-          },
-        ],
-      }),
-    });
-    expect(res.imported).toBe(2);
-
-    const cps = await h.prisma.counterparty.findMany({
-      where: { workspaceId: seed.workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    expect(cps).toHaveLength(1); // регистр-дубль НЕ создан
-
-    const txs = await h.prisma.transaction.findMany({
-      where: { workspaceId: seed.workspaceId, deletedAt: null },
-      select: { counterpartyId: true },
-    });
-    expect(txs).toHaveLength(2);
-    expect(txs[0]?.counterpartyId).toBe(cps[0]?.id);
-    expect(txs[1]?.counterpartyId).toBe(cps[0]?.id); // обе ноги ссылаются на один id
-  });
-
-  it('переиспользует уже существующего контрагента независимо от регистра', async () => {
-    const cp = await h.prisma.counterparty.create({
-      data: { workspaceId: seed.workspaceId, name: 'Ромашка' },
-    });
-    const res = await svc.commit({
-      workspaceId: seed.workspaceId,
-      userId: seed.userId,
-      body: body({
-        rows: [
-          {
-            date: '2026-05-01',
-            amount: '100.00',
-            type: 'EXPENSE',
-            description: 'оплата',
-            counterpartyName: 'рОмАшКа',
-            categoryId: null,
-            importHash: 'cp-row-3',
-            isDuplicate: false,
-          },
-        ],
-      }),
-    });
-    expect(res.imported).toBe(1);
-    const count = await h.prisma.counterparty.count({
-      where: { workspaceId: seed.workspaceId, deletedAt: null },
-    });
-    expect(count).toBe(1); // нового не завели
-    const tx = await h.prisma.transaction.findFirst({
-      where: { workspaceId: seed.workspaceId, deletedAt: null },
-      select: { counterpartyId: true },
-    });
-    expect(tx?.counterpartyId).toBe(cp.id);
   });
 });
 
@@ -220,164 +248,5 @@ describe('annotateTransferSuggestions: границы дат без spread (M11)
         annotateTransferSuggestions: (w: string, a: string, r: typeof rows) => Promise<void>;
       }).annotateTransferSuggestions(seed.workspaceId, seed.accountId, rows),
     ).resolves.toBeUndefined();
-  });
-});
-
-describe('F3 (5d): привязка импортной строки к заказу', () => {
-  async function makeClientOrder(total = '1000.00') {
-    const client = await h.prisma.counterparty.create({
-      data: { workspaceId: seed.workspaceId, name: 'Клиент Импортный', role: 'CLIENT' },
-    });
-    const order = await h.orders.create(seed.workspaceId, {
-      clientId: client.id,
-      items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
-    });
-    return { client, order };
-  }
-
-  it('INCOME-строка с orderId → ORDER_PAYMENT с клиентом заказа; оплата пересчитана', async () => {
-    const { client, order } = await makeClientOrder('1000.00');
-    await svc.commit({
-      workspaceId: seed.workspaceId,
-      userId: seed.userId,
-      body: body({
-        fileHash: 'FILE-ORD-1',
-        rows: [
-          {
-            date: '2026-06-01',
-            amount: '400.00',
-            type: 'INCOME',
-            description: 'Поступление по QR',
-            counterpartyName: 'БАНК ЭКВАЙЕР', // из выписки — НЕ клиент
-            categoryId: null,
-            orderId: order.id,
-            importHash: 'row-ord-1',
-            isDuplicate: false,
-          },
-        ],
-      }),
-    });
-
-    const tx = await h.prisma.transaction.findFirstOrThrow({
-      where: { workspaceId: seed.workspaceId, orderId: order.id, deletedAt: null },
-    });
-    expect(tx.kind).toBe('ORDER_PAYMENT');
-    expect(tx.type).toBe('INCOME');
-    expect(tx.counterpartyId).toBe(client.id); // клиент заказа, не эквайер
-
-    const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
-    expect(fresh.paidAmount.toFixed(2)).toBe('400.00');
-    expect(fresh.paymentStatus).toBe('PARTIAL');
-  });
-
-  it('EXPENSE-строка с orderId → 400', async () => {
-    const { order } = await makeClientOrder();
-    await expect(
-      svc.commit({
-        workspaceId: seed.workspaceId,
-        userId: seed.userId,
-        body: body({
-          fileHash: 'FILE-ORD-2',
-          rows: [
-            {
-              date: '2026-06-01',
-              amount: '100.00',
-              type: 'EXPENSE',
-              description: null,
-              counterpartyName: null,
-              categoryId: null,
-              orderId: order.id,
-              importHash: 'row-ord-2',
-              isDuplicate: false,
-            },
-          ],
-        }),
-      }),
-    ).rejects.toThrow('только приходную строку');
-  });
-
-  it('чужой/несуществующий заказ → 400; отменённый → 400', async () => {
-    await expect(
-      svc.commit({
-        workspaceId: seed.workspaceId,
-        userId: seed.userId,
-        body: body({
-          fileHash: 'FILE-ORD-3',
-          rows: [
-            {
-              date: '2026-06-01',
-              amount: '100.00',
-              type: 'INCOME',
-              description: null,
-              counterpartyName: null,
-              categoryId: null,
-              orderId: 'cme00000000000000000000zz',
-              importHash: 'row-ord-3',
-              isDuplicate: false,
-            },
-          ],
-        }),
-      }),
-    ).rejects.toThrow('Заказ не найден');
-
-    const { order } = await makeClientOrder();
-    await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
-    await expect(
-      svc.commit({
-        workspaceId: seed.workspaceId,
-        userId: seed.userId,
-        body: body({
-          fileHash: 'FILE-ORD-4',
-          rows: [
-            {
-              date: '2026-06-01',
-              amount: '100.00',
-              type: 'INCOME',
-              description: null,
-              counterpartyName: null,
-              categoryId: null,
-              orderId: order.id,
-              importHash: 'row-ord-4',
-              isDuplicate: false,
-            },
-          ],
-        }),
-      }),
-    ).rejects.toThrow('отменён');
-  });
-});
-
-describe('F3 (5d): заказ без клиента', () => {
-  it('привязка к заказу без клиента → counterpartyId=null (не эквайер из выписки)', async () => {
-    const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '500.00' }],
-    });
-    await svc.commit({
-      workspaceId: seed.workspaceId,
-      userId: seed.userId,
-      body: body({
-        fileHash: 'FILE-ORD-5',
-        rows: [
-          {
-            date: '2026-06-02',
-            amount: '500.00',
-            type: 'INCOME',
-            description: 'QR-платёж',
-            counterpartyName: 'БАНК ЭКВАЙЕР',
-            categoryId: null,
-            orderId: order.id,
-            importHash: 'row-ord-5',
-            isDuplicate: false,
-          },
-        ],
-      }),
-    });
-    const tx = await h.prisma.transaction.findFirstOrThrow({
-      where: { workspaceId: seed.workspaceId, orderId: order.id, deletedAt: null },
-    });
-    expect(tx.kind).toBe('ORDER_PAYMENT');
-    expect(tx.counterpartyId).toBeNull(); // семантика addPayment: clientId ?? null
-    const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
-    expect(fresh.paymentStatus).toBe('PAID');
   });
 });

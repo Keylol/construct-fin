@@ -370,3 +370,53 @@ describe('перевод на счёт без выписки (карты физ�
     expect(await h.prisma.transfer.count({ where: { deletedAt: null } })).toBe(0);
   });
 });
+
+/**
+ * Выписка, загруженная файлом, обязана вести себя как банковская. Ради этого
+ * импорт и переведён на «Входящие»: счёт вроде карты ВБ банк по API не отдаёт, и
+ * раньше его половина перевода приезжала сразу операцией — детектор её не видел,
+ * пару приходилось сводить руками, а обороты успевали задвоиться.
+ */
+describe('нога перевода, приехавшая файлом', () => {
+  it('пара «банк ↔ файл» находится так же, как две банковские', async () => {
+    const a = await firstConnection();
+    const { account: fileAccount } = await secondAccount('Карта ВБ …8975');
+    // Расход по банковской выписке.
+    await seedLine({
+      connectionId: a.id,
+      externalId: 'out-file-pair',
+      amount: '128231.00',
+      direction: 'EXPENSE',
+    });
+    // Встречный приход — из файла, через обычный импорт.
+    await h.importSvc.commit({
+      workspaceId: seed.workspaceId,
+      userId: seed.userId,
+      body: {
+        filename: 'vb.pdf',
+        fileHash: 'FILE-PAIR',
+        source: 'WB_PDF',
+        accountId: fileAccount.id,
+        skipDuplicates: true,
+        rows: [
+          {
+            date: '2026-07-10T15:00:00.000Z',
+            amount: '128231.00',
+            type: 'INCOME',
+            description: 'Зачисление перевода СБП',
+            counterpartyName: null,
+            importHash: 'file-leg-1',
+            isDuplicate: false,
+          },
+        ],
+      },
+    });
+
+    const res = await inbox.transferCandidates(seed.workspaceId);
+
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0]!.confidence).toBe('exact');
+    expect(res.items[0]!.out.account.id).toBe(seed.accountId);
+    expect(res.items[0]!.in.account.id).toBe(fileAccount.id);
+  });
+});

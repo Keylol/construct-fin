@@ -36,6 +36,7 @@ const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   ALFA: 'Альфа-Банк',
   TBANK: 'Т-Банк',
   WB_CARD: 'Карта ВБ',
+  FILE: 'Выписка файлом',
 };
 
 const STATUS: Record<IntegrationStatus, { tone: 'success' | 'warning' | 'destructive' | 'muted'; label: string }> = {

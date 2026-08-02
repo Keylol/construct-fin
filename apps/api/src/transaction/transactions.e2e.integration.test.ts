@@ -753,7 +753,6 @@ describe('Импорт: commit с данными (ImportService.commit)', () => 
       type: 'EXPENSE',
       description: 'обед',
       counterpartyName: null,
-      categoryId: null,
       importHash: `h-${Math.random()}`,
       isDuplicate: false,
       ...over,
@@ -771,7 +770,7 @@ describe('Импорт: commit с данными (ImportService.commit)', () => 
     };
   }
 
-  it('создаёт транзакции с importBatchId/importHash и новых контрагентов', async () => {
+  it('заводит строки на разбор с привязкой к пакету, деньги не двигает', async () => {
     const res = await h.importSvc.commit({
       workspaceId: seed.workspaceId,
       userId: seed.userId,
@@ -785,44 +784,33 @@ describe('Импорт: commit с данными (ImportService.commit)', () => 
     expect(res.imported).toBe(2);
     expect(res.skipped).toBe(0);
 
-    // Контрагент создан один (дедуп по имени).
-    const cps = await h.prisma.counterparty.findMany({
+    const lines = await h.prisma.bankStatementLine.findMany({
+      where: { workspaceId: seed.workspaceId, importBatchId: res.batchId },
+      orderBy: { externalId: 'asc' },
+    });
+    expect(lines).toHaveLength(2);
+    for (const l of lines) {
+      expect(l.status).toBe('NEW');
+      expect(l.counterpartyName).toBe('Новый Поставщик');
+      expect(l.externalId).toMatch(/^c-/);
+    }
+
+    // Контрагента импорт не заводит: он появится при проведении строки — тогда же,
+    // когда её заводит банковский синк, и по тем же правилам поиска по ИНН/имени.
+    const cps = await h.prisma.counterparty.count({
       where: { workspaceId: seed.workspaceId, name: 'Новый Поставщик' },
     });
-    expect(cps).toHaveLength(1);
-
-    const txs = await h.prisma.transaction.findMany({
-      where: { workspaceId: seed.workspaceId, importBatchId: res.batchId },
+    expect(cps).toBe(0);
+    const txs = await h.prisma.transaction.count({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
     });
-    expect(txs).toHaveLength(2);
-    for (const t of txs) {
-      expect(t.counterpartyId).toBe(cps[0]!.id);
-      expect(t.importBatchId).toBe(res.batchId);
-      expect(t.createdById).toBe(seed.userId);
-      expect(t.importHash).toMatch(/^c-/);
-    }
+    expect(txs).toBe(0);
 
     // Батч хранит счётчики.
     const batch = await h.prisma.importBatch.findUniqueOrThrow({ where: { id: res.batchId } });
     expect(batch.rowsTotal).toBe(2);
     expect(batch.rowsImported).toBe(2);
     expect(batch.rowsSkipped).toBe(0);
-  });
-
-  it('переиспользует существующего контрагента (case-insensitive), не плодит дублей', async () => {
-    await makeCounterparty('ООО Ромашка');
-    const res = await h.importSvc.commit({
-      workspaceId: seed.workspaceId,
-      userId: seed.userId,
-      body: body({ rows: [row({ counterpartyName: 'ооо ромашка', importHash: 'ci-1' })] }),
-    });
-    expect(res.imported).toBe(1);
-    const cps = await h.prisma.counterparty.findMany({
-      where: { workspaceId: seed.workspaceId, name: { contains: 'омашка', mode: 'insensitive' } },
-    });
-    expect(cps).toHaveLength(1);
-    const tx = await h.prisma.transaction.findFirstOrThrow({ where: { importBatchId: res.batchId } });
-    expect(tx.counterpartyId).toBe(cps[0]!.id);
   });
 
   it('skipDuplicates=true отфильтровывает isDuplicate строки', async () => {
@@ -838,9 +826,11 @@ describe('Импорт: commit с данными (ImportService.commit)', () => 
     });
     expect(res.imported).toBe(1);
     expect(res.skipped).toBe(1);
-    const txs = await h.prisma.transaction.findMany({ where: { importBatchId: res.batchId } });
-    expect(txs).toHaveLength(1);
-    expect(txs[0]!.importHash).toBe('k-1');
+    const lines = await h.prisma.bankStatementLine.findMany({
+      where: { importBatchId: res.batchId },
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.externalId).toBe('k-1');
   });
 
   it('skipDuplicates=true и все строки — дубликаты → BadRequest (Nothing to import)', async () => {
@@ -893,7 +883,7 @@ describe('Импорт: listBatches (ImportService.listBatches)', () => {
       body: {
         filename: 'a.csv', fileHash: 'fh-a', source: 'GENERIC_CSV', accountId: seed.accountId,
         skipDuplicates: true,
-        rows: [{ date: '2026-05-01', amount: '10.00', type: 'EXPENSE', description: 'a', counterpartyName: null, categoryId: null, importHash: 'a-1', isDuplicate: false }],
+        rows: [{ date: '2026-05-01', amount: '10.00', type: 'EXPENSE', description: 'a', counterpartyName: null, importHash: 'a-1', isDuplicate: false }],
       },
     });
     await h.importSvc.commit({
@@ -902,7 +892,7 @@ describe('Импорт: listBatches (ImportService.listBatches)', () => {
       body: {
         filename: 'b.csv', fileHash: 'fh-b', source: 'GENERIC_CSV', accountId: seed.accountId,
         skipDuplicates: true,
-        rows: [{ date: '2026-05-02', amount: '20.00', type: 'EXPENSE', description: 'b', counterpartyName: null, categoryId: null, importHash: 'b-1', isDuplicate: false }],
+        rows: [{ date: '2026-05-02', amount: '20.00', type: 'EXPENSE', description: 'b', counterpartyName: null, importHash: 'b-1', isDuplicate: false }],
       },
     });
     // soft-delete первого — должен остаться в списке с deletedAt.

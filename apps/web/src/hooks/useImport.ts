@@ -16,9 +16,6 @@ export interface CommitRow {
   type: 'INCOME' | 'EXPENSE';
   description: string | null;
   counterpartyName: string | null;
-  categoryId: string | null;
-  /** F3 (5d): привязка строки к заказу — строка станет ORDER_PAYMENT. */
-  orderId?: string | null;
   importHash: string;
   isDuplicate: boolean;
 }
@@ -39,19 +36,18 @@ export interface PreviewInput {
   mapping?: ColumnMapping;
 }
 
-export function rowToCommitRow(
-  r: PreviewRow,
-  categoryId: string | null,
-  orderId: string | null = null,
-): CommitRow {
+/**
+ * Строка превью → строка коммита. Разметки здесь нет: импорт кладёт выписку во
+ * «Входящие» сырой, а категорию и заказ ей назначают там же, где строкам из
+ * банка.
+ */
+export function rowToCommitRow(r: PreviewRow): CommitRow {
   return {
     date: r.date,
     amount: r.amount,
     type: r.type,
     description: r.description,
     counterpartyName: r.counterpartyName,
-    categoryId,
-    orderId,
     importHash: r.importHash,
     isDuplicate: r.isDuplicate,
   };

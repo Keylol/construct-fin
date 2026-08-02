@@ -739,14 +739,15 @@ export interface AuditPage {
 }
 
 // ── Интеграции (Ф1 «Полный автомат») ──
-export type IntegrationProvider = 'ALFA' | 'TBANK' | 'WB_CARD';
+export type IntegrationProvider = 'ALFA' | 'TBANK' | 'WB_CARD' | 'FILE';
 export type IntegrationStatus = 'ACTIVE' | 'ERROR' | 'DISABLED';
 
 export interface IntegrationConnection {
   id: string;
   provider: IntegrationProvider;
   status: IntegrationStatus;
-  keyLast4: string;
+  /** Null у файловых подключений: ключа там нет. */
+  keyLast4: string | null;
   /** Номер расчётного счёта у провайдера (Альфа); null — не задан. */
   accountNumber: string | null;
   /** Отпечаток клиентского сертификата mTLS; null — сертификат не загружен. */

@@ -3,24 +3,22 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowRight, Check, History, Upload } from '@/components/ui/icons';
-import { formatRub, sub, toMoneyString } from '@construct/shared';
+import { formatRub } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
-import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Badge } from '@/components/ui/Badge';
 import { FormField } from '@/components/ui/FormField';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
-import { useOrders } from '@/hooks/useOrders';
 import {
   rowToCommitRow,
   useImportCommit,
   useImportPreview,
 } from '@/hooks/useImport';
-import type { AccountType, Order, PreviewResult } from '@/lib/types';
+import type { AccountType, PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { plural } from '@/lib/plural';
 
@@ -50,8 +48,6 @@ export default function ImportPage() {
   const [accountId, setAccountId] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
-  /** F3 (5d): привязки строк к заказам (rawIndex → orderId). */
-  const [orderLinks, setOrderLinks] = useState<Record<number, string>>({});
   const [batchResult, setBatchResult] = useState<{
     batchId: string;
     imported: number;
@@ -78,9 +74,7 @@ export default function ImportPage() {
     if (!preview || !wsId) return;
     // Ф6: строки, чей расход уже создан разбором чека WB, не импортируем
     // никогда (иначе задвоение) — фильтр жёсткий, не зависит от skipDuplicates.
-    const rows = preview.rows
-      .filter((r) => !r.receiptMatch)
-      .map((r) => rowToCommitRow(r, null, orderLinks[r.rawIndex] ?? null));
+    const rows = preview.rows.filter((r) => !r.receiptMatch).map(rowToCommitRow);
     const result = await commitMut.mutateAsync({
       filename: preview.filename,
       fileHash: preview.fileHash,
@@ -98,7 +92,6 @@ export default function ImportPage() {
     setFile(null);
     setPreview(null);
     setBatchResult(null);
-    setOrderLinks({});
   }
 
   if (!wsId) {
@@ -198,19 +191,9 @@ export default function ImportPage() {
 
         {stage === 'preview' && preview && (
           <PreviewStage
-            wsId={wsId}
             preview={preview}
             skipDuplicates={skipDuplicates}
             onToggleSkipDuplicates={setSkipDuplicates}
-            orderLinks={orderLinks}
-            onLinkOrder={(rawIndex, orderId) =>
-              setOrderLinks((prev) => {
-                const next = { ...prev };
-                if (orderId) next[rawIndex] = orderId;
-                else delete next[rawIndex];
-                return next;
-              })
-            }
             onBack={reset}
             onCommit={onCommit}
             isCommitting={commitMut.isPending}
@@ -225,23 +208,32 @@ export default function ImportPage() {
                 <Check className="h-5 w-5" />
               </div>
               <div className="flex-1 space-y-3">
-                <h2 className="text-base font-semibold tracking-tight">Готово</h2>
+                <h2 className="text-base font-semibold tracking-tight">
+                  Выписка во «Входящих»
+                </h2>
                 <div className="space-y-1 text-sm">
                   <div>
-                    Импортировано: <span className="font-semibold">{batchResult.imported}</span>
+                    Строк на обработку:{' '}
+                    <span className="font-semibold">{batchResult.imported}</span>
                   </div>
                   <div>
                     Пропущено (дубликаты):{' '}
                     <span className="font-semibold">{batchResult.skipped}</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    Категории, переводы и привязку к заказам проставьте во «Входящих» —
+                    там же, где строки из банка.
                   </div>
                   <div className="text-xs text-muted-foreground">
                     № импорта: <code>{batchResult.batchId}</code>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={reset}>Импортировать ещё</Button>
-                  <Button variant="secondary" asChild>
-                    <Link href="/transactions">К операциям</Link>
+                  <Button asChild>
+                    <Link href="/inbox">Перейти во «Входящие»</Link>
+                  </Button>
+                  <Button variant="secondary" onClick={reset}>
+                    Импортировать ещё
                   </Button>
                   <Button variant="ghost" asChild>
                     <Link href="/import/batches">История</Link>
@@ -301,23 +293,17 @@ function Steps({ stage }: { stage: Stage }) {
 }
 
 function PreviewStage({
-  wsId,
   preview,
   skipDuplicates,
   onToggleSkipDuplicates,
-  orderLinks,
-  onLinkOrder,
   onBack,
   onCommit,
   isCommitting,
   commitError,
 }: {
-  wsId: string;
   preview: PreviewResult;
   skipDuplicates: boolean;
   onToggleSkipDuplicates: (v: boolean) => void;
-  orderLinks: Record<number, string>;
-  onLinkOrder: (rawIndex: number, orderId: string | null) => void;
   onBack: () => void;
   onCommit: () => void;
   isCommitting: boolean;
@@ -330,18 +316,6 @@ function PreviewStage({
     ? importable.filter((r) => !r.isDuplicate).length
     : importable.length;
 
-  // F3 (5d): открытые долги для привязки приходных строк. Номера заказа в
-  // назначении платежа обычно нет — выбор ручной, подсказка по совпадению суммы.
-  const ordersQuery = useOrders(wsId, { limit: 200 });
-  const unpaidOrders = useMemo<Order[]>(
-    () =>
-      (ordersQuery.data?.pages.flatMap((p) => p.items) ?? []).filter(
-        (o) =>
-          o.status !== 'CANCELLED' &&
-          (o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL'),
-      ),
-    [ordersQuery.data],
-  );
   return (
     <div className="space-y-4">
       <Card>
@@ -365,7 +339,6 @@ function PreviewStage({
               <th className="px-3 py-2 font-medium">Тип</th>
               <th className="px-3 py-2 font-medium">Контрагент</th>
               <th className="px-3 py-2 font-medium">Описание</th>
-              <th className="px-3 py-2 font-medium">Заказ</th>
               <th className="px-3 py-2 font-medium">Флаг</th>
             </tr>
           </thead>
@@ -402,20 +375,6 @@ function PreviewStage({
                 </td>
                 <td className="max-w-[300px] truncate px-3 py-2" title={r.description ?? ''}>
                   {r.description ?? '—'}
-                </td>
-                {/* F3 (5d): привязка прихода к заказу — строка станет оплатой
-                    заказа (ORDER_PAYMENT). «✓» — долг совпадает с суммой строки. */}
-                <td className="px-3 py-2">
-                  {r.type === 'INCOME' && !r.isDuplicate ? (
-                    <OrderLinkCombobox
-                      orders={unpaidOrders}
-                      rowAmount={r.amount}
-                      value={orderLinks[r.rawIndex] ?? ''}
-                      onChange={(orderId) => onLinkOrder(r.rawIndex, orderId)}
-                    />
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
                 </td>
                 <td className="px-3 py-2">
                   {r.isDuplicate && <Badge variant="muted">дубликат</Badge>}
@@ -461,49 +420,6 @@ function PreviewStage({
         </div>
       </Card>
     </div>
-  );
-}
-
-/**
- * F3 (5d): комбобокс привязки приходной строки к заказу. Options строятся
- * per-строка (тот же паттерн, что SKU-строки в закупке), потому что метка
- * «✓» — подсказка «долг совпадает с суммой строки» — зависит от суммы строки.
- */
-function OrderLinkCombobox({
-  orders,
-  rowAmount,
-  value,
-  onChange,
-}: {
-  orders: Order[];
-  rowAmount: string;
-  value: string;
-  onChange: (orderId: string | null) => void;
-}) {
-  const options = useMemo<ComboboxOption[]>(
-    () =>
-      orders.map((o) => {
-        const due = sub(o.totalAmount, o.paidAmount);
-        const match = due.eq(rowAmount);
-        return {
-          value: o.id,
-          label: `${match ? '✓ ' : ''}${o.number}${o.title ? ` · ${o.title}` : ''}`,
-          description: `${o.client?.name ?? 'без клиента'} · долг ${formatRub(toMoneyString(due))}`,
-        };
-      }),
-    [orders, rowAmount],
-  );
-  return (
-    <Combobox
-      value={value}
-      onChange={(v) => onChange(v || null)}
-      options={options}
-      placeholder="—"
-      searchPlaceholder="Номер, название или клиент…"
-      clearLabel="— Без привязки —"
-      emptyLabel="Нет открытых долгов"
-      className="h-8 sm:h-8 min-w-[180px] text-xs"
-    />
   );
 }
 

@@ -328,7 +328,8 @@ export class IntegrationsService {
     id: string;
     provider: string;
     status: string;
-    keyLast4: string;
+    /** Null у файловых подключений — ключа там нет вовсе. */
+    keyLast4: string | null;
     externalAccountId: string | null;
     tlsFingerprint: string | null;
     tlsExpiresAt: Date | null;
