@@ -1344,13 +1344,16 @@ function OrderDetailSheet({
 
                   {/* ─────────────── Обзор: позиции + итоги + маржа ─────────────── */}
                   <TabsContent value="overview" className="space-y-5">
-                {/* Items */}
-                <div className="overflow-hidden rounded-md border border-border">
+                {/* Items: строка читается как «закупка → продажа → маржа».
+                    Закупка за единицу — эффективная себестоимость с бэкенда
+                    (каскад BR1: факт FIFO → ручной ввод → оценка по складу). */}
+                <div className="overflow-x-auto rounded-md border border-border">
                   <table className="w-full text-base">
                     <thead className="border-b border-border bg-secondary/40">
                       <tr className="text-left text-xs uppercase text-muted-foreground">
                         <th className="px-3 py-2 font-medium">Позиция</th>
                         <th className="px-3 py-2 text-right font-medium">Кол-во</th>
+                        <th className="px-3 py-2 text-right font-medium">Закупка</th>
                         <th className="px-3 py-2 text-right font-medium">Цена</th>
                         <th className="px-3 py-2 text-right font-medium">Сумма</th>
                         <th className="px-3 py-2 text-right font-medium">Маржа</th>
@@ -1361,14 +1364,24 @@ function OrderDetailSheet({
                         <tr key={it.id} className="border-b border-border last:border-0">
                           <td className="px-3 py-2">{it.name}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
+                          {/* «≈» — себестоимость пока оценка по складу (до выдачи). */}
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            {it.margin?.unitCost ? (
+                              <>
+                                {it.margin.costSource === 'estimate' && '≈ '}
+                                {formatRub(it.margin.unitCost)}
+                              </>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums">
                             {formatRub(it.unitPrice)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">
                             {formatRub(it.lineTotal)}
                           </td>
-                          {/* Маржа строки — с бэкенда (netQty за вычетом возвратов);
-                              «≈» — себестоимость пока оценка по складу (до выдачи). */}
+                          {/* Маржа строки — с бэкенда (netQty за вычетом возвратов). */}
                           <td className="px-3 py-2 text-right tabular-nums">
                             {it.margin ? (
                               <>

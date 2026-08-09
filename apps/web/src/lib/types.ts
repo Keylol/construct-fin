@@ -139,6 +139,8 @@ export interface OrderItemMargin {
   margin: string;
   marginPct: string;
   costSource: OrderCostSource;
+  /** Эффективная закупка за единицу (каскад BR1). Optional: старые ответы в кэше. */
+  unitCost?: string;
 }
 
 /** Итог маржи заказа (база — totalAmount; возвраты по netQty). */

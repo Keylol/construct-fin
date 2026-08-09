@@ -47,6 +47,10 @@ export interface ItemMargin {
   margin: string;
   marginPct: string;
   costSource: CostSource;
+  /** Эффективная закупочная цена за единицу — тот же каскад, что и в COGS.
+   * Наружу отдаётся, чтобы строка заказа читалась как «закупка → продажа →
+   * маржа», а не заставляла вычитать закупку в уме. */
+  unitCost: string;
 }
 
 export interface OrderMarginSummary {
@@ -84,6 +88,7 @@ export function itemMargin(it: MarginItemInput): ItemMargin {
     margin: margin.toFixed(2),
     marginPct: marginPct(revenue, margin),
     costSource: source,
+    unitCost: cost.toFixed(2),
   };
 }
 
