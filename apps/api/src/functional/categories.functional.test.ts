@@ -135,18 +135,23 @@ describe('Функциональные мутации: категории (categ
     expect(row.deletedAt).not.toBeNull();
   });
 
-  it('M13: POST /categories → 400 при kind=EXPENSE + bucket=REVENUE, запись не создаётся', async () => {
+  // Возврат выручки — расход в группе REVENUE. ОПиУ считает выручку как нетто
+  // (доход бакета минус его расход), поэтому такая категория УМЕНЬШАЕТ выручку,
+  // а не попадает в неё. Прежний запрет делал «Возврат выручки» нередактируемым.
+  it('EXPENSE + REVENUE разрешён — это возврат выручки клиенту', async () => {
     const ws = seed.workspaceId;
-    const before = await H.prisma.category.count({ where: { workspaceId: ws } });
     const res = await H.inject({
       method: 'POST',
       url: `/workspaces/${ws}/categories`,
       token,
-      payload: { name: 'РасходВВыручку', kind: 'EXPENSE', bucket: 'REVENUE' },
+      payload: { name: 'Возврат выручки', kind: 'EXPENSE', bucket: 'REVENUE' },
     });
-    expect(res.statusCode).toBe(400);
-    const after = await H.prisma.category.count({ where: { workspaceId: ws } });
-    expect(after).toBe(before);
+    expect(res.statusCode).toBe(201);
+    const row = await H.prisma.category.findUniqueOrThrow({
+      where: { id: res.json<{ id: string }>().id },
+    });
+    expect(row.bucket).toBe('REVENUE');
+    expect(row.kind).toBe('EXPENSE');
   });
 
   it('M13: POST /categories → 400 при kind=INCOME + bucket=COGS', async () => {
@@ -183,7 +188,23 @@ describe('Функциональные мутации: категории (categ
   it('M13: PATCH /categories/:id → 400 при смене bucket на несовместимый с kind, БД не меняется', async () => {
     const ws = seed.workspaceId;
     const cat = await H.prisma.category.create({
-      data: { workspaceId: ws, name: 'Расход', kind: 'EXPENSE', bucket: 'COGS' },
+      data: { workspaceId: ws, name: 'Доход', kind: 'INCOME', bucket: 'REVENUE' },
+    });
+    const res = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/categories/${cat.id}`,
+      token,
+      payload: { bucket: 'COGS' }, // себестоимость — только расходу
+    });
+    expect(res.statusCode).toBe(400);
+    const row = await H.prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+    expect(row.bucket).toBe('REVENUE');
+  });
+
+  it('PATCH: расходной категории можно поставить группу «Выручка» — возврат', async () => {
+    const ws = seed.workspaceId;
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws, name: 'Возврат', kind: 'EXPENSE', bucket: 'OTHER' },
     });
     const res = await H.inject({
       method: 'PATCH',
@@ -191,9 +212,9 @@ describe('Функциональные мутации: категории (categ
       token,
       payload: { bucket: 'REVENUE' },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
     const row = await H.prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
-    expect(row.bucket).toBe('COGS');
+    expect(row.bucket).toBe('REVENUE');
   });
 
   it('негатив: 401 без токена и 403 к чужому workspace', async () => {
