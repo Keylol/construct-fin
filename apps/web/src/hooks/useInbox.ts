@@ -13,17 +13,37 @@ import type {
 /** Ключ, инвалидируемый после любого действия разбора и после синка. */
 const inboxKey = (wsId: string | null) => ['inbox', wsId];
 
+/** Поиск и фильтры списка. Пустые поля в запрос не уходят. */
+export interface InboxFilters {
+  /** Сумма, назначение, контрагент или ИНН. */
+  q?: string;
+  direction?: 'INCOME' | 'EXPENSE';
+  accountId?: string;
+}
+
 /**
  * Строки выписки выбранного статуса. Постранично: после перезалива истории строк
  * бывает больше сотни, а одной страницей хвост просто не виден.
+ *
+ * Фильтры входят в ключ запроса — иначе при смене поиска показывался бы кэш
+ * прежней выборки.
  */
-export function useInbox(wsId: string | null, status: BankLineStatus = 'NEW') {
+export function useInbox(
+  wsId: string | null,
+  status: BankLineStatus = 'NEW',
+  filters: InboxFilters = {},
+) {
+  const params = new URLSearchParams({ limit: '100', status });
+  if (filters.q) params.set('q', filters.q);
+  if (filters.direction) params.set('direction', filters.direction);
+  if (filters.accountId) params.set('accountId', filters.accountId);
+  const qs = params.toString();
+
   return useInfiniteQuery({
-    queryKey: [...inboxKey(wsId), 'list', status],
+    queryKey: [...inboxKey(wsId), 'list', status, filters.q ?? '', filters.direction ?? '', filters.accountId ?? ''],
     queryFn: ({ pageParam }) =>
       api.get<InboxPage>(
-        `/workspaces/${wsId}/inbox?limit=100&status=${status}` +
-          (pageParam ? `&cursor=${pageParam}` : ''),
+        `/workspaces/${wsId}/inbox?${qs}` + (pageParam ? `&cursor=${pageParam}` : ''),
       ),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.nextCursor ?? undefined,

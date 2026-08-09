@@ -3,11 +3,15 @@
 import { useMemo, useState } from 'react';
 import { Inbox as InboxIcon, Sparkles } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useInbox, useApplyRules } from '@/hooks/useInbox';
 import type { ApplyRulesResult, BankLineStatus } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -30,10 +34,22 @@ export default function InboxPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [tab, setTab] = useState<BankLineStatus>('NEW');
-  const inbox = useInbox(wsId, tab);
+  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
+  const [search, setSearch] = useState('');
+  const [direction, setDirection] = useState<'' | 'INCOME' | 'EXPENSE'>('');
+  const [accountId, setAccountId] = useState('');
+  const q = useDebouncedValue(search);
+
+  const accounts = useAccounts(wsId);
+  const inbox = useInbox(wsId, tab, {
+    q: q || undefined,
+    direction: direction || undefined,
+    accountId: accountId || undefined,
+  });
   const applyRules = useApplyRules(current?.id ?? '');
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
+  const filtersActive = !!(q || direction || accountId);
 
   const catOptions = useMemo(() => {
     const map = (cats: { id: string; name: string; parentId: string | null }[]): ComboboxOption[] =>
@@ -100,7 +116,59 @@ export default function InboxPage() {
           </Tabs>
         </div>
 
-        {tab === 'NEW' && (
+        {/* Поиск и фильтры. Строк за месяц бывает под три сотни, и без них нужную
+            находили прокруткой через «Показать ещё». */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Сумма, назначение, контрагент или ИНН"
+            className="w-full sm:w-80"
+            aria-label="Поиск по строкам"
+          />
+          <Select
+            value={direction}
+            onChange={(e) => setDirection(e.target.value as '' | 'INCOME' | 'EXPENSE')}
+            className="w-auto"
+            aria-label="Направление"
+          >
+            <option value="">Приходы и расходы</option>
+            <option value="INCOME">Только приходы</option>
+            <option value="EXPENSE">Только расходы</option>
+          </Select>
+          <Select
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className="w-auto"
+            aria-label="Счёт"
+          >
+            <option value="">Все счета</option>
+            {(accounts.data ?? [])
+              .filter((a) => !a.isArchived)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+          </Select>
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearch('');
+                setDirection('');
+                setAccountId('');
+              }}
+            >
+              Сбросить
+            </Button>
+          )}
+        </div>
+
+        {/* Подсказки переводов и планов считаются по всему списку, а не по
+            отфильтрованному — при активном поиске прячем, чтобы не сбивать с толку. */}
+        {tab === 'NEW' && !filtersActive && (
           <>
             <TransferSuggestions wsId={current.id} />
             <PlannedSuggestions wsId={current.id} />
@@ -113,23 +181,33 @@ export default function InboxPage() {
             <Skeleton className="h-20" />
           </div>
         ) : items.length === 0 ? (
-          <EmptyState
-            icon={InboxIcon}
-            title={
-              tab === 'NEW'
-                ? 'Всё обработано'
-                : tab === 'AUTO_POSTED'
-                  ? 'Правила пока ничего не проводили'
-                  : 'Обработанных строк пока нет'
-            }
-            hint={
-              tab === 'NEW'
-                ? 'Новые операции появятся здесь после синхронизации банка.'
-                : tab === 'AUTO_POSTED'
-                  ? 'Как только правило распознает строку выписки, она появится здесь.'
-                  : 'Здесь соберутся строки, которые вы провели или которые совпали с внесёнными ранее операциями.'
-            }
-          />
+          // При активном поиске «Всё обработано» соврало бы: строки есть, просто
+          // не подошли под фильтр.
+          filtersActive ? (
+            <EmptyState
+              icon={InboxIcon}
+              title="Ничего не найдено"
+              hint="Попробуйте другую сумму или часть назначения — либо сбросьте фильтры."
+            />
+          ) : (
+            <EmptyState
+              icon={InboxIcon}
+              title={
+                tab === 'NEW'
+                  ? 'Всё обработано'
+                  : tab === 'AUTO_POSTED'
+                    ? 'Правила пока ничего не проводили'
+                    : 'Обработанных строк пока нет'
+              }
+              hint={
+                tab === 'NEW'
+                  ? 'Новые операции появятся здесь после синхронизации банка.'
+                  : tab === 'AUTO_POSTED'
+                    ? 'Как только правило распознает строку выписки, она появится здесь.'
+                    : 'Здесь соберутся строки, которые вы провели или которые совпали с внесёнными ранее операциями.'
+              }
+            />
+          )
         ) : (
           <div className="space-y-2">
             {items.map((line) => (
