@@ -68,6 +68,7 @@ describe('F1: маржа в DTO заказа', () => {
       margin: '1500.00',
       marginPct: '50.00',
       costSource: 'estimate',
+      unitCost: '150.00',
     });
   });
 
@@ -151,6 +152,7 @@ describe('F1: маржа в DTO заказа', () => {
       margin: '700.00',
       marginPct: '70.00',
       costSource: 'manual',
+      unitCost: '300.00',
     });
   });
 

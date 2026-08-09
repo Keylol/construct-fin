@@ -31,6 +31,7 @@ describe('itemMargin — каскад себестоимости (BR1)', () => {
       margin: '1000.00',
       marginPct: '100.00',
       costSource: null,
+      unitCost: '0.00',
     });
   });
 
@@ -42,6 +43,7 @@ describe('itemMargin — каскад себестоимости (BR1)', () => {
       margin: '100.00',
       marginPct: '33.33',
       costSource: 'manual',
+      unitCost: '100.00',
     });
   });
 
@@ -65,6 +67,8 @@ describe('itemMargin — каскад себестоимости (BR1)', () => {
     expect(m.cogs).toBe('181.50');
     expect(m.margin).toBe('118.50');
     expect(m.costSource).toBe('estimate');
+    // Закупка за единицу — та же оценка, что пошла в COGS (money-округление).
+    expect(m.unitCost).toBe('60.50');
   });
 
   it('ручной unitCost приоритетнее оценки по складу', () => {
@@ -102,6 +106,7 @@ describe('itemMargin — возвраты (netQty) и границы', () => {
       margin: '180.00',
       marginPct: '60.00',
       costSource: 'actual',
+      unitCost: '40.00',
     });
   });
 
@@ -115,6 +120,7 @@ describe('itemMargin — возвраты (netQty) и границы', () => {
       margin: '0.00',
       marginPct: '0.00',
       costSource: 'actual',
+      unitCost: '40.00',
     });
   });
 
