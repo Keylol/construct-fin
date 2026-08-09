@@ -402,6 +402,45 @@ describe('Закрытие (finalize) — идемпотентность и гв
     const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     expect(done?.closedAt).not.toBeNull();
   });
+
+  // Заказы заносят задним числом (архив клиента разбирают через месяц). Закрытие
+  // «сегодня» уводило бы и выручку, и себестоимость в текущий месяц, оставляя в
+  // месяце сделки одни закупки.
+  it('дата закрытия задаётся явно — ею датируется и признание выручки, и себестоимость', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'Сборка', qty: '1', unitPrice: '1000', unitCost: '600' }],
+    });
+    const closedOn = new Date('2026-07-10T12:00:00.000Z');
+
+    const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId, closedOn);
+
+    expect(done?.closedAt?.toISOString()).toBe(closedOn.toISOString());
+    const cogs = await h.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, orderId: order.id, kind: 'COGS', deletedAt: null },
+      select: { date: true, amount: true },
+    });
+    expect(cogs.date.toISOString()).toBe(closedOn.toISOString());
+    expect(cogs.amount.toFixed(2)).toBe('600.00');
+  });
+
+  it('без даты берётся текущий момент — обычная отгрузка «сейчас»', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+    });
+    const before = Date.now();
+    const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
+    expect(done?.closedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it('будущая дата закрытия отклоняется', async () => {
+    const order = await h.orders.create(seed.workspaceId, {
+      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+    });
+    const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    await expect(
+      h.orders.finalize(seed.workspaceId, order.id, seed.userId, future),
+    ).rejects.toThrow();
+  });
 });
 
 describe('Отмена (cancel) — идемпотентность', () => {

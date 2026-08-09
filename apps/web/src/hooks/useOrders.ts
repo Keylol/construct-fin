@@ -210,10 +210,14 @@ export function useFinalizeOrder(wsId: string) {
     onMutate: () => {
       idemKey.current = newIdempotencyKey();
     },
-    mutationFn: (id: string) =>
-      api.post<Order>(`/workspaces/${wsId}/orders/${id}/finalize`, undefined, {
-        idempotencyKey: idemKey.current,
-      }),
+    // closedOn — дата отгрузки: ею датируются признание выручки и себестоимость.
+    // Без неё сервер возьмёт текущий момент.
+    mutationFn: ({ id, closedOn }: { id: string; closedOn?: string }) =>
+      api.post<Order>(
+        `/workspaces/${wsId}/orders/${id}/finalize`,
+        closedOn ? { closedOn } : {},
+        { idempotencyKey: idemKey.current },
+      ),
     onSuccess: () => invalidate(qc, wsId),
   });
 }
