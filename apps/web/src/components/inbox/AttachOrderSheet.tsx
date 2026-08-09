@@ -17,7 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/Sheet';
-import { formatRub } from '@construct/shared';
+import { formatRub, parseAcquiringFee } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 
 /** Поступление из банка → оплата открытого заказа (пересчёт paidAmount внутри). */
@@ -35,6 +35,12 @@ export function AttachOrderSheet({
   const orders = useOrders(wsId, { status: 'OPEN', limit: 100 });
   const attach = useAttachOrderInbox(wsId);
   const [orderId, setOrderId] = useState('');
+
+  // Торговое возмещение зачисляется за вычетом комиссии банка. Заказ закроется
+  // на брутто, комиссия уйдёт отдельным расходом — предупреждаем заранее, иначе
+  // сумма в заказе не совпадёт с суммой строки и это выглядит как ошибка.
+  const fee = parseAcquiringFee(line.description);
+  const gross = fee ? (Number(line.amount) + Number(fee)).toFixed(2) : null;
 
   const orderOptions = useMemo<ComboboxOption[]>(
     () =>
@@ -73,6 +79,14 @@ export function AttachOrderSheet({
             от {formatDate(line.date)}
             {line.counterpartyName ? ` · ${line.counterpartyName}` : ''}
           </div>
+          {gross && fee ? (
+            <div className="rounded-md border border-border bg-background p-3 text-xs text-muted-foreground">
+              Банк удержал комиссию <span className="font-semibold text-foreground">{formatRub(fee, 2)}</span>{' '}
+              внутри этого возмещения. В заказ зачтётся{' '}
+              <span className="font-semibold text-foreground">{formatRub(gross, 2)}</span>, комиссия пройдёт
+              расходом «Банковские услуги» той же датой — остаток по счёту не изменится.
+            </div>
+          ) : null}
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             <span>Открытый заказ</span>
             <Combobox

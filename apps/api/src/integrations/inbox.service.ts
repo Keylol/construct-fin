@@ -14,6 +14,8 @@ import { applyRules, type RuleDef } from '../rule/engine';
 import { computeRowHash } from '../common/import-hash';
 import { matchTransferPairs } from './transfer-match';
 import { matchPlannedPayments } from './planned-match';
+import { parseAcquiringFee } from '@construct/shared';
+import { add } from '../common/money';
 import type {
   CategorizeDto,
   ConfirmTransferDto,
@@ -215,10 +217,16 @@ export class InboxService {
       throw new ConflictException('Строка уже обработана другим действием');
     }
 
+    // Торговое возмещение приходит уже за вычетом комиссии банка, а удержанное
+    // указано прямо в назначении. Заказ оплачен на брутто — иначе он навсегда
+    // останется недоплаченным ровно на комиссию.
+    const fee = parseAcquiringFee(line.description);
+    const paidAmount = fee ? add(line.amount, fee).toString() : line.amount.toString();
+
     try {
       // Оплата создаётся доменным сервисом (лок заказа, пересчёт paidAmount).
       await this.orders.addPayment(workspaceId, orderId, userId, {
-        amount: line.amount.toString(),
+        amount: paidAmount,
         accountId: line.connection.accountId,
         date: line.date.toISOString(),
         description: line.description ?? undefined,
@@ -232,6 +240,14 @@ export class InboxService {
       throw e;
     }
 
+    // Комиссия банка отдельной строкой в выписку не приходит — она удержана
+    // внутри возмещения. Проводим её расходом той же датой: сальдо по счёту
+    // (брутто-оплата минус комиссия) остаётся равным зачислению банка, а в
+    // расходах видно, сколько эквайринг съел за период.
+    if (fee) {
+      await this.bookAcquiringFee(workspaceId, userId, line, fee);
+    }
+
     // Провенанс (best-effort): свежайшая непривязанная ORDER_PAYMENT этого
     // заказа/счёта/суммы. Гонка привязки к общей оплате даст P2002 — тогда
     // просто оставляем строку без провенанс-линка (деньги/статус корректны).
@@ -241,7 +257,7 @@ export class InboxService {
         orderId,
         kind: 'ORDER_PAYMENT',
         accountId: line.connection.accountId,
-        amount: line.amount,
+        amount: new Prisma.Decimal(paidAmount),
         deletedAt: null,
         bankLine: { is: null },
       },
@@ -259,6 +275,56 @@ export class InboxService {
       }
     }
     return { ok: true };
+  }
+
+  /**
+   * Расход на комиссию эквайринга, удержанную внутри строки возмещения.
+   *
+   * Категорию ищем по имени: у каждого пространства она своя и заводится
+   * человеком. Если её ещё нет — создаём сами, в бакете переменных издержек
+   * (комиссии растут вместе с оборотом). Молча терять комиссию нельзя: без
+   * этого расхода сальдо счёта разойдётся с банком ровно на её сумму.
+   */
+  private async bookAcquiringFee(
+    workspaceId: string,
+    userId: string,
+    line: { id: string; date: Date; description: string | null; connection: { accountId: string } },
+    fee: string,
+  ) {
+    const existing = await this.prisma.category.findFirst({
+      where: {
+        workspaceId,
+        kind: 'EXPENSE',
+        name: { contains: 'анковск', mode: 'insensitive' },
+        deletedAt: null,
+        isArchived: false,
+      },
+      select: { id: true },
+    });
+    const categoryId =
+      existing?.id ??
+      (
+        await this.prisma.category.create({
+          data: { workspaceId, name: 'Банковские услуги', kind: 'EXPENSE', bucket: 'VARIABLE' },
+          select: { id: true },
+        })
+      ).id;
+
+    await this.prisma.transaction.create({
+      data: {
+        workspaceId,
+        accountId: line.connection.accountId,
+        date: line.date,
+        amount: new Prisma.Decimal(fee),
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        categoryId,
+        description: `Комиссия эквайринга, удержана банком из возмещения${
+          line.description ? ` (${line.description.slice(0, 120)})` : ''
+        }`,
+        createdById: userId,
+      },
+    });
   }
 
   /** «Не учитывать» — строка уходит из Inbox, в отчёты не идёт. */
