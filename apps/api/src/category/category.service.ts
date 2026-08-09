@@ -18,13 +18,19 @@ export interface CategoryRow {
 }
 
 // M13: допустимые bucket'ы по kind. Без этой проверки можно было завести
-// kind=EXPENSE с bucket=REVENUE (расход попал бы в выручку P&L) или
-// kind=INCOME с bucket=COGS — искажение отчётов. REVENUE — только доход;
-// COGS/PURCHASES/FIXED/VARIABLE/TAX — только расход; CAPITAL/OTHER —
-// нейтральны (вложения/изъятия и прочее встречаются в обоих видах).
+// kind=INCOME с bucket=COGS — искажение отчётов. COGS/PURCHASES/FIXED/VARIABLE/TAX
+// — только расход; CAPITAL/OTHER нейтральны (вложения/изъятия и прочее
+// встречаются в обоих видах).
+//
+// EXPENSE+REVENUE разрешён намеренно: это возврат выручки клиенту. ОПиУ считает
+// выручку как нетто — доход бакета REVENUE минус его расход (pnl.service:316),
+// то есть такой расход УМЕНЬШАЕТ выручку, а не попадает в неё. Изначальный запрет
+// M13 делал легальную категорию «Возврат выручки» нередактируемой: любое
+// сохранение упиралось в 400, включая переименование.
 const ALLOWED_BUCKETS: Record<'INCOME' | 'EXPENSE', ReadonlySet<CategoryBucket>> = {
   INCOME: new Set<CategoryBucket>(['REVENUE', 'CAPITAL', 'OTHER']),
   EXPENSE: new Set<CategoryBucket>([
+    'REVENUE',
     'COGS',
     'PURCHASES',
     'FIXED',
