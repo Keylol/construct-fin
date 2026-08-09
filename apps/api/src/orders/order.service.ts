@@ -940,7 +940,18 @@ export class OrderService {
    *     со счёта последней оплаты → попадает в P&L;
    *   • при нехватке остатка по складу — ошибка, ничего не списывается (rollback).
    */
-  async finalize(workspaceId: string, orderId: string, userId: string) {
+  /**
+   * Закрыть заказ. `closedOn` — дата отгрузки; ею датируются и `closedAt`, и
+   * проводка себестоимости, потому что выручка признаётся именно по ней (IJ9).
+   * Без параметра берётся текущий момент — обычный сценарий «отгрузили сейчас».
+   *
+   * Дата нужна для заказов, которые заносят задним числом: закрытие сегодняшним
+   * днём уводило бы и выручку, и себестоимость в текущий месяц, оставляя в месяце
+   * сделки одни закупки.
+   */
+  async finalize(workspaceId: string, orderId: string, userId: string, closedOn?: Date) {
+    const closedAt = closedOn ?? new Date();
+    assertNotFuture(closedAt, 'Дата закрытия заказа');
     return this.uow.run(async (tx) => {
       // B2: лок + свежее чтение — параллельные finalize/ship не должны дважды
       // списать склад по устаревшему остатку (double-ship).
@@ -996,7 +1007,9 @@ export class OrderService {
         await tx.transaction.create({
           data: {
             workspaceId,
-            date: new Date(),
+            // Датируем днём отгрузки, а не «сейчас»: себестоимость обязана лежать
+            // в том же месяце, что и признанная по closedAt выручка.
+            date: closedAt,
             amount: money(manualCogs),
             type: 'EXPENSE',
             kind: 'COGS',
@@ -1011,7 +1024,7 @@ export class OrderService {
 
       await tx.order.update({
         where: { id: orderId },
-        data: { status: 'DONE', closedAt: new Date() },
+        data: { status: 'DONE', closedAt },
       });
       await this.audit.record(tx, {
         workspaceId,

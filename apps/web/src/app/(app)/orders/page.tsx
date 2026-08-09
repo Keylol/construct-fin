@@ -1238,6 +1238,11 @@ function OrderDetailSheet({
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
+  // Дата отгрузки спрашивается при закрытии: по ней признаётся выручка и
+  // датируется себестоимость. Для заказа, который заносят задним числом,
+  // «сегодня» увело бы обе суммы в текущий месяц.
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeDate, setCloseDate] = useState(() => toLocalDateInput(new Date()));
   const uploadAtt = useUploadOrderAttachment(wsId);
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
@@ -1772,7 +1777,13 @@ function OrderDetailSheet({
                   <Button variant="secondary" onClick={() => onEdit(order)}>
                     Изменить
                   </Button>
-                  <Button onClick={() => finalize.mutate(order.id)} disabled={finalize.isPending}>
+                  <Button
+                    onClick={() => {
+                      setCloseDate(toLocalDateInput(new Date()));
+                      setCloseOpen(true);
+                    }}
+                    disabled={finalize.isPending}
+                  >
                     {finalize.isPending ? 'Закрытие…' : 'Закрыть заказ'}
                   </Button>
                 </>
@@ -1796,6 +1807,41 @@ function OrderDetailSheet({
           )}
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        title="Закрыть заказ"
+        // Не destructive: закрытие — штатный шаг, а не опасное действие.
+        variant="primary"
+        confirmText="Закрыть заказ"
+        description={
+          <div className="space-y-3">
+            <p>
+              Выручка и себестоимость будут признаны на эту дату — ставьте день
+              отгрузки, а не сегодняшний, если заказ вносится задним числом.
+            </p>
+            <FormField label="Дата отгрузки" htmlFor="order-close-date" required>
+              <Input
+                id="order-close-date"
+                type="date"
+                value={closeDate}
+                max={toLocalDateInput(new Date())}
+                onChange={(e) => setCloseDate(e.target.value)}
+              />
+            </FormField>
+          </div>
+        }
+        onConfirm={async () => {
+          if (!order || !closeDate) return;
+          await finalize.mutateAsync({
+            id: order.id,
+            closedOn: fromLocalDateInput(closeDate),
+          });
+          setCloseOpen(false);
+        }}
+        loading={finalize.isPending}
+      />
 
       <ConfirmDialog
         open={confirmCancel}

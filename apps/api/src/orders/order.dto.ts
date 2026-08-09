@@ -119,6 +119,21 @@ export const ShipItemSchema = z.object({
 export type ShipItemDto = z.infer<typeof ShipItemSchema>;
 
 /** Возврат клиента (RMA): частичный/полный возврат позиции закрытого заказа. */
+/**
+ * Закрытие заказа. `closedOn` — дата отгрузки: ею датируются и признание выручки
+ * (`closedAt`), и проводка себестоимости. Без неё берётся текущий момент.
+ * Нужна для заказов, которые заносят задним числом.
+ */
+// Тело целиком необязательно: закрытие без даты — штатный вызов («отгрузили
+// сейчас»), и такие запросы приходят вообще без payload.
+export const FinalizeOrderSchema = z
+  .object({
+    closedOn: z.string().datetime().optional(),
+  })
+  .optional()
+  .default({});
+export type FinalizeOrderDto = z.infer<typeof FinalizeOrderSchema>;
+
 export const ReturnItemSchema = z.object({
   itemId: z.string().cuid(),
   /// Возвращаемое количество (положительное, <= проданное минус уже возвращённое).

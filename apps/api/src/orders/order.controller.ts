@@ -21,6 +21,7 @@ import {
   UpdateOrderSchema,
   ListOrdersQuerySchema,
   AddPaymentSchema,
+  FinalizeOrderSchema,
   InstallmentPaymentSchema,
   ReturnItemSchema,
   SetScheduleSchema,
@@ -29,6 +30,7 @@ import {
   type UpdateOrderDto,
   type ListOrdersQuery,
   type AddPaymentDto,
+  type FinalizeOrderDto,
   type InstallmentPaymentDto,
   type ReturnItemDto,
   type SetScheduleDto,
@@ -140,8 +142,17 @@ export class OrderController {
 
   @Post(':id/finalize')
   @HttpCode(200)
-  finalize(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
-    return this.service.finalize(ws.workspaceId, id, ws.userId);
+  finalize(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(FinalizeOrderSchema)) body: FinalizeOrderDto,
+  ) {
+    return this.service.finalize(
+      ws.workspaceId,
+      id,
+      ws.userId,
+      body.closedOn ? new Date(body.closedOn) : undefined,
+    );
   }
 
   @Post(':id/reopen')
