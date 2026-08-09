@@ -46,10 +46,47 @@ export class InboxService {
     private readonly planning: PlanningService,
   ) {}
 
+  /**
+   * Условия поиска и фильтров списка. Счётчик в меню (count) намеренно их не
+   * использует: он показывает, сколько строк вообще осталось разобрать, и не
+   * должен меняться от того, что человек сейчас ищет.
+   */
+  private listWhere(workspaceId: string, query: ListInboxQuery): Prisma.BankStatementLineWhereInput {
+    const where: Prisma.BankStatementLineWhereInput = { workspaceId, status: query.status };
+
+    if (query.direction) where.direction = query.direction;
+    // Счёт у строки лежит в подключении — фильтруем через связь.
+    if (query.accountId) where.connection = { accountId: query.accountId };
+    if (query.from || query.to) {
+      where.date = {
+        ...(query.from ? { gte: new Date(query.from) } : {}),
+        ...(query.to ? { lte: new Date(query.to) } : {}),
+      };
+    }
+
+    if (query.q) {
+      const q = query.q;
+      const or: Prisma.BankStatementLineWhereInput[] = [
+        { description: { contains: q, mode: 'insensitive' } },
+        { counterpartyName: { contains: q, mode: 'insensitive' } },
+        { counterpartyInn: { contains: q } },
+      ];
+      // Сумму ищут чаще всего («платёж на 66 019»), но она Decimal — текстовый
+      // contains по ней не работает. Разбираем запрос как число, терпя пробелы
+      // и запятую: ровно так сумму видно в интерфейсе и копируют из выписки.
+      const asNumber = Number(q.replace(/\s| /g, '').replace(',', '.'));
+      if (Number.isFinite(asNumber) && asNumber > 0) {
+        or.push({ amount: new Prisma.Decimal(asNumber) });
+      }
+      where.OR = or;
+    }
+    return where;
+  }
+
   /** Список строк выбранного статуса (по умолчанию NEW), курсор-пагинация. */
   async list(workspaceId: string, query: ListInboxQuery) {
     const items = await this.prisma.bankStatementLine.findMany({
-      where: { workspaceId, status: query.status },
+      where: this.listWhere(workspaceId, query),
       include: {
         connection: {
           select: { provider: true, account: { select: { id: true, name: true } } },

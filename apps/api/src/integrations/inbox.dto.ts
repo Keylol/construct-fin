@@ -8,6 +8,19 @@ export const ListInboxSchema = z.object({
   // По умолчанию — строки на разбор. AUTO_POSTED нужен, чтобы ревизовать то, что
   // правила провели сами: до этого авто-проведённое не было видно нигде.
   status: z.enum(['NEW', 'AUTO_POSTED', 'RESOLVED', 'DISMISSED']).default('NEW'),
+  /**
+   * Поиск по назначению, контрагенту и ИНН. Отдельно разбирается число: строку
+   * ищут прежде всего по сумме («вот этот платёж на 66 019»), а сумма хранится
+   * Decimal — по ней текстом не найти.
+   */
+  q: z.string().trim().max(100).optional(),
+  /** Только приходы или только расходы. */
+  direction: z.enum(['INCOME', 'EXPENSE']).optional(),
+  /** Счёт, на который пришла строка (у строки он через подключение). */
+  accountId: cuid.optional(),
+  /** Диапазон дат — когда разбирают конкретный месяц. */
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
 });
 export type ListInboxQuery = z.infer<typeof ListInboxSchema>;
 
