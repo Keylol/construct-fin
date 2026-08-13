@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
-import { formatRub, parseAmountInput, D, add, sub, mul, toMoneyString } from '@construct/shared';
+import {
+  formatRub,
+  parseAmountInput,
+  parseOrderItemsText,
+  allocateSalePrices,
+  D,
+  add,
+  sub,
+  mul,
+  toMoneyString,
+} from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
@@ -429,6 +439,14 @@ function OrderFormSheet({
   // «+ Создать клиента» из комбобокса: null = закрыто, строка = префилл имени.
   const [createClientQuery, setCreateClientQuery] = useState<string | null>(null);
 
+  // ── Состав текстом и распределение цены (P0.1) ──
+  // Спецификация заказа приходит списком (docx поставщика, заметка, таблица), а
+  // сборка из восьми позиций — это 26 полей ручного ввода. Текстовое поле
+  // переносит её целиком; цены продажи раскидываются по закупке одной кнопкой.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [allocTotal, setAllocTotal] = useState('');
+
   // ── План оплаты (только при СОЗДАНИИ; в правке платежи/график — в детали) ──
   // 'none' — без оплаты, 'full' — оплата сразу 100%, 'schedule' — свой график.
   // Предоплата = реальные деньги сейчас (решение владельца): пишется платежом.
@@ -522,6 +540,9 @@ function OrderFormSheet({
     }
     setError(null);
     setItemErrors({});
+    setPasteOpen(false);
+    setPasteText('');
+    setAllocTotal('');
     // Сброс плана оплаты.
     setPayMode('none');
     setPrepayAmount('');
@@ -554,6 +575,58 @@ function OrderFormSheet({
       delete next[i];
       return next;
     });
+  };
+
+  // Разбор вставленного текста считаем на каждый ввод — человек видит, что
+  // распозналось, ДО того как строки заменят форму.
+  const pasteParsed = useMemo(() => parseOrderItemsText(pasteText), [pasteText]);
+
+  const applyPaste = (mode: 'replace' | 'append') => {
+    const parsed = pasteParsed.items.map((it) => ({
+      warehouseItemId: null,
+      name: it.name,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      unitCost: it.unitCost,
+    }));
+    if (!parsed.length) return;
+    setItems((arr) => {
+      if (mode === 'replace') return parsed;
+      // Запасная пустая строка формы не должна оставаться между вставками.
+      const kept = arr.filter((it) => it.name.trim() || it.unitPrice.trim() || it.warehouseItemId);
+      return [...kept, ...parsed];
+    });
+    setItemErrors({});
+    setPasteText('');
+    setPasteOpen(false);
+    toast.success(`Позиций добавлено: ${parsed.length}`);
+  };
+
+  const applyAllocation = () => {
+    const target = parseAmountInput(allocTotal);
+    if (!target || !D(target).gt(0)) {
+      setError('Итог для распределения — число больше нуля');
+      return;
+    }
+    const filled = items.filter((it) => it.name.trim() || it.unitCost?.trim());
+    if (!filled.length) {
+      setError('Сначала заполните позиции — распределять пока не на что');
+      return;
+    }
+    const prices = allocateSalePrices(
+      filled.map((it) => ({ qty: it.qty || '1', unitCost: it.unitCost ?? '' })),
+      target,
+    );
+    let k = 0;
+    setItems((arr) =>
+      arr.map((it) => {
+        const counts = it.name.trim() || it.unitCost?.trim();
+        if (!counts) return it;
+        const price = prices[k++] ?? it.unitPrice;
+        return { ...it, unitPrice: price };
+      }),
+    );
+    setError(null);
   };
 
   // Превью-итоги черновика через Decimal (не JS number, D4). Ввод свободный —
@@ -953,19 +1026,94 @@ function OrderFormSheet({
                 </div>
               );
             })}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setItems((arr) => [
-                  ...arr,
-                  { warehouseItemId: null, name: '', qty: '1', unitPrice: '', unitCost: '' },
-                ])
-              }
-            >
-              <Plus className="h-3.5 w-3.5" /> Позиция
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setItems((arr) => [
+                    ...arr,
+                    { warehouseItemId: null, name: '', qty: '1', unitPrice: '', unitCost: '' },
+                  ])
+                }
+              >
+                <Plus className="h-3.5 w-3.5" /> Позиция
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPasteOpen((v) => !v)}
+                aria-expanded={pasteOpen}
+              >
+                <ClipboardList className="h-3.5 w-3.5" /> Вставить составом
+              </Button>
+            </div>
+
+            {pasteOpen && (
+              <div className="space-y-2 rounded-md border border-border bg-secondary/30 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Строка на позицию: <span className="font-medium">название / закупка / цена продажи</span>.
+                  Закупка и цена необязательны, разделители — «/», «|» или табуляция (вставка из
+                  таблицы). Количество — хвостом названия: «Вентилятор 120мм ×4».
+                </p>
+                <Textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder={'Процессор AMD Ryzen 7 9800X3D / 33202\nВидеокарта Palit RTX 5080 / 124999'}
+                  rows={6}
+                />
+                {pasteText.trim() && (
+                  <div className="space-y-1 text-xs">
+                    <p className={pasteParsed.items.length ? 'text-success' : 'text-muted-foreground'}>
+                      Распознано позиций: {pasteParsed.items.length}
+                    </p>
+                    {pasteParsed.errors.map((e) => (
+                      <p key={e.line} className="text-destructive">
+                        Строка {e.line}: {e.reason} — «{e.text}»
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => applyPaste('replace')}
+                    disabled={!pasteParsed.items.length}
+                  >
+                    Заменить позиции
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => applyPaste('append')}
+                    disabled={!pasteParsed.items.length}
+                  >
+                    Добавить к текущим
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Клиент платит одну сумму за сборку — цены по позициям выводятся из
+                неё пропорционально закупке, как считали в калькуляторе вручную. */}
+            <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
+              <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+                <span>Итог заказа для распределения</span>
+                <Input
+                  inputMode="decimal"
+                  value={allocTotal}
+                  onChange={(e) => setAllocTotal(e.target.value)}
+                  placeholder="напр. 461468"
+                />
+              </label>
+              <Button type="button" variant="secondary" size="sm" onClick={applyAllocation}>
+                Распределить цену продажи
+              </Button>
+            </div>
           </div>
 
           <FormField label="Скидка (₽)" htmlFor="o-discount">
