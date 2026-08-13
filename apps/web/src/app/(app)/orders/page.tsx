@@ -1247,6 +1247,10 @@ function OrderDetailSheet({
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
   const [payAmount, setPayAmount] = useState('');
+  // Дата оплаты: архивы заносятся задним числом, и без этого поля платёж вставал
+  // сегодняшним днём — расход месяца уезжал, а остаток счёта переставал сходиться
+  // с выпиской. Пусто = сегодня (обычный сценарий «принял деньги сейчас»).
+  const [payDate, setPayDate] = useState('');
   const [payAccount, setPayAccount] = useState('');
   const [payInstallment, setPayInstallment] = useState(false);
   const [payFee, setPayFee] = useState('');
@@ -1281,16 +1285,23 @@ function OrderDetailSheet({
           amount,
           fee,
           accountId: payAccount,
+          ...(payDate ? { date: fromLocalDateInput(payDate) } : {}),
         });
         toast.success('Рассрочка оформлена', {
           description: `Выручка ${formatRub(amount)}, комиссия ${formatRub(fee)}`,
         });
       } else {
-        await addPayment.mutateAsync({ id: orderId, amount, accountId: payAccount });
+        await addPayment.mutateAsync({
+          id: orderId,
+          amount,
+          accountId: payAccount,
+          ...(payDate ? { date: fromLocalDateInput(payDate) } : {}),
+        });
         toast.success('Оплата добавлена');
       }
       setPayAmount('');
       setPayFee('');
+      setPayDate('');
       setPayInstallment(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -1485,6 +1496,15 @@ function OrderDetailSheet({
                               </option>
                             ))}
                         </Select>
+                      </div>
+                      <div className="w-40">
+                        <Input
+                          type="date"
+                          value={payDate}
+                          max={toLocalDateInput(new Date())}
+                          onChange={(e) => setPayDate(e.target.value)}
+                          title="Дата оплаты — пусто означает сегодня"
+                        />
                       </div>
                       <Button
                         onClick={onPay}
