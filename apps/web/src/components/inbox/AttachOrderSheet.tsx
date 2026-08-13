@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from '@/components/ui/icons';
 import { useOrders } from '@/hooks/useOrders';
 import { useAttachOrderInbox } from '@/hooks/useInbox';
-import type { InboxLine } from '@/lib/types';
+import type { InboxLine, Order } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
@@ -17,7 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/Sheet';
-import { formatRub, parseAcquiringFee } from '@construct/shared';
+import { formatRub, parseAcquiringFee, D, sub, toMoneyString } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 
 /** Поступление из банка → оплата открытого заказа (пересчёт paidAmount внутри). */
@@ -35,6 +35,9 @@ export function AttachOrderSheet({
   const orders = useOrders(wsId, { status: 'OPEN', limit: 100 });
   const attach = useAttachOrderInbox(wsId);
   const [orderId, setOrderId] = useState('');
+  // Кредит/рассрочка: банк присылает сумму за вычетом комиссии, и без этого
+  // заказ остаётся недоплаченным ровно на неё (4 случая из 21 заказа за июль).
+  const [installment, setInstallment] = useState(false);
 
   // Торговое возмещение зачисляется за вычетом комиссии банка. Заказ закроется
   // на брутто, комиссия уйдёт отдельным расходом — предупреждаем заранее, иначе
@@ -42,23 +45,49 @@ export function AttachOrderSheet({
   const fee = parseAcquiringFee(line.description);
   const gross = fee ? (Number(line.amount) + Number(fee)).toFixed(2) : null;
 
+  const openOrders = useMemo(
+    () => orders.data?.pages.flatMap((p) => p.items) ?? [],
+    [orders.data],
+  );
+  const selected: Order | undefined = openOrders.find((o) => o.id === orderId);
+
   const orderOptions = useMemo<ComboboxOption[]>(
     () =>
-      (orders.data?.pages.flatMap((p) => p.items) ?? []).map((o) => ({
+      openOrders.map((o) => ({
         value: o.id,
         label: `${o.number}${o.client ? ` · ${o.client.name}` : ''}`,
         description: `Заказ ${formatRub(o.totalAmount)} · оплачено ${formatRub(o.paidAmount)}`,
       })),
-    [orders.data],
+    [openOrders],
   );
+
+  // Остаток выбранного заказа и комиссия банка как разница с суммой строки.
+  const remaining = selected ? toMoneyString(sub(selected.totalAmount, selected.paidAmount)) : null;
+  const shortfall =
+    remaining && D(remaining).gt(D(line.amount)) ? toMoneyString(sub(remaining, line.amount)) : null;
+  // Эквайринг и рассрочка — два способа учесть одно и то же удержание; вместе
+  // они дали бы двойной расход, поэтому предлагаем рассрочку только без него.
+  const canInstallment = !fee && !!shortfall;
+
+  useEffect(() => {
+    if (!canInstallment) setInstallment(false);
+  }, [canInstallment]);
 
   const submit = () => {
     if (!orderId) return;
     attach.mutate(
-      { lineId: line.id, orderId },
+      {
+        lineId: line.id,
+        orderId,
+        ...(installment && remaining && shortfall
+          ? { installment: { amount: remaining, fee: shortfall } }
+          : {}),
+      },
       {
         onSuccess: () => {
-          toast.success('Поступление привязано к заказу');
+          toast.success(
+            installment ? 'Кредит проведён: заказ закрыт, комиссия — расходом' : 'Поступление привязано к заказу',
+          );
           onClose();
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось привязать'),
@@ -98,6 +127,29 @@ export function AttachOrderSheet({
               className="h-9"
             />
           </label>
+
+          {canInstallment && remaining && shortfall && (
+            <div className="space-y-1 rounded-md border border-border p-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={installment}
+                  onChange={(e) => setInstallment(e.target.checked)}
+                />
+                <span>Кредит или рассрочка</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Строка меньше остатка заказа на{' '}
+                <span className="font-semibold text-foreground">{formatRub(shortfall, 2)}</span>. С
+                галкой в заказ зачтётся{' '}
+                <span className="font-semibold text-foreground">{formatRub(remaining, 2)}</span>, а
+                разница пройдёт расходом «Комиссия рассрочки» — заказ закроется, на счёт сядет ровно{' '}
+                {formatRub(line.amount, 2)}. Без галки заказ останется недоплаченным.
+              </p>
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground">
             Нет подходящего заказа?{' '}
             <Link href={'/orders?new=1' as Parameters<typeof Link>[0]['href']} className="text-primary hover:underline">
@@ -110,7 +162,7 @@ export function AttachOrderSheet({
             Отмена
           </Button>
           <Button onClick={submit} disabled={!orderId || attach.isPending}>
-            Привязать поступление
+            {installment ? 'Провести кредит' : 'Привязать поступление'}
           </Button>
         </SheetFooter>
       </SheetContent>

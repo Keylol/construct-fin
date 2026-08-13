@@ -47,8 +47,24 @@ export const CategorizeSchema = z.object({
 });
 export type CategorizeDto = z.infer<typeof CategorizeSchema>;
 
-/** Привязать приход к существующему заказу (оплата заказа). */
-export const AttachOrderSchema = z.object({ orderId: cuid });
+/**
+ * Привязать приход к существующему заказу (оплата заказа).
+ *
+ * `installment` — кредит или рассрочка: банк перечисляет сумму за вычетом своей
+ * комиссии, и без этого блока заказ навсегда оставался бы недоплаченным ровно
+ * на неё (4 случая из 21 заказа за июль правились двумя действиями вручную).
+ * `amount` — полная сумма (обычно остаток по заказу), `fee` — удержанное
+ * банком; на счёт садится разница, равная сумме строки.
+ */
+export const AttachOrderSchema = z.object({
+  orderId: cuid,
+  installment: z
+    .object({
+      amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Сумма — число с ≤2 знаками'),
+      fee: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Комиссия — неотрицательное число с ≤2 знаками'),
+    })
+    .optional(),
+});
 export type AttachOrderDto = z.infer<typeof AttachOrderSchema>;
 
 /**

@@ -247,7 +247,7 @@ describe('IntegrationsService.resetStatement — перезагрузка вып
       items: [{ name: 'Товар', qty: '1', unitPrice: '15000' }],
     });
     const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never, h.planning as never);
-    await inbox.attachOrder(seed.workspaceId, seed.userId, income.id, order.id);
+    await inbox.attachOrder(seed.workspaceId, seed.userId, income.id, { orderId: order.id });
 
     const res = await svc().resetStatement(seed.workspaceId, conn.id, seed.userId);
 

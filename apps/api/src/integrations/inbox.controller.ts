@@ -122,7 +122,7 @@ export class InboxController {
     @Param('id') id: string,
     @Body(new ZodPipe(AttachOrderSchema)) body: AttachOrderDto,
   ) {
-    return this.service.attachOrder(ws.workspaceId, ws.userId, id, body.orderId);
+    return this.service.attachOrder(ws.workspaceId, ws.userId, id, body);
   }
 
   @Post(':id/dismiss')

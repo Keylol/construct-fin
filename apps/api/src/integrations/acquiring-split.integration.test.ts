@@ -96,7 +96,7 @@ describe('привязка возмещения с удержанной коми
     const line = await seedLine(conn.id, '147668.50', ACQUIRING);
     const order = await seedOrder('152506.00');
 
-    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, order.id);
+    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, { orderId: order.id });
 
     const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(num(fresh.paidAmount)).toBe(152506);
@@ -132,7 +132,7 @@ describe('привязка возмещения с удержанной коми
     const line = await seedLine(conn.id, '147668.50', ACQUIRING);
     const order = await seedOrder('152506.00');
 
-    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, order.id);
+    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, { orderId: order.id });
 
     const fee = await h.prisma.transaction.findFirstOrThrow({
       where: { workspaceId: seed.workspaceId, type: 'EXPENSE' },
@@ -146,7 +146,7 @@ describe('привязка возмещения с удержанной коми
     const line = await seedLine(conn.id, '114207.32', SBP);
     const order = await seedOrder('114207.32');
 
-    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, order.id);
+    await inbox.attachOrder(seed.workspaceId, seed.userId, line.id, { orderId: order.id });
 
     const fresh = await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(num(fresh.paidAmount)).toBe(114207.32);
