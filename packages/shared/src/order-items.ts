@@ -12,6 +12,7 @@
  * повторяет то, что владелец считал в калькуляторе на каждом заказе июля.
  */
 
+import Decimal from 'decimal.js-light';
 import { D, money, toMoneyString, parseAmountInput } from './money';
 
 export interface ParsedOrderItem {
@@ -126,28 +127,40 @@ export function allocateSalePrices(
   const weightSum = weights.reduce((a, b) => a.plus(b), D(0));
   const even = weightSum.isZero();
 
+  /**
+   * Доли всех позиций, кроме добирающей, округляем ВНИЗ. Half-up здесь дал бы
+   * сумму больше итога, и добирающей позиции доставался бы отрицательный
+   * остаток: на живом заказе (9 позиций, последняя без закупки) получилось
+   * −0,01 ₽, и сервер отвечал 500 вместо внятной ошибки.
+   */
+  const floorMoney = (v: Decimal): Decimal => v.toDecimalPlaces(2, Decimal.ROUND_DOWN);
+
   // Количество 0 валидатор заказа не пропустит, но делить на него всё равно
   // нельзя — такая позиция получает свою долю целиком как цену за единицу.
-  const perUnit = (sum: string, qtyRaw: string): string => {
+  const perUnit = (sum: Decimal, qtyRaw: string): Decimal => {
     const qty = D(qtyRaw || '0');
-    return toMoneyString(qty.isZero() ? sum : D(sum).dividedBy(qty));
+    return qty.isZero() ? sum : sum.dividedBy(qty);
   };
 
   const prices: string[] = [];
   let allocated = D(0);
   items.forEach((it, i) => {
     if (i === items.length - 1) {
-      prices.push(perUnit(target.minus(allocated).toString(), it.qty));
+      // Клэмп в ноль — страховка на случай, если позиций больше, чем копеек в
+      // итоге, и округление вниз всё равно не оставило остатка.
+      const rest = target.minus(allocated);
+      const left = rest.isNegative() ? D(0) : rest;
+      prices.push(toMoneyString(perUnit(left, it.qty)));
       return;
     }
     const share = even
       ? target.dividedBy(items.length)
       : target.times(weights[i] ?? D(0)).dividedBy(weightSum);
-    const price = perUnit(share.toString(), it.qty);
+    const price = floorMoney(perUnit(share, it.qty));
     // Копим фактически разнесённое (цена × количество), а не идеальную долю:
     // иначе округление каждой строки утекло бы мимо добора.
-    allocated = allocated.plus(D(price).times(D(it.qty || '0')));
-    prices.push(price);
+    allocated = allocated.plus(price.times(D(it.qty || '0')));
+    prices.push(toMoneyString(price));
   });
 
   return prices;

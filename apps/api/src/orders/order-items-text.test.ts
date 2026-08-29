@@ -83,7 +83,7 @@ describe('распределение цены продажи по позиция
     const prices = allocateSalePrices(items, '391478');
     expect(sumOf(prices, items)).toBe('391478.00');
     // Доля самой дорогой позиции — по её весу в закупке.
-    expect(prices[1]).toBe('199118.47');
+    expect(prices[1]).toBe('199118.46');
   });
 
   it('некруглый итог: копейки добирает последняя позиция', () => {
@@ -122,5 +122,37 @@ describe('распределение цены продажи по позиция
 
   it('пустой состав — пустой результат', () => {
     expect(allocateSalePrices([], '1000')).toEqual([]);
+  });
+});
+
+describe('распределение: добирающая позиция без закупки', () => {
+  /**
+   * Живой случай (заказ Корнеевой, 9 позиций на 306 585): у последней позиции
+   * закупки нет, а округление долей half-up давало сумму на копейку больше
+   * итога — остаток уходил в минус, и заказ падал с 500 на стороне БД.
+   */
+  it('остаток не уходит в минус, сумма сходится', () => {
+    const items = [
+      { qty: '1', unitCost: '32312' },
+      { qty: '1', unitCost: '88335' },
+      { qty: '1', unitCost: '11907' },
+      { qty: '1', unitCost: '4751' },
+      { qty: '1', unitCost: '41999' },
+      { qty: '1', unitCost: '14399' },
+      { qty: '1', unitCost: '8499' },
+      { qty: '1', unitCost: '7099' },
+      { qty: '1', unitCost: '0' },
+    ];
+    const prices = allocateSalePrices(items, '306585');
+    expect(prices.every((p) => Number(p) >= 0)).toBe(true);
+    expect(prices[prices.length - 1]).toBe('0.04');
+    const sum = prices.reduce((acc, p, i) => acc.plus(D(p).times(D(items[i]!.qty))), D(0));
+    expect(sum.toFixed(2)).toBe('306585.00');
+  });
+
+  it('позиций больше, чем копеек в итоге — цены неотрицательны', () => {
+    const items = Array.from({ length: 5 }, () => ({ qty: '1', unitCost: '1' }));
+    const prices = allocateSalePrices(items, '0.03');
+    expect(prices.every((p) => Number(p) >= 0)).toBe(true);
   });
 });
