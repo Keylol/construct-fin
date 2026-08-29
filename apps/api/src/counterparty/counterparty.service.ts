@@ -11,7 +11,43 @@ import type {
 export class CounterpartyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(workspaceId: string, query: ListCounterpartiesQuery) {
+  /**
+   * Список контрагентов со сводкой по заказам: сколько заказов, на какую сумму
+   * и сколько человек должен сейчас.
+   *
+   * Без сводки плитка клиента показывала бы только имя — за ней нельзя следить
+   * («кто должен», «кто приносит больше»), а открывать карточку ради двух цифр
+   * незачем. Считаем одним группировочным запросом по всем заказам
+   * пространства, а не по заказу на контрагента: клиентов уже под полсотни.
+   */
+  async list(workspaceId: string, query: ListCounterpartiesQuery) {
+    const rows = await this.listRows(workspaceId, query);
+    const grouped = await this.prisma.order.groupBy({
+      by: ['clientId'],
+      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { not: null } },
+      _count: { _all: true },
+      _sum: { totalAmount: true, paidAmount: true },
+      _max: { createdAt: true },
+    });
+    const byClient = new Map(grouped.map((g) => [g.clientId, g]));
+    return rows.map((c) => {
+      const g = byClient.get(c.id);
+      const total = g?._sum.totalAmount ?? new Prisma.Decimal(0);
+      const paid = g?._sum.paidAmount ?? new Prisma.Decimal(0);
+      const debt = Prisma.Decimal.max(total.minus(paid), new Prisma.Decimal(0));
+      return {
+        ...c,
+        summary: {
+          ordersCount: g?._count._all ?? 0,
+          ordersTotal: total.toFixed(2),
+          debt: debt.toFixed(2),
+          lastOrderAt: g?._max.createdAt?.toISOString() ?? null,
+        },
+      };
+    });
+  }
+
+  private listRows(workspaceId: string, query: ListCounterpartiesQuery) {
     return this.prisma.counterparty.findMany({
       where: {
         workspaceId,

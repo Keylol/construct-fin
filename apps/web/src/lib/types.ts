@@ -84,6 +84,15 @@ export interface Counterparty {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Сводка по заказам — для плитки: сколько заказов, оборот, текущий долг. */
+  summary?: CounterpartySummary;
+}
+
+export interface CounterpartySummary {
+  ordersCount: number;
+  ordersTotal: string;
+  debt: string;
+  lastOrderAt: string | null;
 }
 
 export interface WarehouseItem {

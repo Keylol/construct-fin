@@ -18,6 +18,8 @@ import { Textarea } from '@/components/ui/Textarea';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
+import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -34,6 +36,8 @@ export default function CounterpartiesPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
+  // Вид: справочник обычно смотрят списком, плитки — когда следят за долгами.
+  const [view, changeView] = useTileView('counterparties:view');
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
   const list = useCounterparties(wsId, debouncedSearch || undefined);
@@ -114,8 +118,16 @@ export default function CounterpartiesPage() {
             />
           </div>
         </div>
+        <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
+      {view === 'tiles' ? (
+        <TileGrid>
+          {(list.data ?? []).map((c) => (
+            <CounterpartyTile key={c.id} counterparty={c} onClick={() => setEditing(c)} />
+          ))}
+        </TileGrid>
+      ) : (
       <div className="bg-card">
         <DataTable
           data={list.data ?? []}
@@ -150,6 +162,7 @@ export default function CounterpartiesPage() {
           )}
         />
       </div>
+      )}
 
       <CounterpartyForm
         wsId={current.id}
