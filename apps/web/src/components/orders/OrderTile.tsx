@@ -2,7 +2,7 @@
 
 import { formatRub, formatPhone, sub, toMoneyString, D } from '@construct/shared';
 import { StatusStamp } from '@/components/ui/StatusStamp';
-import { cn } from '@/lib/cn';
+import { Tile } from '@/components/ui/Tile';
 import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
 
 /** Тон штампа — тот же набор, что у списка заказов (решение №15/№3). */
@@ -16,10 +16,9 @@ export interface TileLabels {
 }
 
 /**
- * Плитка заказа: компактная, три строки.
- *
- * Заголовок — телефон клиента: именно по нему владелец опознаёт заказ (в
- * спецификациях он и стоит номером). Служебный ORD виден только в карточке.
+ * Заказ в плиточном виде. Анатомия общая (см. ui/Tile), здесь только данные:
+ * заголовок — телефон, потому что именно по нему владелец опознаёт заказ
+ * (в спецификациях он и стоит номером); служебный ORD виден лишь в карточке.
  */
 export function OrderTile({
   order,
@@ -39,20 +38,10 @@ export function OrderTile({
   const marginKnown = !!margin && !margin.isEstimate && D(margin.cogs).gt(0);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full flex-col gap-1.5 rounded-md border border-border bg-card px-3.5 py-3 text-left',
-        'transition-colors hover:border-primary/40 hover:bg-secondary/30',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium tabular-nums">
-          {order.phone ? formatPhone(order.phone) : order.number}
-        </span>
-        <span className="flex shrink-0 gap-1">
+    <Tile
+      title={order.phone ? formatPhone(order.phone) : order.number}
+      stamps={
+        <>
           <StatusStamp
             tone={labels.statusTone[order.status]}
             label={labels.statusLabel[order.status]}
@@ -61,30 +50,25 @@ export function OrderTile({
             tone={labels.payTone[order.paymentStatus]}
             label={labels.payLabel[order.paymentStatus]}
           />
-        </span>
-      </div>
-
-      <div className="truncate text-sm text-muted-foreground">
-        {order.client?.name ?? 'Без клиента'}
-      </div>
-
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold tabular-nums">
-          {formatRub(order.totalAmount)}
-        </span>
-        {hasDebt ? (
-          <span className="text-xs tabular-nums text-destructive">долг {formatRub(debt)}</span>
+        </>
+      }
+      subtitle={order.client?.name ?? 'Без клиента'}
+      primary={formatRub(order.totalAmount)}
+      accent={
+        hasDebt ? (
+          <span className="text-destructive">долг {formatRub(debt)}</span>
         ) : marginKnown ? (
-          <span className="text-xs tabular-nums text-success">+{formatRub(margin.margin)}</span>
-        ) : null}
-      </div>
-    </button>
+          <span className="text-success">+{formatRub(margin.margin)}</span>
+        ) : undefined
+      }
+      onClick={onClick}
+    />
   );
 }
 
 /**
  * Плитка-«папка»: несколько заказов на один телефон. Клик раскрывает их —
- * заказы повторного клиента не должны прятаться друг за другом в списке.
+ * заказы повторного клиента не должны прятаться друг за другом.
  */
 export function OrderGroupTile({
   phone,
@@ -102,32 +86,18 @@ export function OrderGroupTile({
   const client = orders.find((o) => o.client)?.client?.name;
 
   return (
-    <button
-      type="button"
+    <Tile
+      title={formatPhone(phone)}
+      stamps={<StatusStamp tone="primary" label={`${orders.length} заказа`} />}
+      subtitle={client ?? 'Без клиента'}
+      primary={formatRub(toMoneyString(total))}
+      accent={
+        debt.gt(0) ? (
+          <span className="text-destructive">долг {formatRub(toMoneyString(debt))}</span>
+        ) : undefined
+      }
+      selected={expanded}
       onClick={onToggle}
-      aria-expanded={expanded}
-      className={cn(
-        'flex w-full flex-col gap-1.5 rounded-md border px-3.5 py-3 text-left transition-colors',
-        expanded
-          ? 'border-primary/40 bg-secondary/40'
-          : 'border-border bg-card hover:border-primary/40 hover:bg-secondary/30',
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium tabular-nums">{formatPhone(phone)}</span>
-        <StatusStamp tone="primary" label={`${orders.length} заказа`} />
-      </div>
-      <div className="truncate text-sm text-muted-foreground">{client ?? 'Без клиента'}</div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold tabular-nums">
-          {formatRub(toMoneyString(total))}
-        </span>
-        {debt.gt(0) && (
-          <span className="text-xs tabular-nums text-destructive">
-            долг {formatRub(toMoneyString(debt))}
-          </span>
-        )}
-      </div>
-    </button>
+    />
   );
 }

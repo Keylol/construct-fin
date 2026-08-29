@@ -69,6 +69,7 @@ import { Combobox } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
 import { OrderTile, OrderGroupTile } from '@/components/orders/OrderTile';
+import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import {
   Sheet,
@@ -212,30 +213,10 @@ export default function OrdersPage() {
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Order | null>(null);
-  /**
-   * Вид списка. Список — рабочий режим (поиск по сумме, сверка, итоги),
-   * плитки — обзорный. Выбор запоминается: переключать его каждый заход
-   * раздражало бы сильнее, чем сам список.
-   */
-  const [view, setView] = useState<'list' | 'tiles'>('list');
+  // Список — рабочий режим (поиск по сумме, сверка, итоги), плитки — обзорный.
+  const [view, changeView] = useTileView('orders:view');
   // Раскрытая «папка» телефона: у повторного клиента несколько заказов.
   const [openPhone, setOpenPhone] = useState<string | null>(null);
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('orders:view');
-      if (saved === 'tiles' || saved === 'list') setView(saved);
-    } catch {
-      // Приватный режим и заблокированное хранилище — не повод падать.
-    }
-  }, []);
-  const changeView = (next: 'list' | 'tiles') => {
-    setView(next);
-    try {
-      window.localStorage.setItem('orders:view', next);
-    } catch {
-      // см. выше
-    }
-  };
   // Глобальное «+ Создать» → ?new=1 открывает форму заказа.
   useCreateFromUrl(() => setCreating(true));
 
@@ -376,27 +357,7 @@ export default function OrdersPage() {
             </button>
           </label>
         )}
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Вид</span>
-          <div className="flex h-9 items-center rounded-sm border border-input bg-background p-0.5">
-            {(['list', 'tiles'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => changeView(v)}
-                aria-pressed={view === v}
-                className={cn(
-                  'h-full rounded-sm px-3 text-sm transition-colors',
-                  view === v
-                    ? 'bg-secondary font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {v === 'list' ? 'Список' : 'Плитки'}
-              </button>
-            ))}
-          </div>
-        </label>
+        <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
       {view === 'tiles' ? (
@@ -416,7 +377,7 @@ export default function OrdersPage() {
             />
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              <TileGrid>
                 {tileGroups.map((g) =>
                   g.orders.length === 1 ? (
                     <OrderTile
@@ -446,7 +407,7 @@ export default function OrdersPage() {
                     </div>
                   ),
                 )}
-              </div>
+              </TileGrid>
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm">
                 <span className="text-muted-foreground">Итого по видимым</span>
                 <span className="tabular-nums">
