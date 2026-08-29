@@ -276,7 +276,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
     });
     const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never, h.planning as never);
 
-    await expect(inbox.attachOrder(A.workspaceId, A.userId, lineA.id, orderB.id)).rejects.toThrow();
+    await expect(inbox.attachOrder(A.workspaceId, A.userId, lineA.id, { orderId: orderB.id })).rejects.toThrow();
 
     // Строка вернулась в NEW, оплата в чужом заказе не появилась.
     const after = await h.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: lineA.id } });

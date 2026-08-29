@@ -90,9 +90,18 @@ export function useCategorizeInbox(wsId: string) {
   );
 }
 
+/**
+ * Привязка прихода к заказу. `installment` — кредит или рассрочка: банк присылает
+ * сумму за вычетом своей комиссии, и без этого блока заказ остаётся
+ * недоплаченным ровно на неё.
+ */
 export function useAttachOrderInbox(wsId: string) {
-  return useInboxAction<{ lineId: string; orderId: string }>(wsId, ({ lineId, orderId }) =>
-    api.post(`/workspaces/${wsId}/inbox/${lineId}/attach-order`, { orderId }),
+  return useInboxAction<{
+    lineId: string;
+    orderId: string;
+    installment?: { amount: string; fee: string };
+  }>(wsId, ({ lineId, ...body }) =>
+    api.post(`/workspaces/${wsId}/inbox/${lineId}/attach-order`, body),
   );
 }
 

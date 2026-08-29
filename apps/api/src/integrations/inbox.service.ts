@@ -15,8 +15,9 @@ import { computeRowHash } from '../common/import-hash';
 import { matchTransferPairs } from './transfer-match';
 import { matchPlannedPayments } from './planned-match';
 import { parseAcquiringFee } from '@construct/shared';
-import { add } from '../common/money';
+import { add, sub } from '../common/money';
 import type {
+  AttachOrderDto,
   CategorizeDto,
   ConfirmTransferDto,
   ListInboxQuery,
@@ -201,11 +202,36 @@ export class InboxService {
   }
 
   /** Привязать приход к заказу → оплата заказа (ORDER_PAYMENT). */
-  async attachOrder(workspaceId: string, userId: string, lineId: string, orderId: string) {
+  async attachOrder(workspaceId: string, userId: string, lineId: string, dto: AttachOrderDto) {
+    const { orderId, installment } = dto;
     const line = await this.loadNew(workspaceId, lineId);
     if (line.direction !== 'INCOME') {
       throw new BadRequestException('К заказу привязывается только приход (INCOME)');
     }
+    // Торговое возмещение приходит уже за вычетом комиссии банка, а удержанное
+    // указано прямо в назначении. Заказ оплачен на брутто — иначе он навсегда
+    // останется недоплаченным ровно на комиссию.
+    const fee = parseAcquiringFee(line.description);
+
+    // Кредит и эквайринг — два разных способа узнать удержанное банком, и
+    // применить оба к одной строке значит учесть комиссию дважды. Такая строка
+    // приходит от банка нетто ровно один раз.
+    if (installment && fee) {
+      throw new BadRequestException(
+        'В назначении уже указана удержанная комиссия эквайринга — рассрочку к этой строке применять нельзя',
+      );
+    }
+    // Нетто по рассрочке обязано совпасть с тем, что реально прислал банк:
+    // иначе остаток счёта разъедется с выпиской ровно на расхождение.
+    if (installment) {
+      const net = sub(installment.amount, installment.fee);
+      if (!net.equals(line.amount)) {
+        throw new BadRequestException(
+          `Сумма минус комиссия (${net.toFixed(2)}) должна равняться сумме строки (${line.amount.toFixed(2)})`,
+        );
+      }
+    }
+
     // Застолбить строку ДО создания оплаты: только один параллельный запрос
     // пройдёт CAS (NEW→RESOLVED), остальные получат «уже разобрана» и НЕ создадут
     // дублирующую оплату заказа.
@@ -217,20 +243,32 @@ export class InboxService {
       throw new ConflictException('Строка уже обработана другим действием');
     }
 
-    // Торговое возмещение приходит уже за вычетом комиссии банка, а удержанное
-    // указано прямо в назначении. Заказ оплачен на брутто — иначе он навсегда
-    // останется недоплаченным ровно на комиссию.
-    const fee = parseAcquiringFee(line.description);
-    const paidAmount = fee ? add(line.amount, fee).toString() : line.amount.toString();
+    const paidAmount = installment
+      ? installment.amount
+      : fee
+        ? add(line.amount, fee).toString()
+        : line.amount.toString();
 
     try {
-      // Оплата создаётся доменным сервисом (лок заказа, пересчёт paidAmount).
-      await this.orders.addPayment(workspaceId, orderId, userId, {
-        amount: paidAmount,
-        accountId: line.connection.accountId,
-        date: line.date.toISOString(),
-        description: line.description ?? undefined,
-      });
+      if (installment) {
+        // Кредит/рассрочка — готовый доменный путь (F3): выручка полной суммой,
+        // комиссия банка отдельным VARIABLE_COST, обе проводки атомарно.
+        await this.orders.addInstallmentPayment(workspaceId, orderId, userId, {
+          amount: installment.amount,
+          fee: installment.fee,
+          accountId: line.connection.accountId,
+          date: line.date.toISOString(),
+          description: line.description ?? undefined,
+        });
+      } else {
+        // Оплата создаётся доменным сервисом (лок заказа, пересчёт paidAmount).
+        await this.orders.addPayment(workspaceId, orderId, userId, {
+          amount: paidAmount,
+          accountId: line.connection.accountId,
+          date: line.date.toISOString(),
+          description: line.description ?? undefined,
+        });
+      }
     } catch (e) {
       // Заказ отменён/не найден и т.п. — возвращаем строку в Inbox.
       await this.prisma.bankStatementLine.updateMany({
