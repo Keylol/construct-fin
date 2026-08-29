@@ -66,6 +66,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Combobox } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
+import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import {
   Sheet,
@@ -1402,6 +1403,11 @@ function OrderDetailSheet({
   const [payAccount, setPayAccount] = useState('');
   const [payInstallment, setPayInstallment] = useState(false);
   const [payFee, setPayFee] = useState('');
+  // Панель подбора строки выписки под этот заказ — раскрывается по кнопке.
+  const [findPayment, setFindPayment] = useState(false);
+  // Кандидаты считаются под конкретный остаток: при переходе к другому заказу
+  // раскрытая панель показывала бы подсказки от предыдущего.
+  useEffect(() => setFindPayment(false), [orderId]);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
   const [confirmDeletePayment, setConfirmDeletePayment] = useState<string | null>(null);
@@ -1620,6 +1626,22 @@ function OrderDetailSheet({
 
                   {/* ─────────────── Оплата: принять + график + журнал ─────────────── */}
                   <TabsContent value="payment" className="space-y-5">
+                {/* Деньги за заказ обычно уже лежат во «Входящих» — искать их там
+                    руками среди сотен строк и было главным тупиком (P0.2). */}
+                {order.status !== 'CANCELLED' && order.paymentStatus !== 'PAID' && (
+                  findPayment ? (
+                    <FindPaymentPanel
+                      wsId={wsId}
+                      order={order}
+                      onClose={() => setFindPayment(false)}
+                    />
+                  ) : (
+                    <Button variant="secondary" size="sm" onClick={() => setFindPayment(true)}>
+                      Найти оплату во «Входящих»
+                    </Button>
+                  )
+                )}
+
                 {/* Принять оплату — закреплено вверху вкладки, без прокрутки 10 секций */}
                 {order.status !== 'CANCELLED' && (
                   <div className="space-y-2 rounded-md border border-border p-3">
