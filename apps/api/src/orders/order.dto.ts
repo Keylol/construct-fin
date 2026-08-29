@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import { normalizePhone } from '@construct/shared';
+
+/**
+ * Телефон клиента — видимый номер заказа (решение владельца 29.08). Принимаем
+ * любую запись («+7 924 363 40 29», «89995824268»), храним канонический вид.
+ */
+const PhoneString = z
+  .string()
+  .transform((v) => normalizePhone(v))
+  .refine((v): v is string => v !== null, 'Телефон должен быть российским номером');
 
 const MoneyString = z
   .string()
@@ -37,6 +47,8 @@ export type OrderItemInput = z.infer<typeof OrderItemInputSchema>;
 
 export const CreateOrderSchema = z.object({
   clientId: z.string().cuid().nullable().optional(),
+  /// Обязателен: по нему заказ опознаётся и группируется в списке.
+  phone: PhoneString,
   title: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
   discountAmount: NonNegativeMoneyString.optional(),
@@ -47,6 +59,7 @@ export type CreateOrderDto = z.infer<typeof CreateOrderSchema>;
 
 export const UpdateOrderSchema = z.object({
   clientId: z.string().cuid().nullable().optional(),
+  phone: PhoneString.optional(),
   title: z.string().max(200).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   discountAmount: NonNegativeMoneyString.optional(),
@@ -58,6 +71,7 @@ export type UpdateOrderDto = z.infer<typeof UpdateOrderSchema>;
 export const ListOrdersQuerySchema = z.object({
   status: z.enum(['OPEN', 'DONE', 'CANCELLED']).optional(),
   clientId: z.string().cuid().optional(),
+  /// Ищет по номеру, названию и телефону (цифры номера, как их набирают).
   search: z.string().max(100).optional(),
   // IJ9 (drill-down «Выручка» из ОПиУ): период по дате ЗАКРЫТИЯ заказа.
   // ISO-даты; заказы без closedAt (OPEN/CANCELLED) фильтром отсеиваются.

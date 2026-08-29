@@ -40,7 +40,7 @@ async function doneWarehouseOrder(qtySold: string, unitPrice: string) {
     lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
   });
   const order = await h.orders.create(seed.workspaceId, {
-    items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: qtySold, unitPrice }],
+    phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: qtySold, unitPrice }],
   });
   await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
     amount: String(Number(qtySold) * Number(unitPrice)),
@@ -143,7 +143,7 @@ describe('RMA: частичный возврат складской позици
 
   it('нельзя вернуть по не закрытому (OPEN) заказу', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
     await expect(
@@ -158,7 +158,7 @@ describe('RMA: частичный возврат складской позици
 
   it('возврат услуги (без склада): только ORDER_REFUND + returnedQty, без StockMovement', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '2', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '2', unitPrice: '1000' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2000',
@@ -284,7 +284,7 @@ describe('RMA: сторно себестоимости услуги (Блок C 
   it('возврат части услуги создаёт отрицательный COGS и уменьшает себестоимость в P&L', async () => {
     // Услуга 2 шт по 500, ручная себестоимость 300/шт → COGS при finalize = 600.
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',
@@ -366,7 +366,7 @@ describe('IJ9: событие OrderReturn при возврате (месяц в
 
   it('ручная позиция (услуга с unitCost): costAmount = qty × unitCost', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',
@@ -405,7 +405,7 @@ describe('IJ9: backfill-SQL миграции восстанавливает со
     });
 
     const manual = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, manual.id, seed.userId, {
       amount: '1000',

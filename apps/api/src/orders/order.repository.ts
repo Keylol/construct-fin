@@ -58,6 +58,8 @@ export class OrderRepository {
               OR: [
                 { number: { contains: opts.search, mode: 'insensitive' } },
                 { title: { contains: opts.search, mode: 'insensitive' } },
+                // Телефон ищут как набирают — по цифрам, без плюса и скобок.
+                { phone: { contains: opts.search.replace(/\D/g, '') || opts.search } },
               ],
             }
           : {}),
@@ -65,6 +67,19 @@ export class OrderRepository {
       include: {
         client: { select: { id: true, name: true } },
         _count: { select: { items: true } },
+        // Позиции — только ради маржи плитки в списке (наружу не отдаются, как
+        // и строки графика). Столбцов берём ровно те, что нужны orderMargin.
+        items: {
+          select: {
+            qty: true,
+            returnedQty: true,
+            unitPrice: true,
+            unitCost: true,
+            unitCostAtSale: true,
+            warehouseItemId: true,
+            warehouseItem: { select: { avgCost: true } },
+          },
+        },
         // Строки графика — для сводки просрочки в списке (бейдж). Обычно 0–4
         // строки на заказ; entries наружу не отдаются, только summary.
         schedule: {

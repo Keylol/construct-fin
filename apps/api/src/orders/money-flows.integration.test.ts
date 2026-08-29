@@ -86,7 +86,7 @@ describe('Finalize складского заказа → списание + unit
     });
 
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
 
     const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
@@ -109,7 +109,7 @@ describe('Cancel закрытого заказа → сторно', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     expect(num((await getItem(itemId)).qty)).toBe(15);
@@ -126,7 +126,7 @@ describe('Cancel закрытого заказа → сторно', () => {
 describe('Синхронизация оплаты', () => {
   it('UNPAID → PARTIAL → PAID → OVERPAID по мере оплат', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     expect(order.paymentStatus).toBe('UNPAID');
 
@@ -156,7 +156,7 @@ describe('Синхронизация оплаты', () => {
 describe('Ручная себестоимость (позиция без склада)', () => {
   it('finalize создаёт COGS-транзакцию по ручному unitCost', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
     });
     // нужен платёж, чтобы был счёт для списания себестоимости
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
@@ -188,7 +188,7 @@ describe('P&L: классификация COGS (Фаза 3 п.15)', () => {
 
   it('COGS попадает в бакет COGS, не дублируется в OTHER, и отчёт сходится сам с собой', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Работа со своим материалом', qty: '2', unitPrice: '1000', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2000',
@@ -224,7 +224,7 @@ describe('Защита от продажи в минус', () => {
       lines: [{ warehouseItemId: itemId, qty: '3', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
 
     await expect(
@@ -252,7 +252,7 @@ describe('Защита от продажи в минус', () => {
       ],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [
+      phone: '+79000000000', items: [
         { warehouseItemId: itemA, name: 'A', qty: '5', unitPrice: '500' },
         { warehouseItemId: itemB, name: 'B', qty: '5', unitPrice: '500' }, // только 1 в наличии
       ],
@@ -295,7 +295,7 @@ describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.2
 
   it('BR2: finalize услуги фиксирует unitCostAtSale = unitCost (снимок себестоимости)', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',
@@ -313,7 +313,7 @@ describe('Конкурентность склада: FOR UPDATE (Фаза 4 п.2
     // лок строки заказа. Без него оба finalize прочитали бы status=OPEN и каждый
     // создал бы COGS-расход (двойной счёт себестоимости).
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Монтаж', qty: '2', unitPrice: '500', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',

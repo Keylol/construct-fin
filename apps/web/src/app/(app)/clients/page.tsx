@@ -21,6 +21,8 @@ import { Badge } from '@/components/ui/Badge';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
+import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -38,6 +40,8 @@ export default function ClientsPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
+  // Вид: справочник обычно смотрят списком, плитки — когда следят за долгами.
+  const [view, changeView] = useTileView('clients:view');
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
   const list = useCounterparties(wsId, debouncedSearch || undefined, false, 'CLIENT');
@@ -154,8 +158,20 @@ export default function ClientsPage() {
             />
           </div>
         </div>
+        <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
+      {view === 'tiles' ? (
+        <TileGrid>
+          {(list.data ?? []).map((c) => (
+            <CounterpartyTile
+              key={c.id}
+              counterparty={c}
+              onClick={() => router.push(`/clients/${c.id}` as Parameters<typeof router.push>[0])}
+            />
+          ))}
+        </TileGrid>
+      ) : (
       <div className="bg-card">
         <DataTable
           data={list.data ?? []}
@@ -203,6 +219,7 @@ export default function ClientsPage() {
           )}
         />
       </div>
+      )}
 
       <ClientForm
         wsId={current.id}

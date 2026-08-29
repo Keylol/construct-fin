@@ -264,8 +264,13 @@ model Order {
   id          String  @id @default(cuid())
   workspaceId String
   clientId    String? // null для разовых продаж без клиента
-  /// Уникальный читаемый номер: «ORD-2026-0042»
+  /// Уникальный читаемый номер: «ORD-2026-0042». Служебный: на него ссылаются
+  /// описания проводок и уникальный индекс. Человеку показывается phone.
   number      String
+  /// Видимый номер заказа — телефон клиента в виде «+79243634029» (решение
+  /// владельца 29.08). Не уникален: у повторного клиента несколько заказов с
+  /// одним телефоном, они группируются в списке.
+  phone       String?
   title       String?
   description String?
 
@@ -302,6 +307,8 @@ model Order {
   @@index([workspaceId, status, expectedDate])
   @@index([workspaceId, clientId])
   @@index([workspaceId, deletedAt])
+  // Поиск заказа по телефону и группировка заказов одного клиента в списке.
+  @@index([workspaceId, phone])
 }
 
 enum OrderStatus {

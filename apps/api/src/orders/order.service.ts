@@ -55,9 +55,12 @@ export class OrderService {
     return {
       ...page,
       items: page.items.map((o) => {
-        const { schedule, ...rest } = o;
+        // items и schedule нужны только для расчётов — наружу уходят сводки:
+        // маржа для плитки и сводка графика для бейджа просрочки.
+        const { schedule, items, ...rest } = o;
         return {
           ...rest,
+          margin: orderMargin(items ?? [], o.discountAmount),
           scheduleSummary:
             scheduleView(schedule ?? [], o.paidAmount, o.totalAmount, asOf)?.summary ?? null,
         };
@@ -160,6 +163,7 @@ export class OrderService {
             data: {
               workspaceId,
               number,
+              phone: input.phone,
               clientId: input.clientId ?? null,
               title: input.title ?? null,
               description: input.description ?? null,
@@ -251,6 +255,7 @@ export class OrderService {
         where: { id },
         data: {
           clientId: input.clientId === undefined ? undefined : input.clientId,
+          phone: input.phone === undefined ? undefined : input.phone,
           title: input.title === undefined ? undefined : input.title,
           description:
             input.description === undefined ? undefined : input.description,

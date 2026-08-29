@@ -58,7 +58,7 @@ describe('C1: доменные строки нельзя трогать generic-
 
   it('оплату/комиссию заказа нельзя удалить generic-API (только через карточку)', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Кухня', qty: '1', unitPrice: '100000' }],
+      phone: '+79000000000', items: [{ name: 'Кухня', qty: '1', unitPrice: '100000' }],
     });
     await h.orders.addInstallmentPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '100000',

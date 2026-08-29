@@ -84,6 +84,15 @@ export interface Counterparty {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Сводка по заказам — для плитки: сколько заказов, оборот, текущий долг. */
+  summary?: CounterpartySummary;
+}
+
+export interface CounterpartySummary {
+  ordersCount: number;
+  ordersTotal: string;
+  debt: string;
+  lastOrderAt: string | null;
 }
 
 export interface WarehouseItem {
@@ -239,6 +248,8 @@ export interface Order {
   number: string;
   clientId: string | null;
   client?: { id: string; name: string } | null;
+  /** Видимый номер заказа — телефон клиента «+79243634029». */
+  phone: string | null;
   title: string | null;
   description: string | null;
   status: OrderStatus;

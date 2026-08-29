@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
 import {
   formatRub,
+  normalizePhone,
   parseAmountInput,
   parseOrderItemsText,
   allocateSalePrices,
@@ -67,6 +68,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Combobox } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
+import { OrderTile, OrderGroupTile } from '@/components/orders/OrderTile';
+import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import {
   Sheet,
@@ -175,9 +178,45 @@ export default function OrdersPage() {
     return { paid: toMoneyString(paid), total: toMoneyString(total) };
   }, [orderRows]);
 
+  /**
+   * Плитки группируются по телефону: заказы одного клиента складываются в
+   * «папку» со счётчиком, одиночные показываются как есть. Порядок исходного
+   * списка сохраняется — по дате создания, как в списке.
+   */
+  const tileGroups = useMemo(() => {
+    const groups: { key: string; orders: Order[] }[] = [];
+    const byPhone = new Map<string, { key: string; orders: Order[] }>();
+    for (const o of orderRows) {
+      if (!o.phone) {
+        groups.push({ key: o.id, orders: [o] });
+        continue;
+      }
+      const existing = byPhone.get(o.phone);
+      if (existing) {
+        existing.orders.push(o);
+        continue;
+      }
+      const g = { key: o.phone, orders: [o] };
+      byPhone.set(o.phone, g);
+      groups.push(g);
+    }
+    return groups;
+  }, [orderRows]);
+
+  const tileLabels = {
+    statusLabel: STATUS_LABEL,
+    statusTone: STATUS_TONE,
+    payLabel: PAY_LABEL,
+    payTone: PAY_TONE,
+  };
+
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Order | null>(null);
+  // Список — рабочий режим (поиск по сумме, сверка, итоги), плитки — обзорный.
+  const [view, changeView] = useTileView('orders:view');
+  // Раскрытая «папка» телефона: у повторного клиента несколько заказов.
+  const [openPhone, setOpenPhone] = useState<string | null>(null);
   // Глобальное «+ Создать» → ?new=1 открывает форму заказа.
   useCreateFromUrl(() => setCreating(true));
 
@@ -318,8 +357,78 @@ export default function OrdersPage() {
             </button>
           </label>
         )}
+        <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
+      {view === 'tiles' ? (
+        <div className="space-y-4">
+          {orders.isLoading ? (
+            <p className="p-6 text-sm text-muted-foreground">Загрузка…</p>
+          ) : orderRows.length === 0 ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="Пока нет заказов"
+              hint="Создайте первый заказ: привяжите клиента, добавьте позиции и принимайте оплату."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" /> Новый заказ
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              <TileGrid>
+                {tileGroups.map((g) =>
+                  g.orders.length === 1 ? (
+                    <OrderTile
+                      key={g.key}
+                      order={g.orders[0]!}
+                      labels={tileLabels}
+                      onClick={() => setOpenId(g.orders[0]!.id)}
+                    />
+                  ) : (
+                    <div key={g.key} className="flex flex-col gap-2">
+                      <OrderGroupTile
+                        phone={g.key}
+                        orders={g.orders}
+                        expanded={openPhone === g.key}
+                        onToggle={() => setOpenPhone(openPhone === g.key ? null : g.key)}
+                      />
+                      {openPhone === g.key &&
+                        g.orders.map((o) => (
+                          <div key={o.id} className="pl-3">
+                            <OrderTile
+                              order={o}
+                              labels={tileLabels}
+                              onClick={() => setOpenId(o.id)}
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  ),
+                )}
+              </TileGrid>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm">
+                <span className="text-muted-foreground">Итого по видимым</span>
+                <span className="tabular-nums">
+                  оплачено {formatRub(listTotals.paid)} из {formatRub(listTotals.total)}
+                </span>
+              </div>
+            </>
+          )}
+          {orders.hasNextPage && (
+            <div className="flex justify-center">
+              <Button
+                variant="secondary"
+                onClick={() => orders.fetchNextPage()}
+                disabled={orders.isFetchingNextPage}
+              >
+                {orders.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="bg-card">
         <DataTable
           data={orderRows}
@@ -380,6 +489,7 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+      )}
 
       <OrderFormSheet
         wsId={current.id}
@@ -426,6 +536,8 @@ function OrderFormSheet({
   const addPayment = useAddOrderPayment(wsId);
 
   const [clientId, setClientId] = useState('');
+  // Телефон — видимый номер заказа, обязателен (решение владельца 29.08).
+  const [phone, setPhone] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [discount, setDiscount] = useState('');
@@ -519,6 +631,7 @@ function OrderFormSheet({
       const nextDiscount =
         Number(editing.discountAmount) > 0 ? String(Number(editing.discountAmount)) : '';
       setClientId(editing.clientId ?? '');
+      setPhone(editing.phone ?? '');
       setTitle(editing.title ?? '');
       setDescription(editing.description ?? '');
       setDiscount(nextDiscount);
@@ -533,6 +646,7 @@ function OrderFormSheet({
     } else {
       const nextItems = [{ warehouseItemId: null, name: '', qty: '1', unitPrice: '', unitCost: '' }];
       setClientId('');
+      setPhone('');
       setTitle('');
       setDescription('');
       setDiscount('');
@@ -788,9 +902,16 @@ function OrderFormSheet({
       setPayError(plan.error);
       return;
     }
+    // Телефон — видимый номер заказа: без него заказ не опознать в списке.
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      setError('Укажите телефон клиента — он служит номером заказа');
+      return;
+    }
     try {
       const order = await create.mutateAsync({
         clientId: clientId || null,
+        phone: normalizedPhone,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
@@ -840,10 +961,16 @@ function OrderFormSheet({
       setError('Добавьте хотя бы одну позицию с названием и ценой');
       return;
     }
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      setError('Укажите телефон клиента — он служит номером заказа');
+      return;
+    }
     try {
       await update.mutateAsync({
         id: editing.id,
         clientId: clientId || null,
+        phone: normalizedPhone,
         title: title.trim() || null,
         description: description.trim() || null,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : '0',
@@ -891,6 +1018,16 @@ function OrderFormSheet({
               recentKey={`${wsId}:client`}
               onCreate={(q) => setCreateClientQuery(q)}
               createLabel={(q) => `Создать клиента «${q}»`}
+            />
+          </FormField>
+          <FormField label="Телефон — номер заказа" htmlFor="o-phone">
+            <Input
+              id="o-phone"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+7 924 363 40 29"
+              aria-invalid={error?.includes('Телефон') ? true : undefined}
             />
           </FormField>
           <FormField label="Название" htmlFor="o-title">

@@ -271,7 +271,7 @@ describe('Inbox: разбор чужих строк невозможен', () =>
       data: { workspaceId: B.workspaceId, name: 'Клиент B', role: 'CLIENT' },
     });
     const orderB = await h.orders.create(B.workspaceId, {
-      clientId: clientB.id,
+      phone: '+79000000000', clientId: clientB.id,
       items: [{ name: 'Товар B', qty: '1', unitPrice: '1000' }],
     });
     const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never, h.planning as never);

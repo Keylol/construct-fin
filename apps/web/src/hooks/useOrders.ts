@@ -20,6 +20,8 @@ export interface OrderItemInput {
 
 export interface CreateOrderInput {
   clientId?: string | null;
+  /** Телефон клиента — видимый номер заказа, обязателен. */
+  phone: string;
   title?: string;
   description?: string;
   discountAmount?: string;
@@ -29,6 +31,7 @@ export interface CreateOrderInput {
 
 export interface UpdateOrderInput {
   clientId?: string | null;
+  phone?: string;
   title?: string | null;
   description?: string | null;
   discountAmount?: string;
