@@ -94,6 +94,9 @@ export function rankPaymentCandidates<L extends PaymentCandidateLine>(
   const ranked: RankedPaymentCandidate<L>[] = [];
   for (const line of lines) {
     const haystack = `${normalize(line.counterpartyName)} ${normalize(line.description)}`;
+    // Имя ищем по целым словам: подстрока роднит «Александра» с «Александровной»
+    // и подсовывает платёж чужого клиента (поймано на живом заказе Макарова).
+    const haystackWords = new Set(haystack.split(/[^a-zа-я0-9-]+/i).filter(Boolean));
     const amount = money(D(line.amount).abs());
     const reasons: string[] = [];
     let score = 0;
@@ -109,7 +112,7 @@ export function rankPaymentCandidates<L extends PaymentCandidateLine>(
       }
     }
 
-    const clientHit = clientParts.find((p) => haystack.includes(p));
+    const clientHit = clientParts.find((p) => haystackWords.has(p));
     if (clientHit) {
       score += SCORE_CLIENT;
       reasons.push('клиент упомянут в строке');
