@@ -7,7 +7,7 @@ const MoneyString = z
  * Неотрицательные деньги (без ведущего «-»). Для скидки: отрицательная скидка
  * раздувала бы totalAmount (sub(subtotal, -X) = subtotal+X) и искажала
  * дебиторку/выручку в отчётах (дефект R5a). Отдельный тип, чтобы НЕ ужесточать
- * общий MoneyString (он нужен со знаком для unitPrice/amount/платежей).
+ * общий MoneyString (он нужен со знаком для сумм платежей и сторно).
  */
 const NonNegativeMoneyString = z
   .string()
@@ -24,7 +24,12 @@ export const OrderItemInputSchema = z.object({
   warehouseItemId: z.string().cuid().nullable().optional(),
   name: z.string().min(1).max(200),
   qty: QtyString,
-  unitPrice: MoneyString,
+  /**
+   * Цена продажи неотрицательна: ноль допустим (позиция отдана бесплатно, напр.
+   * со склада), а минус — нет. Отрицательная цена уходила в БД и падала там
+   * пятисоткой вместо внятного отказа; сторно оформляется возвратом (RMA).
+   */
+  unitPrice: NonNegativeMoneyString,
   /// Закупочная себестоимость единицы (ручной ввод, для маржи).
   unitCost: CostString.nullable().optional(),
 });
