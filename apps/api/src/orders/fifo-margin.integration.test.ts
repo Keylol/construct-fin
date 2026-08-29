@@ -56,7 +56,7 @@ async function setupAB(finalize = true): Promise<Stand> {
     lines: [{ warehouseItemId, qty: '5', unitPrice: '200' }],
   });
   const order = await h.orders.create(seed.workspaceId, {
-    items: [{ warehouseItemId, name: 'Деталь', qty: '10', unitPrice: '300' }],
+    phone: '+79000000000', items: [{ warehouseItemId, name: 'Деталь', qty: '10', unitPrice: '300' }],
   });
   const orderItemId = order.items![0]!.id;
   if (finalize) await h.orders.finalize(seed.workspaceId, order.id, seed.userId);

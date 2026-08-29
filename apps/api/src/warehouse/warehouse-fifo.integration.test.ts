@@ -117,7 +117,7 @@ describe('FIFO: продажа через несколько партий', () =
     });
 
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '15', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '15', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
 
@@ -340,7 +340,7 @@ describe('FIFO: setCost на нулевых партиях', () => {
 
     // Продажа 4 → unitCostAtSale = новая цена 120 (а не 0).
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '4', unitPrice: '300' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '4', unitPrice: '300' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });

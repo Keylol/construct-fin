@@ -43,7 +43,7 @@ async function setupAB() {
     lines: [{ warehouseItemId, qty: '5', unitPrice: '200' }],
   });
   const order = await h.orders.create(seed.workspaceId, {
-    items: [{ warehouseItemId, name: 'Деталь', qty: '10', unitPrice: '300' }],
+    phone: '+79000000000', items: [{ warehouseItemId, name: 'Деталь', qty: '10', unitPrice: '300' }],
   });
   return { warehouseItemId, orderId: order.id, orderItemId: order.items![0]!.id };
 }
@@ -80,7 +80,7 @@ describe('F1: маржа в DTO заказа', () => {
       lines: [{ warehouseItemId: wh!.id, qty: '10', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: wh!.id, name: 'Деталь', qty: '2', unitPrice: '250' }],
+      phone: '+79000000000', items: [{ warehouseItemId: wh!.id, name: 'Деталь', qty: '2', unitPrice: '250' }],
     });
     expect(order.margin.isEstimate).toBe(true);
     expect(order.margin.cogs).toBe('200.00'); // 2 × avgCost 100
@@ -133,7 +133,7 @@ describe('F1: маржа в DTO заказа', () => {
 
   it('скидка входит в базу итога (totalAmount), по строкам не разносится', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      discountAmount: '100.00',
+      phone: '+79000000000', discountAmount: '100.00',
       items: [{ name: 'Монтаж', qty: '1', unitPrice: '1000.00', unitCost: '300' }],
     });
     // totalAmount = 1000 − 100 = 900; COGS = 300 → маржа 600, 66.67%.
@@ -158,7 +158,7 @@ describe('F1: маржа в DTO заказа', () => {
 
   it('услуга: без себестоимости 100% (R3); ручная — manual до и actual после finalize', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [
+      phone: '+79000000000', items: [
         { name: 'Консультация', qty: '2', unitPrice: '500.00' },
         { name: 'Монтаж', qty: '1', unitPrice: '1000.00', unitCost: '300' },
       ],

@@ -152,7 +152,7 @@ describe('GH8: откат импорта', () => {
 
   it('откат оплаты заказа возвращает paidAmount к нулю', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
     });
     const res = await svc.commit({
       workspaceId: seed.workspaceId,
@@ -251,7 +251,7 @@ describe('GH8: откат импорта', () => {
 
   it('гонка: откат + параллельная оплата — ручной платёж не теряется (FOR UPDATE)', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
     });
     const res = await svc.commit({
       workspaceId: seed.workspaceId,

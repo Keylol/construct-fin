@@ -239,6 +239,8 @@ export interface Order {
   number: string;
   clientId: string | null;
   client?: { id: string; name: string } | null;
+  /** Видимый номер заказа — телефон клиента «+79243634029». */
+  phone: string | null;
   title: string | null;
   description: string | null;
   status: OrderStatus;

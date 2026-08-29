@@ -65,7 +65,7 @@ describe('B1: журнал StockMovement', () => {
       lines: [{ warehouseItemId: itemId, qty: '10', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '4', unitPrice: '200' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '4', unitPrice: '200' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     const sale = await h.prisma.stockMovement.findFirst({

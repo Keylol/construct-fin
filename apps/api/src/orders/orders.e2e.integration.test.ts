@@ -65,10 +65,10 @@ describe('Создание: нумерация и суммы', () => {
   it('первый заказ года получает ORD-YYYY-0001, второй — 0002', async () => {
     const year = new Date().getFullYear();
     const o1 = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     const o2 = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     expect(o1.number).toBe(`ORD-${year}-0001`);
     expect(o2.number).toBe(`ORD-${year}-0002`);
@@ -76,7 +76,7 @@ describe('Создание: нумерация и суммы', () => {
 
   it('subtotal/discount/total и lineTotal считаются точно; статусы по умолчанию', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      title: 'Сложный заказ',
+      phone: '+79000000000', title: 'Сложный заказ',
       discountAmount: '150.50',
       items: [
         { name: 'A', qty: '2', unitPrice: '100.00' }, // 200.00
@@ -100,7 +100,7 @@ describe('Создание: нумерация и суммы', () => {
   });
 
   it('заказ без позиций: subtotal/total = 0', async () => {
-    const order = await h.orders.create(seed.workspaceId, { items: [] });
+    const order = await h.orders.create(seed.workspaceId, { phone: '+79000000000', items: [] });
     expect(num(order.subtotal)).toBe(0);
     expect(num(order.totalAmount)).toBe(0);
     expect((await h.prisma.orderItem.count({ where: { orderId: order.id } }))).toBe(0);
@@ -110,7 +110,7 @@ describe('Создание: нумерация и суммы', () => {
 describe('get / list', () => {
   it('get отдаёт заказ с позициями и транзакциями; несуществующий — throw', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '500' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '500',
@@ -125,13 +125,13 @@ describe('get / list', () => {
 
   it('list фильтрует по статусу и не показывает удалённые', async () => {
     const open = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     const toDelete = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     const done = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     await h.orders.finalize(seed.workspaceId, done.id, seed.userId);
     await h.orders.remove(seed.workspaceId, toDelete.id, seed.userId);
@@ -148,7 +148,7 @@ describe('get / list', () => {
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
       const o = await h.orders.create(seed.workspaceId, {
-        items: [{ name: `Поз ${i}`, qty: '1', unitPrice: '100' }],
+        phone: '+79000000000', items: [{ name: `Поз ${i}`, qty: '1', unitPrice: '100' }],
       });
       ids.push(o.id);
     }
@@ -171,7 +171,7 @@ describe('list: период по дате закрытия (IJ9 drill-down «В
   it('closedFrom/closedTo фильтруют DONE-заказы по closedAt', async () => {
     const mk = async () => {
       const o = await h.orders.create(seed.workspaceId, {
-        items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+        phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
       });
       await h.orders.finalize(seed.workspaceId, o.id, seed.userId);
       return o.id;
@@ -200,7 +200,7 @@ describe('list: период по дате закрытия (IJ9 drill-down «В
 describe('Обновление (update)', () => {
   it('замена позиций пересчитывает subtotal/total с учётом discount', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      discountAmount: '50',
+      phone: '+79000000000', discountAmount: '50',
       items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     const updated = await h.orders.update(seed.workspaceId, order.id, {
@@ -221,7 +221,7 @@ describe('Обновление (update)', () => {
 
   it('изменение только discount пересчитывает total от старого subtotal', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '4', unitPrice: '250' }], // subtotal 1000
+      phone: '+79000000000', items: [{ name: 'A', qty: '4', unitPrice: '250' }], // subtotal 1000
     });
     const updated = await h.orders.update(seed.workspaceId, order.id, {
       discountAmount: '300',
@@ -233,7 +233,7 @@ describe('Обновление (update)', () => {
 
   it('update пересчитывает paymentStatus: после повышения total PAID→PARTIAL', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '500' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '500',
@@ -251,7 +251,7 @@ describe('Обновление (update)', () => {
 
   it('гвард: нельзя редактировать DONE и CANCELLED', async () => {
     const done = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await h.orders.finalize(seed.workspaceId, done.id, seed.userId);
     await expect(
@@ -259,7 +259,7 @@ describe('Обновление (update)', () => {
     ).rejects.toThrow();
 
     const cancelled = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await h.orders.cancel(seed.workspaceId, cancelled.id, seed.userId);
     await expect(
@@ -271,7 +271,7 @@ describe('Обновление (update)', () => {
 describe('Оплата (addPayment) — гварды и состояние REFUNDED', () => {
   it('нельзя оплатить отменённый заказ', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
     await expect(
@@ -285,7 +285,7 @@ describe('Оплата (addPayment) — гварды и состояние REFUN
   it('DE5: возврат больше собранного отклоняется (paidAmount не уходит в минус)', async () => {
     // Услуга: продано 1 за 1000, оплачено 1000, закрыто, затем RMA с refund > собранного.
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',
@@ -309,7 +309,7 @@ describe('Оплата (addPayment) — гварды и состояние REFUN
 
   it('DE5: возврат ровно собранного проходит (paidAmount → 0)', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',
@@ -330,7 +330,7 @@ describe('Оплата (addPayment) — гварды и состояние REFUN
 describe('DE3/DE4: guard\'ы суммы и даты оплаты', () => {
   it('DE3: отрицательная/нулевая оплата отклоняется', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
     });
     for (const bad of ['-15000', '0']) {
       await expect(
@@ -346,7 +346,7 @@ describe('DE3/DE4: guard\'ы суммы и даты оплаты', () => {
 
   it('DE4: будущая дата оплаты отклоняется, прошлая — проходит', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Товар', qty: '1', unitPrice: '1000' }],
     });
     await expect(
       h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
@@ -370,7 +370,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
   it('повторный finalize по DONE возвращает заказ без новых эффектов', async () => {
     const itemId = await stockedItem('20', '150');
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     expect(num((await stockOf(itemId)).qty)).toBe(15);
@@ -387,7 +387,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
 
   it('нельзя закрыть отменённый заказ', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
     await expect(
@@ -397,7 +397,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
 
   it('finalize проставляет closedAt', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     expect(done?.closedAt).not.toBeNull();
@@ -408,7 +408,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
   // месяце сделки одни закупки.
   it('дата закрытия задаётся явно — ею датируется и признание выручки, и себестоимость', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Сборка', qty: '1', unitPrice: '1000', unitCost: '600' }],
+      phone: '+79000000000', items: [{ name: 'Сборка', qty: '1', unitPrice: '1000', unitCost: '600' }],
     });
     const closedOn = new Date('2026-07-10T12:00:00.000Z');
 
@@ -425,7 +425,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
 
   it('без даты берётся текущий момент — обычная отгрузка «сейчас»', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     const before = Date.now();
     const done = await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
@@ -434,7 +434,7 @@ describe('Закрытие (finalize) — идемпотентность и гв
 
   it('будущая дата закрытия отклоняется', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
     await expect(
@@ -447,7 +447,7 @@ describe('Отмена (cancel) — идемпотентность', () => {
   it('повторная отмена не дублирует возврат склада', async () => {
     const itemId = await stockedItem('20', '150');
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     await h.orders.cancel(seed.workspaceId, order.id, seed.userId);
@@ -460,7 +460,7 @@ describe('Отмена (cancel) — идемпотентность', () => {
 
   it('cancel DONE-заказа с ручным COGS сторнирует COGS-расход', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Работа', qty: '2', unitPrice: '1000', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Работа', qty: '2', unitPrice: '1000', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2000',
@@ -489,7 +489,7 @@ describe('Переоткрытие (reopen)', () => {
   it('DONE → OPEN: возврат склада, сторно COGS, сброс shippedQty/closedAt, сохранение оплаты', async () => {
     const itemId = await stockedItem('20', '150');
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2500',
@@ -513,7 +513,7 @@ describe('Переоткрытие (reopen)', () => {
 
   it('reopen с ручным COGS сторнирует COGS-расход', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Работа', qty: '2', unitPrice: '1000', unitCost: '300' }],
+      phone: '+79000000000', items: [{ name: 'Работа', qty: '2', unitPrice: '1000', unitCost: '300' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2000',
@@ -530,7 +530,7 @@ describe('Переоткрытие (reopen)', () => {
 
   it('CANCELLED → OPEN: статус меняется, оплата сохраняется', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '400',
@@ -546,7 +546,7 @@ describe('Переоткрытие (reopen)', () => {
 
   it('после reopen заказ снова редактируем (DONE-гвард снят)', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     await h.orders.reopen(seed.workspaceId, order.id, seed.userId);
@@ -556,7 +556,7 @@ describe('Переоткрытие (reopen)', () => {
 
   it('гвард: нельзя reopen открытый заказ', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'A', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'A', qty: '1', unitPrice: '100' }],
     });
     await expect(
       h.orders.reopen(seed.workspaceId, order.id, seed.userId),
@@ -568,7 +568,7 @@ describe('Удаление (remove)', () => {
   it('soft-delete заказа + сторно ВСЕХ транзакций (платёж, COGS) и возврат склада', async () => {
     const itemId = await stockedItem('20', '150');
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2500',
@@ -595,7 +595,7 @@ describe('Удаление (remove)', () => {
 
   it('remove OPEN-заказа с возвратами сторнирует и платёж, и ORDER_REFUND', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '2', unitPrice: '1000' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '2', unitPrice: '1000' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '2000',
@@ -633,7 +633,7 @@ describe('Полный жизненный цикл (сквозной)', () => {
   it('создать → оплатить → отгрузить → закрыть → возврат → переоткрыть → удалить', async () => {
     const itemId = await stockedItem('20', '100'); // склад 20 @100
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '10', unitPrice: '300' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '10', unitPrice: '300' }],
     });
     const oi = await itemOf(order.id);
 
@@ -686,7 +686,7 @@ describe('Трек B: изоляция арендатора и нумераци�
   it('B1: addPayment с чужим счётом → ошибка (не садится на чужой workspace)', async () => {
     const other = await seedBase(h.prisma, tg + 700000n);
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
     });
     await expect(
       h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
@@ -705,7 +705,7 @@ describe('Трек B: изоляция арендатора и нумераци�
     });
     await expect(
       h.orders.create(seed.workspaceId, {
-        clientId: foreignClient.id,
+        phone: '+79000000000', clientId: foreignClient.id,
         items: [{ name: 'Услуга', qty: '1', unitPrice: '100' }],
       }),
     ).rejects.toThrow();
@@ -716,7 +716,7 @@ describe('Трек B: изоляция арендатора и нумераци�
     const foreignItemId = await seedWarehouseItem(h.prisma, other.workspaceId, 'Чужая деталь');
     await expect(
       h.orders.create(seed.workspaceId, {
-        items: [{ warehouseItemId: foreignItemId, name: 'X', qty: '1', unitPrice: '100' }],
+        phone: '+79000000000', items: [{ warehouseItemId: foreignItemId, name: 'X', qty: '1', unitPrice: '100' }],
       }),
     ).rejects.toThrow();
   });
@@ -726,9 +726,9 @@ describe('Трек B: изоляция арендатора и нумераци�
     await h.prisma.order.create({
       data: { workspaceId: seed.workspaceId, number: `ORD-${year}-9999` },
     });
-    const next = await h.orders.create(seed.workspaceId, { items: [] });
+    const next = await h.orders.create(seed.workspaceId, { phone: '+79000000000', items: [] });
     expect(next.number).toBe(`ORD-${year}-10000`);
-    const next2 = await h.orders.create(seed.workspaceId, { items: [] });
+    const next2 = await h.orders.create(seed.workspaceId, { phone: '+79000000000', items: [] });
     expect(next2.number).toBe(`ORD-${year}-10001`);
   });
 });

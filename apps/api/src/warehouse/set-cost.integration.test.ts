@@ -77,7 +77,7 @@ describe('setCost — установка себестоимости началь
     await h.warehouse.setCost(seed.workspaceId, itemId, { unitCost: '150' }, seed.userId);
 
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Iron Pride X', qty: '2', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Iron Pride X', qty: '2', unitPrice: '500' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
 

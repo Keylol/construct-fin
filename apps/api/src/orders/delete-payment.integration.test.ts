@@ -24,7 +24,7 @@ beforeEach(async () => {
 
 async function makeOrder(total = '1000.00') {
   return h.orders.create(seed.workspaceId, {
-    items: [{ name: 'Товар', qty: '1', unitPrice: total }],
+    phone: '+79000000000', items: [{ name: 'Товар', qty: '1', unitPrice: total }],
   });
 }
 
@@ -94,7 +94,7 @@ describe('C2: удаление оплаты заказа', () => {
 
   it('COGS через этот путь удалить нельзя → 400', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Услуга', qty: '1', unitPrice: '1000', unitCost: '400' }],
+      phone: '+79000000000', items: [{ name: 'Услуга', qty: '1', unitPrice: '1000', unitCost: '400' }],
     });
     await h.orders.addPayment(seed.workspaceId, order.id, seed.userId, {
       amount: '1000',

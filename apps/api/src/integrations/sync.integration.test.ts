@@ -243,7 +243,7 @@ describe('IntegrationsService.resetStatement — перезагрузка вып
       data: { workspaceId: seed.workspaceId, name: 'Клиент', role: 'CLIENT' },
     });
     const order = await h.orders.create(seed.workspaceId, {
-      clientId: client.id,
+      phone: '+79000000000', clientId: client.id,
       items: [{ name: 'Товар', qty: '1', unitPrice: '15000' }],
     });
     const inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never, h.planning as never);

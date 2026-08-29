@@ -90,7 +90,7 @@ describe('F5: lotTraceForOrder — трасса строк заказа', () => 
   it('finalize через две партии → строка ссылается на обе с поставщиками', async () => {
     const { itemId } = await setupTracedAB();
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '7', unitPrice: '300' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '7', unitPrice: '300' }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
 
@@ -114,7 +114,7 @@ describe('F5: lotTraceForOrder — трасса строк заказа', () => 
   it('частичный возврат сужает трассу (LIFO-реверс): вернулась партия Петрова', async () => {
     const { itemId } = await setupTracedAB();
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '7', unitPrice: '300' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь', qty: '7', unitPrice: '300' }],
     });
     const itemLineId = order.items[0]!.id;
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
@@ -134,7 +134,7 @@ describe('F5: lotTraceForOrder — трасса строк заказа', () => 
 
   it('заказ без потреблений (услуги/OPEN) → пустая трасса', async () => {
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Консультация', qty: '1', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ name: 'Консультация', qty: '1', unitPrice: '500' }],
     });
     const trace = await h.orders.trace(seed.workspaceId, order.id);
     expect(trace.items).toHaveLength(0);

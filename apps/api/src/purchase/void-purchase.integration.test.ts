@@ -73,7 +73,7 @@ describe('GH9: отмена закупки', () => {
     });
     // Продаём 3 через заказ (finalize → FIFO-потребление партии).
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Деталь B', qty: '3', unitPrice: '200', warehouseItemId: a }],
+      phone: '+79000000000', items: [{ name: 'Деталь B', qty: '3', unitPrice: '200', warehouseItemId: a }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
 
@@ -149,7 +149,7 @@ describe('GH9: отмена закупки', () => {
       lines: [{ warehouseItemId: a, qty: '10', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ name: 'Деталь H', qty: '5', unitPrice: '200', warehouseItemId: a }],
+      phone: '+79000000000', items: [{ name: 'Деталь H', qty: '5', unitPrice: '200', warehouseItemId: a }],
     });
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId);
     const oi = await h.prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });

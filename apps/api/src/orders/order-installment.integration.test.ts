@@ -32,7 +32,7 @@ const PERIOD = {
 
 async function makeOrder(total = '100000.00') {
   return h.orders.create(seed.workspaceId, {
-    items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
+    phone: '+79000000000', items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
   });
 }
 

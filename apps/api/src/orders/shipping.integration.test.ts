@@ -44,7 +44,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
 
@@ -72,7 +72,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
 
@@ -94,7 +94,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '10', unitPrice: '100' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '4', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '4', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
 
@@ -121,7 +121,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
     await h.orders.ship(seed.workspaceId, order.id, seed.userId, { itemId: oi.id, qty: '3' });
@@ -142,7 +142,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
     await h.orders.ship(seed.workspaceId, order.id, seed.userId, { itemId: oi.id, qty: '3' });
@@ -158,7 +158,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
     await h.orders.finalize(seed.workspaceId, order.id, seed.userId); // склад 15, shippedQty 5
@@ -181,7 +181,7 @@ describe('Частичная отгрузка', () => {
       lines: [{ warehouseItemId: itemId, qty: '20', unitPrice: '150' }],
     });
     const order = await h.orders.create(seed.workspaceId, {
-      items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
+      phone: '+79000000000', items: [{ warehouseItemId: itemId, name: 'Деталь A', qty: '5', unitPrice: '500' }],
     });
     const oi = await itemOf(order.id);
 

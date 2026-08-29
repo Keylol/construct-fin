@@ -30,7 +30,7 @@ const FUTURE_B = '2099-02-10T00:00:00.000Z';
 
 async function makeOrder(total = '1000.00') {
   return h.orders.create(seed.workspaceId, {
-    items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
+    phone: '+79000000000', items: [{ name: 'Кухня', qty: '1', unitPrice: total }],
   });
 }
 
