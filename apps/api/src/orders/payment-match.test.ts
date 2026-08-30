@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rankPaymentCandidates } from '@construct/shared';
+import { attachEffect, rankPaymentCandidates } from '@construct/shared';
 
 const order = {
   remaining: '152506.00',
@@ -135,3 +135,69 @@ describe('совпадение по имени — только целые сл�
     expect(ranked[0]?.reasons).toContain('клиент упомянут в строке');
   });
 })
+
+describe('эффект привязки строки к заказу', () => {
+  it('строка меньше остатка: недобор, можно предложить рассрочку', () => {
+    const e = attachEffect({ lineAmount: '80000.00', remaining: '226585.00' });
+    expect(e.credited).toBe('80000.00');
+    expect(e.shortfall).toBe('146585.00');
+    expect(e.overpay).toBe('0.00');
+    expect(e.canInstallment).toBe(true);
+  });
+
+  it('строка ровно на остаток: заказ закрывается без остатков', () => {
+    const e = attachEffect({ lineAmount: '152506.00', remaining: '152506.00' });
+    expect(e.credited).toBe('152506.00');
+    expect(e.shortfall).toBe('0.00');
+    expect(e.overpay).toBe('0.00');
+    expect(e.canInstallment).toBe(false);
+  });
+
+  it('строка больше остатка: переплата (случай Савтикова)', () => {
+    const e = attachEffect({ lineAmount: '59737.63', remaining: '30000.00' });
+    expect(e.overpay).toBe('29737.63');
+    expect(e.shortfall).toBe('0.00');
+    expect(e.canInstallment).toBe(false);
+  });
+
+  it('торговое возмещение: зачитывается брутто, комиссия видна отдельно', () => {
+    const e = attachEffect({
+      lineAmount: '147668.50',
+      remaining: '152506.00',
+      description:
+        'Возм 667302152487 17.10.2025 ИП КАМЕНСКИЙ ИЛЬЯ ЮРЬЕ Р.09072026 К.4837.50 в т.ч. НДС 872.34',
+    });
+    expect(e.fee).toBe('4837.50');
+    expect(e.credited).toBe('152506.00');
+    expect(e.shortfall).toBe('0.00');
+    // Комиссия уже объясняет разрыв — рассрочку к такой строке сервер не примет.
+    expect(e.canInstallment).toBe(false);
+  });
+
+  it('эквайринг с переплатой: брутто больше остатка', () => {
+    const e = attachEffect({
+      lineAmount: '147668.50',
+      remaining: '100000.00',
+      description: 'Возм 667302152487 Р.09072026 К.4837.50',
+    });
+    expect(e.credited).toBe('152506.00');
+    expect(e.overpay).toBe('52506.00');
+  });
+
+  it('рассрочка: в заказ идёт весь остаток, недобора не остаётся', () => {
+    const e = attachEffect({
+      lineAmount: '413398.18',
+      remaining: '438394.60',
+      installment: true,
+    });
+    expect(e.credited).toBe('438394.60');
+    expect(e.shortfall).toBe('0.00');
+    expect(e.overpay).toBe('0.00');
+  });
+
+  it('знак строки не важен: сравнивается модуль суммы', () => {
+    const e = attachEffect({ lineAmount: '-50000.00', remaining: '50000.00' });
+    expect(e.credited).toBe('50000.00');
+    expect(e.overpay).toBe('0.00');
+  });
+});

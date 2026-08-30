@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
-import { formatRub, rankPaymentCandidates, sub, toMoneyString } from '@construct/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { attachEffect, formatRub, rankPaymentCandidates, sub, toMoneyString, D } from '@construct/shared';
 import { useInbox, useAttachOrderInbox } from '@/hooks/useInbox';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
 import { formatDate } from '@/lib/dates';
 import type { Order } from '@/lib/types';
@@ -33,6 +34,11 @@ export function FindPaymentPanel({
   // в хвосте — дотягиваем список целиком, иначе подсказка врёт «ничего нет».
   const inbox = useInbox(wsId, 'NEW', { direction: 'INCOME' });
   const attach = useAttachOrderInbox(wsId);
+  // Строку дороже остатка привязываем только после подтверждения: подсказка
+  // ранжирует и по имени клиента, а тёзка с другим заказом даст переплату.
+  const [confirmOverpay, setConfirmOverpay] = useState<{ lineId: string; overpay: string } | null>(
+    null,
+  );
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = inbox;
   useEffect(() => {
@@ -80,26 +86,43 @@ export function FindPaymentPanel({
         </p>
       ) : (
         <ul className="space-y-2">
-          {ranked.slice(0, VISIBLE).map(({ line, reasons }) => (
-            <li key={line.id} className="space-y-1 rounded-md bg-secondary/40 p-2.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-semibold tabular-nums text-success">
-                  +{formatRub(line.amount)}
-                </span>
-                <span className="text-xs text-muted-foreground">{formatDate(line.date)}</span>
-              </div>
-              {line.counterpartyName && (
-                <p className="text-xs text-muted-foreground">{line.counterpartyName}</p>
-              )}
-              {line.description && (
-                <p className="line-clamp-2 text-xs text-muted-foreground">{line.description}</p>
-              )}
-              <p className="text-xs text-primary">{reasons.join(' · ')}</p>
-              <Button size="sm" onClick={() => link(line.id)} disabled={attach.isPending}>
-                Привязать
-              </Button>
-            </li>
-          ))}
+          {ranked.slice(0, VISIBLE).map(({ line, reasons }) => {
+            const effect = attachEffect({
+              lineAmount: line.amount,
+              description: line.description,
+              remaining,
+            });
+            const overpay = D(effect.overpay).gt(0) ? effect.overpay : null;
+            return (
+              <li key={line.id} className="space-y-1 rounded-md bg-secondary/40 p-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold tabular-nums text-success">
+                    +{formatRub(line.amount)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{formatDate(line.date)}</span>
+                </div>
+                {line.counterpartyName && (
+                  <p className="text-xs text-muted-foreground">{line.counterpartyName}</p>
+                )}
+                {line.description && (
+                  <p className="line-clamp-2 text-xs text-muted-foreground">{line.description}</p>
+                )}
+                <p className="text-xs text-primary">{reasons.join(' · ')}</p>
+                {overpay && (
+                  <p className="text-xs text-warning">переплата {formatRub(overpay)}</p>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    overpay ? setConfirmOverpay({ lineId: line.id, overpay }) : link(line.id)
+                  }
+                  disabled={attach.isPending}
+                >
+                  Привязать
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -108,6 +131,24 @@ export function FindPaymentPanel({
           Показаны {VISIBLE} из {ranked.length} — уточните остаток или ищите во «Входящих».
         </p>
       )}
+
+      <ConfirmDialog
+        open={!!confirmOverpay}
+        onOpenChange={(o) => !o && setConfirmOverpay(null)}
+        title="Строка больше остатка"
+        variant="primary"
+        confirmText="Привязать с переплатой"
+        description={
+          confirmOverpay
+            ? `Заказ получит переплату ${formatRub(confirmOverpay.overpay)}: остаток по нему — ${formatRub(remaining)}. Обычно это платёж другого клиента или другого заказа — проверьте назначение.`
+            : ''
+        }
+        onConfirm={async () => {
+          if (confirmOverpay) link(confirmOverpay.lineId);
+          setConfirmOverpay(null);
+        }}
+        loading={attach.isPending}
+      />
     </div>
   );
 }
