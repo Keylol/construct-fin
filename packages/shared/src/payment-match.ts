@@ -12,7 +12,7 @@
  * Савтикова, «Переплата»), и цена автоматики здесь выше цены ручного клика.
  */
 
-import { D, money } from './money';
+import { D, money, sub } from './money';
 import { parseAcquiringFee } from './acquiring-fee';
 
 export interface PaymentCandidateLine {
@@ -133,4 +133,63 @@ export function rankPaymentCandidates<L extends PaymentCandidateLine>(
       // Детерминизм между запусками — как в transfer-match/planned-match.
       a.line.id.localeCompare(b.line.id),
   );
+}
+
+// ─────────────────────────── Эффект привязки строки ───────────────────────────
+
+export interface AttachEffectInput {
+  /** Сумма строки выписки; знак не важен — сравнивается модуль. */
+  lineAmount: string;
+  /** Назначение платежа: из него читается удержанная комиссия эквайринга. */
+  description?: string | null;
+  /** Остаток по заказу: totalAmount − paidAmount. */
+  remaining: string;
+  /** Привязка как кредит/рассрочка — в заказ зачитывается весь остаток. */
+  installment?: boolean;
+}
+
+export interface AttachEffect {
+  /** Сколько зачтётся в оплату заказа. */
+  credited: string;
+  /** Комиссия, удержанная банком внутри строки; '0.00' — её нет. */
+  fee: string;
+  /** На сколько зачёт меньше остатка: заказ останется недоплаченным. */
+  shortfall: string;
+  /** На сколько зачёт больше остатка: переплата. */
+  overpay: string;
+  /** Можно ли предложить кредит/рассрочку: есть недобор и нет комиссии в назначении. */
+  canInstallment: boolean;
+}
+
+/**
+ * Что произойдёт с заказом, если привязать к нему эту строку выписки.
+ *
+ * Повторяет расчёт `InboxService.attachOrder`, чтобы UI обещал ровно то, что
+ * сделает сервер: при торговом эквайринге зачитывается брутто (комиссия указана
+ * внутри назначения), при рассрочке — весь остаток, иначе сумма строки.
+ *
+ * Нужна прежде всего ради переплаты: строку больше остатка система принимает
+ * молча, и чужой платёж уже прицеплялся к заказу (Савтиков, 59 737,63) —
+ * вскрылось только статусом «Переплата» при сверке. Считают оба входа —
+ * «Входящие» и «Найти оплату» — одной функцией, иначе предупреждения разъедутся.
+ */
+export function attachEffect(input: AttachEffectInput): AttachEffect {
+  const remaining = money(input.remaining);
+  const amount = money(D(input.lineAmount).abs());
+  const feeRaw = parseAcquiringFee(input.description);
+  const fee = feeRaw ? money(feeRaw) : money(0);
+
+  // Кредит/рассрочка и эквайринг — два способа узнать удержанное банком;
+  // применённые к одной строке, они учли бы комиссию дважды (сервер такую
+  // пару отклоняет), поэтому рассрочка считается только без комиссии в назначении.
+  const credited = input.installment && !feeRaw ? remaining : money(amount.plus(fee));
+  const diff = sub(remaining, credited);
+
+  return {
+    credited: credited.toFixed(2),
+    fee: fee.toFixed(2),
+    shortfall: diff.gt(0) ? diff.toFixed(2) : '0.00',
+    overpay: diff.lt(0) ? diff.abs().toFixed(2) : '0.00',
+    canInstallment: !feeRaw && diff.gt(0),
+  };
 }

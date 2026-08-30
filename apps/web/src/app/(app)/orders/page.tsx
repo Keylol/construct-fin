@@ -110,6 +110,15 @@ const PAY_TONE: Record<OrderPaymentState, StatusTone> = {
   REFUNDED: 'destructive',
 };
 
+/**
+ * Заказ оплачен полностью, но всё ещё открыт: деньги пришли, а признание
+ * выручки не состоялось — такой заказ теряется в списке до сверки месяца.
+ * Переплату включаем: она тоже означает, что денег хватает.
+ */
+function canCloseOrder(o: Order): boolean {
+  return o.status === 'OPEN' && (o.paymentStatus === 'PAID' || o.paymentStatus === 'OVERPAID');
+}
+
 const SCHED_LABEL: Record<ScheduleEntryStatus, string> = {
   PAID: 'Оплачен',
   PARTIAL: 'Частично',
@@ -215,6 +224,9 @@ export default function OrdersPage() {
 
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Заказ, открытый кликом по «можно закрыть»: карточка сразу показывает диалог
+  // закрытия, но дату и подтверждение по-прежнему спрашивает.
+  const [closingId, setClosingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Order | null>(null);
   // Список — рабочий режим (поиск по сумме, сверка, итоги), плитки — обзорный.
   const [view, changeView] = useTileView('orders:view');
@@ -299,6 +311,20 @@ export default function OrdersPage() {
           {/* F2: платёж по графику пропущен — видно без открытия карточки. */}
           {o.scheduleSummary && o.scheduleSummary.overdueAmount !== '0.00' && (
             <StatusDot tone="destructive" label="Просрочен" />
+          )}
+          {canCloseOrder(o) && (
+            <button
+              type="button"
+              title="Оплачен полностью — закрыть заказ"
+              onClick={(e) => {
+                e.stopPropagation();
+                setClosingId(o.id);
+                setOpenId(o.id);
+              }}
+              className="underline-offset-2 hover:underline"
+            >
+              <StatusDot tone="primary" label="можно закрыть" />
+            </button>
           )}
         </div>
       ),
@@ -410,6 +436,11 @@ export default function OrdersPage() {
                       key={g.key}
                       order={g.orders[0]!}
                       labels={tileLabels}
+                      closable={canCloseOrder(g.orders[0]!)}
+                      onRequestClose={() => {
+                        setClosingId(g.orders[0]!.id);
+                        setOpenId(g.orders[0]!.id);
+                      }}
                       onClick={() => setOpenId(g.orders[0]!.id)}
                     />
                   ) : (
@@ -426,6 +457,11 @@ export default function OrdersPage() {
                             <OrderTile
                               order={o}
                               labels={tileLabels}
+                              closable={canCloseOrder(o)}
+                              onRequestClose={() => {
+                                setClosingId(o.id);
+                                setOpenId(o.id);
+                              }}
                               onClick={() => setOpenId(o.id)}
                             />
                           </div>
@@ -499,6 +535,19 @@ export default function OrdersPage() {
                   label={PAY_LABEL[o.paymentStatus]}
                   className="text-xs"
                 />
+                {canCloseOrder(o) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setClosingId(o.id);
+                      setOpenId(o.id);
+                    }}
+                    className="underline-offset-2 hover:underline"
+                  >
+                    <StatusDot tone="primary" label="можно закрыть" className="text-xs" />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -529,9 +578,14 @@ export default function OrdersPage() {
       <OrderDetailSheet
         wsId={current.id}
         orderId={openId}
-        onClose={() => setOpenId(null)}
+        autoClose={!!openId && openId === closingId}
+        onClose={() => {
+          setOpenId(null);
+          setClosingId(null);
+        }}
         onEdit={(o) => {
           setOpenId(null);
+          setClosingId(null);
           setEditing(o);
         }}
       />
@@ -1535,11 +1589,14 @@ function OrderDetailSheet({
   orderId,
   onClose,
   onEdit,
+  autoClose = false,
 }: {
   wsId: string;
   orderId: string | null;
   onClose: () => void;
   onEdit: (order: Order) => void;
+  /** Карточка открыта кликом по «можно закрыть» — сразу показать диалог. */
+  autoClose?: boolean;
 }) {
   const { data: order, isLoading } = useOrder(wsId, orderId);
   const { data: trace, isLoading: traceLoading } = useOrderTrace(wsId, orderId);
@@ -1555,6 +1612,24 @@ function OrderDetailSheet({
   // «сегодня» увело бы обе суммы в текущий месяц.
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeDate, setCloseDate] = useState(() => toLocalDateInput(new Date()));
+  // Правило закрытия — по дате денег: выручка признаётся днём последней оплаты,
+  // а не днём, когда до заказа дошли руки. Со «сегодня» по умолчанию прибыль
+  // архива уезжала в текущий месяц (та же боль дала поле даты в #135).
+  const lastPaymentDate = useMemo(() => {
+    const dates = (order?.transactions ?? [])
+      .filter((t) => t.kind === 'ORDER_PAYMENT')
+      .map((t) => t.date);
+    return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+  }, [order?.transactions]);
+  const loadedId = order?.id ?? null;
+  useEffect(() => {
+    setCloseDate(toLocalDateInput(lastPaymentDate ?? new Date()));
+  }, [lastPaymentDate, loadedId]);
+  // Клик по «можно закрыть» в списке ведёт прямо в диалог: дату и подтверждение
+  // он всё равно спрашивает, случайного закрытия не будет.
+  useEffect(() => {
+    if (autoClose && loadedId) setCloseOpen(true);
+  }, [autoClose, loadedId]);
   const uploadAtt = useUploadOrderAttachment(wsId);
   const deleteAtt = useDeleteOrderAttachment(wsId);
 
@@ -2187,7 +2262,16 @@ function OrderDetailSheet({
               Выручка и себестоимость будут признаны на эту дату — ставьте день
               отгрузки, а не сегодняшний, если заказ вносится задним числом.
             </p>
-            <FormField label="Дата отгрузки" htmlFor="order-close-date" required>
+            <FormField
+              label="Дата отгрузки"
+              htmlFor="order-close-date"
+              required
+              hint={
+                lastPaymentDate
+                  ? `Подставлена дата последней оплаты: ${formatDate(lastPaymentDate)}`
+                  : 'Оплат по заказу ещё не было — стоит сегодняшняя дата'
+              }
+            >
               <Input
                 id="order-close-date"
                 type="date"

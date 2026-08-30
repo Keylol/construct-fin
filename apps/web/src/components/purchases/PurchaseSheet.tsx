@@ -5,6 +5,7 @@ import { Plus, Trash2, X } from '@/components/ui/icons';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useFeedAccountIds } from '@/hooks/useIntegrations';
 import { useWarehouse } from '@/hooks/useWarehouse';
 import { useCreatePurchase, type PurchaseLineInput } from '@/hooks/usePurchases';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
@@ -41,6 +42,8 @@ export function PurchaseSheet({
 }) {
   const suppliers = useCounterparties(wsId, undefined, false, 'SUPPLIER');
   const accounts = useAccounts(wsId);
+  // Счета с выпиской: ручная закупка по такому счёту задвоится строкой из банка.
+  const feedAccounts = useFeedAccountIds(wsId);
   const warehouse = useWarehouse(wsId);
   const createPurchase = useCreatePurchase(wsId);
 
@@ -218,6 +221,12 @@ export function PurchaseSheet({
                       </option>
                     ))}
                 </Select>
+                {feedAccounts.has(accountId) && (
+                  <p className="mt-1 text-xs text-warning">
+                    Этот счёт получает выписку из банка — та же покупка придёт строкой во
+                    «Входящие», и расход задвоится. Надёжнее провести её оттуда.
+                  </p>
+                )}
               </FormField>
             </div>
             <div className="grid grid-cols-2 gap-3">

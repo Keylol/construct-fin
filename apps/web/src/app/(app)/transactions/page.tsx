@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -25,11 +25,17 @@ import {
   type ActiveFilters,
 } from '@/components/transactions/TransactionFilters';
 import { TransactionFormDialog } from '@/components/transactions/TransactionFormDialog';
-import { filtersToSearchParams, searchParamsToFilters } from '@/lib/tx-filters';
+import {
+  filtersToSearchParams,
+  readSavedPeriod,
+  searchParamsToFilters,
+  writeSavedPeriod,
+} from '@/lib/tx-filters';
 import { D, add, sub, toMoneyString, formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
 import { formatDate, formatDayLabel } from '@/lib/dates';
+import { rangeFor } from '@/lib/periods';
 
 /**
  * Σ по строкам с учётом знака (доход +, расход −) — Decimal, без Number:
@@ -75,13 +81,33 @@ function TransactionsView() {
   // replace, а не push — клики по фильтрам не засоряют историю браузера.
   const setFilters = useCallback(
     (next: ActiveFilters) => {
+      // Период запоминаем только когда его выбрал человек: возвращаться в
+      // текущий месяц на каждом заходе — лишний клик, а работают неделями в
+      // одном периоде. Измерения не помним (см. tx-filters).
+      if (next.period !== filters.period) writeSavedPeriod(next.period);
       setFiltersState(next);
       const qs = filtersToSearchParams(next);
       const href = (qs ? `${pathname}?${qs}` : pathname) as Parameters<typeof router.replace>[0];
       router.replace(href, { scroll: false });
     },
-    [pathname, router],
+    [pathname, router, filters.period],
   );
+
+  /**
+   * Сохранённый период применяем после маунта (как useTileView): localStorage
+   * на сервере не существует, а читать его в инициализаторе — рассинхрон
+   * гидратации. Drill-down с явными from/to главнее: там период задал отчёт.
+   */
+  useEffect(() => {
+    if (searchParams.get('from') || searchParams.get('to')) return;
+    const saved = readSavedPeriod();
+    if (!saved) return;
+    setFiltersState((prev) =>
+      prev.period === saved ? prev : { ...prev, period: saved, range: rangeFor(saved) },
+    );
+    // Разовый триггер на маунте — как в useCreateFromUrl.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // В инпуте — сырой filters.search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(filters.search);
 
@@ -264,12 +290,17 @@ function TransactionsView() {
             // C1: доменные строки (ноги перевода/комиссия, оплаты заказа) через
             // этот экран не правятся — направляем в их раздел вместо 400 на сохранении.
             if (!t.editable) {
+              // Операция заказа — ведём прямо в его карточку (?open= разбирает
+              // /orders на маунте): раньше здесь был тупик, строка видна, а
+              // исправить её было неоткуда.
+              if (t.orderId) {
+                router.push(`/orders?open=${t.orderId}` as Parameters<typeof router.push>[0]);
+                return;
+              }
               toast.info(
                 t.transferGroupId
                   ? 'Операция перевода — редактируется в разделе «Переводы»'
-                  : t.orderId
-                    ? 'Операция по заказу — редактируется в карточке заказа'
-                    : 'Автоматическая операция — редактируется в разделе «Заказы», «Закупки» или «Склад»',
+                  : 'Автоматическая операция — редактируется в разделе «Заказы», «Закупки» или «Склад»',
               );
               return;
             }
