@@ -17,8 +17,9 @@ export interface TileLabels {
 
 /**
  * Заказ в плиточном виде. Анатомия общая (см. ui/Tile), здесь только данные:
- * заголовок — телефон, потому что именно по нему владелец опознаёт заказ
- * (в спецификациях он и стоит номером); служебный ORD виден лишь в карточке.
+ * заголовок — ФИО клиента, под ним телефон (он же номер заказа). Порядок
+ * такой же, как на плитке контрагента: сначала кто, потом чем опознаётся —
+ * иначе глаз читает справочник и заказы по-разному.
  */
 export function OrderTile({
   order,
@@ -39,7 +40,7 @@ export function OrderTile({
 
   return (
     <Tile
-      title={order.phone ? formatPhone(order.phone) : order.number}
+      title={order.client?.name ?? 'Без клиента'}
       stamps={
         <>
           <StatusStamp
@@ -52,7 +53,7 @@ export function OrderTile({
           />
         </>
       }
-      subtitle={order.client?.name ?? 'Без клиента'}
+      subtitle={order.phone ? formatPhone(order.phone) : order.number}
       primary={formatRub(order.totalAmount)}
       accent={
         hasDebt ? (
@@ -87,9 +88,9 @@ export function OrderGroupTile({
 
   return (
     <Tile
-      title={formatPhone(phone)}
+      title={client ?? 'Без клиента'}
       stamps={<StatusStamp tone="primary" label={`${orders.length} заказа`} />}
-      subtitle={client ?? 'Без клиента'}
+      subtitle={formatPhone(phone)}
       primary={formatRub(toMoneyString(total))}
       accent={
         debt.gt(0) ? (
