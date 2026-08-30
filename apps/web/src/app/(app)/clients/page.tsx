@@ -40,6 +40,18 @@ export default function ClientsPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [search, setSearch] = useState('');
+  /**
+   * Куда ведёт клик по клиенту. Владелец идёт к заказу, а не к справочной
+   * карточке: один заказ — открываем его сразу, несколько — показываем только
+   * его заказы, ни одного — остаётся карточка клиента.
+   */
+  const clientTarget = (c: Counterparty) => {
+    const s = c.summary;
+    if (s?.ordersCount === 1 && s.lastOrderId) return `/orders?open=${s.lastOrderId}`;
+    if (s && s.ordersCount > 1) return `/orders?client=${c.id}`;
+    return `/clients/${c.id}`;
+  };
+
   // Вид: справочник обычно смотрят списком, плитки — когда следят за долгами.
   const [view, changeView] = useTileView('clients:view');
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
@@ -167,7 +179,7 @@ export default function ClientsPage() {
             <CounterpartyTile
               key={c.id}
               counterparty={c}
-              onClick={() => router.push(`/clients/${c.id}` as Parameters<typeof router.push>[0])}
+              onClick={() => router.push(clientTarget(c) as Parameters<typeof router.push>[0])}
             />
           ))}
         </TileGrid>

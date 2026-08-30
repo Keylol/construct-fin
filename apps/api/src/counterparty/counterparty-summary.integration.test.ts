@@ -57,6 +57,8 @@ describe('сводка контрагента для плитки', () => {
       debt: '100000.00',
     });
     expect(row?.summary.lastOrderAt).not.toBeNull();
+    // С плитки проваливаются в последний заказ — значит его id нужен в сводке.
+    expect(row?.summary.lastOrderId).toBe(second.id);
   });
 
   it('клиент без заказов показывается с нулями, а не пропадает', async () => {
@@ -68,6 +70,7 @@ describe('сводка контрагента для плитки', () => {
       ordersTotal: '0.00',
       debt: '0.00',
       lastOrderAt: null,
+      lastOrderId: null,
     });
   });
 

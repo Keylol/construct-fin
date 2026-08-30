@@ -30,6 +30,17 @@ export class CounterpartyService {
       _max: { createdAt: true },
     });
     const byClient = new Map(grouped.map((g) => [g.clientId, g]));
+    // Последний заказ каждого клиента: с плитки проваливаются сразу в него,
+    // когда заказ единственный — лишний экран между кликом и делом не нужен.
+    const lastOrders = await this.prisma.order.findMany({
+      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { not: null } },
+      select: { id: true, clientId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const lastByClient = new Map<string, string>();
+    for (const o of lastOrders) {
+      if (o.clientId && !lastByClient.has(o.clientId)) lastByClient.set(o.clientId, o.id);
+    }
     return rows.map((c) => {
       const g = byClient.get(c.id);
       const total = g?._sum.totalAmount ?? new Prisma.Decimal(0);
@@ -42,6 +53,7 @@ export class CounterpartyService {
           ordersTotal: total.toFixed(2),
           debt: debt.toFixed(2),
           lastOrderAt: g?._max.createdAt?.toISOString() ?? null,
+          lastOrderId: lastByClient.get(c.id) ?? null,
         },
       };
     });
