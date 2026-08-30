@@ -93,6 +93,8 @@ export interface CounterpartySummary {
   ordersTotal: string;
   debt: string;
   lastOrderAt: string | null;
+  /** Последний заказ клиента — в него проваливаются с плитки. */
+  lastOrderId: string | null;
 }
 
 export interface WarehouseItem {

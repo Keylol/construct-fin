@@ -127,6 +127,8 @@ export default function OrdersPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
+  // Фильтр по клиенту — приходит переходом с его плитки (?client=<id>).
+  const [clientFilter, setClientFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   // IJ9 drill-down «Выручка» из ОПиУ: период по дате ЗАКРЫТИЯ заказа
   // (?closedFrom&closedTo&status=DONE). Читаем window.location в эффекте
@@ -158,6 +160,7 @@ export default function OrdersPage() {
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
   const orders = useOrders(wsId, {
+    clientId: clientFilter || undefined,
     status: statusFilter || undefined,
     search: debouncedSearch || undefined,
     closedFrom: closedRange?.from,
@@ -219,6 +222,29 @@ export default function OrdersPage() {
   const [openPhone, setOpenPhone] = useState<string | null>(null);
   // Глобальное «+ Создать» → ?new=1 открывает форму заказа.
   useCreateFromUrl(() => setCreating(true));
+
+  /**
+   * Переход с плитки клиента: ?open=<id> открывает карточку заказа сразу,
+   * ?client=<id> оставляет на экране только его заказы. Экран клиента между
+   * кликом и делом не нужен — владелец идёт к заказу, а не к справочнику.
+   * Параметры разовые: после применения убираем их из адреса, чтобы
+   * «назад» и обновление страницы не открывали карточку снова.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const open = sp.get('open');
+    const client = sp.get('client');
+    if (!open && !client) return;
+    if (open) setOpenId(open);
+    if (client) setClientFilter(client);
+    sp.delete('open');
+    sp.delete('client');
+    const qs = sp.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    // Разовый триггер на маунте — как в useCreateFromUrl.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!current) {
     return (
