@@ -8,8 +8,8 @@ import { cn } from '@/lib/cn';
  * клиенты, контрагенты. Анатомия у всех одна, меняются только данные:
  *
  *   ┌──────────────────────────────────────┐
- *   │ идентификатор            штампы      │  ← кто это и в каком состоянии
- *   │ подпись                              │  ← одна приглушённая строка
+ *   │ ФИО / название           штампы      │  ← кто это и в каком состоянии
+ *   │ телефон или контакт                  │  ← чем опознаётся
  *   │ главная сумма              акцент    │  ← деньги; акцент цветной
  *   └──────────────────────────────────────┘
  *
@@ -26,11 +26,11 @@ export function Tile({
   onClick,
   className,
 }: {
-  /** Главный идентификатор: телефон заказа, имя клиента, название контрагента. */
+  /** Кто это: ФИО клиента, название контрагента. */
   title: ReactNode;
   /** До двух штампов состояния либо счётчик группы. */
   stamps?: ReactNode;
-  /** Вторая строка — приглушённая, обрезается по ширине. */
+  /** Чем опознаётся: телефон заказа, контакт клиента. Цифры моноширинные. */
   subtitle?: ReactNode;
   /** Главная величина: сумма заказа, оборот клиента. */
   primary?: ReactNode;
@@ -56,12 +56,12 @@ export function Tile({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-medium tabular-nums">{title}</span>
+        <span className="min-w-0 truncate font-medium">{title}</span>
         {stamps && <span className="flex shrink-0 gap-1">{stamps}</span>}
       </div>
 
       {subtitle !== undefined && (
-        <div className="truncate text-sm text-muted-foreground">{subtitle}</div>
+        <div className="truncate text-sm tabular-nums text-muted-foreground">{subtitle}</div>
       )}
 
       {(primary !== undefined || accent !== undefined) && (
