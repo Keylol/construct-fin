@@ -15,6 +15,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useRules, useRuleSuggest } from '@/hooks/useRules';
+import { useFeedAccountIds } from '@/hooks/useIntegrations';
 import {
   Sheet,
   SheetBody,
@@ -143,6 +144,13 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const childCats = (parentId: string) =>
     cats.filter((c) => c.parentId === parentId && !c.isArchived);
   const selectedCat = cats.find((c) => c.id === categoryId);
+  // Счета с выпиской: закупка, проведённая вручную, придёт ещё и строкой из
+  // банка. Ловим только товарные расходы — по ним дубли и случались.
+  const feedAccounts = useFeedAccountIds(wsId);
+  const duplicateRisk =
+    type === 'EXPENSE' &&
+    feedAccounts.has(accountId) &&
+    (selectedCat?.bucket === 'PURCHASES' || selectedCat?.bucket === 'COGS');
 
   // Категории для комбобокса: иерархия через группы — заголовок = родитель,
   // внутри «(общая)» + подкатегории. Поиск находит и родителя, и ребёнка.
@@ -405,6 +413,12 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                     </option>
                   ))}
               </Select>
+              {duplicateRisk && (
+                <p className="mt-1 text-xs text-warning">
+                  Этот счёт получает выписку из банка — закупка придёт строкой во «Входящие»,
+                  и расход задвоится. Надёжнее провести её оттуда.
+                </p>
+              )}
             </FormField>
 
             <FormField label="Категория" htmlFor="tx-cat">

@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { IntegrationConnection, IntegrationProvider, SyncResult } from '@/lib/types';
@@ -97,4 +98,24 @@ export function useSyncIntegration(wsId: string) {
       qc.invalidateQueries({ queryKey: ['inbox', wsId] });
     },
   });
+}
+
+/**
+ * Счета, на которые приходит выписка (банковское подключение или файловый
+ * импорт). Ручной расход по такому счёту почти всегда задвоится: та же покупка
+ * придёт строкой во «Входящие» — так уже случилось с закупками ДНС и Онлайн
+ * Трейд по заказу Мингазова, дубли пришлось удалять руками.
+ *
+ * DISABLED не считаем: выключенное подключение выписку не приносит. ERROR
+ * считаем — синк починят, и строки догрузятся задним числом.
+ */
+export function useFeedAccountIds(wsId: string | null): Set<string> {
+  const { data } = useIntegrations(wsId);
+  return useMemo(
+    () =>
+      new Set(
+        (data ?? []).filter((c) => c.status !== 'DISABLED').map((c) => c.account.id),
+      ),
+    [data],
+  );
 }
