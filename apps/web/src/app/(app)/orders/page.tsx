@@ -2220,7 +2220,9 @@ function OrderDetailSheet({
                   </Button>
                   <Button
                     onClick={() => {
-                      setCloseDate(toLocalDateInput(new Date()));
+                      // Дата денег, а не «сегодня»: иначе подпись в диалоге
+                      // обещает дату последней оплаты, а поле её перебивает.
+                      setCloseDate(toLocalDateInput(lastPaymentDate ?? new Date()));
                       setCloseOpen(true);
                     }}
                     disabled={finalize.isPending}
