@@ -1,4 +1,4 @@
-import { rangeFor } from '@/lib/periods';
+import { PERIOD_LABELS, rangeFor, type PeriodKey } from '@/lib/periods';
 import { isReportBucket } from '@/lib/buckets';
 import type { ActiveFilters } from '@/components/transactions/TransactionFilters';
 import type { ReportBucket, TxType } from '@/lib/types';
@@ -93,4 +93,34 @@ export function txDrilldownHref(params: {
   if (params.bucket) sp.set('bucket', params.bucket);
   const qs = sp.toString();
   return qs ? `/transactions?${qs}` : '/transactions';
+}
+
+/**
+ * Последний выбранный период списка операций.
+ *
+ * Помним ТОЛЬКО период: сотрудник неделями работает в одном месяце, и
+ * возвращаться каждый раз в текущий — лишний клик на каждый заход. Измерения
+ * (счёт, категория, контрагент, тип) не запоминаем: залипший фильтр читается
+ * как «операций нет», а это уже класс ошибки, а не неудобство.
+ *
+ * Хранилище может быть недоступно (приватный режим) — не повод падать, как в
+ * useTileView.
+ */
+const PERIOD_KEY = 'transactions:period';
+
+export function readSavedPeriod(): PeriodKey | null {
+  try {
+    const saved = window.localStorage.getItem(PERIOD_KEY);
+    return saved && saved in PERIOD_LABELS ? (saved as PeriodKey) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSavedPeriod(key: PeriodKey): void {
+  try {
+    window.localStorage.setItem(PERIOD_KEY, key);
+  } catch {
+    // см. выше
+  }
 }
