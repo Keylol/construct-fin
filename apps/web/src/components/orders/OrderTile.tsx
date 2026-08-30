@@ -25,10 +25,15 @@ export function OrderTile({
   order,
   labels,
   onClick,
+  closable = false,
+  onRequestClose,
 }: {
   order: Order;
   labels: TileLabels;
   onClick: () => void;
+  /** Оплачен полностью, но ещё открыт — предлагаем закрыть прямо с плитки. */
+  closable?: boolean;
+  onRequestClose?: () => void;
 }) {
   const debt = toMoneyString(sub(order.totalAmount, order.paidAmount));
   const hasDebt = D(debt).gt(0);
@@ -51,6 +56,20 @@ export function OrderTile({
             tone={labels.payTone[order.paymentStatus]}
             label={labels.payLabel[order.paymentStatus]}
           />
+          {closable && onRequestClose && (
+            <button
+              type="button"
+              title="Оплачен полностью — закрыть заказ"
+              // Плитка сама открывает карточку: без остановки всплытия клик по
+              // штампу означал бы то же самое, что клик мимо него.
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestClose();
+              }}
+            >
+              <StatusStamp tone="primary" label="можно закрыть" />
+            </button>
+          )}
         </>
       }
       subtitle={order.phone ? formatPhone(order.phone) : order.number}
