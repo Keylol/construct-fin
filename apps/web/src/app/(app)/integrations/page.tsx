@@ -23,13 +23,13 @@ import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { formatDate, formatDateTime } from '@/lib/dates';
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
@@ -193,7 +193,7 @@ export default function IntegrationsPage() {
         )}
       </div>
 
-      <CreateConnectionSheet
+      <CreateConnectionModal
         open={creating}
         onClose={() => setCreating(false)}
         wsId={wsId ?? ''}
@@ -328,7 +328,7 @@ function BackfillNote({
   );
 }
 
-function CreateConnectionSheet({
+function CreateConnectionModal({
   open,
   onClose,
   wsId,
@@ -408,12 +408,12 @@ function CreateConnectionSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-[420px]">
-        <SheetHeader>
-          <SheetTitle>Подключить банк</SheetTitle>
-        </SheetHeader>
-        <SheetBody className="space-y-4">
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent>
+        <ModalHeader>
+          <ModalTitle>Подключить банк</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-4">
           <FormField label="Банк">
             <Select value={provider} onChange={(e) => setProvider(e.target.value as IntegrationProvider)}>
               <option value="ALFA">Альфа-Банк</option>
@@ -512,8 +512,8 @@ function CreateConnectionSheet({
               </FormField>
             </>
           )}
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           <Button variant="secondary" onClick={onClose}>
             Отмена
           </Button>
@@ -523,8 +523,8 @@ function CreateConnectionSheet({
           >
             Подключить
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

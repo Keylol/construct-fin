@@ -17,13 +17,13 @@ import { useCounterparties } from '@/hooks/useCounterparties';
 import { useRules, useRuleSuggest } from '@/hooks/useRules';
 import { useFeedAccountIds } from '@/hooks/useIntegrations';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
@@ -284,10 +284,10 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>{isEdit ? 'Операция' : 'Новая операция'}</SheetTitle>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent size="lg" hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>{isEdit ? 'Операция' : 'Новая операция'}</ModalTitle>
             <Button
               variant="ghost"
               size="icon"
@@ -296,7 +296,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             >
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
 
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -306,7 +306,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
               void onSave();
             }}
           >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             {showSuggestion && (
               <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
                 <div className="flex items-start gap-2">
@@ -512,9 +512,9 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
+          </ModalBody>
 
-          <SheetFooter>
+          <ModalFooter>
             {isEdit && (
               <Button
                 type="button"
@@ -536,10 +536,10 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             >
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
 
       <ConfirmDialog
         open={confirmDel}

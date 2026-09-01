@@ -22,13 +22,13 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { formatRub, D, add, toMoneyString } from '@construct/shared';
 
 const TYPE_LABELS: Record<AccountType, string> = {
@@ -272,14 +272,14 @@ function AccountForm({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>{initial ? 'Редактировать счёт' : 'Новый счёт'}</SheetTitle>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>{initial ? 'Редактировать счёт' : 'Новый счёт'}</ModalTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
             noValidate
@@ -288,7 +288,7 @@ function AccountForm({
               void onSave();
             }}
           >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             <FormField label="Название" htmlFor="acc-name" required>
               <Input
                 id="acc-name"
@@ -338,8 +338,8 @@ function AccountForm({
               </label>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             {initial && (
               <Button
                 type="button"
@@ -361,10 +361,10 @@ function AccountForm({
             >
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}

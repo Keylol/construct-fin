@@ -18,20 +18,20 @@ import { FormField } from '@/components/ui/FormField';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
 
 /**
  * Форма закупки на склад. Общая для /warehouse и /purchases.
  * Деньги списываются со счёта сразу целиком (cash-basis), склад приходуется FIFO-лотом.
  */
-export function PurchaseSheet({
+export function PurchaseModal({
   wsId,
   open,
   onClose,
@@ -169,14 +169,14 @@ export function PurchaseSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose size="xl">
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Закупка на склад</SheetTitle>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent hideClose size="xl">
+        <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <ModalTitle>Закупка на склад</ModalTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
-        </SheetHeader>
+        </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
           noValidate
@@ -185,7 +185,7 @@ export function PurchaseSheet({
             void submit();
           }}
         >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Поставщик" htmlFor="p-supplier">
                 <Combobox
@@ -345,17 +345,17 @@ export function PurchaseSheet({
                 {error}
               </p>
             )}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
             <Button type="submit" loading={createPurchase.isPending}>
               Провести закупку
             </Button>
-          </SheetFooter>
+          </ModalFooter>
         </form>
-      </SheetContent>
+      </ModalContent>
       <QuickCreateCounterpartyDialog
         wsId={wsId}
         role="SUPPLIER"
@@ -364,6 +364,6 @@ export function PurchaseSheet({
         onOpenChange={(o) => !o && setCreateSupplierQuery(null)}
         onCreated={setSupplierId}
       />
-    </Sheet>
+    </Modal>
   );
 }

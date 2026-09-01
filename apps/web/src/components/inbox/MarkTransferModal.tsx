@@ -8,13 +8,13 @@ import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 
@@ -22,7 +22,7 @@ import { formatDate } from '@/lib/dates';
  * Перевод на счёт, выписку которого банк не отдаёт: карты физлиц (ВБ) второй
  * строкой никогда не приедут, поэтому встречную сторону заводим сами.
  */
-export function MarkTransferSheet({
+export function MarkTransferModal({
   open,
   onClose,
   wsId,
@@ -62,12 +62,12 @@ export function MarkTransferSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-[420px]">
-        <SheetHeader>
-          <SheetTitle>{isOut ? 'Перевод на другой счёт' : 'Поступление с другого счёта'}</SheetTitle>
-        </SheetHeader>
-        <SheetBody className="space-y-4">
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent size="lg">
+        <ModalHeader>
+          <ModalTitle>{isOut ? 'Перевод на другой счёт' : 'Поступление с другого счёта'}</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-4">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
             <span className={isOut ? 'font-semibold text-destructive' : 'font-semibold text-success'}>
               {isOut ? '−' : '+'}
@@ -91,16 +91,16 @@ export function MarkTransferSheet({
             попадёт, изменятся только остатки счетов. Используйте, когда выписку второго
             счёта банк не отдаёт — например, для карт.
           </p>
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           <Button variant="secondary" onClick={onClose}>
             Отмена
           </Button>
           <Button onClick={submit} disabled={!counterAccountId || mark.isPending}>
             Создать перевод
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
