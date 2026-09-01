@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from '@/components/ui/icons';
+import { ModalOverlay } from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 
 export const Sheet = DialogPrimitive.Root;
@@ -11,24 +12,9 @@ export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 export const SheetPortal = DialogPrimitive.Portal;
 
-export const SheetOverlay = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(function SheetOverlay({ className, ...props }, ref) {
-  return (
-    <DialogPrimitive.Overlay
-      ref={ref}
-      className={cn(
-        'fixed inset-0 z-50 bg-foreground/40',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
-        'motion-reduce:animate-none',
-        className,
-      )}
-      {...props}
-    />
-  );
-});
+// Затемнение фона общее с окном (ui/Modal): шторка и окно гасят страницу
+// одинаково, значит и живёт оно в одном месте.
+export const SheetOverlay = ModalOverlay;
 
 // Панель — off-white (решение №30 блица): белые поля читаются «окнами» на ней.
 const sheetVariants = cva(

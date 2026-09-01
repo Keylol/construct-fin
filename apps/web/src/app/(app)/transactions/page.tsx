@@ -294,7 +294,7 @@ function TransactionsView() {
               // /orders на маунте): раньше здесь был тупик, строка видна, а
               // исправить её было неоткуда.
               if (t.orderId) {
-                router.push(`/orders?open=${t.orderId}` as Parameters<typeof router.push>[0]);
+                router.push(`/orders?order=${t.orderId}` as Parameters<typeof router.push>[0]);
                 return;
               }
               toast.info(

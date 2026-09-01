@@ -22,13 +22,13 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 
 export default function TransfersPage() {
   const { current } = useCurrentWorkspace();
@@ -250,14 +250,14 @@ function TransferForm({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose>
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Новый перевод</SheetTitle>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent hideClose>
+        <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <ModalTitle>Новый перевод</ModalTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
-        </SheetHeader>
+        </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
           noValidate
@@ -266,7 +266,7 @@ function TransferForm({
             void onSave();
           }}
         >
-        <SheetBody className="space-y-4">
+        <ModalBody className="space-y-4">
           <FormField label="Со счёта" htmlFor="tr-from" required>
             <Select
               id="tr-from"
@@ -334,17 +334,17 @@ function TransferForm({
             />
           </FormField>
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
             Отмена
           </Button>
           <Button type="submit" loading={create.isPending} disabled={!canSave}>
             Создать
           </Button>
-        </SheetFooter>
+        </ModalFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </ModalContent>
+    </Modal>
   );
 }

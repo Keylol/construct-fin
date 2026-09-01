@@ -10,8 +10,8 @@ import { toast } from '@/components/ui/Toaster';
 import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
-import { AttachOrderSheet } from './AttachOrderSheet';
-import { MarkTransferSheet } from './MarkTransferSheet';
+import { AttachOrderModal } from './AttachOrderModal';
+import { MarkTransferModal } from './MarkTransferModal';
 
 const AUSN_LABELS: Record<string, string> = {
   INCOME: 'АУСН: доход',
@@ -148,7 +148,7 @@ export function InboxRow({
       </div>
 
       {isIncome && !isSettled && (
-        <AttachOrderSheet
+        <AttachOrderModal
           open={attachOpen}
           onClose={() => setAttachOpen(false)}
           wsId={wsId}
@@ -157,7 +157,7 @@ export function InboxRow({
       )}
 
       {!isSettled && (
-        <MarkTransferSheet
+        <MarkTransferModal
           open={transferOpen}
           onClose={() => setTransferOpen(false)}
           wsId={wsId}

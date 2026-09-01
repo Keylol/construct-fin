@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
 import {
   formatRub,
@@ -17,6 +17,7 @@ import {
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
+import { useUrlDialog } from '@/hooks/useUrlDialog';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useWarehouse } from '@/hooks/useWarehouse';
@@ -72,13 +73,13 @@ import { OrderTile, OrderGroupTile } from '@/components/orders/OrderTile';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
@@ -132,7 +133,16 @@ const SCHED_VARIANT: Record<ScheduleEntryStatus, BadgeProps['variant']> = {
   OVERDUE: 'destructive',
 };
 
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function OrdersPage() {
+  return (
+    <Suspense>
+      <OrdersView />
+    </Suspense>
+  );
+}
+
+function OrdersView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
@@ -223,7 +233,10 @@ export default function OrdersPage() {
   };
 
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Открытый заказ — в адресе (?order=<id>): карточка переживает обновление
+  // страницы, «назад» закрывает её, ссылку можно сохранить.
+  const orderUrl = useUrlDialog('order');
+  const openId = orderUrl.value;
   // Заказ, открытый кликом по «можно закрыть»: карточка сразу показывает диалог
   // закрытия, но дату и подтверждение по-прежнему спрашивает.
   const [closingId, setClosingId] = useState<string | null>(null);
@@ -236,21 +249,18 @@ export default function OrdersPage() {
   useCreateFromUrl(() => setCreating(true));
 
   /**
-   * Переход с плитки клиента: ?open=<id> открывает карточку заказа сразу,
-   * ?client=<id> оставляет на экране только его заказы. Экран клиента между
-   * кликом и делом не нужен — владелец идёт к заказу, а не к справочнику.
-   * Параметры разовые: после применения убираем их из адреса, чтобы
-   * «назад» и обновление страницы не открывали карточку снова.
+   * Переход с плитки клиента: ?client=<id> оставляет на экране только его
+   * заказы. Экран клиента между кликом и делом не нужен — владелец идёт к
+   * заказу, а не к справочнику. Параметр разовый: после применения убираем его
+   * из адреса, чтобы «назад» не возвращал фильтр. Сам заказ открывается уже не
+   * так, а постоянным ?order=<id> (useUrlDialog выше).
    */
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
-    const open = sp.get('open');
     const client = sp.get('client');
-    if (!open && !client) return;
-    if (open) setOpenId(open);
-    if (client) setClientFilter(client);
-    sp.delete('open');
+    if (!client) return;
+    setClientFilter(client);
     sp.delete('client');
     const qs = sp.toString();
     window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
@@ -319,7 +329,7 @@ export default function OrdersPage() {
               onClick={(e) => {
                 e.stopPropagation();
                 setClosingId(o.id);
-                setOpenId(o.id);
+                orderUrl.open(o.id);
               }}
               className="underline-offset-2 hover:underline"
             >
@@ -439,9 +449,9 @@ export default function OrdersPage() {
                       closable={canCloseOrder(g.orders[0]!)}
                       onRequestClose={() => {
                         setClosingId(g.orders[0]!.id);
-                        setOpenId(g.orders[0]!.id);
+                        orderUrl.open(g.orders[0]!.id);
                       }}
-                      onClick={() => setOpenId(g.orders[0]!.id)}
+                      onClick={() => orderUrl.open(g.orders[0]!.id)}
                     />
                   ) : (
                     <div key={g.key} className="flex flex-col gap-2">
@@ -460,9 +470,9 @@ export default function OrdersPage() {
                               closable={canCloseOrder(o)}
                               onRequestClose={() => {
                                 setClosingId(o.id);
-                                setOpenId(o.id);
+                                orderUrl.open(o.id);
                               }}
-                              onClick={() => setOpenId(o.id)}
+                              onClick={() => orderUrl.open(o.id)}
                             />
                           </div>
                         ))}
@@ -496,7 +506,7 @@ export default function OrdersPage() {
           data={orderRows}
           columns={columns}
           rowKey={(o) => o.id}
-          onRowClick={(o) => setOpenId(o.id)}
+          onRowClick={(o) => orderUrl.open(o.id)}
           loading={orders.isLoading}
           error={orders.error}
           onRetry={() => orders.refetch()}
@@ -541,7 +551,7 @@ export default function OrdersPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setClosingId(o.id);
-                      setOpenId(o.id);
+                      orderUrl.open(o.id);
                     }}
                     className="underline-offset-2 hover:underline"
                   >
@@ -566,7 +576,7 @@ export default function OrdersPage() {
       </div>
       )}
 
-      <OrderFormSheet
+      <OrderFormModal
         wsId={current.id}
         open={creating || !!editing}
         editing={editing}
@@ -575,16 +585,16 @@ export default function OrdersPage() {
           setEditing(null);
         }}
       />
-      <OrderDetailSheet
+      <OrderDetailModal
         wsId={current.id}
         orderId={openId}
         autoClose={!!openId && openId === closingId}
         onClose={() => {
-          setOpenId(null);
+          orderUrl.close();
           setClosingId(null);
         }}
         onEdit={(o) => {
-          setOpenId(null);
+          orderUrl.close();
           setClosingId(null);
           setEditing(o);
         }}
@@ -595,7 +605,7 @@ export default function OrdersPage() {
 
 // ─────────────────────────── Create / edit order ───────────────────────────
 
-function OrderFormSheet({
+function OrderFormModal({
   wsId,
   open,
   editing,
@@ -1065,14 +1075,14 @@ function OrderFormSheet({
 
   return (
     <>
-    <Sheet open={open} onOpenChange={(o) => !o && requestClose()}>
-      <SheetContent side="right" hideClose size="2xl">
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>{isEdit ? `Изменить ${editing?.number ?? 'заказ'}` : 'Новый заказ'}</SheetTitle>
+    <Modal open={open} onOpenChange={(o) => !o && requestClose()}>
+      <ModalContent hideClose size="2xl">
+        <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <ModalTitle>{isEdit ? `Изменить ${editing?.number ?? 'заказ'}` : 'Новый заказ'}</ModalTitle>
           <Button variant="ghost" size="icon" onClick={requestClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
-        </SheetHeader>
+        </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
           noValidate
@@ -1081,7 +1091,7 @@ function OrderFormSheet({
             void (isEdit ? submitEdit() : submitCreate());
           }}
         >
-        <SheetBody className="space-y-4">
+        <ModalBody className="space-y-4">
           <FormField label="Клиент" htmlFor="o-client">
             <Combobox
               id="o-client"
@@ -1530,8 +1540,8 @@ function OrderFormSheet({
           )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           {isEdit ? (
             <>
               <Button
@@ -1554,10 +1564,10 @@ function OrderFormSheet({
               Создать заказ
             </Button>
           )}
-        </SheetFooter>
+        </ModalFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </ModalContent>
+    </Modal>
     <ConfirmDialog
       open={confirmClose}
       onOpenChange={setConfirmClose}
@@ -1584,7 +1594,7 @@ function OrderFormSheet({
 
 // ─────────────────────────── Order detail / manage ───────────────────────────
 
-function OrderDetailSheet({
+function OrderDetailModal({
   wsId,
   orderId,
   onClose,
@@ -1702,16 +1712,16 @@ function OrderDetailSheet({
 
   return (
     <>
-      <Sheet open={!!orderId} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose size="2xl">
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>{order ? order.number : 'Заказ'}</SheetTitle>
+      <Modal open={!!orderId} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent hideClose size="2xl">
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>{order ? order.number : 'Заказ'}</ModalTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
 
-          <SheetBody className="space-y-5">
+          <ModalBody className="space-y-5">
             {isLoading || !order ? (
               <p className="text-sm text-muted-foreground">Загрузка…</p>
             ) : (
@@ -2194,10 +2204,10 @@ function OrderDetailSheet({
                 {error && <p className="text-sm text-destructive">{error}</p>}
               </>
             )}
-          </SheetBody>
+          </ModalBody>
 
           {order && order.status !== 'CANCELLED' && (
-            <SheetFooter className="flex-wrap">
+            <ModalFooter className="flex-wrap">
               <Button
                 variant="destructive"
                 onClick={() => setConfirmCancel(true)}
@@ -2231,11 +2241,11 @@ function OrderDetailSheet({
                   </Button>
                 </>
               )}
-            </SheetFooter>
+            </ModalFooter>
           )}
 
           {order && order.status === 'CANCELLED' && (
-            <SheetFooter className="flex-wrap">
+            <ModalFooter className="flex-wrap">
               <p className="mr-auto text-xs text-muted-foreground">
                 Заказ отменён. Верните в работу, чтобы отредактировать позиции и закрыть заново.
               </p>
@@ -2246,10 +2256,10 @@ function OrderDetailSheet({
               >
                 {reopen.isPending ? 'Возвращаем в работу…' : 'Вернуть в работу'}
               </Button>
-            </SheetFooter>
+            </ModalFooter>
           )}
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
 
       <ConfirmDialog
         open={closeOpen}
@@ -2341,7 +2351,7 @@ function OrderDetailSheet({
       />
 
       {order && (
-        <ScheduleDialog
+        <ScheduleModal
           wsId={wsId}
           order={order}
           open={editSchedule}
@@ -2360,7 +2370,7 @@ interface ScheduleRowDraft {
   note: string;
 }
 
-function ScheduleDialog({
+function ScheduleModal({
   wsId,
   order,
   open,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { D, add, toMoneyString, formatRub } from '@construct/shared';
 import { ShoppingCart, RotateCcw, Plus, X, Receipt } from '@/components/ui/icons';
@@ -10,18 +10,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
-import { PurchaseSheet } from '@/components/purchases/PurchaseSheet';
+import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
+import { useUrlDialog } from '@/hooks/useUrlDialog';
 import type { Purchase } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 
@@ -30,7 +31,16 @@ function purchaseTotal(p: Purchase): string {
   return p.lines.reduce((acc, l) => acc + Number(l.lineTotal), 0).toFixed(2);
 }
 
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function PurchasesPage() {
+  return (
+    <Suspense>
+      <PurchasesView />
+    </Suspense>
+  );
+}
+
+function PurchasesView() {
   const router = useRouter();
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
@@ -38,7 +48,11 @@ export default function PurchasesPage() {
   const voidPurchase = useVoidPurchase(wsId ?? '');
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
   const [creating, setCreating] = useState(false);
-  const [detail, setDetail] = useState<Purchase | null>(null);
+  // Открытая закупка — в адресе (?purchase=<id>), как и заказ. Сам объект
+  // берём из уже загруженного списка: отдельного запроса на одну закупку
+  // во фронте нет, а список приходит целиком.
+  const purchaseUrl = useUrlDialog('purchase');
+  const detail = (purchases.data ?? []).find((p) => p.id === purchaseUrl.value) ?? null;
   // Глобальное «+ Создать» → ?new=1 открывает форму закупки.
   useCreateFromUrl(() => setCreating(true));
 
@@ -150,7 +164,7 @@ export default function PurchasesPage() {
               ),
             ),
           }}
-          onRowClick={(p) => setDetail(p)}
+          onRowClick={(p) => purchaseUrl.open(p.id)}
           loading={purchases.isLoading}
           error={purchases.error}
           onRetry={() => void purchases.refetch()}
@@ -167,7 +181,7 @@ export default function PurchasesPage() {
             />
           }
           mobileCards={(p) => (
-            <div className="space-y-1" onClick={() => setDetail(p)}>
+            <div className="space-y-1" onClick={() => purchaseUrl.open(p.id)}>
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate font-medium">
                   {p.supplier?.name ?? 'Без поставщика'}
@@ -195,18 +209,18 @@ export default function PurchasesPage() {
       </div>
 
       {/* Состав закупки — данные уже в строке списка, запрос не нужен. */}
-      <Sheet open={detail !== null} onOpenChange={(o) => !o && setDetail(null)}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>
+      <Modal open={detail !== null} onOpenChange={(o) => !o && purchaseUrl.close()}>
+        <ModalContent size="lg" hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>
               Закупка от{' '}
               {detail ? formatDate(detail.transaction?.date ?? detail.createdAt) : ''}
-            </SheetTitle>
-            <Button variant="ghost" size="icon" onClick={() => setDetail(null)} aria-label="Закрыть">
+            </ModalTitle>
+            <Button variant="ghost" size="icon" onClick={() => purchaseUrl.close()} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
-          <SheetBody className="space-y-4">
+          </ModalHeader>
+          <ModalBody className="space-y-4">
             {detail && (
               <>
                 <div className="space-y-1 text-sm">
@@ -245,27 +259,27 @@ export default function PurchasesPage() {
                 </div>
               </>
             )}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             <Button
               type="button"
               variant="destructive"
               className="sm:mr-auto"
               onClick={() => {
                 if (detail) setConfirmVoid(detail);
-                setDetail(null);
+                purchaseUrl.close();
               }}
             >
               <RotateCcw className="h-3.5 w-3.5" /> Отменить закупку
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setDetail(null)}>
+            <Button type="button" variant="secondary" onClick={() => purchaseUrl.close()}>
               Закрыть
             </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
-      <PurchaseSheet wsId={wsId} open={creating} onClose={() => setCreating(false)} />
+      <PurchaseModal wsId={wsId} open={creating} onClose={() => setCreating(false)} />
 
       <ConfirmDialog
         open={confirmVoid !== null}

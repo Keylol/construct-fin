@@ -24,13 +24,13 @@ import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 
 export default function CounterpartiesPage() {
   const { current } = useCurrentWorkspace();
@@ -246,16 +246,16 @@ function CounterpartyForm({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>
               {initial ? 'Редактировать контрагента' : 'Новый контрагент'}
-            </SheetTitle>
+            </ModalTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
             noValidate
@@ -264,7 +264,7 @@ function CounterpartyForm({
               void onSave();
             }}
           >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             <FormField label="Имя / название" htmlFor="cp-name" required>
               <Input
                 id="cp-name"
@@ -301,8 +301,8 @@ function CounterpartyForm({
               </label>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             {initial && (
               <Button
                 type="button"
@@ -323,10 +323,10 @@ function CounterpartyForm({
             >
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}

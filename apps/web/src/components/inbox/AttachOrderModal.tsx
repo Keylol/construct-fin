@@ -10,18 +10,18 @@ import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { attachEffect, formatRub, parseAcquiringFee, D, sub, toMoneyString } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 
 /** Поступление из банка → оплата открытого заказа (пересчёт paidAmount внутри). */
-export function AttachOrderSheet({
+export function AttachOrderModal({
   open,
   onClose,
   wsId,
@@ -114,12 +114,12 @@ export function AttachOrderSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-[420px]">
-        <SheetHeader>
-          <SheetTitle>Привязать поступление к заказу</SheetTitle>
-        </SheetHeader>
-        <SheetBody className="space-y-4">
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent size="lg">
+        <ModalHeader>
+          <ModalTitle>Привязать поступление к заказу</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-4">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
             Поступление{' '}
             <span className="font-semibold text-success">+{formatRub(line.amount, 2)}</span>{' '}
@@ -206,8 +206,8 @@ export function AttachOrderSheet({
               создать заказ <ArrowRight className="inline h-3 w-3" />
             </Link>
           </p>
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           <Button variant="secondary" onClick={onClose}>
             Отмена
           </Button>
@@ -217,8 +217,8 @@ export function AttachOrderSheet({
           >
             {installment ? 'Провести кредит' : 'Привязать поступление'}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

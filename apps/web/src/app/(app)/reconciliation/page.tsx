@@ -25,13 +25,13 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 
@@ -321,14 +321,14 @@ function CheckForm({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose>
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>Снимок остатка</SheetTitle>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent hideClose>
+        <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <ModalTitle>Снимок остатка</ModalTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
-        </SheetHeader>
+        </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
           noValidate
@@ -337,7 +337,7 @@ function CheckForm({
             void onSave();
           }}
         >
-        <SheetBody className="space-y-4">
+        <ModalBody className="space-y-4">
           <FormField label="Дата" htmlFor="rc-date" required>
             <Input
               id="rc-date"
@@ -365,17 +365,17 @@ function CheckForm({
             />
           </FormField>
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </SheetBody>
-        <SheetFooter>
+        </ModalBody>
+        <ModalFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
             Отмена
           </Button>
           <Button type="submit" loading={create.isPending} disabled={!canSave}>
             Сохранить
           </Button>
-        </SheetFooter>
+        </ModalFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </ModalContent>
+    </Modal>
   );
 }

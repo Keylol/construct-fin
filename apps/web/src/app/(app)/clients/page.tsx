@@ -27,13 +27,13 @@ import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 
 export default function ClientsPage() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export default function ClientsPage() {
    */
   const clientTarget = (c: Counterparty) => {
     const s = c.summary;
-    if (s?.ordersCount === 1 && s.lastOrderId) return `/orders?open=${s.lastOrderId}`;
+    if (s?.ordersCount === 1 && s.lastOrderId) return `/orders?order=${s.lastOrderId}`;
     if (s && s.ordersCount > 1) return `/orders?client=${c.id}`;
     return `/clients/${c.id}`;
   };
@@ -321,14 +321,14 @@ function ClientForm({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>{initial ? 'Редактировать клиента' : 'Новый клиент'}</SheetTitle>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>{initial ? 'Редактировать клиента' : 'Новый клиент'}</ModalTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
             noValidate
@@ -337,7 +337,7 @@ function ClientForm({
               void onSave();
             }}
           >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             <FormField label="Имя / название" htmlFor="cl-name" required>
               <Input
                 id="cl-name"
@@ -385,8 +385,8 @@ function ClientForm({
               </label>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             {initial && (
               <Button
                 type="button"
@@ -407,10 +407,10 @@ function ClientForm({
             >
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}

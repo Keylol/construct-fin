@@ -19,19 +19,19 @@ import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { type ComboboxOption } from '@/components/ui/Combobox';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { ConditionRow } from './ConditionRow';
 import { ActionRow } from './ActionRow';
 import { PreviewPanel } from './PreviewPanel';
 import { defaultAction, defaultCondition, isConditionFilled } from './dictionaries';
 
-/** Sheet-форма правила: условия (И) + действия + живой предпросмотр охвата. */
+/** Modal-форма правила: условия (И) + действия + живой предпросмотр охвата. */
 export function RuleFormDialog({
   wsId,
   open,
@@ -236,16 +236,16 @@ export function RuleFormDialog({
   }
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" hideClose size="xl">
-        <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <SheetTitle>{editing ? 'Изменить правило' : 'Новое правило'}</SheetTitle>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <ModalContent hideClose size="xl">
+        <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <ModalTitle>{editing ? 'Изменить правило' : 'Новое правило'}</ModalTitle>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
-        </SheetHeader>
+        </ModalHeader>
         <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={handleSubmit}>
-          <SheetBody className="space-y-5">
+          <ModalBody className="space-y-5">
             <FormField label="Название" htmlFor="rule-name" required>
               <Input
                 id="rule-name"
@@ -366,17 +366,17 @@ export function RuleFormDialog({
             </label>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             <Button type="button" variant="secondary" onClick={onClose}>
               Отмена
             </Button>
             <Button type="submit" loading={submitting}>
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </ModalContent>
+    </Modal>
   );
 }

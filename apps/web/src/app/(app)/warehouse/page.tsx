@@ -15,7 +15,7 @@ import {
   useItemLots,
   useDeleteWarehouseItem,
 } from '@/hooks/useWarehouse';
-import { PurchaseSheet } from '@/components/purchases/PurchaseSheet';
+import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { parseQty } from '@/lib/qty';
 import { formatDate } from '@/lib/dates';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -32,13 +32,13 @@ import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/Sheet';
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
 
 function lineValue(qty: string, avg: string): number {
@@ -226,7 +226,7 @@ export default function WarehousePage() {
           setEditing(null);
         }}
       />
-      <PurchaseSheet wsId={current.id} open={purchasing} onClose={() => setPurchasing(false)} />
+      <PurchaseModal wsId={current.id} open={purchasing} onClose={() => setPurchasing(false)} />
     </>
   );
 }
@@ -379,14 +379,14 @@ function WarehouseItemForm({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side="right" hideClose>
-          <SheetHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <SheetTitle>{initial ? 'Позиция склада' : 'Новая позиция'}</SheetTitle>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+        <ModalContent size="lg" hideClose>
+          <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <ModalTitle>{initial ? 'Позиция склада' : 'Новая позиция'}</ModalTitle>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
               <X className="h-4 w-4" />
             </Button>
-          </SheetHeader>
+          </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
             noValidate
@@ -395,7 +395,7 @@ function WarehouseItemForm({
               void onSave();
             }}
           >
-          <SheetBody className="space-y-4">
+          <ModalBody className="space-y-4">
             <FormField label="Название" htmlFor="w-name" required>
               <Input id="w-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </FormField>
@@ -577,8 +577,8 @@ function WarehouseItemForm({
               </label>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </SheetBody>
-          <SheetFooter>
+          </ModalBody>
+          <ModalFooter>
             {initial && (
               <Button
                 type="button"
@@ -603,10 +603,10 @@ function WarehouseItemForm({
             >
               Сохранить
             </Button>
-          </SheetFooter>
+          </ModalFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
