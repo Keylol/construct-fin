@@ -65,6 +65,17 @@ export default function PlanningPage() {
     <>
       <PageHeader
         title="Платежи"
+        description={
+          <>
+            Платёжный календарь: регулярные платежи (аренда, подписки) генерируются
+            автоматически, разовые вносятся вручную. Зарплата управляется в разделе{' '}
+            <Link href="/salary" className="underline hover:text-foreground">
+              «Зарплата»
+            </Link>{' '}
+            и попадает сюда в общий график. Отметка «Оплатить» создаёт операцию на счёте —
+            план связывается с фактом.
+          </>
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -82,15 +93,6 @@ export default function PlanningPage() {
       />
 
       <div className="space-y-6 px-6 py-4">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Платёжный календарь: регулярные платежи (аренда, подписки) генерируются
-          автоматически, разовые вносятся вручную. Зарплата управляется в разделе{' '}
-          <Link href="/salary" className="underline hover:text-foreground">
-            «Зарплата»
-          </Link>{' '}
-          и попадает сюда в общий график. Отметка «Оплатить» создаёт операцию на счёте —
-          план связывается с фактом.
-        </p>
 
         {/* Прогноз остатка: кассовый разрыв виден заранее. */}
         <ForecastCard wsId={current.id} />

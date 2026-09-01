@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ArrowLeftRight, X, Trash2 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -84,7 +85,7 @@ export default function TransfersPage() {
       key: 'amount',
       header: 'Сумма',
       align: 'right',
-      cell: (t) => <span className="tabular-nums">{formatRub(t.amount)}</span>,
+      cell: (t) => <Money value={t.amount} />,
       className: 'w-[140px]',
     },
     {
@@ -93,7 +94,7 @@ export default function TransfersPage() {
       align: 'right',
       cell: (t) =>
         Number(t.fee) > 0 ? (
-          <span className="tabular-nums text-destructive">{formatRub(t.fee)}</span>
+          <Money value={t.fee} tone="plain" className="text-destructive" />
         ) : (
           <span className="text-muted-foreground">—</span>
         ),

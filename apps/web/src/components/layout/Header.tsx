@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { Search, ChevronRight, ChevronDown, Plus } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
 import { Button } from '@/components/ui/Button';
@@ -66,7 +67,7 @@ function HeaderCash() {
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         Денежные средства
       </span>
-      <span className="num text-sm font-semibold">{formatRub(total)}</span>
+      <Money value={total} className="text-sm font-semibold" />
     </Link>
   );
 }

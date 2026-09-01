@@ -6,6 +6,7 @@ import { BarChart3 } from '@/components/ui/icons';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
@@ -71,6 +72,9 @@ export default function CategoriesReportPage() {
 
       <div className="space-y-4 px-6 py-4">
         {query.isLoading && <Skeleton className="h-80 w-full" />}
+        {query.isError && (
+          <ErrorState error={query.error} onRetry={() => query.refetch()} />
+        )}
 
         {query.data && rows.length === 0 && (
           <Card>

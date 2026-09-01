@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -278,7 +279,7 @@ function TransactionsView() {
           renderGroupHeader={(key, rows) => (
             <span className="flex items-center justify-between">
               <span>{key}</span>
-              <span className="num">{formatRub(sumSigned(rows))}</span>
+              <Money value={sumSigned(rows)} />
             </span>
           )}
           footer={{

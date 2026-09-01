@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -284,7 +285,7 @@ export default function DashboardPage() {
                             просрочено {formatRub(c.overdueByPlan)}
                           </span>
                         )}
-                        <span className="num text-sm font-semibold">{formatRub(c.due)}</span>
+                        <Money value={c.due} className="text-sm font-semibold" />
                       </span>
                     </span>
                     {aging.length > 0 && (

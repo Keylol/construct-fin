@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Plus, Scale, X, Trash2 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -166,7 +167,7 @@ export default function ReconciliationPage() {
                 </h3>
                 <span className="text-xs text-muted-foreground">
                   {data.unreconciled.count} шт · сальдо{' '}
-                  <span className="tabular-nums">{formatRub(data.unreconciled.net)}</span>
+                  <Money value={data.unreconciled.net} />
                 </span>
               </header>
               {data.unreconciled.operations.length === 0 ? (
