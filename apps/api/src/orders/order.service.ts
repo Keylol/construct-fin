@@ -1216,6 +1216,15 @@ export class OrderService {
         where: { workspaceId, orderId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
+      // Строки выписки, которыми платили заказ, возвращаем на разбор. Иначе они
+      // остаются RESOLVED со ссылкой на удалённую проводку: деньги пропадают с
+      // остатка счёта, а вернуть строку из «Входящих» нечем — undo там требует
+      // живой проводки. Заказ удаляют как раз при ошибке, и платёж почти всегда
+      // нужно перепривязать к правильному заказу.
+      await tx.bankStatementLine.updateMany({
+        where: { workspaceId, transactionId: { in: orderTxIds } },
+        data: { status: 'NEW', transactionId: null, adopted: false },
+      });
       // DE6: снимаем ВСЕ вложения заказа (чеки) — и привязанные к заказу, и к его
       // платёжным операциям. Иначе строки висят на удалённом заказе (FK-cascade при
       // soft-delete не срабатывает), а download отдавал бы их по прямой ссылке.
