@@ -2,6 +2,7 @@
 
 import { Fragment, type ReactNode } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from '@/components/ui/icons';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { cn } from '@/lib/cn';
 
 export interface Column<T> {
@@ -105,23 +106,7 @@ export function DataTable<T>({
   }
 
   if (error != null) {
-    return (
-      <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">Не удалось загрузить данные</p>
-        <p className="max-w-md text-sm text-muted-foreground">
-          {error instanceof Error && error.message ? error.message : 'Ошибка соединения с сервером'}
-        </p>
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-sm border border-input bg-background px-4 py-1.5 text-sm font-medium hover:bg-secondary"
-          >
-            Повторить
-          </button>
-        )}
-      </div>
-    );
+    return <ErrorState error={error} onRetry={onRetry} />;
   }
 
   if (!data.length && empty) {

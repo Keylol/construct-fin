@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Plus, Wallet, X, Trash2 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useAccounts,
@@ -118,7 +119,7 @@ export default function AccountsPage() {
       cell: (a) => {
         const b = balances.data?.get(a.id);
         return b != null ? (
-          <span className="font-semibold tabular-nums">{formatRub(b)}</span>
+          <Money value={b} className="font-semibold" />
         ) : (
           <span className="text-muted-foreground">…</span>
         );
@@ -144,7 +145,7 @@ export default function AccountsPage() {
             Итого денежных средств (активные счета)
           </span>
           {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
-          <span className="num text-3xl font-semibold sm:text-4xl">{formatRub(totalMoney)}</span>
+          <Money value={totalMoney} className="text-3xl font-semibold sm:text-4xl" />
         </div>
       )}
       <div className="bg-card border-t border-border">

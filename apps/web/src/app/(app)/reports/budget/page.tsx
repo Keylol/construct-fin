@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormField } from '@/components/ui/FormField';
@@ -128,7 +129,9 @@ export default function BudgetPage() {
         </Button>
       </div>
 
-      {query.isLoading || !r ? (
+      {query.isError ? (
+        <ErrorState error={query.error} onRetry={() => query.refetch()} />
+      ) : query.isLoading || !r ? (
         <Skeleton className="h-64" />
       ) : r.rows.length === 0 ? (
         <EmptyState

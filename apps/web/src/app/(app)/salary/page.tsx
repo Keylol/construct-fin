@@ -126,6 +126,13 @@ export default function SalaryPage() {
     <>
       <PageHeader
         title="Зарплата"
+        description={
+          <>
+            Сотрудники и выплаты им. Регулярная зарплата создаёт ожидаемые выплаты по
+            графику, разовые вносятся вручную. Оплата списывает деньги со счёта и попадает
+            в расходы по статье «Зарплата»; выплаты видны и в общем разделе «Платежи».
+          </>
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -150,11 +157,6 @@ export default function SalaryPage() {
       />
 
       <div className="space-y-6 px-6 py-4">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Сотрудники и выплаты им. Регулярная зарплата создаёт ожидаемые выплаты по
-          графику, разовые вносятся вручную. Оплата списывает деньги со счёта и попадает
-          в расходы по статье «Зарплата»; выплаты видны и в общем разделе «Платежи».
-        </p>
 
         {/* KPI */}
         <div className="grid gap-4 sm:grid-cols-3">

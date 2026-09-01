@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ClipboardList, X, Trash2, Paperclip } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import {
   formatRub,
   normalizePhone,
@@ -345,9 +346,7 @@ function OrdersView() {
       header: 'Оплачено',
       align: 'right',
       cell: (o) => (
-        <span className="text-muted-foreground tabular-nums">
-          {formatRub(o.paidAmount)}
-        </span>
+        <Money value={o.paidAmount} tone="plain" className="text-muted-foreground" />
       ),
       className: 'w-[140px]',
     },
@@ -355,7 +354,7 @@ function OrdersView() {
       key: 'total',
       header: 'Сумма',
       align: 'right',
-      cell: (o) => <span className="font-semibold tabular-nums">{formatRub(o.totalAmount)}</span>,
+      cell: (o) => <Money value={o.totalAmount} className="font-semibold" />,
       className: 'w-[140px]',
     },
   ];
@@ -531,7 +530,7 @@ function OrdersView() {
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{o.number}</span>
-                <span className="font-semibold tabular-nums">{formatRub(o.totalAmount)}</span>
+                <Money value={o.totalAmount} className="font-semibold" />
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {o.client?.name ?? 'Без клиента'}
@@ -1357,19 +1356,19 @@ function OrderFormModal({
           <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Сумма позиций</span>
-              <span className="tabular-nums">{formatRub(toMoneyString(subtotal))}</span>
+              <Money value={toMoneyString(subtotal)} />
             </div>
             {costTotal.gt(0) && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
                   {costIsEstimate ? 'Себестоимость (оценка по складу)' : 'Себестоимость'}
                 </span>
-                <span className="tabular-nums">{formatRub(toMoneyString(costTotal))}</span>
+                <Money value={toMoneyString(costTotal)} />
               </div>
             )}
             <div className="flex justify-between font-semibold">
               <span>Итого к оплате</span>
-              <span className="tabular-nums">{formatRub(toMoneyString(total))}</span>
+              <Money value={toMoneyString(total)} />
             </div>
             {costTotal.gt(0) && (
               <div className="flex justify-between font-semibold text-success">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, X } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -336,7 +337,7 @@ export function PurchaseModal({
             <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
               <div className="flex justify-between font-semibold">
                 <span>Сумма закупки</span>
-                <span className="tabular-nums">{formatRub(total)}</span>
+                <Money value={total} />
               </div>
             </div>
 

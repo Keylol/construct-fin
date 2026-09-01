@@ -12,6 +12,7 @@ import {
   X,
 } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -306,6 +307,14 @@ function Wizard({ wsId }: { wsId: string }) {
     <>
       <PageHeader
         title="Обработка закупки"
+        description={
+          <>
+            PDF-чек (Wildberries, ДНС, Онлайн Трейд) распознаётся автоматически, либо
+            введите позиции вручную. Каждую позицию отправьте на склад или в заказ; любое
+            поле можно поправить. Расход по деньгам учитывается ровно один раз — привязкой
+            к операции карты или новой расходной операцией.
+          </>
+        }
         actions={
           <Button variant="secondary" onClick={() => router.push('/purchases')}>
             К закупкам
@@ -313,12 +322,6 @@ function Wizard({ wsId }: { wsId: string }) {
         }
       />
       <div className="space-y-4 px-6 py-4">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          PDF-чек (Wildberries, ДНС, Онлайн Трейд) распознаётся автоматически, либо
-          введите позиции вручную. Каждую позицию отправьте на склад или в заказ; любое
-          поле можно поправить. Расход по деньгам учитывается ровно один раз — привязкой
-          к операции карты или новой расходной операцией.
-        </p>
 
         {/* Шаг 1: счёт + файл / ручной ввод */}
         <Card className="space-y-3">
@@ -801,7 +804,7 @@ function ReceiptHistory({
     {
       key: 'total',
       header: 'Сумма',
-      cell: (r) => <span className="tabular-nums">{formatRub(r.totalAmount, 2)}</span>,
+      cell: (r) => <Money value={r.totalAmount} />,
       className: 'text-right',
     },
     {

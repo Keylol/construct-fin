@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
+import { Money } from '@/components/ui/Money';
 import { CHART_CATEGORICAL, CHART_OTHER } from '@/lib/chart';
 import type { BreakdownRow } from '@/lib/types';
 
@@ -105,9 +106,7 @@ export function CategoryDonut({
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
               {totalLabel}
             </span>
-            <span className="num max-w-[7.5rem] text-center text-base font-semibold leading-tight">
-              {formatRub(total.toFixed(2))}
-            </span>
+            <Money value={total.toFixed(2)} className="max-w-[7.5rem] text-center text-base font-semibold leading-tight" />
           </div>
         </div>
 
@@ -124,7 +123,7 @@ export function CategoryDonut({
               <span className="shrink-0 tabular-nums text-muted-foreground">
                 {(s.share * 100).toFixed(1)}%
               </span>
-              <span className="num w-[110px] shrink-0 text-right">{formatRub(s.value.toFixed(2))}</span>
+              <Money value={s.value.toFixed(2)} className="w-[110px] shrink-0 text-right" />
             </li>
           ))}
         </ul>

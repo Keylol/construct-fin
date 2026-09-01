@@ -21,11 +21,12 @@ const TABS = [
 
 export default function ReportsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  // Заголовок — имя открытого отчёта, а не слово «Отчёты»: раздел уже назван
+  // в крошках сверху, а вкладок десять и на них легко потерять, где ты.
+  const active = TABS.find((t) => t.href === pathname);
   return (
     <>
-      <PageHeader
-        title="Отчёты"
-      />
+      <PageHeader title={active ? active.label : 'Отчёты'} />
       <nav
         aria-label="Разделы отчётов"
         className="border-b border-border bg-background"

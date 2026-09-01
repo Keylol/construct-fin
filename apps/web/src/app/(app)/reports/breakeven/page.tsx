@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { formatRub } from '@construct/shared';
 import { Calculator } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
@@ -52,7 +54,9 @@ export default function BreakevenPage() {
           постоянные расходы ÷ доля маржинального дохода. Всё, что выше точки, приносит прибыль.
         </p>
 
-        {query.isLoading || !r ? (
+        {query.isError ? (
+        <ErrorState error={query.error} onRetry={() => query.refetch()} />
+      ) : query.isLoading || !r ? (
           <div className="grid gap-4 sm:grid-cols-3">
             <Skeleton className="h-[124px]" />
             <Skeleton className="h-[124px]" />
@@ -95,8 +99,9 @@ export default function BreakevenPage() {
                   <span className="font-medium">
                     Пройдено {achieved != null ? `${achieved}%` : '—'} точки безубыточности
                   </span>
-                  <span className="num text-muted-foreground">
-                    {formatRub(r.revenue)} из {formatRub(r.breakevenRevenue)}
+                  <span className="text-muted-foreground">
+                    <Money value={r.revenue} tone="plain" /> из{' '}
+                    <Money value={r.breakevenRevenue} tone="plain" />
                   </span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-border/60">

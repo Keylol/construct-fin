@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Package, Search, X, Trash2, ShoppingCart } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
@@ -102,7 +103,7 @@ export default function WarehousePage() {
         Number(i.avgCost) === 0 && Number(i.qty) > 0 ? (
           <Badge variant="outline">себестоимость не задана</Badge>
         ) : (
-          <span className="tabular-nums text-muted-foreground">{formatRub(i.avgCost)}</span>
+          <Money value={i.avgCost} tone="plain" className="text-muted-foreground" />
         ),
       className: 'w-[140px]',
     },
@@ -110,7 +111,7 @@ export default function WarehousePage() {
       key: 'value',
       header: 'Стоимость',
       align: 'right',
-      cell: (i) => <span className="font-medium tabular-nums">{formatRub(lineValue(i.qty, i.avgCost))}</span>,
+      cell: (i) => <Money value={lineValue(i.qty, i.avgCost)} className="font-medium" />,
       className: 'w-[140px]',
     },
     {
@@ -441,7 +442,7 @@ function WarehouseItemForm({
                 <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Себестоимость</span>
-                    <span className="tabular-nums">{formatRub(initial.avgCost)}</span>
+                    <Money value={initial.avgCost} />
                   </div>
                 </div>
               ) : Number(initial.qty) > 0 ? (

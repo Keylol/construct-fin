@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toaster';
@@ -33,11 +34,14 @@ const MONTH_NAMES = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
-const STATUS_META: Record<TaxMonthRow['status'], { label: string; cls: string }> = {
-  PAID: { label: 'уплачен', cls: 'bg-success/15 text-success' },
-  PARTIAL: { label: 'частично', cls: 'bg-warning/15 text-warning' },
-  UNPAID: { label: 'не уплачен', cls: 'bg-destructive/15 text-destructive' },
-  NONE: { label: '—', cls: 'bg-secondary text-muted-foreground' },
+const STATUS_META: Record<
+  TaxMonthRow['status'],
+  { label: string; tone: 'success' | 'warning' | 'destructive' | 'muted' }
+> = {
+  PAID: { label: 'уплачен', tone: 'success' },
+  PARTIAL: { label: 'частично', tone: 'warning' },
+  UNPAID: { label: 'не уплачен', tone: 'destructive' },
+  NONE: { label: '—', tone: 'muted' },
 };
 
 /** Диапазон [from,to) месяца в ISO для drill-down в операции (по бизнес-дате). */
@@ -71,6 +75,14 @@ export default function TaxPage() {
     <>
       <PageHeader
         title="Налог"
+        description={
+          <>
+            Налог рассчитывается автоматически по операциям: доход и расход по кассовому
+            методу, 20% с базы (доходы−расходы), минимум 3% с доходов, срок уплаты — до 25-го
+            следующего месяца. Маркировку операции (доход/расход/не учитывать) можно
+            изменить в карточке операции.
+          </>
+        }
         actions={
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Предыдущий год">
@@ -84,12 +96,6 @@ export default function TaxPage() {
         }
       />
       <div className="space-y-4 px-6 py-4">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Налог рассчитывается автоматически по операциям: доход и расход по кассовому
-          методу, 20% с базы (доходы−расходы), минимум 3% с доходов, срок уплаты — до 25-го
-          следующего месяца. Маркировку операции (доход/расход/не учитывать) можно
-          изменить в карточке операции.
-        </p>
 
         {report.isLoading ? (
           <Skeleton className="h-96" />
@@ -97,7 +103,7 @@ export default function TaxPage() {
           <EmptyState icon={Calculator} title="Нет данных" hint="Не удалось загрузить расчёт." />
         ) : (
           <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[1040px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Месяц</th>
@@ -149,9 +155,7 @@ export default function TaxPage() {
                         {formatDate(m.dueDate)}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', status.cls)}>
-                          {status.label}
-                        </span>
+                        <StatusDot tone={status.tone} label={status.label} />
                       </td>
                       <td className="px-3 py-2 text-right">
                         {(m.status === 'UNPAID' || m.status === 'PARTIAL') && (

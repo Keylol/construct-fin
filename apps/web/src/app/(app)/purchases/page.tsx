@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { D, add, toMoneyString, formatRub } from '@construct/shared';
 import { ShoppingCart, RotateCcw, Plus, X, Receipt } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -98,7 +99,7 @@ function PurchasesView() {
       key: 'total',
       header: 'Сумма',
       align: 'right',
-      cell: (p) => <span className="tabular-nums">{formatRub(purchaseTotal(p))}</span>,
+      cell: (p) => <Money value={purchaseTotal(p)} />,
       className: 'w-[130px]',
     },
     {
@@ -186,7 +187,7 @@ function PurchasesView() {
                 <span className="truncate font-medium">
                   {p.supplier?.name ?? 'Без поставщика'}
                 </span>
-                <span className="tabular-nums">{formatRub(purchaseTotal(p))}</span>
+                <Money value={purchaseTotal(p)} />
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="tabular-nums">
@@ -254,7 +255,7 @@ function PurchasesView() {
                 <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
                   <div className="flex justify-between font-semibold">
                     <span>Сумма закупки</span>
-                    <span className="tabular-nums">{formatRub(purchaseTotal(detail))}</span>
+                    <Money value={purchaseTotal(detail)} />
                   </div>
                 </div>
               </>

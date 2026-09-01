@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { formatRub } from '@construct/shared';
 import { Scale } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -43,7 +45,9 @@ export default function BalancePage() {
         обязательства — что бизнес должен; капитал — разница между ними.
       </p>
 
-      {query.isLoading || !b ? (
+      {query.isError ? (
+        <ErrorState error={query.error} onRetry={() => query.refetch()} />
+      ) : query.isLoading || !b ? (
         <div className="grid gap-4 sm:grid-cols-3">
           <Skeleton className="h-[124px]" />
           <Skeleton className="h-[124px]" />
@@ -68,7 +72,7 @@ export default function BalancePage() {
             <Card className="!p-0 overflow-hidden">
               <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
                 <h3 className="font-medium">Активы</h3>
-                <span className="num text-sm font-semibold">{formatRub(b.assets.total)}</span>
+                <Money value={b.assets.total} className="text-sm font-semibold" />
               </header>
               <div className="divide-y divide-border/60">
                 <BalanceRow
@@ -95,9 +99,7 @@ export default function BalancePage() {
               <Card className="!p-0 overflow-hidden">
                 <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
                   <h3 className="font-medium">Обязательства</h3>
-                  <span className="num text-sm font-semibold">
-                    {formatRub(b.liabilities.total)}
-                  </span>
+                  <Money value={b.liabilities.total} className="text-sm font-semibold" />
                 </header>
                 <div className="divide-y divide-border/60">
                   <BalanceRow
@@ -160,7 +162,15 @@ function BalanceRow({
         {label}
         {hint && <span className="ml-2 text-xs text-muted-foreground">{hint}</span>}
       </span>
-      <span className={cn('num shrink-0', nested ? 'text-muted-foreground' : 'font-medium')}>
+      <span
+        className={cn(
+          'num shrink-0',
+          nested ? 'text-muted-foreground' : 'font-medium',
+          // Минус в бухгалтерии виден дважды — скобками и цветом (решение №13):
+          // счёт в минусе не должен теряться среди обычных строк.
+          Number(value) < 0 && 'text-destructive',
+        )}
+      >
         {formatRub(value)}
       </span>
     </>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 // из URL — единый источник; у страничного заголовка своего дубля нет.
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   className?: string;
 }
