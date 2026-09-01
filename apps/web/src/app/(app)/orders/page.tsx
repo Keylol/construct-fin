@@ -36,6 +36,7 @@ import {
   useSetOrderSchedule,
   useOrderTrace,
   useUploadOrderAttachment,
+  useDeleteOrder,
   useDeleteOrderAttachment,
   type OrderItemInput,
   type ScheduleEntryInput,
@@ -1616,6 +1617,7 @@ function OrderDetailModal({
   const finalize = useFinalizeOrder(wsId);
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
+  const removeOrder = useDeleteOrder(wsId);
   // Дата отгрузки спрашивается при закрытии: по ней признаётся выручка и
   // датируется себестоимость. Для заказа, который заносят задним числом,
   // «сегодня» увело бы обе суммы в текущий месяц.
@@ -1624,12 +1626,14 @@ function OrderDetailModal({
   // Правило закрытия — по дате денег: выручка признаётся днём последней оплаты,
   // а не днём, когда до заказа дошли руки. Со «сегодня» по умолчанию прибыль
   // архива уезжала в текущий месяц (та же боль дала поле даты в #135).
+  const payments = useMemo(
+    () => (order?.transactions ?? []).filter((t) => t.kind === 'ORDER_PAYMENT'),
+    [order?.transactions],
+  );
   const lastPaymentDate = useMemo(() => {
-    const dates = (order?.transactions ?? [])
-      .filter((t) => t.kind === 'ORDER_PAYMENT')
-      .map((t) => t.date);
+    const dates = payments.map((t) => t.date);
     return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
-  }, [order?.transactions]);
+  }, [payments]);
   const loadedId = order?.id ?? null;
   useEffect(() => {
     setCloseDate(toLocalDateInput(lastPaymentDate ?? new Date()));
@@ -1656,6 +1660,10 @@ function OrderDetailModal({
   // раскрытая панель показывала бы подсказки от предыдущего.
   useEffect(() => setFindPayment(false), [orderId]);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Удаление заказа — не то же самое, что отмена: отменённый остаётся в истории,
+  // удалённый исчезает вместе с оплатами и чеками. Нужен для заказов, заведённых
+  // по ошибке (тестовые, дубли архива), которые иначе висят в списке навсегда.
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<string | null>(null);
   const [confirmDeletePayment, setConfirmDeletePayment] = useState<string | null>(null);
   const [editSchedule, setEditSchedule] = useState(false);
@@ -2214,6 +2222,14 @@ function OrderDetailModal({
               >
                 Отменить
               </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                Удалить
+              </Button>
               {order.status === 'DONE' ? (
                 <Button
                   variant="secondary"
@@ -2254,6 +2270,14 @@ function OrderDetailModal({
                 disabled={reopen.isPending}
               >
                 {reopen.isPending ? 'Возвращаем в работу…' : 'Вернуть в работу'}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                Удалить
               </Button>
             </ModalFooter>
           )}
@@ -2302,6 +2326,49 @@ function OrderDetailModal({
           setCloseOpen(false);
         }}
         loading={finalize.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Удалить заказ?"
+        confirmText="Удалить заказ"
+        description={
+          order ? (
+            <div className="space-y-2">
+              <p>
+                {order.number}
+                {order.client ? ` · ${order.client.name}` : ''} на {formatRub(order.totalAmount)}{' '}
+                исчезнет из списков и отчётов. Отменить удаление из приложения нельзя.
+              </p>
+              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                {payments.length > 0 && (
+                  <li>
+                    сторнируются оплаты: {payments.length} на {formatRub(order.paidAmount)} — деньги
+                    уйдут и с остатка счёта;
+                  </li>
+                )}
+                {order.status === 'DONE' && (
+                  <li>выручка и себестоимость перестанут учитываться в ОПиУ, склад вернётся;</li>
+                )}
+                {(order.attachments?.length ?? 0) > 0 && (
+                  <li>чеки и документы заказа ({order.attachments?.length}) удалятся насовсем;</li>
+                )}
+                <li>строки выписки, которыми платили, вернутся во «Входящие».</li>
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Если заказ реальный, но сорвался — лучше «Отменить»: он останется в истории.
+              </p>
+            </div>
+          ) : null
+        }
+        onConfirm={async () => {
+          if (!order) return;
+          await removeOrder.mutateAsync(order.id);
+          setConfirmDelete(false);
+          onClose();
+        }}
+        loading={removeOrder.isPending}
       />
 
       <ConfirmDialog
