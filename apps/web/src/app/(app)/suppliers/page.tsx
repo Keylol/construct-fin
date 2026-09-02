@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Truck, Search, X, Trash2, Pencil } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   useCounterparties,
@@ -41,6 +42,9 @@ export default function SuppliersPage() {
   const list = useCounterparties(wsId, debouncedSearch || undefined, false, 'SUPPLIER');
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
+  // «/» — в поиск, «n» — создать: список листают с клавиатуры.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
 
   if (!current) {
     return (
@@ -126,6 +130,7 @@ export default function SuppliersPage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={searchRef}
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

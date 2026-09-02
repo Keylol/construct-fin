@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
 import { OrderFormModal } from '@/components/orders/OrderFormModal';
 import { OrderGroupTile, OrderTile } from '@/components/orders/OrderTile';
@@ -17,6 +17,7 @@ import { StatusDot } from '@/components/ui/StatusDot';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { ClipboardList, Plus, X } from '@/components/ui/icons';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useOrders } from '@/hooks/useOrders';
@@ -139,6 +140,10 @@ function OrdersView() {
   const [openPhone, setOpenPhone] = useState<string | null>(null);
   // Глобальное «+ Создать» → ?new=1 открывает форму заказа.
   useCreateFromUrl(() => setCreating(true));
+
+  // «/» — в поиск, «n» — новый заказ: заведение архива идёт пачкой.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
 
   /**
    * Переход с плитки клиента: ?client=<id> оставляет на экране только его
@@ -266,6 +271,7 @@ function OrdersView() {
         <label className="flex flex-col text-xs text-muted-foreground">
           <span className="pb-1">Поиск</span>
           <Input
+            ref={searchRef}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

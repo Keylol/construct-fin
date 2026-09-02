@@ -115,7 +115,15 @@ export function AttachOrderModal({
 
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()}>
-      <ModalContent size="lg">
+      <ModalContent
+        size="lg"
+        // Разбор «Входящих» — это десятки строк подряд: Cmd/Ctrl+Enter
+        // подтверждает привязку, не уводя руку на мышь.
+        onConfirm={() => {
+          if (!orderId || attach.isPending || (!!overpay && !overpayOk)) return;
+          void submit();
+        }}
+      >
         <ModalHeader>
           <ModalTitle>Привязать поступление к заказу</ModalTitle>
         </ModalHeader>

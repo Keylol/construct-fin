@@ -21,6 +21,7 @@ import {
 import { toast } from '@/components/ui/Toaster';
 import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useUrlDialog } from '@/hooks/useUrlDialog';
@@ -49,6 +50,8 @@ function PurchasesView() {
   const voidPurchase = useVoidPurchase(wsId ?? '');
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
   const [creating, setCreating] = useState(false);
+  // Поиска на экране нет — только «n» на создание закупки.
+  useListHotkeys({ onNew: () => setCreating(true) });
   // Открытая закупка — в адресе (?purchase=<id>), как и заказ. Сам объект
   // берём из уже загруженного списка: отдельного запроса на одну закупку
   // во фронте нет, а список приходит целиком.
