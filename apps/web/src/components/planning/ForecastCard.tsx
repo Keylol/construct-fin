@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
+import { Money } from '@/components/ui/Money';
 import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useForecast } from '@/hooks/usePlanning';
@@ -79,7 +80,7 @@ export function ForecastCard({ wsId }: { wsId: string }) {
           ) : (
             <p className="text-sm text-muted-foreground">
               На горизонте {f.horizonDays} дней остаток в минус не уходит: старт{' '}
-              <b className="num text-foreground">{formatRub(f.opening)}</b>, оттоки{' '}
+              <b className="num text-foreground"><Money value={f.opening} /></b>, оттоки{' '}
               {formatRub(f.totals.out)}, ожидаемые поступления {formatRub(f.totals.in)}.
             </p>
           )}

@@ -125,7 +125,7 @@ export default function BalancePage() {
                       Number(b.equity) < 0 && 'text-destructive',
                     )}
                   >
-                    {formatRub(b.equity)}
+                    <Money value={b.equity} />
                   </span>
                 </header>
               </Card>
@@ -171,7 +171,7 @@ function BalanceRow({
           Number(value) < 0 && 'text-destructive',
         )}
       >
-        {formatRub(value)}
+        <Money value={value} />
       </span>
     </>
   );

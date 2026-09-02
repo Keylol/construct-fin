@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ChevronLeft, ClipboardList, UserRound, ArrowRight } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
@@ -247,12 +248,8 @@ export default function ClientCardPage() {
                           {PAY_LABEL[o.paymentStatus]}
                         </Badge>
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                        {formatRub(o.paidAmount)}
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium tabular-nums">
-                        {formatRub(o.totalAmount)}
-                      </td>
+                      <td className="px-4 py-2 text-right text-muted-foreground"><Money value={o.paidAmount} tone="plain" /></td>
+                      <td className="px-4 py-2 text-right font-medium"><Money value={o.totalAmount} /></td>
                     </tr>
                   ))}
                 </tbody>

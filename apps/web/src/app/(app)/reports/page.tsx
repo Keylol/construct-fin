@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { BarChart3 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
@@ -289,7 +290,7 @@ export default function PnlReportPage() {
                             sub >= 0 ? 'text-success' : 'text-destructive',
                           )}
                         >
-                          {formatRub(sub.toFixed(2))}
+                          <Money value={sub.toFixed(2)} />
                         </td>
                       </tr>
                     );
@@ -326,19 +327,15 @@ export default function PnlReportPage() {
                         {b.label}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-success">
-                      {formatRub(b.income)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-destructive">
-                      {formatRub(b.expense)}
-                    </td>
+                    <td className="px-4 py-2 text-right text-success"><Money value={b.income} tone="plain" /></td>
+                    <td className="px-4 py-2 text-right text-destructive"><Money value={b.expense} tone="plain" /></td>
                     <td
                       className={cn(
                         'px-4 py-2 text-right font-medium tabular-nums',
                         Number(b.net) >= 0 ? 'text-success' : 'text-destructive',
                       )}
                     >
-                      {formatRub(b.net)}
+                      <Money value={b.net} />
                     </td>
                   </tr>
                 ))}
@@ -347,15 +344,9 @@ export default function PnlReportPage() {
                 <tfoot className="bg-secondary/40">
                   <tr className="font-semibold">
                     <td className="px-4 py-2">Итого</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {formatRub(totals.income)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {formatRub(totals.expense)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {formatRub(totals.net)}
-                    </td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.income} /></td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.expense} /></td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.net} /></td>
                   </tr>
                 </tfoot>
               )}

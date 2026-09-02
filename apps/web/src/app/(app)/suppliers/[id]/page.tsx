@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ChevronLeft, Package, Truck, ArrowRight } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub, add, D, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
@@ -177,9 +178,7 @@ export default function SupplierCardPage() {
                           {p.note ?? '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-right font-medium tabular-nums">
-                        {formatRub(purchaseTotal(p))}
-                      </td>
+                      <td className="px-4 py-2 text-right font-medium"><Money value={purchaseTotal(p)} /></td>
                     </tr>
                   ))}
                 </tbody>

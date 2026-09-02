@@ -164,7 +164,7 @@ export default function TransfersPage() {
                 </div>
               </div>
               <div className="shrink-0 text-sm font-medium tabular-nums">
-                {formatRub(t.amount)}
+                <Money value={t.amount} />
               </div>
             </div>
           )}

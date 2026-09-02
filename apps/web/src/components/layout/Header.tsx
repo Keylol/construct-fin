@@ -11,7 +11,7 @@ import { NAV_ITEMS } from './nav-items';
 import { Button } from '@/components/ui/Button';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTotalCash } from '@/hooks/useTotalCash';
-import { formatRub } from '@construct/shared';
+
 import { CreateActionsContent, CREATE_POPOVER_CLASSES } from './create-actions';
 
 interface HeaderProps {

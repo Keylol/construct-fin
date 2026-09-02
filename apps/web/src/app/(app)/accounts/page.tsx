@@ -108,7 +108,7 @@ export default function AccountsPage() {
       key: 'opening',
       header: 'Начальный остаток',
       align: 'right',
-      cell: (a) => <span className="text-muted-foreground">{formatRub(a.openingBalance)}</span>,
+      cell: (a) => <span className="text-muted-foreground"><Money value={a.openingBalance} /></span>,
       className: 'w-[170px]',
     },
     {

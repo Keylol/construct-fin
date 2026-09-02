@@ -7,6 +7,7 @@
  * и карточка ссылались на один словарь, а не расходились по копиям.
  */
 import type { BadgeProps } from '@/components/ui/Badge';
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import type { Order, OrderPaymentState, OrderStatus, ScheduleEntryStatus } from '@/lib/types';
 
@@ -66,7 +67,8 @@ export function Row({
   tone,
 }: {
   label: string;
-  value: string;
+  /** Обычно <Money/>: суммы показываются по общим правилам, а не строкой. */
+  value: ReactNode;
   strong?: boolean;
   tone?: 'pos' | 'neg';
 }) {

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { formatRub } from '@construct/shared';
 import { Calculator, ChevronLeft, ChevronRight, Check } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -135,7 +136,7 @@ export default function TaxPage() {
                           href={`/transactions?from=${range.from}&to=${range.to}&type=INCOME` as Parameters<typeof Link>[0]['href']}
                           className="hover:text-primary hover:underline"
                         >
-                          {formatRub(m.income, 2)}
+                          <Money value={m.income} />
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
@@ -143,14 +144,14 @@ export default function TaxPage() {
                           href={`/transactions?from=${range.from}&to=${range.to}&type=EXPENSE` as Parameters<typeof Link>[0]['href']}
                           className="hover:text-primary hover:underline"
                         >
-                          {formatRub(m.expense, 2)}
+                          <Money value={m.expense} />
                         </Link>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatRub(m.base, 2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{formatRub(m.taxCalc, 2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{formatRub(m.taxMin, 2)}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatRub(m.taxDue, 2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatRub(m.taxPaid, 2)}</td>
+                      <td className="px-3 py-2 text-right"><Money value={m.base} /></td>
+                      <td className="px-3 py-2 text-right text-muted-foreground"><Money value={m.taxCalc} tone="plain" /></td>
+                      <td className="px-3 py-2 text-right text-muted-foreground"><Money value={m.taxMin} tone="plain" /></td>
+                      <td className="px-3 py-2 text-right font-semibold"><Money value={m.taxDue} /></td>
+                      <td className="px-3 py-2 text-right"><Money value={m.taxPaid} /></td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
                         {formatDate(m.dueDate)}
                       </td>
@@ -171,11 +172,11 @@ export default function TaxPage() {
               <tfoot>
                 <tr className="border-t border-border font-semibold">
                   <td className="px-3 py-2">Год</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatRub(rep.totals.income, 2)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatRub(rep.totals.expense, 2)}</td>
+                  <td className="px-3 py-2 text-right"><Money value={rep.totals.income} /></td>
+                  <td className="px-3 py-2 text-right"><Money value={rep.totals.expense} /></td>
                   <td colSpan={3} />
-                  <td className="px-3 py-2 text-right tabular-nums">{formatRub(rep.totals.taxDue, 2)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatRub(rep.totals.taxPaid, 2)}</td>
+                  <td className="px-3 py-2 text-right"><Money value={rep.totals.taxDue} /></td>
+                  <td className="px-3 py-2 text-right"><Money value={rep.totals.taxPaid} /></td>
                   <td colSpan={3} />
                 </tr>
               </tfoot>
@@ -247,7 +248,7 @@ function PayDialog({
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
-            К уплате <b className="tabular-nums">{formatRub(row.taxDue, 2)}</b>
+            К уплате <b className="tabular-nums"><Money value={row.taxDue} /></b>
             {Number(row.taxPaid) > 0 && (
               <> · уже уплачено {formatRub(row.taxPaid, 2)}</>
             )}
