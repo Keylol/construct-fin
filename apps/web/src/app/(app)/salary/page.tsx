@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormField } from '@/components/ui/FormField';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Badge } from '@/components/ui/Badge';
@@ -174,7 +175,9 @@ export default function SalaryPage() {
         {/* Сотрудники */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Сотрудники</h2>
-          {employees.isLoading ? (
+          {employees.isError ? (
+            <ErrorState error={employees.error} onRetry={() => employees.refetch()} />
+          ) : employees.isLoading ? (
             <Skeleton className="h-24" />
           ) : employeeRows.length === 0 ? (
             <EmptyState

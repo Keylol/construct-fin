@@ -23,6 +23,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -139,7 +140,9 @@ export default function CategoriesPage() {
 
       <div className="px-6 pb-6">
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          {tree.isLoading ? (
+          {tree.isError ? (
+            <ErrorState error={tree.error} onRetry={() => tree.refetch()} />
+          ) : tree.isLoading ? (
             <div className="space-y-2 p-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 w-full" />

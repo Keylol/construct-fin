@@ -20,6 +20,7 @@ import { Sparkline } from '@/components/ui/Sparkline';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { TransactionListItem } from '@/components/transactions/TransactionListItem';
@@ -161,7 +162,11 @@ export default function DashboardPage() {
           )}
 
           {/* Денежный поток за месяц + тренд 12 мес (№24). */}
-          {summary.isLoading || !summary.data ? (
+          {summary.isError ? (
+            <div className="sm:col-span-2 lg:col-span-3">
+              <ErrorState error={summary.error} onRetry={() => summary.refetch()} />
+            </div>
+          ) : summary.isLoading || !summary.data ? (
             <>
               <Skeleton className="h-[124px]" />
               <Skeleton className="h-[124px]" />

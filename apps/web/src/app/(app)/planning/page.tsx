@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
@@ -114,7 +115,9 @@ export default function PlanningPage() {
         {/* Ближайшие платежи */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Ближайшие платежи</h2>
-          {upcoming.isLoading ? (
+          {upcoming.isError ? (
+            <ErrorState error={upcoming.error} onRetry={() => upcoming.refetch()} />
+          ) : upcoming.isLoading ? (
             <Skeleton className="h-40" />
           ) : !up || up.items.length === 0 ? (
             <EmptyState
