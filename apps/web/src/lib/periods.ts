@@ -3,6 +3,8 @@
  * месяц начинается с 1-го (российский стандарт, согласовано в блице).
  */
 
+import type { PeriodPreset } from '@/lib/types';
+
 export type PeriodKey = 'today' | 'week' | 'month' | 'quarter' | 'year' | 'all';
 
 export interface DateRange {
@@ -91,6 +93,101 @@ export function rangeFor(key: PeriodKey, now: Date = new Date()): DateRange {
   }
   // year
   return { from: toIso(tzInstant(p.y, 0, 1)), to: toIso(endOfDay(now)) };
+}
+
+/**
+ * Пресеты отчётов → диапазон дат. Зеркало `resolvePreset` из
+ * `apps/api/src/reports/period.ts`: отчёты отдают на бэк сам пресет, а список
+ * операций фильтруется по from/to, и границы обязаны совпадать до секунды —
+ * иначе клик из отчёта в операции показывает другую сумму.
+ */
+export function rangeForPreset(preset: PeriodPreset, now: Date = new Date()): DateRange {
+  const p = tzParts(now);
+  const startOfMonthIso = (y: number, mo: number) => toIso(tzInstant(y, mo, 1));
+  const endOfMonthIso = (y: number, mo: number) =>
+    toIso(tzInstant(y, mo + 1, 0, 23, 59, 59, 999));
+  const nowIso = toIso(endOfDay(now));
+
+  switch (preset) {
+    case 'this-month':
+      return { from: startOfMonthIso(p.y, p.mo), to: nowIso };
+    case 'prev-month':
+      return { from: startOfMonthIso(p.y, p.mo - 1), to: endOfMonthIso(p.y, p.mo - 1) };
+    case 'this-quarter':
+      return { from: startOfMonthIso(p.y, Math.floor(p.mo / 3) * 3), to: nowIso };
+    case 'prev-quarter': {
+      const q = Math.floor(p.mo / 3);
+      return {
+        from: startOfMonthIso(p.y, q * 3 - 3),
+        to: endOfMonthIso(p.y, q * 3 - 1),
+      };
+    }
+    case 'this-year':
+    case 'ytd':
+      return { from: startOfMonthIso(p.y, 0), to: nowIso };
+    case 'prev-year':
+      return { from: startOfMonthIso(p.y - 1, 0), to: endOfMonthIso(p.y - 1, 11) };
+    case 'last-30d':
+      return { from: toIso(tzInstant(p.y, p.mo, p.d - 29, 0, 0, 0, 0)), to: nowIso };
+    case 'last-90d':
+      return { from: toIso(tzInstant(p.y, p.mo, p.d - 89, 0, 0, 0, 0)), to: nowIso };
+    case 'last-12m':
+    default:
+      return { from: startOfMonthIso(p.y, p.mo - 11), to: nowIso };
+  }
+}
+
+/**
+ * Период списка операций: пресеты отчётов плюс три коротких, которых в отчётах
+ * нет («сегодня», «неделя», «всё время»). Один список на экран — чтобы период
+ * выбирался везде одинаково, а не тремя разными наборами слов.
+ */
+export type AnyPeriod = PeriodKey | PeriodPreset;
+
+export const ANY_PERIOD_LABELS: Record<AnyPeriod, string> = {
+  today: 'Сегодня',
+  week: 'Неделя',
+  'this-month': 'Этот месяц',
+  'prev-month': 'Прошлый месяц',
+  'this-quarter': 'Этот квартал',
+  'prev-quarter': 'Прошлый квартал',
+  'this-year': 'Этот год',
+  ytd: 'С начала года',
+  'prev-year': 'Прошлый год',
+  'last-30d': '30 дней',
+  'last-90d': '90 дней',
+  'last-12m': '12 месяцев',
+  all: 'Всё время',
+  // Ключи старого набора остаются валидными: по ним приходят сохранённый выбор
+  // из localStorage и ссылки, сделанные до объединения.
+  month: 'Этот месяц',
+  quarter: 'Этот квартал',
+  year: 'Этот год',
+};
+
+/** Порядок в выпадающем списке: от короткого к длинному. */
+export const ANY_PERIOD_ORDER: AnyPeriod[] = [
+  'today',
+  'week',
+  'this-month',
+  'prev-month',
+  'this-quarter',
+  'prev-quarter',
+  'this-year',
+  'ytd',
+  'prev-year',
+  'last-30d',
+  'last-90d',
+  'last-12m',
+  'all',
+];
+
+const OLD_KEYS: PeriodKey[] = ['today', 'week', 'month', 'quarter', 'year', 'all'];
+
+export function rangeForAny(p: AnyPeriod, now: Date = new Date()): DateRange {
+  return (OLD_KEYS as string[]).includes(p)
+    ? rangeFor(p as PeriodKey, now)
+    : rangeForPreset(p as PeriodPreset, now);
 }
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {

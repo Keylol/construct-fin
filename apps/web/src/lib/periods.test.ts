@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rangeFor, toLocalDateInput, fromLocalDateInput } from './periods';
+import { rangeFor, rangeForPreset, toLocalDateInput, fromLocalDateInput } from './periods';
 
 /**
  * E4 (Трек E) + M4: юниты на рабочие периоды. rangeFor считает границы в
@@ -82,5 +82,57 @@ describe('toLocalDateInput / fromLocalDateInput', () => {
     // Полдень 2026-03-09 в UTC+5 == 07:00:00Z. Абсолютный инстант не зависит от
     // пояса раннера: западнее UTC+5 наивный `T12:00:00` дал бы др. сутки в ISO.
     expect(fromLocalDateInput('2026-03-09')).toBe('2026-03-09T07:00:00.000Z');
+  });
+});
+
+/**
+ * rangeForPreset — зеркало `resolvePreset` бэкенда (apps/api/src/reports/period.ts).
+ * Границы обязаны совпадать до секунды: отчёт считает по пресету на сервере, а
+ * клик из него в «Операции» фильтрует по from/to с клиента. Разъедься они —
+ * список покажет другую сумму, чем отчёт, и доверие к цифрам кончится.
+ */
+describe('rangeForPreset (совпадение с бэкендом)', () => {
+  it("'this-month' → с 1-го числа по конец текущих суток", () => {
+    const r = rangeForPreset('this-month', NOW);
+    expect(tz5YMD(r.from!)).toBe('2026-06-01');
+    expect(tz5Time(r.from!)).toBe('00:00:00.000');
+    expect(tz5YMD(r.to!)).toBe('2026-06-16');
+    expect(tz5Time(r.to!)).toBe('23:59:59.999');
+  });
+
+  it("'prev-month' → весь май", () => {
+    const r = rangeForPreset('prev-month', NOW);
+    expect(tz5YMD(r.from!)).toBe('2026-05-01');
+    expect(tz5YMD(r.to!)).toBe('2026-05-31');
+    expect(tz5Time(r.to!)).toBe('23:59:59.999');
+  });
+
+  it("'this-quarter' → с 1 апреля (июнь — второй квартал)", () => {
+    expect(tz5YMD(rangeForPreset('this-quarter', NOW).from!)).toBe('2026-04-01');
+  });
+
+  it("'prev-quarter' → январь–март", () => {
+    const r = rangeForPreset('prev-quarter', NOW);
+    expect(tz5YMD(r.from!)).toBe('2026-01-01');
+    expect(tz5YMD(r.to!)).toBe('2026-03-31');
+  });
+
+  it("'prev-year' → весь прошлый год", () => {
+    const r = rangeForPreset('prev-year', NOW);
+    expect(tz5YMD(r.from!)).toBe('2025-01-01');
+    expect(tz5YMD(r.to!)).toBe('2025-12-31');
+  });
+
+  it("'last-30d' → 30 суток включительно (18 мая → 16 июня)", () => {
+    expect(tz5YMD(rangeForPreset('last-30d', NOW).from!)).toBe('2026-05-18');
+  });
+
+  it("'last-12m' → с 1 июля прошлого года", () => {
+    expect(tz5YMD(rangeForPreset('last-12m', NOW).from!)).toBe('2025-07-01');
+  });
+
+  it("'this-year' и 'ytd' дают один диапазон", () => {
+    expect(rangeForPreset('this-year', NOW)).toEqual(rangeForPreset('ytd', NOW));
+    expect(tz5YMD(rangeForPreset('ytd', NOW).from!)).toBe('2026-01-01');
   });
 });
