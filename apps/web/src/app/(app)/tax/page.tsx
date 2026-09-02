@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -98,10 +99,12 @@ export default function TaxPage() {
       />
       <div className="space-y-4 px-6 py-4">
 
-        {report.isLoading ? (
+        {report.isError ? (
+          <ErrorState error={report.error} onRetry={() => report.refetch()} />
+        ) : report.isLoading ? (
           <Skeleton className="h-96" />
         ) : !rep ? (
-          <EmptyState icon={Calculator} title="Нет данных" hint="Не удалось загрузить расчёт." />
+          <EmptyState icon={Calculator} title="Нет данных" hint="Расчёт за этот год пуст." />
         ) : (
           <Card className="overflow-x-auto p-0">
             <table className="w-full min-w-[1040px] text-sm">

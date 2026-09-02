@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
@@ -175,7 +176,9 @@ export default function InboxPage() {
           </>
         )}
 
-        {inbox.isLoading ? (
+        {inbox.isError ? (
+          <ErrorState error={inbox.error} onRetry={() => inbox.refetch()} />
+        ) : inbox.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-20" />
             <Skeleton className="h-20" />

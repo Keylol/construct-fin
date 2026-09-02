@@ -5,6 +5,7 @@ import { Plus, Filter, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -223,6 +224,8 @@ export default function RulesPage() {
           columns={columns}
           rowKey={(r) => r.id}
           loading={rules.isLoading}
+          error={rules.error}
+          onRetry={() => rules.refetch()}
           onRowClick={openEdit}
           empty={
             <EmptyState
