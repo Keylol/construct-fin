@@ -249,7 +249,7 @@ function PurchasesView() {
                         </span>
                         <span className="whitespace-nowrap text-muted-foreground tabular-nums">
                           {Number(l.qty)} × {formatRub(l.unitPrice)} ={' '}
-                          <span className="font-medium text-foreground">{formatRub(l.lineTotal)}</span>
+                          <span className="font-medium text-foreground"><Money value={l.lineTotal} /></span>
                         </span>
                       </div>
                     ))}

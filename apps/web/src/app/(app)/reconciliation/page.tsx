@@ -225,9 +225,7 @@ export default function ReconciliationPage() {
                       <tr key={c.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-2 tabular-nums">{formatDate(c.date)}</td>
                         <td className="px-4 py-2 text-muted-foreground">{c.note ?? '—'}</td>
-                        <td className="px-4 py-2 text-right font-medium tabular-nums">
-                          {formatRub(c.actualBalance)}
-                        </td>
+                        <td className="px-4 py-2 text-right font-medium"><Money value={c.actualBalance} /></td>
                         <td className="px-4 py-2 text-right">
                           <Button
                             variant="ghost"

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Row } from '@/components/orders/order-shared';
 import { Button } from '@/components/ui/Button';
+import { Money } from '@/components/ui/Money';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { toast } from '@/components/ui/Toaster';
@@ -159,8 +160,8 @@ export function ScheduleModal({
           </Button>
 
           <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
-            <Row label="Сумма графика" value={formatRub(toMoneyString(planned))} />
-            <Row label="Итог заказа" value={formatRub(order.totalAmount)} />
+            <Row label="Сумма графика" value={<Money value={toMoneyString(planned)} />} />
+            <Row label="Итог заказа" value={<Money value={order.totalAmount} />} />
             {!matches && planned.gt(0) && (
               <p className="text-xs text-amber-600">
                 Суммы не сходятся — график сохранится, но карточка будет предупреждать.

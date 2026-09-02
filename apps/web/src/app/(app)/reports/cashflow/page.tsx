@@ -202,12 +202,8 @@ export default function CashflowReportPage() {
                             p.label
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-success">
-                          {formatRub(p.inflow)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-destructive">
-                          {formatRub(p.outflow)}
-                        </td>
+                        <td className="px-3 py-2 text-right text-success"><Money value={p.inflow} tone="plain" /></td>
+                        <td className="px-3 py-2 text-right text-destructive"><Money value={p.outflow} tone="plain" /></td>
                         <td
                           className={`px-3 py-2 text-right font-medium tabular-nums ${
                             Number(p.balance) < 0 ? 'text-destructive' : ''
@@ -218,7 +214,7 @@ export default function CashflowReportPage() {
                               : undefined
                           }
                         >
-                          {formatRub(p.balance)}
+                          <Money value={p.balance} />
                         </td>
                       </tr>
                     ))}

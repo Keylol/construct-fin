@@ -2,6 +2,7 @@
 
 import { formatRub } from '@construct/shared';
 import { Check, Pencil, RotateCcw } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { toast } from '@/components/ui/Toaster';
@@ -60,7 +61,7 @@ export function PlannedRow({
           {subtitle && ` · ${subtitle}`}
         </div>
       </div>
-      <div className="text-right text-sm font-semibold tabular-nums">{formatRub(p.amount, 2)}</div>
+      <div className="text-right text-sm font-semibold tabular-nums"><Money value={p.amount} /></div>
       <div className="flex shrink-0 items-center gap-1">
         <Button size="sm" onClick={onPay}>
           <Check className="h-4 w-4" /> Оплатить
@@ -97,7 +98,7 @@ export function PaidRow({ p, wsId }: { p: PlannedPayment; wsId: string }) {
         </div>
       </div>
       <div className="text-right text-sm tabular-nums text-muted-foreground">
-        {formatRub(p.amount, 2)}
+        <Money value={p.amount} />
       </div>
       <Button
         variant="ghost"
@@ -147,7 +148,7 @@ export function SummaryCard({
           tone === 'destructive' ? 'text-destructive' : 'text-warning',
         )}
       >
-        {formatRub(sum, 2)}
+        <Money value={sum} />
       </div>
     </Card>
   );

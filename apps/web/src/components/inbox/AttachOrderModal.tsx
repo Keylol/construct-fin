@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { useOrders } from '@/hooks/useOrders';
 import { useAttachOrderInbox } from '@/hooks/useInbox';
 import type { InboxLine, Order } from '@/lib/types';
@@ -136,9 +137,9 @@ export function AttachOrderModal({
           </div>
           {base && fee ? (
             <div className="rounded-md border border-border bg-background p-3 text-xs text-muted-foreground">
-              Банк удержал комиссию <span className="font-semibold text-foreground">{formatRub(fee, 2)}</span>{' '}
+              Банк удержал комиссию <span className="font-semibold text-foreground"><Money value={fee} /></span>{' '}
               внутри этого возмещения. В заказ зачтётся{' '}
-              <span className="font-semibold text-foreground">{formatRub(base.credited, 2)}</span>, комиссия пройдёт
+              <span className="font-semibold text-foreground"><Money value={base.credited} /></span>, комиссия пройдёт
               расходом «Банковские услуги» той же датой — остаток по счёту не изменится.
             </div>
           ) : null}
@@ -159,8 +160,8 @@ export function AttachOrderModal({
           {remaining && applied && (
             <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
               Остаток по заказу{' '}
-              <span className="font-semibold text-foreground">{formatRub(remaining, 2)}</span> → зачтётся{' '}
-              <span className="font-semibold text-foreground">{formatRub(applied.credited, 2)}</span>
+              <span className="font-semibold text-foreground"><Money value={remaining} /></span> → зачтётся{' '}
+              <span className="font-semibold text-foreground"><Money value={applied.credited} /></span>
             </div>
           )}
 
@@ -199,9 +200,9 @@ export function AttachOrderModal({
               </label>
               <p className="text-xs text-muted-foreground">
                 Строка меньше остатка заказа на{' '}
-                <span className="font-semibold text-foreground">{formatRub(shortfall, 2)}</span>. С
+                <span className="font-semibold text-foreground"><Money value={shortfall} /></span>. С
                 галкой в заказ зачтётся{' '}
-                <span className="font-semibold text-foreground">{formatRub(remaining, 2)}</span>, а
+                <span className="font-semibold text-foreground"><Money value={remaining} /></span>, а
                 разница пройдёт расходом «Комиссия рассрочки» — заказ закроется, на счёт сядет ровно{' '}
                 {formatRub(line.amount, 2)}. Без галки заказ останется недоплаченным.
               </p>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { formatRub } from '@construct/shared';
 import { ChevronLeft, ChevronRight, Pencil, Plus, Tag, Trash2 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
@@ -251,7 +252,7 @@ function BudgetRowView({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) 
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className={cn('num text-sm', row.over && 'font-semibold text-destructive')}>
-            {formatRub(row.fact)}
+            <Money value={row.fact} />
           </span>
           <span className="text-xs text-muted-foreground">/ {formatRub(row.amount)}</span>
           <span

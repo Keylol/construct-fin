@@ -216,7 +216,7 @@ export default function WarehousePage() {
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-[10px] uppercase text-muted-foreground">Стоимость</div>
-                <div className="text-sm font-medium tabular-nums">{formatRub(lineValue(i.qty, i.avgCost))}</div>
+                <div className="text-sm font-medium tabular-nums"><Money value={lineValue(i.qty, i.avgCost)} /></div>
               </div>
             </div>
           )}
@@ -513,9 +513,7 @@ function WarehouseItemForm({
                           <td className="px-3 py-1.5 text-right tabular-nums">
                             {Number(l.qtyRemaining)} из {Number(l.qtyInitial)} {initial.unit}
                           </td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                            {formatRub(l.unitCost)}
-                          </td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground"><Money value={l.unitCost} tone="plain" /></td>
                         </tr>
                       ))}
                     </tbody>

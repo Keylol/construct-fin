@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
@@ -134,19 +135,15 @@ export default function MarginReportPage() {
                           {r.qty}
                         </td>
                       )}
-                      <td className="px-4 py-2 text-right tabular-nums text-success">
-                        {formatRub(r.revenue)}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums text-destructive">
-                        {formatRub(r.cogs)}
-                      </td>
+                      <td className="px-4 py-2 text-right text-success"><Money value={r.revenue} tone="plain" /></td>
+                      <td className="px-4 py-2 text-right text-destructive"><Money value={r.cogs} tone="plain" /></td>
                       <td
                         className={cn(
                           'px-4 py-2 text-right font-medium tabular-nums',
                           Number(r.margin) >= 0 ? 'text-success' : 'text-destructive',
                         )}
                       >
-                        {formatRub(r.margin)}
+                        <Money value={r.margin} />
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
                         {r.marginPct}%
@@ -160,9 +157,9 @@ export default function MarginReportPage() {
                   <tr className="font-semibold">
                     <td className="px-4 py-2">Итого</td>
                     {isProduct && <td />}
-                    <td className="px-4 py-2 text-right tabular-nums">{formatRub(totals.revenue)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{formatRub(totals.cogs)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{formatRub(totals.margin)}</td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.revenue} /></td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.cogs} /></td>
+                    <td className="px-4 py-2 text-right"><Money value={totals.margin} /></td>
                     <td className="px-4 py-2 text-right tabular-nums">{totals.marginPct}%</td>
                   </tr>
                 </tfoot>

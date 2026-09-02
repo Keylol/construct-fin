@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { formatRub } from '@construct/shared';
 import { Pencil, Plus, Repeat, Users } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -395,7 +396,7 @@ function SalaryRecurringRow({
           {r.nextDueDate && r.isActive && ` · след. ${formatDate(r.nextDueDate)}`}
         </div>
       </div>
-      <div className="text-right text-sm font-semibold tabular-nums">{formatRub(r.amount, 2)}</div>
+      <div className="text-right text-sm font-semibold tabular-nums"><Money value={r.amount} /></div>
       <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="sm" onClick={toggleActive} disabled={update.isPending}>
           {r.isActive ? 'Пауза' : 'Включить'}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BarChart3, ChevronRight } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
@@ -191,11 +192,9 @@ function FragmentRow({
             <span className="text-xs text-muted-foreground">({client.orders.length})</span>
           </span>
         </td>
-        <td className="px-4 py-2 text-right tabular-nums">{formatRub(client.buckets['0-30'])}</td>
-        <td className="px-4 py-2 text-right tabular-nums">{formatRub(client.buckets['30-60'])}</td>
-        <td className="px-4 py-2 text-right tabular-nums text-destructive">
-          {formatRub(client.buckets['60+'])}
-        </td>
+        <td className="px-4 py-2 text-right"><Money value={client.buckets['0-30']} /></td>
+        <td className="px-4 py-2 text-right"><Money value={client.buckets['30-60']} /></td>
+        <td className="px-4 py-2 text-right text-destructive"><Money value={client.buckets['60+']} tone="plain" /></td>
         <td className="px-4 py-2 text-right font-medium tabular-nums">
           {formatRub(client.due)}
           {client.overdueByPlan !== '0.00' && (
@@ -221,7 +220,7 @@ function FragmentRow({
               оплачено {formatRub(o.paid)} из {formatRub(o.total)}
             </td>
             <td className={cn('px-4 py-1.5 text-right tabular-nums', BUCKET_TONE[o.bucket])}>
-              {formatRub(o.due)}
+              <Money value={o.due} />
             </td>
           </tr>
         ))}

@@ -6,6 +6,7 @@ import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
 import { ScheduleModal } from '@/components/orders/ScheduleModal';
 import { PAY_LABEL, PAY_TONE, Row, SCHED_LABEL, SCHED_VARIANT, STATUS_LABEL, STATUS_TONE } from '@/components/orders/order-shared';
 import { Badge } from '@/components/ui/Badge';
+import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
@@ -220,25 +221,21 @@ export function OrderDetailModal({
                             {it.margin?.unitCost ? (
                               <>
                                 {it.margin.costSource === 'estimate' && '≈ '}
-                                {formatRub(it.margin.unitCost)}
+                                <Money value={it.margin.unitCost} tone="plain" />
                               </>
                             ) : (
                               '—'
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatRub(it.unitPrice)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatRub(it.lineTotal)}
-                          </td>
+                          <td className="px-3 py-2 text-right"><Money value={it.unitPrice} /></td>
+                          <td className="px-3 py-2 text-right"><Money value={it.lineTotal} /></td>
                           {/* Маржа строки — с бэкенда (netQty за вычетом возвратов). */}
                           <td className="px-3 py-2 text-right tabular-nums">
                             {it.margin ? (
                               <>
                                 <div>
                                   {it.margin.costSource === 'estimate' && '≈ '}
-                                  {formatRub(it.margin.margin)}
+                                  <Money value={it.margin.margin} />
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                   {it.margin.marginPct}%
@@ -256,26 +253,28 @@ export function OrderDetailModal({
 
                 {/* Totals */}
                 <div className="space-y-1 text-sm">
-                  <Row label="Сумма позиций" value={formatRub(order.subtotal)} />
+                  <Row label="Сумма позиций" value={<Money value={order.subtotal} />} />
                   {D(order.discountAmount).gt(0) && (
-                    <Row label="Скидка" value={`−${formatRub(order.discountAmount)}`} />
+                    <Row label="Скидка" value={<>−<Money value={order.discountAmount} /></>} />
                   )}
-                  <Row label="Итого" value={formatRub(order.totalAmount)} strong />
+                  <Row label="Итого" value={<Money value={order.totalAmount} />} strong />
                   <Row
                     label="Оплачено"
-                    value={formatRub(order.paidAmount)}
+                    value={<Money value={order.paidAmount} tone="plain" />}
                     tone={D(order.paidAmount).gte(order.totalAmount) ? 'pos' : undefined}
                   />
                   <Row
                     label="Остаток"
-                    value={formatRub(
-                      toMoneyString(
-                        (() => {
-                          const due = sub(order.totalAmount, order.paidAmount);
-                          return due.gt(0) ? due : D(0);
-                        })(),
-                      ),
-                    )}
+                    value={
+                      <Money
+                        value={toMoneyString(
+                          (() => {
+                            const due = sub(order.totalAmount, order.paidAmount);
+                            return due.gt(0) ? due : D(0);
+                          })(),
+                        )}
+                      />
+                    }
                   />
                 </div>
 
@@ -288,7 +287,7 @@ export function OrderDetailModal({
                     <div className="space-y-1 rounded-md border border-border bg-secondary/40 p-3 text-sm">
                       <Row
                         label="Доход (реализация)"
-                        value={formatRub(order.margin.revenue)}
+                        value={<Money value={order.margin.revenue} tone="plain" />}
                         tone="pos"
                       />
                       <Row
@@ -297,11 +296,17 @@ export function OrderDetailModal({
                             ? 'Расход (себестоимость, оценка по складу)'
                             : 'Расход (себестоимость)'
                         }
-                        value={formatRub(order.margin.cogs)}
+                        value={<Money value={order.margin.cogs} />}
                       />
                       <Row
                         label="Прибыль"
-                        value={`${order.margin.isEstimate ? '≈ ' : ''}${formatRub(order.margin.margin)} · ${order.margin.marginPct}%`}
+                        value={
+                          <>
+                            {order.margin.isEstimate ? '≈ ' : ''}
+                            <Money value={order.margin.margin} tone="plain" /> ·{' '}
+                            {order.margin.marginPct}%
+                          </>
+                        }
                         strong
                         tone={D(order.margin.margin).gte(0) ? 'pos' : undefined}
                       />
@@ -442,10 +447,10 @@ export function OrderDetailModal({
                                   )}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">
-                                  {formatRub(e.amount)}
+                                  <Money value={e.amount} />
                                   {e.status !== 'PAID' && e.covered !== '0.00' && (
                                     <div className="text-xs text-muted-foreground">
-                                      осталось {formatRub(e.remaining)}
+                                      осталось <Money value={e.remaining} tone="plain" />
                                     </div>
                                   )}
                                 </td>
@@ -463,7 +468,7 @@ export function OrderDetailModal({
                         {order.schedule.summary.overdueAmount !== '0.00' && (
                           <Row
                             label="Просрочено"
-                            value={formatRub(order.schedule.summary.overdueAmount)}
+                            value={<Money value={order.schedule.summary.overdueAmount} />}
                             tone="neg"
                             strong
                           />
@@ -471,7 +476,12 @@ export function OrderDetailModal({
                         {order.schedule.summary.nextDueDate && (
                           <Row
                             label="Следующий платёж"
-                            value={`${formatDate(order.schedule.summary.nextDueDate)} · ${formatRub(order.schedule.summary.nextDueAmount ?? '0')}`}
+                            value={
+                              <>
+                                {formatDate(order.schedule.summary.nextDueDate)} ·{' '}
+                                <Money value={order.schedule.summary.nextDueAmount ?? '0'} tone="plain" />
+                              </>
+                            }
                           />
                         )}
                       </div>
@@ -526,7 +536,7 @@ export function OrderDetailModal({
                                 )}
                               >
                                 {negative ? '−' : '+'}
-                                {formatRub(t.amount)}
+                                <Money value={t.amount} tone="plain" />
                               </span>
                               {deletable && (
                                 <button
@@ -568,7 +578,7 @@ export function OrderDetailModal({
                                 key={l.lotId}
                                 className="text-xs text-muted-foreground tabular-nums"
                               >
-                                {l.qty} × {formatRub(l.unitCost)} · от{' '}
+                                {l.qty} × <Money value={l.unitCost} tone="plain" /> · от{' '}
                                 {formatDate(l.receivedAt)}
                                 {l.supplier ? ` · ${l.supplier.name}` : ''}
                                 {l.account ? ` · ${l.account.name}` : ''}

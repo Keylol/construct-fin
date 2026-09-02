@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
-import { formatRub } from '@construct/shared';
+import { Money } from '@/components/ui/Money';
+
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -155,9 +156,7 @@ export default function CategoriesReportPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{r.count}</td>
-                    <td className="num px-4 py-2.5 text-right font-medium">
-                      {formatRub(r.total)}
-                    </td>
+                    <td className="px-4 py-2.5 text-right font-medium"><Money value={r.total} /></td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                       {(r.share * 100).toFixed(1)}%
                     </td>

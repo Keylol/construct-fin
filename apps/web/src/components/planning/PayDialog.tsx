@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { formatRub } from '@construct/shared';
 import { Check } from '@/components/ui/icons';
+import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
@@ -66,7 +67,7 @@ export function PayDialog({
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
-            Плановая сумма <b className="tabular-nums">{formatRub(plan.amount, 2)}</b> · срок{' '}
+            Плановая сумма <b className="tabular-nums"><Money value={plan.amount} /></b> · срок{' '}
             {formatDate(plan.dueDate)}
           </div>
           <FormField label="Счёт списания" required>

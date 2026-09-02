@@ -410,7 +410,7 @@ function Wizard({ wsId }: { wsId: string }) {
                 {recognizedTotal && (
                   <span className="text-muted-foreground">
                     распознанный итог{' '}
-                    <b className="tabular-nums text-foreground">{formatRub(recognizedTotal, 2)}</b>
+                    <b className="tabular-nums text-foreground"><Money value={recognizedTotal} /></b>
                   </span>
                 )}
                 {parsed.receipt.docNumber && (
@@ -545,7 +545,7 @@ function Wizard({ wsId }: { wsId: string }) {
             {/* Итог и Провести */}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm tabular-nums">
-                Σ строк <b>{formatRub(linesTotal, 2)}</b>
+                Σ строк <b><Money value={linesTotal} /></b>
               </span>
               {totalsDiffer && (
                 <span className="text-sm text-warning">
@@ -651,7 +651,7 @@ function LineRow({
         <div className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>Σ</span>
           <div className="flex h-9 items-center whitespace-nowrap text-sm tabular-nums">
-            {formatRub(lineTotal, 2)}
+            <Money value={lineTotal} />
           </div>
         </div>
       </div>
