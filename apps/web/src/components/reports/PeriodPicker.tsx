@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { PeriodPreset } from '@/lib/types';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
@@ -20,6 +21,28 @@ const PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: 'last-90d', label: '90 дней' },
   { value: 'last-12m', label: '12 месяцев' },
 ];
+
+/**
+ * Оболочка контрола периода: подпись сверху, контрол снизу. Одна на все экраны —
+ * период в отчётах и операциях, год в налоге, горизонт в платежах. Смысл у них
+ * разный (период назад, год отчётности, горизонт вперёд), а вид обязан быть
+ * один: иначе на каждом экране приходится заново искать, чем тут переключают
+ * время.
+ */
+export function PeriodField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex flex-col text-xs text-muted-foreground">
+      <span className="pb-1">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 interface PeriodPickerProps {
   value: PeriodValue;

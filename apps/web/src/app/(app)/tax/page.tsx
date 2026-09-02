@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { formatRub } from '@construct/shared';
-import { Calculator, ChevronLeft, ChevronRight, Check } from '@/components/ui/icons';
+import { Calculator, Check } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +14,8 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { StatusDot } from '@/components/ui/StatusDot';
+import { Select } from '@/components/ui/Select';
+import { PeriodField } from '@/components/reports/PeriodPicker';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toaster';
@@ -53,6 +55,9 @@ function monthRange(year: number, monthNo: number): { from: string; to: string }
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+/** Годы для выбора: текущий и пять назад — глубже архивов нет. */
+const YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
+
 export default function TaxPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
@@ -86,15 +91,22 @@ export default function TaxPage() {
           </>
         }
         actions={
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Предыдущий год">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-14 text-center text-sm font-medium tabular-nums">{year}</span>
-            <Button variant="ghost" size="sm" onClick={() => setYear((y) => y + 1)} aria-label="Следующий год">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          // Налог считается по годам — это его единица отчётности, а не
+          // произвольный период. Но выглядеть выбор обязан как везде: та же
+          // подпись сверху, тот же Select (PeriodField), а не пара стрелок.
+          <PeriodField label="Год">
+            <Select
+              value={String(year)}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="h-9 w-[170px]"
+            >
+              {YEARS.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </Select>
+          </PeriodField>
         }
       />
       <div className="space-y-4 px-6 py-4">

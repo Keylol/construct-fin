@@ -1,4 +1,4 @@
-import { PERIOD_LABELS, rangeFor, type PeriodKey } from '@/lib/periods';
+import { ANY_PERIOD_LABELS, rangeForAny, type AnyPeriod } from '@/lib/periods';
 import { isReportBucket } from '@/lib/buckets';
 import type { ActiveFilters } from '@/components/transactions/TransactionFilters';
 import type { ReportBucket, TxType } from '@/lib/types';
@@ -60,8 +60,8 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
   }
   // Нет диапазона в URL — дефолт «этот месяц», но фильтры-измерения уважаем.
   return {
-    period: 'month',
-    range: rangeFor('month'),
+    period: 'this-month',
+    range: rangeForAny('this-month'),
     accountId,
     categoryId,
     counterpartyId,
@@ -108,16 +108,18 @@ export function txDrilldownHref(params: {
  */
 const PERIOD_KEY = 'transactions:period';
 
-export function readSavedPeriod(): PeriodKey | null {
+export function readSavedPeriod(): AnyPeriod | null {
   try {
     const saved = window.localStorage.getItem(PERIOD_KEY);
-    return saved && saved in PERIOD_LABELS ? (saved as PeriodKey) : null;
+    // Старые ключи ('month'/'quarter'/'year') остались в словаре — сохранённый
+    // до объединения выбор продолжает открываться тем же периодом.
+    return saved && saved in ANY_PERIOD_LABELS ? (saved as AnyPeriod) : null;
   } catch {
     return null;
   }
 }
 
-export function writeSavedPeriod(key: PeriodKey): void {
+export function writeSavedPeriod(key: AnyPeriod): void {
   try {
     window.localStorage.setItem(PERIOD_KEY, key);
   } catch {

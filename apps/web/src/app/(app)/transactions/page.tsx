@@ -37,7 +37,7 @@ import { D, add, sub, toMoneyString, formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
 import { formatDate, formatDayLabel } from '@/lib/dates';
-import { rangeFor } from '@/lib/periods';
+import { rangeForAny } from '@/lib/periods';
 
 /**
  * Σ по строкам с учётом знака (доход +, расход −) — Decimal, без Number:
@@ -105,7 +105,7 @@ function TransactionsView() {
     const saved = readSavedPeriod();
     if (!saved) return;
     setFiltersState((prev) =>
-      prev.period === saved ? prev : { ...prev, period: saved, range: rangeFor(saved) },
+      prev.period === saved ? prev : { ...prev, period: saved, range: rangeForAny(saved) },
     );
     // Разовый триггер на маунте — как в useCreateFromUrl.
     // eslint-disable-next-line react-hooks/exhaustive-deps

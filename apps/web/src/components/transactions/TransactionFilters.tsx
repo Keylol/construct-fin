@@ -10,16 +10,17 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { BUCKET_LABEL } from '@/lib/buckets';
 import type { ReportBucket, TxType, Account, Category, Counterparty } from '@/lib/types';
 import {
+  type AnyPeriod,
   type DateRange,
-  type PeriodKey,
-  PERIOD_LABELS,
-  rangeFor,
+  ANY_PERIOD_LABELS,
+  ANY_PERIOD_ORDER,
+  rangeForAny,
   toLocalDateInput,
   fromLocalDateInput,
 } from '@/lib/periods';
 
 export interface ActiveFilters {
-  period: PeriodKey;
+  period: AnyPeriod;
   range: DateRange;
   accountId?: string;
   categoryId?: string;
@@ -96,8 +97,8 @@ export function TransactionFilters({
     [counterparties],
   );
 
-  const setPeriod = (key: PeriodKey) => {
-    const range = rangeFor(key);
+  const setPeriod = (key: AnyPeriod) => {
+    const range = rangeForAny(key);
     onChange({ ...active, period: key, range });
     setCustomFrom(range.from ? toLocalDateInput(range.from) : '');
     setCustomTo(range.to ? toLocalDateInput(range.to) : '');
@@ -115,7 +116,7 @@ export function TransactionFilters({
   };
 
   const reset = () => {
-    onChange({ period: 'month', range: rangeFor('month') });
+    onChange({ period: 'this-month', range: rangeForAny('this-month') });
     setCustomFrom('');
     setCustomTo('');
   };
@@ -143,12 +144,12 @@ export function TransactionFilters({
       <FilterField label="Период">
         <Select
           value={active.period}
-          onChange={(e) => setPeriod(e.target.value as PeriodKey)}
+          onChange={(e) => setPeriod(e.target.value as AnyPeriod)}
           className="h-9 w-[150px]"
         >
-          {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
+          {ANY_PERIOD_ORDER.map((k) => (
             <option key={k} value={k}>
-              {PERIOD_LABELS[k]}
+              {ANY_PERIOD_LABELS[k]}
             </option>
           ))}
         </Select>

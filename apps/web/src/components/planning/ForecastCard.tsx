@@ -16,6 +16,7 @@ import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { Select } from '@/components/ui/Select';
+import { PeriodField } from '@/components/reports/PeriodPicker';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useForecast } from '@/hooks/usePlanning';
 import { formatDate } from '@/lib/dates';
@@ -49,16 +50,20 @@ export function ForecastCard({ wsId }: { wsId: string }) {
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">Прогноз остатка</h2>
-        <Select
-          value={String(days)}
-          onChange={(e) => setDays(Number(e.target.value))}
-          className="h-8 w-[120px]"
-          aria-label="Горизонт прогноза"
-        >
-          <option value="30">30 дней</option>
-          <option value="60">60 дней</option>
-          <option value="90">90 дней</option>
-        </Select>
+        {/* Здесь период смотрит ВПЕРЁД — это горизонт прогноза, а не «период
+            назад» из отчётов. Оболочка та же, набор значений свой. */}
+        <PeriodField label="Горизонт">
+          <Select
+            value={String(days)}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="h-9 w-[170px]"
+          >
+            <option value="30">30 дней</option>
+            <option value="60">60 дней</option>
+            <option value="90">90 дней</option>
+            <option value="180">180 дней</option>
+          </Select>
+        </PeriodField>
       </div>
 
       {query.isLoading || !f ? (
