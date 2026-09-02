@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
 import { ScheduleModal } from '@/components/orders/ScheduleModal';
@@ -14,7 +15,7 @@ import { Select } from '@/components/ui/Select';
 import { StatusStamp } from '@/components/ui/StatusStamp';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { toast } from '@/components/ui/Toaster';
-import { Paperclip, Trash2, X } from '@/components/ui/icons';
+import { Paperclip, Receipt, Trash2, X } from '@/components/ui/icons';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useAddInstallmentPayment, useAddOrderPayment, useCancelOrder, useDeleteOrder, useDeleteOrderAttachment, useDeleteOrderPayment, useFinalizeOrder, useOrder, useOrderTrace, useReopenOrder, useUploadOrderAttachment } from '@/hooks/useOrders';
 import { cn } from '@/lib/cn';
@@ -37,6 +38,7 @@ export function OrderDetailModal({
   /** Карточка открыта кликом по «можно закрыть» — сразу показать диалог. */
   autoClose?: boolean;
 }) {
+  const router = useRouter();
   const { data: order, isLoading } = useOrder(wsId, orderId);
   const { data: trace, isLoading: traceLoading } = useOrderTrace(wsId, orderId);
   const accounts = useAccounts(wsId);
@@ -633,6 +635,31 @@ export function OrderDetailModal({
                       />
                     </label>
                   </div>
+                </div>
+
+                {/* Вход в готовый механизм разбора чеков (P1.4 аудита): бэкенд
+                    wb-receipt умеет вынуть позиции из PDF ДНС/ВБ/ОТ и положить их
+                    прямо в заказ, но добраться до него можно было только через
+                    «Закупки» и там выбирать заказ руками. */}
+                <div>
+                  <div className="mb-1.5 text-sm font-semibold">Позиции из чека</div>
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    PDF-чек Wildberries, ДНС или Онлайн Трейд распознаётся сам: позиции лягут
+                    в этот заказ с закупочными ценами, деньги привяжутся к строке выписки.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      router.push(
+                        `/purchases/wb-receipt?order=${order.id}` as Parameters<
+                          typeof router.push
+                        >[0],
+                      )
+                    }
+                  >
+                    <Receipt className="h-4 w-4" />
+                    Разобрать чек
+                  </Button>
                 </div>
                   </TabsContent>
                 </Tabs>
