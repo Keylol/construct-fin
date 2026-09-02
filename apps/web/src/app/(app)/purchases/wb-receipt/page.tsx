@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { D, add, toMoneyString, formatRub } from '@construct/shared';
 import {
@@ -25,7 +25,7 @@ import { toast } from '@/components/ui/Toaster';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
-import { useOrders } from '@/hooks/useOrders';
+import { useOrder, useOrders } from '@/hooks/useOrders';
 import { useWarehouse } from '@/hooks/useWarehouse';
 import {
   useCommitWbReceipt,
@@ -94,7 +94,7 @@ function manualPreview(): WbReceiptPreview {
 }
 
 let LINE_SEQ = 1;
-function blankLine(): UiLine {
+function blankLine(orderId?: string | null): UiLine {
   return {
     key: LINE_SEQ++,
     name: '',
@@ -103,11 +103,21 @@ function blankLine(): UiLine {
     sellerName: null,
     sellerInn: null,
     sourceRef: null,
-    target: 'WAREHOUSE',
+    target: orderId ? 'ORDER' : 'WAREHOUSE',
     warehouseItemId: '',
-    orderId: '',
+    orderId: orderId ?? '',
     salePrice: '',
   };
+}
+
+/** Заказ, в который придут позиции: ?order=<id> из карточки заказа. */
+function useOrderFromUrl(): string | null {
+  const [orderId, setOrderId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setOrderId(new URLSearchParams(window.location.search).get('order'));
+  }, []);
+  return orderId;
 }
 
 export default function ReceiptWizardPage() {
@@ -129,6 +139,9 @@ export default function ReceiptWizardPage() {
 
 function Wizard({ wsId }: { wsId: string }) {
   const router = useRouter();
+  // Пришли из карточки заказа — все позиции чека по умолчанию идут в этот заказ.
+  const presetOrderId = useOrderFromUrl();
+  const presetOrder = useOrder(wsId, presetOrderId);
   const accounts = useAccounts(wsId);
   const preview = useWbReceiptPreview(wsId);
   const commit = useCommitWbReceipt(wsId);
@@ -160,9 +173,9 @@ function Wizard({ wsId }: { wsId: string }) {
       sellerName: it.sellerName,
       sellerInn: it.sellerInn,
       sourceRef: it.sourceRef,
-      target: 'WAREHOUSE',
+      target: presetOrderId ? 'ORDER' : 'WAREHOUSE',
       warehouseItemId: '',
-      orderId: '',
+      orderId: presetOrderId ?? '',
       salePrice: it.unitPrice,
     }));
 
@@ -194,7 +207,7 @@ function Wizard({ wsId }: { wsId: string }) {
       return;
     }
     setParsed(manualPreview());
-    setLines([blankLine()]);
+    setLines([blankLine(presetOrderId)]);
     setFileName(null);
     setNote('');
     setMoneyMode('create');
@@ -213,7 +226,7 @@ function Wizard({ wsId }: { wsId: string }) {
   const patchLine = (key: number, next: UiLine) =>
     setLines((ls) => ls.map((l) => (l.key === key ? next : l)));
   const removeLine = (key: number) => setLines((ls) => ls.filter((l) => l.key !== key));
-  const addLine = () => setLines((ls) => [...ls, blankLine()]);
+  const addLine = () => setLines((ls) => [...ls, blankLine(presetOrderId)]);
 
   // Итог = Σ строк (Decimal). Распознанный итог — ориентир (предупреждение при расхождении).
   const linesTotal = useMemo(
@@ -322,6 +335,24 @@ function Wizard({ wsId }: { wsId: string }) {
         }
       />
       <div className="space-y-4 px-6 py-4">
+        {presetOrderId && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-accent px-4 py-3">
+            <p className="text-sm">
+              Позиции чека пойдут в заказ{' '}
+              <span className="font-semibold">
+                {presetOrder.data?.number ?? '…'}
+                {presetOrder.data?.client ? ` · ${presetOrder.data.client.name}` : ''}
+              </span>
+              . Цель каждой строки можно переключить на склад.
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push(`/orders?order=${presetOrderId}` as Parameters<typeof router.push>[0])}
+            >
+              К заказу
+            </Button>
+          </div>
+        )}
 
         {/* Шаг 1: счёт + файл / ручной ввод */}
         <Card className="space-y-3">
