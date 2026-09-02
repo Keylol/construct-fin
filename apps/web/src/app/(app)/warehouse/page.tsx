@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Package, Search, X, Trash2, ShoppingCart } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { formatRub, parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 import {
   useWarehouse,
   useStockValue,
@@ -56,6 +57,9 @@ export default function WarehousePage() {
   const stockValue = useStockValue(wsId);
   const [editing, setEditing] = useState<WarehouseItem | null>(null);
   const [creating, setCreating] = useState(false);
+  // «/» — в поиск, «n» — создать: список листают с клавиатуры.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
   const [purchasing, setPurchasing] = useState(false);
 
   if (!current) {
@@ -170,6 +174,7 @@ export default function WarehousePage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={searchRef}
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

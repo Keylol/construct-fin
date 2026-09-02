@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CommandPalette,
@@ -8,6 +8,8 @@ import {
   CommandItem,
 } from '@/components/ui/CommandPalette';
 import { NAV_ITEMS } from '@/components/layout/nav-items';
+import { CREATE_ACTIONS } from '@/components/layout/create-actions';
+import { Plus, Receipt } from '@/components/ui/icons';
 
 interface GlobalCommandPaletteProps {
   open: boolean;
@@ -27,6 +29,15 @@ const HINTS: Record<string, string> = {
 
 /** Единый источник — NAV_GROUPS/NAV_ITEMS (nav-items.ts), палитра не отстаёт от меню. */
 const QUICK_NAV = NAV_ITEMS.map((n) => ({ ...n, hint: HINTS[n.href] }));
+
+/** Клавиша в подсказке — не кнопка: нажимать её нечем, это обозначение. */
+function Key({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded-sm border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+      {children}
+    </kbd>
+  );
+}
 
 export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPaletteProps) {
   const router = useRouter();
@@ -52,9 +63,45 @@ export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPalett
     <CommandPalette
       open={open}
       onOpenChange={onOpenChange}
-      placeholder="Куда перейти?"
+      placeholder="Команда или раздел"
       emptyLabel="Ничего не найдено"
+      footer={
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            <Key>/</Key> поиск на экране
+          </span>
+          <span>
+            <Key>n</Key> создать
+          </span>
+          <span>
+            <Key>⌘</Key>
+            <Key>↵</Key> подтвердить в окне
+          </span>
+          <span>
+            <Key>Esc</Key> закрыть
+          </span>
+        </div>
+      }
     >
+      {/* Создание — первым: чаще всего палитру открывают, чтобы что-то завести,
+          а не чтобы перейти. Формы открываются тем же ?new=1, что и «+ Создать». */}
+      <CommandGroup heading="Создать">
+        {CREATE_ACTIONS.map((a) => (
+          <CommandItem key={a.href} value={`создать ${a.label}`} onSelect={() => go(a.href)}>
+            <Plus />
+            <span>{a.label}</span>
+          </CommandItem>
+        ))}
+        <CommandItem
+          value="разобрать чек pdf закупка"
+          onSelect={() => go('/purchases/wb-receipt')}
+        >
+          <Receipt />
+          <span>Разобрать чек</span>
+          <span className="ml-auto text-xs text-muted-foreground">PDF Wildberries, ДНС, ОТ</span>
+        </CommandItem>
+      </CommandGroup>
+
       <CommandGroup heading="Навигация">
         {QUICK_NAV.map((n) => {
           const Icon = n.icon;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { Search, RotateCcw, X } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -36,6 +36,8 @@ interface Props {
   accounts: Account[];
   categories: Category[];
   counterparties: Counterparty[];
+  /** Поле поиска фокусируется по «/» с экрана операций. */
+  searchRef?: RefObject<HTMLInputElement>;
 }
 
 export function TransactionFilters({
@@ -44,6 +46,7 @@ export function TransactionFilters({
   accounts,
   categories,
   counterparties,
+  searchRef,
 }: Props) {
   const [customFrom, setCustomFrom] = useState<string>(
     active.range.from ? toLocalDateInput(active.range.from) : '',
@@ -124,6 +127,7 @@ export function TransactionFilters({
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={searchRef}
               type="search"
               value={active.search ?? ''}
               onChange={(e) =>

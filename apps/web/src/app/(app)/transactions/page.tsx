@@ -1,10 +1,11 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -138,6 +139,9 @@ function TransactionsView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   // ?new=1 (из глобального «+ Создать») открывает форму создания сразу на маунте.
   const [creating, setCreating] = useState(() => searchParams.get('new') === '1');
+  // «/» — в поиск, «n» — создать: список листают с клавиатуры.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
 
   const closeForm = useCallback(() => {
     setCreating(false);
@@ -263,6 +267,7 @@ function TransactionsView() {
       </div>
 
       <TransactionFilters
+          searchRef={searchRef}
         active={filters}
         onChange={setFilters}
         accounts={accounts.data ?? []}

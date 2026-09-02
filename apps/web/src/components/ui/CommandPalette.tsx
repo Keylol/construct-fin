@@ -15,6 +15,8 @@ export interface CommandDialogProps extends React.ComponentProps<typeof CommandP
   emptyLabel?: string;
   /** Placeholder for the search field. */
   placeholder?: string;
+  /** Подсказка внизу окна — например, список клавиш экрана. */
+  footer?: React.ReactNode;
 }
 
 export function CommandPalette({
@@ -22,6 +24,7 @@ export function CommandPalette({
   onOpenChange,
   placeholder = 'Что вы ищете? Cmd+K',
   emptyLabel = 'Ничего не найдено',
+  footer,
   children,
   ...props
 }: CommandDialogProps) {
@@ -61,6 +64,9 @@ export function CommandPalette({
               </CommandPrimitive.Empty>
               {children}
             </CommandPrimitive.List>
+            {footer && (
+              <div className="border-t border-border bg-secondary/40 px-3 py-2">{footer}</div>
+            )}
           </CommandPrimitive>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

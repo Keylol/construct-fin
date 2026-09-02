@@ -83,18 +83,33 @@ export interface ModalContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
     VariantProps<typeof modalVariants> {
   hideClose?: boolean;
+  /**
+   * Главное действие окна для Cmd/Ctrl+Enter. Обычный Enter отдан формам — он
+   * сабмитит `<form>` и не должен срабатывать из середины длинного текста, —
+   * а окна с выбором из списков и галочками (привязка платежа, отметка
+   * перевода) иначе требуют мыши на каждом шаге.
+   */
+  onConfirm?: () => void;
 }
 
 export const ModalContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   ModalContentProps
->(function ModalContent({ size, className, children, hideClose, ...props }, ref) {
+>(function ModalContent({ size, className, children, hideClose, onConfirm, onKeyDown, ...props }, ref) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(e);
+    if (onConfirm && e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.defaultPrevented) {
+      e.preventDefault();
+      onConfirm();
+    }
+  };
   return (
     <ModalPortal>
       <ModalOverlay />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(modalVariants({ size }), className)}
+        onKeyDown={handleKeyDown}
         {...props}
       >
         {!hideClose && (

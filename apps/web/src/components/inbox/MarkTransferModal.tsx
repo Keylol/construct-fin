@@ -63,7 +63,13 @@ export function MarkTransferModal({
 
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()}>
-      <ModalContent size="lg">
+      <ModalContent
+        size="lg"
+        onConfirm={() => {
+          if (!counterAccountId || mark.isPending) return;
+          void submit();
+        }}
+      >
         <ModalHeader>
           <ModalTitle>{isOut ? 'Перевод на другой счёт' : 'Поступление с другого счёта'}</ModalTitle>
         </ModalHeader>
