@@ -219,9 +219,9 @@ describe('rankOrderCandidates (подбор заказа под строку в�
       line,
     );
     expect(ranked).toHaveLength(1);
-    expect(ranked[0].order.number).toBe('ORD-1');
-    expect(ranked[0].reasons).toContain('сумма равна остатку по заказу');
-    expect(ranked[0].reasons).toContain('клиент упомянут в строке');
+    expect(ranked[0]?.order.number).toBe('ORD-1');
+    expect(ranked[0]?.reasons).toContain('сумма равна остатку по заказу');
+    expect(ranked[0]?.reasons).toContain('клиент упомянут в строке');
   });
 
   it('совпадение только по имени тоже попадает в подсказку, но ниже точной суммы', () => {
@@ -239,7 +239,7 @@ describe('rankOrderCandidates (подбор заказа под строку в�
     const order = { id: 'o1', number: 'ORD-1', remaining: '152506.00', clientName: 'Макаров Иван' };
     const forward = rankPaymentCandidates([line], order);
     const backward = rankOrderCandidates([order], line);
-    expect(backward[0].score).toBe(forward[0].score);
-    expect(backward[0].reasons).toEqual(forward[0].reasons);
+    expect(backward[0]?.score).toBe(forward[0]?.score);
+    expect(backward[0]?.reasons).toEqual(forward[0]?.reasons);
   });
 });
