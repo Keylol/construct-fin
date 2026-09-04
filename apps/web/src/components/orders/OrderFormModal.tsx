@@ -11,12 +11,14 @@ import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalTitle } 
 import { Money } from '@/components/ui/Money';
 import { Textarea } from '@/components/ui/Textarea';
 import { toast } from '@/components/ui/Toaster';
-import { ClipboardList, Plus, Trash2, X } from '@/components/ui/icons';
+import { ClipboardList, Paperclip, Plus, Trash2, X } from '@/components/ui/icons';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCounterparties } from '@/hooks/useCounterparties';
+import { useParseOrderSpec, type OrderSpecDraft } from '@/hooks/useOrders';
 import { type OrderItemInput, type ScheduleEntryInput, useAddOrderPayment, useCreateOrder, useSetOrderSchedule, useUpdateOrder } from '@/hooks/useOrders';
 import { useWarehouse } from '@/hooks/useWarehouse';
 import { cn } from '@/lib/cn';
+import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
 import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderItemsText, sub, toMoneyString } from '@construct/shared';
@@ -63,6 +65,10 @@ export function OrderFormModal({
   // сборка из восьми позиций — это 26 полей ручного ввода. Текстовое поле
   // переносит её целиком; цены продажи раскидываются по закупке одной кнопкой.
   const [pasteOpen, setPasteOpen] = useState(false);
+  const parseSpec = useParseOrderSpec(wsId);
+  // Итог из спецификации: подсказка для «Распределить цену продажи» — в самом
+  // документе цен по позициям нет.
+  const [specTotal, setSpecTotal] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState('');
   const [allocTotal, setAllocTotal] = useState('');
 
@@ -201,6 +207,55 @@ export function OrderFormModal({
   // Разбор вставленного текста считаем на каждый ввод — человек видит, что
   // распозналось, ДО того как строки заменят форму.
   const pasteParsed = useMemo(() => parseOrderItemsText(pasteText), [pasteText]);
+
+  /**
+   * Спецификация заполняет форму, но ничего не решает за человека: позиции
+   * приходят без цен (их в документе нет), клиент подставляется только если
+   * такой уже заведён — иначе остаётся имя в комментарии, чтобы не плодить
+   * дубли справочника.
+   */
+  const applySpec = (file: File) => {
+    parseSpec.mutate(file, {
+      onSuccess: (draft: OrderSpecDraft) => {
+        if (draft.phone) setPhone(draft.phone);
+        if (draft.title) setTitle(draft.title);
+        if (draft.items.length > 0) {
+          setItems(
+            draft.items.map((it: OrderSpecDraft['items'][number]) => ({
+              name: `${it.kind}: ${it.name}`,
+              qty: '1',
+              unitPrice: '',
+              unitCost: '',
+            })),
+          );
+        }
+        if (draft.total) {
+          setSpecTotal(draft.total);
+          setAllocTotal(draft.total);
+        }
+
+        const match = draft.clientName
+          ? (clients.data ?? []).find(
+              (c) => c.name.trim().toLowerCase() === draft.clientName?.trim().toLowerCase(),
+            )
+          : undefined;
+        if (match) setClientId(match.id);
+
+        const notes: string[] = [];
+        if (draft.clientName && !match) notes.push(`Заказчик по спецификации: ${draft.clientName}`);
+        if (draft.date) notes.push(`Дата спецификации: ${formatDate(draft.date)}`);
+        if (notes.length > 0) {
+          setDescription((prev) => (prev ? `${prev}\n${notes.join('\n')}` : notes.join('\n')));
+        }
+
+        const parts = [`Позиций: ${draft.items.length}`];
+        if (draft.total) parts.push(`итог ${formatRub(draft.total)}`);
+        toast.success(`Спецификация разобрана · ${parts.join(', ')}`);
+        draft.warnings.forEach((w) => toast.error(w));
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось прочитать файл'),
+    });
+  };
 
   const applyPaste = (mode: 'replace' | 'append') => {
     const parsed = pasteParsed.items.map((it) => ({
@@ -693,6 +748,24 @@ export function OrderFormModal({
               >
                 <ClipboardList className="h-3.5 w-3.5" /> Вставить составом
               </Button>
+              {/* Спецификация из архива клиента: телефон, ФИО, конфигурация,
+                  позиции и итог заполняются разом. Цен по позициям в документе
+                  нет — их раскидывает «Распределить цену продажи». */}
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary">
+                <Paperclip className="h-3.5 w-3.5" />
+                {parseSpec.isPending ? 'Читаю спецификацию…' : 'Из спецификации'}
+                <input
+                  type="file"
+                  accept=".docx"
+                  className="hidden"
+                  disabled={parseSpec.isPending}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) applySpec(f);
+                  }}
+                />
+              </label>
             </div>
 
             {pasteOpen && (
@@ -746,7 +819,10 @@ export function OrderFormModal({
                 неё пропорционально закупке, как считали в калькуляторе вручную. */}
             <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
               <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
-                <span>Итог заказа для распределения</span>
+                <span>
+                  Итог заказа для распределения
+                  {specTotal && ` · из спецификации ${formatRub(specTotal)}`}
+                </span>
                 <Input
                   inputMode="decimal"
                   value={allocTotal}
