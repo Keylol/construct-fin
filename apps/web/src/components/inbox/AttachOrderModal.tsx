@@ -27,15 +27,25 @@ export function AttachOrderModal({
   onClose,
   wsId,
   line,
+  presetOrderId,
 }: {
   open: boolean;
   onClose: () => void;
   wsId: string;
   line: InboxLine;
+  /** Заказ из подсказки строки — подставляется сразу, чтобы не искать заново. */
+  presetOrderId?: string;
 }) {
   const orders = useOrders(wsId, { status: 'OPEN', limit: 100 });
   const attach = useAttachOrderInbox(wsId);
-  const [orderId, setOrderId] = useState('');
+  const [orderId, setOrderId] = useState(presetOrderId ?? '');
+
+  // Окно смонтировано вместе со строкой, поэтому начальное значение
+  // зафиксировалось бы до того, как человек нажал «Привязать» в подсказке.
+  // Подставляем заказ в момент открытия.
+  useEffect(() => {
+    if (open && presetOrderId) setOrderId(presetOrderId);
+  }, [open, presetOrderId]);
   // Кредит/рассрочка: банк присылает сумму за вычетом комиссии, и без этого
   // заказ остаётся недоплаченным ровно на неё (4 случая из 21 заказа за июль).
   const [installment, setInstallment] = useState(false);
