@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { attachEffect, rankPaymentCandidates } from '@construct/shared';
+import { attachEffect, rankOrderCandidates, rankPaymentCandidates } from '@construct/shared';
 
 const order = {
   remaining: '152506.00',
@@ -199,5 +199,47 @@ describe('эффект привязки строки к заказу', () => {
     const e = attachEffect({ lineAmount: '-50000.00', remaining: '50000.00' });
     expect(e.credited).toBe('50000.00');
     expect(e.overpay).toBe('0.00');
+  });
+});
+
+describe('rankOrderCandidates (подбор заказа под строку выписки)', () => {
+  const line = {
+    id: 'l1',
+    amount: '152506.00',
+    description: 'Перевод по СБП от МАКАРОВ ИВАН ПЕТРОВИЧ',
+    counterpartyName: null,
+  };
+
+  it('заказ с точным остатком идёт первым, чужой не предлагается вовсе', () => {
+    const ranked = rankOrderCandidates(
+      [
+        { id: 'o1', number: 'ORD-1', remaining: '152506.00', clientName: 'Макаров Иван' },
+        { id: 'o2', number: 'ORD-2', remaining: '99000.00', clientName: 'Петров Пётр' },
+      ],
+      line,
+    );
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0].order.number).toBe('ORD-1');
+    expect(ranked[0].reasons).toContain('сумма равна остатку по заказу');
+    expect(ranked[0].reasons).toContain('клиент упомянут в строке');
+  });
+
+  it('совпадение только по имени тоже попадает в подсказку, но ниже точной суммы', () => {
+    const ranked = rankOrderCandidates(
+      [
+        { id: 'o1', number: 'ORD-1', remaining: '10000.00', clientName: 'Макаров Иван' },
+        { id: 'o2', number: 'ORD-2', remaining: '152506.00', clientName: 'Сидоров Пётр' },
+      ],
+      line,
+    );
+    expect(ranked.map((r) => r.order.number)).toEqual(['ORD-2', 'ORD-1']);
+  });
+
+  it('оба направления подбора считают одну и ту же пару одинаково', () => {
+    const order = { id: 'o1', number: 'ORD-1', remaining: '152506.00', clientName: 'Макаров Иван' };
+    const forward = rankPaymentCandidates([line], order);
+    const backward = rankOrderCandidates([order], line);
+    expect(backward[0].score).toBe(forward[0].score);
+    expect(backward[0].reasons).toEqual(forward[0].reasons);
   });
 });

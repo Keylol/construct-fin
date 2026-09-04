@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, Check, ClipboardList, RotateCcw, X } from '@/components/ui/icons';
 import { useCategorizeInbox, useDismissInbox, useUndoInbox } from '@/hooks/useInbox';
 import type { InboxLine } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
-import { formatRub } from '@construct/shared';
+import { formatRub, rankOrderCandidates, sub, toMoneyString } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
+import { useOrders } from '@/hooks/useOrders';
 import { AttachOrderModal } from './AttachOrderModal';
 import { MarkTransferModal } from './MarkTransferModal';
 
@@ -31,12 +32,37 @@ export function InboxRow({
 }) {
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId ?? '');
   const [attachOpen, setAttachOpen] = useState(false);
+  // Заказ, выбранный по подсказке: модалка откроется уже с ним.
+  const [suggestedOrderId, setSuggestedOrderId] = useState<string | undefined>();
   const [transferOpen, setTransferOpen] = useState(false);
   const categorize = useCategorizeInbox(wsId);
   const dismiss = useDismissInbox(wsId);
   const undo = useUndoInbox(wsId);
 
   const isIncome = line.direction === 'INCOME';
+  // «Похоже на оплату заказа N» — обратная сторона кнопки «Найти оплату» в
+  // карточке: там для заказа ищут строку, здесь для строки — заказ. Считает
+  // общий scorePaymentPair, поэтому оба экрана согласны между собой.
+  const openOrders = useOrders(isIncome ? wsId : null, { status: 'OPEN', limit: 100 });
+  const suggestions = useMemo(() => {
+    if (!isIncome) return [];
+    const orders = (openOrders.data?.pages ?? []).flatMap((p) => p.items);
+    return rankOrderCandidates(
+      orders.map((o) => ({
+        id: o.id,
+        number: o.number,
+        remaining: toMoneyString(sub(o.totalAmount, o.paidAmount)),
+        clientName: o.client?.name ?? null,
+        title: o.title ?? null,
+      })),
+      {
+        id: line.id,
+        amount: line.amount,
+        description: line.description,
+        counterpartyName: line.counterpartyName,
+      },
+    ).slice(0, 2);
+  }, [isIncome, openOrders.data, line.id, line.amount, line.description, line.counterpartyName]);
   const isAutoPosted = line.status === 'AUTO_POSTED';
   // Разобранные строки (в т.ч. узнанные при загрузке) уже стали операциями —
   // здесь только просмотр и отмена связи.
@@ -147,12 +173,41 @@ export function InboxRow({
         )}
       </div>
 
+      {!isSettled && suggestions.length > 0 && (
+        <div className="mt-2 space-y-1 border-t border-border pt-2">
+          {suggestions.map((s) => (
+            <div key={s.order.id} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">
+                Похоже на оплату{' '}
+                <span className="font-semibold text-foreground">{s.order.number}</span>
+                {s.order.clientName ? ` · ${s.order.clientName}` : ''} — {s.reasons.join(', ')}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7"
+                onClick={() => {
+                  setSuggestedOrderId(s.order.id);
+                  setAttachOpen(true);
+                }}
+              >
+                Привязать
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {isIncome && !isSettled && (
         <AttachOrderModal
           open={attachOpen}
-          onClose={() => setAttachOpen(false)}
+          onClose={() => {
+            setAttachOpen(false);
+            setSuggestedOrderId(undefined);
+          }}
           wsId={wsId}
           line={line}
+          presetOrderId={suggestedOrderId}
         />
       )}
 

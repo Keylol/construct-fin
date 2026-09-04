@@ -83,47 +83,75 @@ function nameTokens(raw: string | null | undefined): string[] {
  * Строки без единого признака не возвращаются вовсе: показать «всё подряд» —
  * значит вернуть человека к тому же списку из сотен строк.
  */
-export function rankPaymentCandidates<L extends PaymentCandidateLine>(
-  lines: L[],
+/**
+ * Оценивает ОДНУ пару «строка выписки ↔ заказ». Общая для обоих направлений
+ * подбора: из карточки заказа ищут строку, из «Входящих» — заказ. Признаки и
+ * веса обязаны быть одни, иначе два экрана начнут спорить, что кому подходит.
+ */
+export function scorePaymentPair(
+  line: PaymentCandidateLine,
   order: PaymentMatchOrder,
-): RankedPaymentCandidate<L>[] {
+): { score: number; reasons: string[] } {
   const remaining = money(order.remaining);
   const clientParts = nameTokens(order.clientName);
   const titleParts = significantTokens(order.title);
 
+  const haystack = `${normalize(line.counterpartyName)} ${normalize(line.description)}`;
+  // Имя ищем по целым словам: подстрока роднит «Александра» с «Александровной»
+  // и подсовывает платёж чужого клиента (поймано на живом заказе Макарова).
+  const haystackWords = new Set(haystack.split(/[^a-zа-я0-9-]+/i).filter(Boolean));
+  const amount = money(D(line.amount).abs());
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (amount.equals(remaining)) {
+    score += SCORE_EXACT;
+    reasons.push('сумма равна остатку по заказу');
+  } else {
+    const fee = parseAcquiringFee(line.description);
+    if (fee && money(amount.plus(D(fee))).equals(remaining)) {
+      score += SCORE_GROSS;
+      reasons.push(`с комиссией эквайринга ${fee} даёт остаток по заказу`);
+    }
+  }
+
+  const clientHit = clientParts.find((p) => haystackWords.has(p));
+  if (clientHit) {
+    score += SCORE_CLIENT;
+    reasons.push('клиент упомянут в строке');
+  }
+
+  const titleHit = titleParts.find((p) => haystack.includes(p));
+  if (titleHit) {
+    score += SCORE_TITLE;
+    reasons.push(`в назначении есть «${titleHit}»`);
+  }
+
+  return { score, reasons };
+}
+
+/**
+ * Ранжирует строки выписки как кандидатов на оплату ЗАКАЗА (кнопка «Найти
+ * оплату» в карточке).
+ *
+ * Признаки (по убыванию веса):
+ * 1. сумма строки равна остатку заказа;
+ * 2. брутто-совпадение: строка + комиссия, удержанная банком внутри возмещения
+ *    (`parseAcquiringFee`), равны остатку — тот самый случай, когда поиск по
+ *    сумме клиента не находит ничего;
+ * 3. фамилия или имя клиента встречаются в контрагенте либо назначении;
+ * 4. слово из названия заказа встречается в назначении.
+ *
+ * Строки без единого признака не возвращаются вовсе: показать «всё подряд» —
+ * значит вернуть человека к тому же списку из сотен строк.
+ */
+export function rankPaymentCandidates<L extends PaymentCandidateLine>(
+  lines: L[],
+  order: PaymentMatchOrder,
+): RankedPaymentCandidate<L>[] {
   const ranked: RankedPaymentCandidate<L>[] = [];
   for (const line of lines) {
-    const haystack = `${normalize(line.counterpartyName)} ${normalize(line.description)}`;
-    // Имя ищем по целым словам: подстрока роднит «Александра» с «Александровной»
-    // и подсовывает платёж чужого клиента (поймано на живом заказе Макарова).
-    const haystackWords = new Set(haystack.split(/[^a-zа-я0-9-]+/i).filter(Boolean));
-    const amount = money(D(line.amount).abs());
-    const reasons: string[] = [];
-    let score = 0;
-
-    if (amount.equals(remaining)) {
-      score += SCORE_EXACT;
-      reasons.push('сумма равна остатку по заказу');
-    } else {
-      const fee = parseAcquiringFee(line.description);
-      if (fee && money(amount.plus(D(fee))).equals(remaining)) {
-        score += SCORE_GROSS;
-        reasons.push(`с комиссией эквайринга ${fee} даёт остаток по заказу`);
-      }
-    }
-
-    const clientHit = clientParts.find((p) => haystackWords.has(p));
-    if (clientHit) {
-      score += SCORE_CLIENT;
-      reasons.push('клиент упомянут в строке');
-    }
-
-    const titleHit = titleParts.find((p) => haystack.includes(p));
-    if (titleHit) {
-      score += SCORE_TITLE;
-      reasons.push(`в назначении есть «${titleHit}»`);
-    }
-
+    const { score, reasons } = scorePaymentPair(line, order);
     if (score > 0) ranked.push({ line, score, reasons });
   }
 
@@ -132,6 +160,38 @@ export function rankPaymentCandidates<L extends PaymentCandidateLine>(
       b.score - a.score ||
       // Детерминизм между запусками — как в transfer-match/planned-match.
       a.line.id.localeCompare(b.line.id),
+  );
+}
+
+export interface OrderCandidate extends PaymentMatchOrder {
+  id: string;
+  /** Номер заказа для показа в подсказке. */
+  number: string;
+}
+
+export interface RankedOrderCandidate<O extends OrderCandidate = OrderCandidate> {
+  order: O;
+  score: number;
+  reasons: string[];
+}
+
+/**
+ * Обратное направление: для СТРОКИ выписки ищет заказы, на оплату которых она
+ * похожа («Входящие» подсказывают, куда её привязать). Признаки те же —
+ * считает `scorePaymentPair`.
+ */
+export function rankOrderCandidates<O extends OrderCandidate>(
+  orders: O[],
+  line: PaymentCandidateLine,
+): RankedOrderCandidate<O>[] {
+  const ranked: RankedOrderCandidate<O>[] = [];
+  for (const order of orders) {
+    const { score, reasons } = scorePaymentPair(line, order);
+    if (score > 0) ranked.push({ order, score, reasons });
+  }
+
+  return ranked.sort(
+    (a, b) => b.score - a.score || a.order.id.localeCompare(b.order.id),
   );
 }
 
