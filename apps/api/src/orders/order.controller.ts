@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,13 +10,16 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { WorkspaceGuard } from '../common/workspace.guard';
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import { OrderService } from './order.service';
+import { parseOrderSpecDocx } from './spec-parser';
 import {
   CreateOrderSchema,
   UpdateOrderSchema,
@@ -37,6 +41,9 @@ import {
   type ShipItemDto,
 } from './order.dto';
 import type { WorkspaceContext } from '../common/workspace.guard';
+
+/** Спецификации — это Word на 300–400 КБ; мегабайта хватает с запасом. */
+const MAX_SPEC_BYTES = 2 * 1024 * 1024;
 
 @Controller('workspaces/:wsId/orders')
 @UseGuards(JwtAuthGuard, WorkspaceGuard)
@@ -60,6 +67,43 @@ export class OrderController {
   @Get(':id/trace')
   trace(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
     return this.service.trace(ws.workspaceId, id);
+  }
+
+  /**
+   * Спецификация CONSTRUCTPC (.docx) → черновик заказа. Ничего не сохраняет:
+   * человек правит разобранное в форме и создаёт заказ обычным POST. Разбор
+   * отдельным шагом — как preview у чеков закупки.
+   */
+  @Post('spec-preview')
+  @HttpCode(200)
+  async specPreview(@Req() req: FastifyRequest) {
+    const reqAny = req as FastifyRequest & {
+      isMultipart?: () => boolean;
+      file?: () => Promise<unknown>;
+    };
+    if (!reqAny.isMultipart?.()) {
+      throw new BadRequestException('Ожидается multipart/form-data');
+    }
+    const part = (await reqAny.file?.()) as
+      | { filename: string; toBuffer: () => Promise<Buffer> }
+      | undefined;
+    if (!part) throw new BadRequestException('В запросе нет файла');
+
+    const buffer = await part.toBuffer();
+    if (buffer.byteLength === 0) throw new BadRequestException('Пустой файл');
+    if (buffer.byteLength > MAX_SPEC_BYTES) {
+      throw new BadRequestException(
+        `Файл больше ${Math.round(MAX_SPEC_BYTES / 1024 / 1024)} МБ`,
+      );
+    }
+
+    try {
+      return await parseOrderSpecDocx(buffer);
+    } catch (e) {
+      throw new BadRequestException(
+        e instanceof Error ? e.message : 'Не удалось прочитать файл',
+      );
+    }
   }
 
   @Post()

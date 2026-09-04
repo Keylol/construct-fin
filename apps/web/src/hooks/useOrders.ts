@@ -121,6 +121,41 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, wsId: string) {
   qc.invalidateQueries({ queryKey: ['accounts', wsId] });
 }
 
+export interface OrderSpecDraft {
+  phone: string | null;
+  date: string | null;
+  clientName: string | null;
+  title: string | null;
+  items: { kind: string; name: string }[];
+  total: string | null;
+  warnings: string[];
+}
+
+/**
+ * Разбор спецификации CONSTRUCTPC (.docx) в черновик заказа. Ничего не
+ * сохраняет — форма подставляет разобранное, а создаёт заказ обычный POST.
+ */
+export function useParseOrderSpec(wsId: string) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      // Тот же путь, что у вложений заказа: multipart идёт мимо api.post,
+      // который проставляет content-type: application/json.
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/workspaces/${wsId}/orders/spec-preview`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as OrderSpecDraft;
+    },
+  });
+}
+
 export function useCreateOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
