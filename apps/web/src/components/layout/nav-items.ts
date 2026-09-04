@@ -1,4 +1,5 @@
 import {
+  Alarm,
   Banknote,
   Home,
   Receipt,
@@ -40,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     items: [
       { href: '/dashboard', label: 'Главная', icon: Home },
+      { href: '/health', label: 'Здоровье', icon: Alarm },
       { href: '/inbox', label: 'Входящие', icon: Inbox },
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/transactions', label: 'Операции', icon: Receipt },

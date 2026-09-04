@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useHealthChecks } from '@/hooks/useHealthChecks';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -64,6 +65,8 @@ export default function DashboardPage() {
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
   const counterparties = useCounterparties(wsId);
+  // Тот же список проверок, что на странице «Здоровье» — единый источник.
+  const { failing } = useHealthChecks(wsId);
 
   const allCats = [...(incomeCats.data ?? []), ...(expenseCats.data ?? [])];
   const accountById = Object.fromEntries((accounts.data ?? []).map((a) => [a.id, a]));
@@ -103,31 +106,10 @@ export default function DashboardPage() {
   const outflowTrend = trendPoints.map((p) => Number(p.outflow));
 
   // «Требует внимания» (№25): рабочая очередь владельца — каждый пункт ведёт
-  // в место исправления. Виджет не рендерится, когда всё чисто.
-  const noCostItems = (warehouse.data ?? []).filter(
-    (w) => Number(w.qty) > 0 && Number(w.avgCost) === 0,
-  );
-  const overdueClients = (receivables.data?.clients ?? []).filter(
-    (c) => Number(c.overdueByPlan) > 0,
-  );
-  const attention: { key: string; href: string; tone: 'warning' | 'destructive'; text: string }[] =
-    [];
-  if (hasOverdue) {
-    attention.push({
-      key: 'overdue',
-      href: '/reports/receivables',
-      tone: 'destructive',
-      text: `Просроченные платежи: ${formatRub(overdueTotal)} у ${overdueClients.length} ${plural(overdueClients.length, 'клиента', 'клиентов', 'клиентов')}`,
-    });
-  }
-  if (noCostItems.length > 0) {
-    attention.push({
-      key: 'no-cost',
-      href: '/warehouse',
-      tone: 'warning',
-      text: `Позиции склада без себестоимости: ${noCostItems.length} — маржа по ним считается оценкой`,
-    });
-  }
+  // в место исправления. Проверки считает useHealthChecks — тот же список, что
+  // на странице «Здоровье»; здесь показываем только сработавшие и не больше
+  // трёх: дашборд — сводка, а не полный разбор.
+  const attention = failing.slice(0, 3);
 
   return (
     <>
@@ -232,7 +214,15 @@ export default function DashboardPage() {
         {/* Требует внимания (№25): дашборд — рабочий стол, а не витрина. */}
         {attention.length > 0 && (
           <section>
-            <h2 className="mb-3 text-base font-semibold tracking-tight">Требует внимания</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold tracking-tight">Требует внимания</h2>
+              <Button variant="link" asChild>
+                <Link href="/health">
+                  Все проверки
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
               {attention.map((a) => (
                 <Link
@@ -240,7 +230,10 @@ export default function DashboardPage() {
                   href={a.href as Parameters<typeof Link>[0]['href']}
                   className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary"
                 >
-                  <StatusDot tone={a.tone} label={a.text} />
+                  <StatusDot
+                    tone={a.tone === 'destructive' ? 'destructive' : 'warning'}
+                    label={`${a.title}: ${a.detail}`}
+                  />
                   <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 </Link>
               ))}
