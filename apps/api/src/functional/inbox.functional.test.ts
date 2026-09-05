@@ -130,6 +130,77 @@ describe('Входящие (Inbox): полный цикл разбора (Ф1-C2
     expect(updatedLine.transactionId).toBe(pay.id); // провенанс
   });
 
+  it('удаление оплаты в карточке заказа возвращает строку во «Входящие»', async () => {
+    // Живой случай: платёж привязали к заказу, потом сняли, чтобы перепривязать
+    // как рассрочку. Строка оставалась RESOLVED со ссылкой на удалённую
+    // проводку: во «Входящих» её нет, в остатке счёта денег нет, а вытащить
+    // нечем — undo требовал живой проводки и отказывал.
+    const connId = await seedInbox();
+    const income = await lineByExt(connId, 'fake-1'); // приход 15000
+    const order = await H.prisma.order.create({
+      data: {
+        workspaceId: ws(),
+        number: 'ORD-INBOX-RETURN',
+        status: 'OPEN',
+        subtotal: new Prisma.Decimal('15000'),
+        totalAmount: new Prisma.Decimal('15000'),
+        items: { create: [{ name: 'Товар', qty: '1', unitPrice: '15000', lineTotal: '15000' }] },
+      },
+    });
+
+    await H.inject({
+      method: 'POST',
+      url: `${inbox()}/${income.id}/attach-order`,
+      token,
+      payload: { orderId: order.id },
+    });
+    const pay = await H.prisma.transaction.findFirstOrThrow({
+      where: { workspaceId: ws(), orderId: order.id, kind: 'ORDER_PAYMENT' },
+    });
+
+    const del = await H.inject({
+      method: 'DELETE',
+      url: `/workspaces/${ws()}/orders/${order.id}/payments/${pay.id}`,
+      token,
+    });
+    expect(del.statusCode).toBe(200);
+
+    const line = await H.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: income.id } });
+    expect(line.status).toBe('NEW');
+    expect(line.transactionId).toBeNull();
+    const back = await H.prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(back.paidAmount.toString()).toBe('0');
+  });
+
+  it('undo строки, чья проводка уже удалена, возвращает её на разбор', async () => {
+    // Страховка для строк, застрявших до предыдущего исправления: проводки нет,
+    // а строка при ней. Отменять нечего — просто вернуть во «Входящие».
+    const connId = await seedInbox();
+    const income = await lineByExt(connId, 'fake-2');
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws(), name: 'Прочий доход', kind: 'INCOME', bucket: 'OTHER' },
+    });
+    const res = await H.inject({
+      method: 'POST',
+      url: `${inbox()}/${income.id}/categorize`,
+      token,
+      payload: { categoryId: cat.id },
+    });
+    expect(res.statusCode).toBe(200);
+    const line = await H.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: income.id } });
+    // Имитируем застрявшее состояние: проводка удалена, ссылка осталась.
+    await H.prisma.transaction.update({
+      where: { id: line.transactionId! },
+      data: { deletedAt: new Date() },
+    });
+
+    const undo = await H.inject({ method: 'POST', url: `${inbox()}/${income.id}/undo`, token, payload: {} });
+    expect(undo.statusCode).toBe(200);
+    const after = await H.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: income.id } });
+    expect(after.status).toBe('NEW');
+    expect(after.transactionId).toBeNull();
+  });
+
   it('attach-order расхода → 400 (к заказу только приход)', async () => {
     const connId = await seedInbox();
     const expense = await lineByExt(connId, 'fake-3');
