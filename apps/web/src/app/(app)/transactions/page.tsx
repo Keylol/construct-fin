@@ -192,6 +192,11 @@ function TransactionsView() {
     {
       key: 'description',
       header: 'Описание',
+      // w-full + max-w-0: без этого <td> в auto-layout растягивается по самому
+      // длинному назначению банка (150+ символов), таблица уезжает за экран, а
+      // колонка суммы обрезается. С max-w-0 ячейка берёт остаток ширины и
+      // режет текст многоточием, как и задумано truncate ниже.
+      className: 'w-full max-w-0',
       cell: (t) => {
         const cp = t.counterpartyId ? counterpartyById[t.counterpartyId] : undefined;
         const cat = t.categoryId ? categoryById[t.categoryId] : undefined;

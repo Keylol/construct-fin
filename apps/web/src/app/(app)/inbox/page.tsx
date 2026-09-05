@@ -6,7 +6,7 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { useInbox, useApplyRules } from '@/hooks/useInbox';
+import { useInbox, useApplyRules, useInboxCount } from '@/hooks/useInbox';
 import type { ApplyRulesResult, BankLineStatus } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -48,6 +48,9 @@ export default function InboxPage() {
     accountId: accountId || undefined,
   });
   const applyRules = useApplyRules(current?.id ?? '');
+  // Точное число на вкладке: бейдж в меню его тоже показывает, но здесь
+  // человек решает, сколько работы осталось, и «99+» ему не ответ.
+  const inboxCount = useInboxCount(current?.id ?? '');
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
   const filtersActive = !!(q || direction || accountId);
@@ -110,7 +113,14 @@ export default function InboxPage() {
         <div className="mb-4">
           <Tabs value={tab} onValueChange={(v) => setTab(v as BankLineStatus)}>
             <TabsList>
-              <TabsTrigger value="NEW">На разбор</TabsTrigger>
+              <TabsTrigger value="NEW">
+                На разбор
+                {inboxCount.data && inboxCount.data.count > 0 && (
+                  <span className="ml-1.5 tabular-nums text-muted-foreground">
+                    {inboxCount.data.count}
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="AUTO_POSTED">Проведено правилами</TabsTrigger>
               <TabsTrigger value="RESOLVED">Обработано</TabsTrigger>
             </TabsList>

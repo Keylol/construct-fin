@@ -115,8 +115,11 @@ describe.skipIf(!DIR || !existsSync(DIR))('черновики заказов и�
       const plan = planCostApplication(base, c.lines);
       const items = base.map((it, idx) => {
         const a = plan.applications.find((x) => x.itemIndex === idx);
+        // Количество из чека НЕ переносим: чеки в архивах сводные, «2 × процессор»
+        // там — две сборки, а не два процессора в одной. Позиция спецификации —
+        // всегда одна штука на ПК; «3 шт. вентиляторов» живёт в её названии.
         return a?.applied
-          ? { ...it, unitCost: a.unitCost, qty: a.qty, costFrom: 'своя папка' }
+          ? { ...it, unitCost: a.unitCost, costFrom: 'своя папка' }
           : { ...it, costFrom: undefined as string | undefined };
       });
 
@@ -156,7 +159,6 @@ describe.skipIf(!DIR || !existsSync(DIR))('черновики заказов и�
             const item = items[target.i];
             if (!item || item.unitCost) return;
             item.unitCost = p.unitCost;
-            item.qty = src.line.qty && Number(src.line.qty) > 1 ? src.line.qty : item.qty;
             item.costFrom = `чек архива «${src.line.from.slice(0, 24)}»`;
             src.line.used = true;
             fromPool += 1;

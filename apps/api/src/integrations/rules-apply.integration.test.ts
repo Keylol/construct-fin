@@ -56,12 +56,12 @@ async function makeConnection() {
   });
 }
 
-async function makeCategory(name = 'Закупка товара') {
+async function makeCategory(name = 'Закупка товара', kind: 'INCOME' | 'EXPENSE' = 'INCOME') {
   return h.categories.create(seed.workspaceId, {
     name,
-    kind: 'INCOME',
+    kind,
     isFixedCost: false,
-    bucket: 'REVENUE',
+    bucket: kind === 'INCOME' ? 'REVENUE' : 'PURCHASES',
   });
 }
 
@@ -114,7 +114,8 @@ describe('правила по ИНН на синке', () => {
   });
 
   it('счёт подключения виден правилу: ACCOUNT_EQUALS срабатывает на синке', async () => {
-    const cat = await makeCategory();
+    // fake-4 «Канцтовары» — расход, категория должна быть расходной.
+    const cat = await makeCategory('Канцтовары', 'EXPENSE');
     await h.prisma.rule.create({
       data: {
         workspaceId: seed.workspaceId,
@@ -235,6 +236,42 @@ describe('InboxService.applyRulesToPending', () => {
     expect(res.posted).toBe(0);
     const after = await h.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: line.id } });
     expect(after.status).toBe('DISMISSED'); // решение оператора важнее правила
+  });
+
+  it('расходная категория не ставится приходу: строка остаётся на разборе', async () => {
+    // Живой случай: правило «Закупка ДНС» по слову в назначении ловило и возврат
+    // денег от магазина — приход уезжал в «Закупку товара» и раздувал доход.
+    // Ручной ввод такую пару отвергает, правило не должно её проводить.
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const expenseCat = await makeCategory('Закупка товара', 'EXPENSE');
+    await makeInnRule(expenseCat.id); // ИНН строки fake-1 — она ПРИХОД на 15000
+
+    const res = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    expect(res.posted).toBe(0);
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, externalId: 'fake-1' },
+    });
+    expect(line.status).toBe('NEW');
+    expect(line.transactionId).toBeNull();
+  });
+
+  it('то же на синке: приход под расходным правилом приезжает в NEW, а не в AUTO_POSTED', async () => {
+    const expenseCat = await makeCategory('Закупка товара', 'EXPENSE');
+    await makeInnRule(expenseCat.id);
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { workspaceId: seed.workspaceId, externalId: 'fake-1' },
+    });
+    expect(line.status).toBe('NEW');
+    expect(line.appliedRuleId).toBeNull();
+    const txCount = await h.prisma.transaction.count({
+      where: { workspaceId: seed.workspaceId, deletedAt: null },
+    });
+    expect(txCount).toBe(0);
   });
 
   it('правило с удалённой категорией пропускается, а не роняет пачку', async () => {
