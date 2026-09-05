@@ -57,7 +57,11 @@ export default function ClientsPage() {
   const [view, changeView] = useTileView('clients:view');
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
-  const list = useCounterparties(wsId, debouncedSearch || undefined, false, 'CLIENT');
+  // Архив по умолчанию скрыт, но должен быть достижим: без этого переключателя
+  // отправленная в архив карточка исчезала из интерфейса совсем — вернуть её
+  // было нечем ни на одной странице.
+  const [showArchived, setShowArchived] = useState(false);
+  const list = useCounterparties(wsId, debouncedSearch || undefined, showArchived, 'CLIENT');
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
   // «/» — в поиск, «n» — создать: список листают с клавиатуры.
@@ -175,6 +179,15 @@ export default function ClientsPage() {
             />
           </div>
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Показывать архив
+        </label>
         <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
