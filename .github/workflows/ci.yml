@@ -103,6 +103,11 @@ jobs:
         # синхронизация оплаты, атомарность. Раньше в CI не гонялся.
         run: pnpm --filter @construct/api run test:integration
 
+      - name: Functional tests (HTTP-контракт эндпоинтов)
+        # В CI не гонялись, и сьют разъехался с прод-кодом: 18 тестов заказов
+        # падали неделю с тех пор, как телефон стал обязательным полем.
+        run: pnpm --filter @construct/api run test:functional
+
       - name: Build
         run: pnpm build
 

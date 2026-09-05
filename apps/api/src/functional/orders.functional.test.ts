@@ -94,13 +94,17 @@ async function client(name = 'ООО Клиент'): Promise<string> {
   return cp.id;
 }
 
-/** Создать заказ через РЕАЛЬНЫЙ POST /orders и вернуть распарсенный ответ. */
+/**
+ * Создать заказ через РЕАЛЬНЫЙ POST /orders и вернуть распарсенный ответ.
+ * Телефон обязателен с тех пор, как он стал видимым номером заказа, — ставим
+ * умолчание, чтобы каждый тест не повторял его ради валидации.
+ */
 async function createOrder(payload: Record<string, unknown>): Promise<OrderJson> {
   const res = await H.inject({
     method: 'POST',
     url: `/workspaces/${seed.workspaceId}/orders`,
     token,
-    payload,
+    payload: { phone: '+79000000001', ...payload },
   });
   expect(res.statusCode).toBe(201);
   return res.json<OrderJson>();

@@ -142,7 +142,17 @@ export class OrderController {
       );
     }
 
-    const parsed = await detectAndParseReceipt(buffer);
+    // Разбор в try/catch, как в spec-preview: в папке архива лежат и сканы, и
+    // счета, и чеки чужих магазинов. Без обёртки каждый такой файл отвечал 500,
+    // а фильтр исключений слал владельцу алерт в Telegram.
+    let parsed;
+    try {
+      parsed = await detectAndParseReceipt(buffer);
+    } catch (e) {
+      throw new BadRequestException(
+        `Не удалось прочитать файл: ${e instanceof Error ? e.message : 'неизвестная ошибка'}`,
+      );
+    }
     return {
       filename: part.filename,
       source: parsed.source,

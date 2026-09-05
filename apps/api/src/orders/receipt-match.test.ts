@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchCostsToItems, scoreCostPair } from '@construct/shared';
+import { matchCostsToItems, scoreCostPair, planCostApplication } from '@construct/shared';
 
 /**
  * Названия взяты из живой папки клиента: спецификация CONSTRUCTPC и четыре чека
@@ -95,5 +95,62 @@ describe('раскладка цен чеков по позициям заказ�
     const { reasons } = scoreCostPair(ITEMS[5]!, LINES[3]!);
     expect(reasons.join(' ')).toContain('nv3000');
     expect(reasons.join(' ')).toMatch(/совпало слов/);
+  });
+
+  it('«5060» из сводного чека не подменяет «5060 Ti»', () => {
+    // Обе строки лежат в одном чеке WB и различаются только суффиксом; цена
+    // расходится на пять тысяч, и ошибка ушла бы в маржу молча.
+    const items = [{ name: 'Видеокарта: GIGABYTE GeForce RTX 5060 Ti WINDFORCE OC 8G' }];
+    const lines = [
+      { name: 'Gigabyte Видеокарта NVIDIA GeForce RTX 5060 Windforce OC 8 ГБ', unitPrice: '27941.00' },
+      { name: 'Gigabyte Видеокарта RTX 5060 Ti WINDFORCE OC, 8 Гб GDDR7', unitPrice: '32583.00' },
+    ];
+    expect(matchCostsToItems(items, lines)[0]?.unitCost).toBe('32583.00');
+  });
+
+  it('слитное «5060TI» в чеке — тот же товар, а не другой', () => {
+    const items = [{ name: 'Видеокарта: GIGABYTE GeForce RTX 5060 Ti WINDFORCE OC' }];
+    const lines = [
+      { name: 'Видеокарта PCI-E Gigabyte GeForce RTX 5060TI WINDFORCE MAX 8192MB', unitPrice: '39499' },
+    ];
+    expect(matchCostsToItems(items, lines)).toHaveLength(1);
+  });
+
+  it('объём и частота — не модель: «16Гб» не роднит разные товары', () => {
+    // Раньше «16гб» весила как артикул, и память цеплялась к любой строке с ним.
+    const items = [{ name: 'Оперативная память: 16Гб Patriot Viper Venom DDR5 2x8Гб' }];
+    const lines = [
+      { name: 'Gigabyte Видеокарта RTX 5060 Ti WINDFORCE MAX OC 16Гб', unitPrice: '43240.00' },
+      { name: 'Память DIMM DDR5 8192MBx2 5600MHz Patriot Viper Venom', unitPrice: '26399' },
+    ];
+    expect(matchCostsToItems(items, lines)[0]?.unitCost).toBe('26399');
+  });
+
+  it('количество из чека переносится в позицию, где стояла единица', () => {
+    // Спецификация пишет «Вентиляторы: 3 шт.» одной строкой без количества.
+    const plan = planCostApplication(
+      [{ name: 'Вентиляторы: XASTRA FM120B ARGB', qty: '1', unitCost: '' }],
+      [{ name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '590', qty: '3' }],
+    );
+    expect(plan.applications[0]).toMatchObject({ unitCost: '590', qty: '3', applied: true });
+  });
+
+  it('своё количество не перетирается количеством из чека', () => {
+    const plan = planCostApplication(
+      [{ name: 'Вентиляторы: XASTRA FM120B ARGB', qty: '5', unitCost: '' }],
+      [{ name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '590', qty: '3' }],
+    );
+    expect(plan.applications[0]?.qty).toBe('5');
+  });
+
+  it('введённая руками закупка остаётся и в отчёт попадает как неприменённая', () => {
+    const plan = planCostApplication(
+      [{ name: 'Процессор: Intel Core i5-12400F', qty: '1', unitCost: '10000' }],
+      [{ name: 'Intel Процессор Core i5-12400F OEM', unitPrice: '10545.00', qty: '1' }],
+    );
+    expect(plan.applications[0]?.applied).toBe(false);
+    expect(plan.applications[0]?.reasons.join()).toContain('закупка уже заполнена');
+    // Строка не считается использованной — человек видит её среди лишних.
+    expect(plan.unusedLineIndexes).toEqual([0]);
   });
 });

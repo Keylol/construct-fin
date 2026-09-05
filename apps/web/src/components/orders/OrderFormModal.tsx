@@ -21,7 +21,7 @@ import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
-import { D, add, allocateSalePrices, formatRub, matchCostsToItems, mul, normalizePhone, parseAmountInput, parseOrderItemsText, sub, toMoneyString } from '@construct/shared';
+import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
 
 export function OrderFormModal({
   wsId,
@@ -70,7 +70,7 @@ export function OrderFormModal({
   // Итог последнего разбора чеков: сколько позиций получило цену и какие
   // строки остались лишними — показывается под составом, пока форма открыта.
   const [costsReport, setCostsReport] = useState<{
-    matched: { name: string; cost: string; why: string }[];
+    matched: { name: string; cost: string; qty: string; applied: boolean; why: string }[];
     unmatchedLines: { name: string; price: string }[];
     files: number;
   } | null>(null);
@@ -178,6 +178,10 @@ export function OrderFormModal({
     setPasteOpen(false);
     setPasteText('');
     setAllocTotal('');
+    // Модалка смонтирована постоянно: без сброса следующий архив открывался бы
+    // с отчётом по чекам и итогом спецификации предыдущего заказа.
+    setCostsReport(null);
+    setSpecTotal(null);
     // Сброс плана оплаты.
     setPayMode('none');
     setPrepayAmount('');
@@ -225,14 +229,14 @@ export function OrderFormModal({
    * то, что человек уже поправил руками.
    */
   const applyCosts = async (files: File[]) => {
-    const lines: { name: string; unitPrice: string; source: string }[] = [];
+    const lines: { name: string; unitPrice: string; qty: string; source: string }[] = [];
     const failed: string[] = [];
 
     for (const file of files) {
       try {
         const r = await parseCosts.mutateAsync(file);
         r.items.forEach((i) =>
-          lines.push({ name: i.name, unitPrice: i.unitPrice, source: r.source }),
+          lines.push({ name: i.name, unitPrice: i.unitPrice, qty: i.qty, source: r.source }),
         );
         r.warnings.forEach((w) => toast.error(`${file.name}: ${w}`));
       } catch (e) {
@@ -246,34 +250,40 @@ export function OrderFormModal({
       return;
     }
 
-    const matches = matchCostsToItems(items.map((it) => ({ name: it.name })), lines);
+    // Решение целиком в чистой функции: сюда возвращается уже готовый план —
+    // где ставим цену, где переносим количество, где не трогаем чужой ввод.
+    const plan = planCostApplication(
+      items.map((it) => ({ name: it.name, qty: it.qty || '1', unitCost: it.unitCost ?? '' })),
+      lines,
+    );
     // Считаем ДО setItems: updater в React вызывается больше одного раза, и
     // побочный эффект внутри него удваивал бы отчёт.
-    const used = new Set(matches.map((m) => m.lineIndex));
-    const matched = matches.map((m) => ({
-      name: items[m.itemIndex]?.name ?? '',
-      cost: m.unitCost,
-      why: m.reasons.join(', '),
+    const applied = plan.applications.filter((a) => a.applied);
+    const matched = plan.applications.map((a) => ({
+      name: items[a.itemIndex]?.name ?? '',
+      cost: a.unitCost,
+      qty: a.qty,
+      applied: a.applied,
+      why: a.reasons.join(', '),
     }));
 
     setItems((prev) =>
       prev.map((it, idx) => {
-        const m = matches.find((x) => x.itemIndex === idx);
-        if (!m) return it;
-        // Уже проставленную руками закупку не трогаем.
-        return it.unitCost ? it : { ...it, unitCost: m.unitCost };
+        const a = plan.applications.find((x) => x.itemIndex === idx);
+        if (!a || !a.applied) return it;
+        return { ...it, unitCost: a.unitCost, qty: a.qty };
       }),
     );
 
     setCostsReport({
       matched,
-      unmatchedLines: lines
-        .map((l, i) => ({ line: l, i }))
-        .filter(({ i }) => !used.has(i))
-        .map(({ line }) => ({ name: line.name, price: line.unitPrice })),
+      unmatchedLines: plan.unusedLineIndexes.map((i) => ({
+        name: lines[i]?.name ?? '',
+        price: lines[i]?.unitPrice ?? '',
+      })),
       files: files.length - failed.length,
     });
-    toast.success(`Цены из чеков: ${matched.length} из ${items.length} позиций`);
+    toast.success(`Цены из чеков: ${applied.length} из ${items.length} позиций`);
   };
 
   /**
@@ -905,11 +915,14 @@ export function OrderFormModal({
               <div className="space-y-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
                 <p className="font-medium text-foreground">
                   Разобрано чеков: {costsReport.files} · цены проставлены у{' '}
-                  {costsReport.matched.length} позиций
+                  {costsReport.matched.filter((m) => m.applied).length} позиций
                 </p>
-                {costsReport.matched.map((m) => (
-                  <p key={m.name} className="text-muted-foreground">
-                    <span className="text-foreground">{m.name}</span> → {formatRub(m.cost)}{' '}
+                {costsReport.matched.map((m, i) => (
+                  <p key={`${m.name}-${i}`} className="text-muted-foreground">
+                    <span className="text-foreground">{m.name}</span> →{' '}
+                    {Number(m.qty) > 1 ? `${m.qty} × ` : ''}
+                    {formatRub(m.cost)}
+                    {m.applied ? '' : ' (оставлена своя цена)'}{' '}
                     <span className="opacity-70">({m.why})</span>
                   </p>
                 ))}
@@ -918,8 +931,8 @@ export function OrderFormModal({
                     <p className="text-muted-foreground">
                       Строки чеков без позиции — проверьте, не потерялось ли что-то:
                     </p>
-                    {costsReport.unmatchedLines.map((l) => (
-                      <p key={l.name} className="text-muted-foreground">
+                    {costsReport.unmatchedLines.map((l, i) => (
+                      <p key={`${l.name}-${i}`} className="text-muted-foreground">
                         {formatRub(l.price)} · {l.name}
                       </p>
                     ))}
