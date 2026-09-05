@@ -52,7 +52,7 @@ describe('подбор оплаты к заказу', () => {
       order,
     );
     expect(ranked.map((r) => r.line.id)).toEqual(['credit']);
-    expect(ranked[0]?.reasons).toContain('клиент упомянут в строке');
+    expect(ranked[0]?.reasons).toContain('фамилия клиента есть в строке');
   });
 
   it('конфиг сборки из названия заказа ловится в назначении', () => {
@@ -126,13 +126,32 @@ describe('совпадение по имени — только целые сл�
     expect(ranked).toEqual([]);
   });
 
+  it('имя предпринимателя из реквизитов не делает клиента-тёзку кандидатом', () => {
+    // Живой случай: строка «Перевод собственных средств» от ИП Каменского Ильи
+    // Юрьевича предлагалась к заказу Фефелова Ильи Игоревича — совпало имя.
+    // Реквизиты ИП стоят в КАЖДОЙ такой строке, поэтому имя и отчество больше
+    // не признак: опознаём клиента только по фамилии.
+    const ranked = rankPaymentCandidates(
+      [
+        {
+          id: 'own',
+          amount: '157000.00',
+          counterpartyName: 'ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ КАМЕНСКИЙ ИЛЬЯ ЮРЬЕВИЧ',
+          description: 'Перевод собственных средств. НДС не облагается.',
+        },
+      ],
+      { remaining: '224429.00', clientName: 'Фефелов Илья Игоревич' },
+    );
+    expect(ranked).toEqual([]);
+  });
+
   it('точное совпадение фамилии по-прежнему ловится', () => {
     const ranked = rankPaymentCandidates(
       [{ id: 'mak', amount: '85000.00', counterpartyName: 'МАКАРОВ АЛЕКСАНДР СЕРГЕЕВИЧ' }],
       { remaining: '119737.63', clientName: 'Макаров Александр Сергеевич' },
     );
     expect(ranked).toHaveLength(1);
-    expect(ranked[0]?.reasons).toContain('клиент упомянут в строке');
+    expect(ranked[0]?.reasons).toContain('фамилия клиента есть в строке');
   });
 })
 
@@ -221,7 +240,7 @@ describe('rankOrderCandidates (подбор заказа под строку в�
     expect(ranked).toHaveLength(1);
     expect(ranked[0]?.order.number).toBe('ORD-1');
     expect(ranked[0]?.reasons).toContain('сумма равна остатку по заказу');
-    expect(ranked[0]?.reasons).toContain('клиент упомянут в строке');
+    expect(ranked[0]?.reasons).toContain('фамилия клиента есть в строке');
   });
 
   it('совпадение только по имени тоже попадает в подсказку, но ниже точной суммы', () => {

@@ -62,11 +62,20 @@ function significantTokens(raw: string | null | undefined): string[] {
     .filter((t) => t.length >= 4);
 }
 
-/** Слова ФИО: фамилии и имён достаточно, отчество ничего не добавляет. */
+/**
+ * Слова ФИО. Первое — фамилия, она и опознаёт клиента: имя и отчество в выписке
+ * встречаются постоянно в реквизитах самого предпринимателя («ИП Каменский Илья
+ * Юрьевич»), и заказ клиента с таким же именем ловил чужие платежи.
+ */
 function nameTokens(raw: string | null | undefined): string[] {
   return normalize(raw)
     .split(/[^a-zа-я-]+/i)
     .filter((t) => t.length >= 4);
+}
+
+/** Фамилия клиента — единственная часть ФИО, по которой опознаём платёж. */
+function surname(raw: string | null | undefined): string | null {
+  return nameTokens(raw)[0] ?? null;
 }
 
 /**
@@ -77,7 +86,9 @@ function nameTokens(raw: string | null | undefined): string[] {
  * 2. брутто-совпадение: строка + комиссия, удержанная банком внутри возмещения
  *    (`parseAcquiringFee`), равны остатку — тот самый случай, когда поиск по
  *    сумме клиента не находит ничего;
- * 3. фамилия или имя клиента встречаются в контрагенте либо назначении;
+ * 3. ФАМИЛИЯ клиента встречается в контрагенте либо назначении (имя и отчество
+ *    не считаются: в выписке всюду реквизиты самого ИП, и его имя роднило
+ *    строку с любым тёзкой среди клиентов);
  * 4. слово из названия заказа встречается в назначении.
  *
  * Строки без единого признака не возвращаются вовсе: показать «всё подряд» —
@@ -93,7 +104,7 @@ export function scorePaymentPair(
   order: PaymentMatchOrder,
 ): { score: number; reasons: string[] } {
   const remaining = money(order.remaining);
-  const clientParts = nameTokens(order.clientName);
+  const clientSurname = surname(order.clientName);
   const titleParts = significantTokens(order.title);
 
   const haystack = `${normalize(line.counterpartyName)} ${normalize(line.description)}`;
@@ -115,10 +126,9 @@ export function scorePaymentPair(
     }
   }
 
-  const clientHit = clientParts.find((p) => haystackWords.has(p));
-  if (clientHit) {
+  if (clientSurname && haystackWords.has(clientSurname)) {
     score += SCORE_CLIENT;
-    reasons.push('клиент упомянут в строке');
+    reasons.push('фамилия клиента есть в строке');
   }
 
   const titleHit = titleParts.find((p) => haystack.includes(p));
@@ -139,7 +149,9 @@ export function scorePaymentPair(
  * 2. брутто-совпадение: строка + комиссия, удержанная банком внутри возмещения
  *    (`parseAcquiringFee`), равны остатку — тот самый случай, когда поиск по
  *    сумме клиента не находит ничего;
- * 3. фамилия или имя клиента встречаются в контрагенте либо назначении;
+ * 3. ФАМИЛИЯ клиента встречается в контрагенте либо назначении (имя и отчество
+ *    не считаются: в выписке всюду реквизиты самого ИП, и его имя роднило
+ *    строку с любым тёзкой среди клиентов);
  * 4. слово из названия заказа встречается в назначении.
  *
  * Строки без единого признака не возвращаются вовсе: показать «всё подряд» —
