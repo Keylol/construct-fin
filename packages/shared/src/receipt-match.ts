@@ -51,12 +51,30 @@ function tokens(raw: string): string[] {
 }
 
 /**
+ * Характеристика, а не модель: «16гб», «8g», «750w», «5600мгц», «2280».
+ * Объём и частота совпадают у совершенно разных товаров, и вес модели им не
+ * положен — иначе «16Гб Patriot Viper Venom» цепляется к любой строке с «16гб».
+ */
+const SPEC_TOKEN = /^\d+(?:[.,]\d+)?(?:гб|gb|тб|tb|мб|mb|гц|hz|мгц|mhz|w|вт|v|мм|mm|dpi|шт)?$/;
+
+/**
  * Модельный токен: артикул или обозначение — «nv3000», «h610m», «ar400»,
  * «5060ti», «z3b». Такие совпадения весят больше слов вроде «память».
  */
 function isModelToken(t: string): boolean {
-  return /\d/.test(t) && t.length >= 3;
+  return /\d/.test(t) && t.length >= 3 && !SPEC_TOKEN.test(t);
 }
+
+/**
+ * Слова, различающие соседние модели одной линейки: «5060» и «5060 Ti» —
+ * разные видеокарты с разницей в цене под пять тысяч, и в сводном чеке они
+ * лежат рядом. Одностороннее наличие такого слова означает, что товар не тот.
+ *
+ * Список нарочно короткий. «MAX», «PLUS», «LITE» бывают частью полного имени
+ * («WINDFORCE MAX OC» в чеке против «WINDFORCE» в спецификации) и как признак
+ * различия дают ложные отказы — проверено на живых архивах.
+ */
+const DISCRIMINATORS = new Set(['ti', 'super', 'xt', 'xtx']);
 
 /**
  * «5060ti» и «5060 ti» — одно и то же. Слепляем соседние токены, чтобы
@@ -83,7 +101,8 @@ export function scoreCostPair(
   line: MatchableReceiptLine,
 ): { score: number; reasons: string[] } {
   const itemTokens = tokens(item.name);
-  const lineSet = withGlued(tokens(line.name));
+  const lineTokens = tokens(line.name);
+  const lineSet = withGlued(lineTokens);
 
   const meaningful = itemTokens.filter((t) => !STOP.has(t));
   if (meaningful.length === 0) return { score: 0, reasons: [] };
@@ -95,13 +114,26 @@ export function scoreCostPair(
 
   // Доля совпавших слов плюс вес за модель: одна «nv3000» надёжнее трёх общих слов.
   const share = hits.length / meaningful.length;
-  const score = share * 100 + modelHits.length * 40;
+  let score = share * 100 + modelHits.length * 40;
 
   const reasons: string[] = [];
   if (modelHits.length > 0) reasons.push(`совпала модель: ${modelHits.join(', ')}`);
   reasons.push(`совпало слов: ${hits.length} из ${meaningful.length}`);
 
-  return { score, reasons };
+  // Различающее слово есть с одной стороны — товар другой. Штраф перебивает вес
+  // модели: без него «RTX 5060» и «RTX 5060 Ti» из одного чека неразличимы.
+  // Пишут и слитно («5060TI»), поэтому ищем ещё и внутри модельных токенов.
+  const carries = (list: string[], d: string): boolean =>
+    list.includes(d) || list.some((t) => t.length > d.length && t.endsWith(d) && /\d/.test(t));
+  const missed = [...DISCRIMINATORS].filter(
+    (d) => carries(itemTokens, d) !== carries(lineTokens, d),
+  );
+  if (missed.length > 0) {
+    score -= missed.length * 60;
+    reasons.push(`не сходится: ${missed.join(', ')}`);
+  }
+
+  return { score: Math.max(score, 0), reasons };
 }
 
 /**
@@ -121,7 +153,9 @@ export function matchCostsToItems(
     lines.forEach((line, lineIndex) => {
       const { score, reasons } = scoreCostPair(item, line);
       if (score === 0) return;
-      const hasModel = reasons.some((r) => r.startsWith('совпала модель'));
+      const hasModel =
+        reasons.some((r) => r.startsWith('совпала модель')) &&
+        !reasons.some((r) => r.startsWith('не сходится'));
       if (!hasModel && score < 50) return;
       pairs.push({ itemIndex, lineIndex, unitCost: line.unitPrice, score, reasons });
     });
@@ -142,4 +176,70 @@ export function matchCostsToItems(
   }
 
   return out.sort((a, b) => a.itemIndex - b.itemIndex);
+}
+
+export interface ApplicableItem extends MatchableItem {
+  /** Количество в позиции заказа, Decimal-строка. */
+  qty: string;
+  /** Уже введённая руками закупка — её не перетираем. */
+  unitCost: string;
+}
+
+export interface ApplicableLine extends MatchableReceiptLine {
+  /** Количество в строке чека: три вентилятора по 590 — это 1 770 себестоимости. */
+  qty: string;
+}
+
+export interface CostApplication {
+  itemIndex: number;
+  /** Цена за единицу из чека. */
+  unitCost: string;
+  /** Количество из чека — подставляется, только когда в позиции стояла единица. */
+  qty: string;
+  /** false — цену не ставим: в позиции уже есть своя. */
+  applied: boolean;
+  reasons: string[];
+}
+
+export interface CostPlan {
+  applications: CostApplication[];
+  /** Индексы строк чека, не легших ни на одну позицию. */
+  unusedLineIndexes: number[];
+}
+
+/**
+ * План подстановки закупочных цен: что и почему встанет в позиции заказа.
+ *
+ * Отдельно от `matchCostsToItems`, потому что решает не «похоже ли», а «что
+ * делаем»: количество из чека переносится, только если в позиции стоит единица
+ * (иначе человек уже указал своё), а позиции с введённой руками закупкой
+ * остаются нетронутыми — и это видно в отчёте, а не молча.
+ */
+export function planCostApplication(
+  items: ApplicableItem[],
+  lines: ApplicableLine[],
+): CostPlan {
+  const matches = matchCostsToItems(items, lines);
+  const used = new Set<number>();
+
+  const applications = matches.map((m) => {
+    const item = items[m.itemIndex];
+    const line = lines[m.lineIndex];
+    const applied = !item?.unitCost;
+    if (applied) used.add(m.lineIndex);
+    // Количество из чека берём, только когда в позиции единица: спецификация
+    // пишет «Вентиляторы: 3 шт.» одной строкой, а чек — тремя штуками в строке.
+    const lineQty = Number(line?.qty ?? '1');
+    const keepQty = !item || Number(item.qty) !== 1 || !Number.isFinite(lineQty) || lineQty <= 1;
+    return {
+      itemIndex: m.itemIndex,
+      unitCost: m.unitCost,
+      qty: keepQty ? (item?.qty ?? '1') : String(lineQty),
+      applied,
+      reasons: applied ? m.reasons : [...m.reasons, 'закупка уже заполнена — не меняем'],
+    };
+  });
+
+  const unusedLineIndexes = lines.map((_, i) => i).filter((i) => !used.has(i));
+  return { applications, unusedLineIndexes };
 }
