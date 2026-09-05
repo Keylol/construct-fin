@@ -445,6 +445,15 @@ export class OrderService {
         );
       }
       await tx.transaction.update({ where: { id: txId }, data: { deletedAt: new Date() } });
+      // Строку выписки, которой платили, возвращаем на разбор — как это делает
+      // удаление заказа. Без этого она остаётся RESOLVED со ссылкой на удалённую
+      // проводку: во «Входящих» её нет, в остатке счёта денег нет, а вытащить
+      // нечем — undo требует живой проводки. Платёж удаляют как раз затем, чтобы
+      // привязать его правильно, значит строка нужна снова.
+      await tx.bankStatementLine.updateMany({
+        where: { workspaceId, transactionId: txId },
+        data: { status: 'NEW', transactionId: null, adopted: false },
+      });
       await this.syncPaymentState(workspaceId, orderId, tx);
       await this.audit.record(tx, {
         workspaceId,

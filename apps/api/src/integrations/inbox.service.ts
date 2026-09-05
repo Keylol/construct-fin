@@ -379,11 +379,22 @@ export class InboxService {
   async undo(workspaceId: string, lineId: string) {
     const line = await this.prisma.bankStatementLine.findFirst({
       where: { id: lineId, workspaceId },
-      include: { transaction: { select: { id: true, kind: true } } },
+      include: { transaction: { select: { id: true, kind: true, deletedAt: true } } },
     });
     if (!line) throw new NotFoundException('Строка не найдена');
     if (!line.transaction) {
       throw new BadRequestException('У строки нет созданной проводки — отменять нечего');
+    }
+    // Проводка уже удалена, а строка осталась при ней: так выглядели строки,
+    // чей платёж сняли из карточки заказа до того, как удаление стало
+    // возвращать их само. Отменять нечего — просто возвращаем на разбор, иначе
+    // деньги остаются недоступными ни во «Входящих», ни в операциях.
+    if (line.transaction.deletedAt) {
+      await this.prisma.bankStatementLine.update({
+        where: { id: line.id },
+        data: { status: 'NEW', transactionId: null, adopted: false },
+      });
+      return { ok: true };
     }
     // Усыновление: операция существовала до строки и принадлежит человеку —
     // отменяем только привязку. Удалить её значило бы стереть чужую запись
