@@ -7,6 +7,8 @@ import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useHealthChecks } from '@/hooks/useHealthChecks';
+import { WorkQueue } from '@/components/dashboard/WorkQueue';
+import { WorkCycle } from '@/components/dashboard/WorkCycle';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -19,7 +21,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
-import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -66,7 +67,7 @@ export default function DashboardPage() {
   const expenseCats = useCategories(wsId, 'EXPENSE');
   const counterparties = useCounterparties(wsId);
   // Тот же список проверок, что на странице «Здоровье» — единый источник.
-  const { failing } = useHealthChecks(wsId);
+  const { failing, isLoading: healthLoading } = useHealthChecks(wsId);
 
   const allCats = [...(incomeCats.data ?? []), ...(expenseCats.data ?? [])];
   const accountById = Object.fromEntries((accounts.data ?? []).map((a) => [a.id, a]));
@@ -105,17 +106,22 @@ export default function DashboardPage() {
   const inflowTrend = trendPoints.map((p) => Number(p.inflow));
   const outflowTrend = trendPoints.map((p) => Number(p.outflow));
 
-  // «Требует внимания» (№25): рабочая очередь владельца — каждый пункт ведёт
-  // в место исправления. Проверки считает useHealthChecks — тот же список, что
-  // на странице «Здоровье»; здесь показываем только сработавшие и не больше
-  // трёх: дашборд — сводка, а не полный разбор.
-  const attention = failing.slice(0, 3);
+  // «Сделать сейчас» — первое, что видно на главной: пока очередь не пуста,
+  // цифры месяца всё равно неполные. Показываем ВСЕ сработавшие проверки, а не
+  // первые три: список короткий по устройству, и обрезка прятала работу.
+  const attention = failing;
 
   return (
     <>
       <PageHeader title="Главная" description="Сводка за текущий месяц" />
 
       <div className="space-y-6 px-6 py-6">
+        {/* Рабочая очередь идёт первой: сначала доделать учёт, потом смотреть цифры. */}
+        <WorkQueue checks={attention} loading={healthLoading} />
+
+        {/* Круг работы: что за чем делать. Ниже очереди — сначала срочное, потом порядок. */}
+        <WorkCycle />
+
         {/* Bento (№23): «Всего денег» — главная цифра, вдвое шире остальных. */}
         <div className="stagger grid gap-4 sm:grid-cols-3">
           {cash.isLoading || cash.total == null ? (
@@ -210,36 +216,6 @@ export default function DashboardPage() {
             />
           )}
         </div>
-
-        {/* Требует внимания (№25): дашборд — рабочий стол, а не витрина. */}
-        {attention.length > 0 && (
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">Требует внимания</h2>
-              <Button variant="link" asChild>
-                <Link href="/health">
-                  Все проверки
-                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-              {attention.map((a) => (
-                <Link
-                  key={a.key}
-                  href={a.href as Parameters<typeof Link>[0]['href']}
-                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary"
-                >
-                  <StatusDot
-                    tone={a.tone === 'destructive' ? 'destructive' : 'warning'}
-                    label={`${a.title}: ${a.detail}`}
-                  />
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
 
         {topDebtors.length > 0 && (
           <section>
