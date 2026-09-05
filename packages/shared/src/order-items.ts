@@ -14,6 +14,7 @@
 
 import Decimal from 'decimal.js-light';
 import { D, money, toMoneyString, parseAmountInput } from './money';
+import { normalizePhone } from './phone';
 
 export interface ParsedOrderItem {
   name: string;
@@ -35,8 +36,12 @@ export interface ParseOrderItemsResult {
  * Разделитель полей. Табуляция первым делом — вставка из таблицы; `|` и `/`
  * набирают руками. Точку с запятой не берём: она встречается внутри названий
  * («ПК CONSTRUCTPC (Ryzen 7; RTX 5080)»).
+ *
+ * Хвостовые пробелы в разделитель НЕ входят (`\s+\/` с проверкой пробела
+ * впереди): иначе «Кулер /  / 1200» — обычная запись «закупка неизвестна» —
+ * съедалась целиком, поля съезжали и строка уходила в ошибку.
  */
-const FIELD_SEPARATOR = /\t|\s*\|\s*|\s+\/\s+/;
+const FIELD_SEPARATOR = /\t|\s*\|\s*|\s+\/(?=\s|$)/;
 
 /**
  * Количество в хвосте названия: «Вентилятор 120мм ×4», «Планка DDR5 x2».
@@ -69,7 +74,9 @@ export function parseOrderItemsText(text: string): ParseOrderItemsResult {
     const line = raw.trim();
     if (!line) return;
 
-    const parts = line.split(FIELD_SEPARATOR).map((p) => p.trim()).filter(Boolean);
+    // Пустые части НЕ выбрасываем: «Кулер /  / 1200» значит «цена закупки
+    // неизвестна, продажа 1200». Выброс сдвинул бы продажу в закупку.
+    const parts = line.split(FIELD_SEPARATOR).map((p) => p.trim());
     const [rawName, rawCost, rawPrice] = parts;
     if (!rawName) {
       errors.push({ line: i + 1, text: line, reason: 'пустое название' });
@@ -82,12 +89,12 @@ export function parseOrderItemsText(text: string): ParseOrderItemsResult {
       return;
     }
 
-    const cost = rawCost === undefined ? '' : parseAmountInput(rawCost);
+    const cost = rawCost === undefined || rawCost === '' ? '' : parseAmountInput(rawCost);
     if (cost === null) {
       errors.push({ line: i + 1, text: line, reason: `не похоже на сумму: «${rawCost}»` });
       return;
     }
-    const price = rawPrice === undefined ? '' : parseAmountInput(rawPrice);
+    const price = rawPrice === undefined || rawPrice === '' ? '' : parseAmountInput(rawPrice);
     if (price === null) {
       errors.push({ line: i + 1, text: line, reason: `не похоже на сумму: «${rawPrice}»` });
       return;
@@ -164,4 +171,105 @@ export function allocateSalePrices(
   });
 
   return prices;
+}
+
+// ── Заказ целиком из текста ──────────────────────────────────────────────────
+
+export interface ParsedOrderDraft {
+  phone: string | null;
+  clientName: string | null;
+  title: string | null;
+  /** Дата заказа (ISO), если распозналась. */
+  date: string | null;
+  /** Итог заказа Decimal-строкой — для распределения цены продажи. */
+  total: string | null;
+  items: ParsedOrderItem[];
+  errors: ParseOrderItemsResult['errors'];
+}
+
+const MONTHS: Record<string, number> = {
+  января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6,
+  июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12,
+};
+
+/** Подписи шапки: то же, что печатает спецификация CONSTRUCTPC. */
+const HEAD_LABELS: { key: 'order' | 'client' | 'title' | 'total'; rx: RegExp }[] = [
+  { key: 'order', rx: /^(?:заказ\s*№|телефон)\s*:?\s*/i },
+  { key: 'client', rx: /^(?:заказчик|клиент|фио)\s*:?\s*/i },
+  { key: 'title', rx: /^(?:наименование|название)\s*:?\s*/i },
+  { key: 'total', rx: /^(?:итого|стоимость|цена)\s*:?\s*/i },
+];
+
+/**
+ * Сумма из строки шапки: «122 868.00 руб.», «Итого 122868», «113 343,00 ₽».
+ * Отдельно от `parseAmountInput` — тот принимает только чистое число, а здесь
+ * рядом всегда стоит слово или знак валюты.
+ */
+function parseHeadAmount(raw: string): string | null {
+  const m = raw.match(/-?\d[\d\s\u00a0\u202f]*(?:[.,]\d{1,2})?/);
+  return m ? parseAmountInput(m[0]) : null;
+}
+
+/** Дата словом («от 14 июня 2026г.») или цифрами («от 14.06.2026»). */
+function parseDraftDate(raw: string): string | null {
+  const word = raw.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
+  if (word?.[1] && word[2] && word[3]) {
+    const month = MONTHS[word[2].toLowerCase()];
+    if (month) {
+      // Полдень UTC+5 — дата не съезжает на сутки ни в одном поясе показа.
+      return new Date(Date.UTC(+word[3], month - 1, +word[1], 7, 0, 0)).toISOString();
+    }
+  }
+  const digits = raw.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/);
+  if (digits?.[1] && digits[2] && digits[3]) {
+    return new Date(Date.UTC(+digits[3], +digits[2] - 1, +digits[1], 7, 0, 0)).toISOString();
+  }
+  return null;
+}
+
+/**
+ * Заказ целиком из текста: шапка (телефон, заказчик, название, итог) плюс
+ * позиции. Формат — тот же, что человек видит в спецификации CONSTRUCTPC,
+ * поэтому её можно скопировать как есть, не раскладывая по полям формы.
+ *
+ * Строки без подписи считаются позициями и разбираются `parseOrderItemsText`:
+ * «название / закупка / продажа». Так одна вставка заменяет пять действий —
+ * телефон, имя, название, состав и итог для распределения.
+ */
+export function parseOrderDraftText(text: string): ParsedOrderDraft {
+  const head: Record<string, string> = {};
+  const itemLines: string[] = [];
+
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    const hit = HEAD_LABELS.find((l) => l.rx.test(line));
+    // Подпись без значения («Итого:» и сумма следующей строкой) шапкой не
+    // считается — иначе она молча съела бы следующую позицию.
+    if (hit) {
+      const value = line.replace(hit.rx, '').trim();
+      if (value && head[hit.key] === undefined) {
+        head[hit.key] = value;
+        return;
+      }
+      if (!value) return;
+    }
+    itemLines.push(line);
+  });
+
+  const orderLine = head.order ?? '';
+  // «+7 922 126 67 02 от 28 июля 2026г.» — номер и дата одной строкой; пробел
+  // перед «от» ставят не всегда.
+  const phoneRaw = (orderLine.split(/\s*от\s+/i)[0] ?? '').split('/')[0]?.trim() ?? '';
+  const parsed = parseOrderItemsText(itemLines.join('\n'));
+
+  return {
+    phone: phoneRaw ? normalizePhone(phoneRaw) : null,
+    clientName: head.client ? head.client.replace(/\s*\([^)]*\)\s*$/, '').trim() : null,
+    title: head.title ?? null,
+    date: orderLine ? parseDraftDate(orderLine) : null,
+    total: head.total ? parseHeadAmount(head.total) : null,
+    items: parsed.items,
+    errors: parsed.errors,
+  };
 }

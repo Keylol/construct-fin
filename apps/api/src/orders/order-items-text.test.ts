@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allocateSalePrices, parseOrderItemsText, D } from '@construct/shared';
+import { allocateSalePrices, parseOrderItemsText, D, parseOrderDraftText } from '@construct/shared';
 
 describe('состав заказа из текста', () => {
   it('название, закупка и цена продажи через «/»', () => {
@@ -154,5 +154,67 @@ describe('распределение: добирающая позиция без
     const items = Array.from({ length: 5 }, () => ({ qty: '1', unitCost: '1' }));
     const prices = allocateSalePrices(items, '0.03');
     expect(prices.every((p) => Number(p) >= 0)).toBe(true);
+  });
+
+  it('пустая закупка не съедает строку: «Кулер /  / 1200»', () => {
+    // Живой случай при заведении архива: у позиции нет цены закупки (взята со
+    // склада), человек оставляет поле пустым. Разделитель съедал хвостовые
+    // пробелы, поля съезжали, и позиция уходила в ошибку — заказ терял строку.
+    const r = parseOrderItemsText('Кулер JONSBO CR-1000 /  / 1200');
+    expect(r.errors).toEqual([]);
+    expect(r.items).toEqual([
+      { name: 'Кулер JONSBO CR-1000', qty: '1', unitCost: '', unitPrice: '1200.00' },
+    ]);
+  });
+
+  it('слэш внутри названия не считается разделителем', () => {
+    const r = parseOrderItemsText('Плата B650M-P/D4 / 8999 / 11000');
+    expect(r.items[0]?.name).toBe('Плата B650M-P/D4');
+    expect(r.items[0]?.unitCost).toBe('8999.00');
+  });
+});
+
+describe('заказ целиком из текста', () => {
+  const SPEC = [
+    'Заказ №: +7 919 385 46 00 от 14 июня 2026г.',
+    'Заказчик: Сарапулова Диана Сарапулова (Р)',
+    'Наименование: ПК CONSTRUCTPC (AMD Ryzen 5 7500F; RTX 5060 Ti)',
+    'Процессор: AMD Ryzen 5 7500F / 7464.00 / 9057.82',
+    'Охлаждение: Iron Pride ApexStorm R1 /  / 0.00',
+    'Итого: 122 868.00 руб.',
+  ].join('\n');
+
+  it('шапка спецификации заполняет телефон, клиента, название, дату и итог', () => {
+    const d = parseOrderDraftText(SPEC);
+    expect(d.phone).toBe('+79193854600');
+    expect(d.clientName).toBe('Сарапулова Диана Сарапулова');
+    expect(d.title).toBe('ПК CONSTRUCTPC (AMD Ryzen 5 7500F; RTX 5060 Ti)');
+    expect(d.date?.slice(0, 10)).toBe('2026-06-14');
+    expect(d.total).toBe('122868.00');
+    expect(d.items).toHaveLength(2);
+    expect(d.errors).toEqual([]);
+  });
+
+  it('строки без подписи остаются позициями, а не съедаются шапкой', () => {
+    const d = parseOrderDraftText('Процессор: Intel Core i5-12400F / 10545 / 14032');
+    expect(d.items).toHaveLength(1);
+    expect(d.phone).toBeNull();
+  });
+
+  it('итог понимает «Стоимость», «Цена», рубли и запятую', () => {
+    expect(parseOrderDraftText('Стоимость: 206 866.00 руб.').total).toBe('206866.00');
+    expect(parseOrderDraftText('Цена: 91 887,00 ₽').total).toBe('91887.00');
+  });
+
+  it('дата цифрами тоже читается', () => {
+    const d = parseOrderDraftText('Заказ №: 89193854600 от 14.06.2026');
+    expect(d.date?.slice(0, 10)).toBe('2026-06-14');
+  });
+
+  it('без шапки текст разбирается как раньше — только позиции', () => {
+    const d = parseOrderDraftText('Кулер / 1200 / 1500\nКорпус / 3000 / 4000');
+    expect(d.items).toHaveLength(2);
+    expect(d.clientName).toBeNull();
+    expect(d.total).toBeNull();
   });
 });
