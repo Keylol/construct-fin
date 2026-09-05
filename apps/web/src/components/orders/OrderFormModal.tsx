@@ -28,11 +28,17 @@ export function OrderFormModal({
   open,
   editing,
   onClose,
+  onCreated,
 }: {
   wsId: string;
   open: boolean;
   editing: Order | null;
   onClose: () => void;
+  /**
+   * Заказ создан. Форма сама не решает, что дальше: страница открывает карточку,
+   * чтобы следующий шаг круга («привязать оплату») был на виду, а не искался.
+   */
+  onCreated?: (orderId: string, paid: boolean) => void;
 }) {
   const isEdit = !!editing;
   const clients = useCounterparties(wsId, undefined, false, 'CLIENT');
@@ -59,6 +65,9 @@ export function OrderFormModal({
   const [confirmClose, setConfirmClose] = useState(false);
   // «+ Создать клиента» из комбобокса: null = закрыто, строка = префилл имени.
   const [createClientQuery, setCreateClientQuery] = useState<string | null>(null);
+  // Заказчик из спецификации, которого нет в справочнике: заводится одной
+  // кнопкой рядом с полем клиента, вместе с телефоном из того же документа.
+  const [specClient, setSpecClient] = useState<string | null>(null);
 
   // ── Состав текстом и распределение цены (P0.1) ──
   // Спецификация заказа приходит списком (docx поставщика, заметка, таблица), а
@@ -182,6 +191,7 @@ export function OrderFormModal({
     // с отчётом по чекам и итогом спецификации предыдущего заказа.
     setCostsReport(null);
     setSpecTotal(null);
+    setSpecClient(null);
     // Сброс плана оплаты.
     setPayMode('none');
     setPrepayAmount('');
@@ -312,12 +322,20 @@ export function OrderFormModal({
           setAllocTotal(draft.total);
         }
 
-        const match = draft.clientName
-          ? (clients.data ?? []).find(
+        // Ищем сперва по телефону: люди приходят повторно, а имя в справочнике
+        // может быть записано иначе («Иванов И.И.», с пометкой магазина).
+        const list = clients.data ?? [];
+        const byPhone = draft.phone
+          ? list.find((c) => c.contact && normalizePhone(c.contact) === draft.phone)
+          : undefined;
+        const byName = draft.clientName
+          ? list.find(
               (c) => c.name.trim().toLowerCase() === draft.clientName?.trim().toLowerCase(),
             )
           : undefined;
+        const match = byPhone ?? byName;
         if (match) setClientId(match.id);
+        setSpecClient(match ? null : (draft.clientName ?? null));
 
         const notes: string[] = [];
         if (draft.clientName && !match) notes.push(`Заказчик по спецификации: ${draft.clientName}`);
@@ -581,6 +599,7 @@ export function OrderFormModal({
         });
       }
       onClose();
+      onCreated?.(order.id, Boolean(plan.prepay));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
     }
@@ -658,6 +677,15 @@ export function OrderFormModal({
               onCreate={(q) => setCreateClientQuery(q)}
               createLabel={(q) => `Создать клиента «${q}»`}
             />
+            {specClient && !clientId && (
+              <button
+                type="button"
+                onClick={() => setCreateClientQuery(specClient)}
+                className="mt-1.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Завести клиента «{specClient}» с телефоном из спецификации
+              </button>
+            )}
           </FormField>
           <FormField label="Телефон — номер заказа" htmlFor="o-phone">
             <Input
@@ -1203,8 +1231,12 @@ export function OrderFormModal({
       role="CLIENT"
       open={createClientQuery !== null}
       initialName={createClientQuery ?? ''}
+      initialContact={phone}
       onOpenChange={(o) => !o && setCreateClientQuery(null)}
-      onCreated={setClientId}
+      onCreated={(id) => {
+        setClientId(id);
+        setSpecClient(null);
+      }}
     />
     </>
   );

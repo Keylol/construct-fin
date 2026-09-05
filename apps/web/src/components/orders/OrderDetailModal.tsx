@@ -88,6 +88,8 @@ export function OrderDetailModal({
   const [payFee, setPayFee] = useState('');
   // Панель подбора строки выписки под этот заказ — раскрывается по кнопке.
   const [findPayment, setFindPayment] = useState(false);
+  // Вкладка управляемая: подсказка «следующий шаг» с обзора переводит на оплату.
+  const [tab, setTab] = useState('overview');
   // Кандидаты считаются под конкретный остаток: при переходе к другому заказу
   // раскрытая панель показывала бы подсказки от предыдущего.
   useEffect(() => setFindPayment(false), [orderId]);
@@ -186,7 +188,7 @@ export function OrderDetailModal({
                   </p>
                 )}
 
-                <Tabs defaultValue="overview">
+                <Tabs value={tab} onValueChange={setTab}>
                   <TabsList className="flex w-full">
                     <TabsTrigger value="overview">Обзор</TabsTrigger>
                     <TabsTrigger value="payment">Оплата</TabsTrigger>
@@ -196,6 +198,25 @@ export function OrderDetailModal({
 
                   {/* ─────────────── Обзор: позиции + итоги + маржа ─────────────── */}
                   <TabsContent value="overview" className="space-y-5">
+                {/* Следующий шаг круга прямо в обзоре: заказ заведён, но деньги
+                    к нему не привязаны, а значит выручка ещё не признана. Раньше
+                    об этом говорил только статус, и надо было знать, что делать. */}
+                {order.status !== 'CANCELLED' && order.paymentStatus !== 'PAID' && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
+                    <p className="text-sm text-foreground">
+                      Заказ не оплачен. Деньги за него обычно уже лежат во «Входящих».
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setTab('payment');
+                        setFindPayment(true);
+                      }}
+                    >
+                      Найти оплату
+                    </Button>
+                  </div>
+                )}
                 {/* Items: строка читается как «закупка → продажа → маржа».
                     Закупка за единицу — эффективная себестоимость с бэкенда
                     (каскад BR1: факт FIFO → ручной ввод → оценка по складу). */}

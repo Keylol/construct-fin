@@ -31,6 +31,7 @@ export function QuickCreateCounterpartyDialog({
   role,
   open,
   initialName,
+  initialContact,
   onOpenChange,
   onCreated,
 }: {
@@ -39,6 +40,8 @@ export function QuickCreateCounterpartyDialog({
   open: boolean;
   /** Предзаполнение имени — то, что пользователь набрал в поиске комбобокса. */
   initialName: string;
+  /** Предзаполнение контакта: телефон из спецификации, чтобы не набирать заново. */
+  initialContact?: string;
   onOpenChange: (open: boolean) => void;
   onCreated: (id: string) => void;
 }) {
@@ -50,10 +53,10 @@ export function QuickCreateCounterpartyDialog({
   useEffect(() => {
     if (open) {
       setName(initialName);
-      setContact('');
+      setContact(initialContact ?? '');
       setError(null);
     }
-  }, [open, initialName]);
+  }, [open, initialName, initialContact]);
 
   const submit = async () => {
     setError(null);

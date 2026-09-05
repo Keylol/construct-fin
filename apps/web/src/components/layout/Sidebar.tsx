@@ -4,11 +4,34 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
-import { SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
+import { ChevronDown, SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
 import { NAV_GROUPS } from './nav-items';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { InboxNavBadge } from './InboxNavBadge';
 import { PlanningNavBadge } from './PlanningNavBadge';
+
+/** Ключ состояния свёрнутой группы «Ещё» — редкое не должно мешать ежедневному. */
+const MORE_OPEN_KEY = 'cf.sidebar.more';
+
+/**
+ * Раскрыта ли редкая группа. По умолчанию свёрнута, но открывается сама, если
+ * человек уже находится на странице внутри неё, — иначе активный пункт был бы
+ * не виден.
+ */
+function useGroupOpen(hrefs: string[], pathname: string | null) {
+  const inside = hrefs.some((h) => pathname === h || pathname?.startsWith(h + '/'));
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (window.localStorage.getItem(MORE_OPEN_KEY) === '1') setOpen(true);
+  }, []);
+  const toggle = () =>
+    setOpen((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(MORE_OPEN_KEY, next ? '1' : '0');
+      return next;
+    });
+  return { open: open || inside, toggle };
+}
 
 interface SidebarProps {
   /** Called after a nav link is clicked — mobile drawer uses this to close. */
@@ -49,30 +72,86 @@ export function Sidebar({ onNavigate, variant = 'full' }: SidebarProps) {
 
       {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {NAV_GROUPS.map((group, gi) => {
-          const isFirst = gi === 0;
-          return (
-            <div key={`${group.label ?? 'main'}-${gi}`} className={cn(!isFirst && 'mt-5')}>
-              {group.label && (
-                <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.label}
-                </div>
-              )}
-              <ul className="space-y-0.5">
-                {group.items.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    item={item}
-                    pathname={pathname}
-                    onNavigate={onNavigate}
-                  />
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+        {NAV_GROUPS.map((group, gi) => (
+          <NavGroupBlock
+            key={`${group.label ?? 'main'}-${gi}`}
+            group={group}
+            first={gi === 0}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        ))}
       </nav>
     </aside>
+  );
+}
+
+/**
+ * Блок группы меню. Обычная группа рисуется списком; редкая («Ещё») прячется под
+ * заголовок-кнопку: в рейке место дорогое, а эти экраны нужны раз в месяц.
+ */
+function NavGroupBlock({
+  group,
+  first,
+  pathname,
+  onNavigate,
+  railCollapsed,
+}: {
+  group: (typeof NAV_GROUPS)[number];
+  first: boolean;
+  pathname: string | null;
+  onNavigate?: () => void;
+  railCollapsed?: boolean;
+}) {
+  const { open, toggle } = useGroupOpen(
+    group.items.map((i) => i.href),
+    pathname,
+  );
+  const isRail = railCollapsed !== undefined;
+  const hidden = group.collapsible && !open;
+
+  return (
+    <div className={cn(!first && (isRail ? 'mt-3 border-t border-border pt-3' : 'mt-5'))}>
+      {group.label &&
+        (group.collapsible ? (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={open}
+            className={cn(
+              'flex w-full items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-semibold uppercase',
+              'tracking-wide text-muted-foreground transition-colors hover:text-foreground',
+              railCollapsed && 'justify-center px-0',
+            )}
+          >
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 shrink-0 transition-transform duration-150 motion-reduce:transition-none',
+                !open && '-rotate-90',
+              )}
+              aria-hidden
+            />
+            {!railCollapsed && <span>{group.label}</span>}
+          </button>
+        ) : (
+          <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {group.label}
+          </div>
+        ))}
+      {!hidden && (
+        <ul className="space-y-0.5">
+          {group.items.map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              onNavigate={onNavigate}
+              railCollapsed={railCollapsed}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -137,31 +216,15 @@ function RailSidebar({ pathname }: { pathname: string | null }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {NAV_GROUPS.map((group, gi) => {
-            const isFirst = gi === 0;
-            return (
-              <div
-                key={`${group.label ?? 'main'}-${gi}`}
-                className={cn(!isFirst && 'mt-3 border-t border-border pt-3')}
-              >
-                {group.label && (
-                  <div className="h-5 px-2 pb-1.5">
-                    <RailLabel
-                      collapsed={collapsed}
-                      className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      {group.label}
-                    </RailLabel>
-                  </div>
-                )}
-                <ul className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <NavLink key={item.href} item={item} pathname={pathname} railCollapsed={collapsed} />
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
+          {NAV_GROUPS.map((group, gi) => (
+            <NavGroupBlock
+              key={`${group.label ?? 'main'}-${gi}`}
+              group={group}
+              first={gi === 0}
+              pathname={pathname}
+              railCollapsed={collapsed}
+            />
+          ))}
         </nav>
 
         {/* Кнопка свернуть/развернуть — единственный способ менять ширину */}

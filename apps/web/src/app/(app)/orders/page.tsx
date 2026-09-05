@@ -480,6 +480,11 @@ function OrdersView() {
           setCreating(false);
           setEditing(null);
         }}
+        onCreated={(id, paid) => {
+          // Заказ без оплаты — половина работы: деньги за архивные заказы уже
+          // лежат во «Входящих», и карточка сразу показывает, как их привязать.
+          if (!paid) orderUrl.open(id);
+        }}
       />
       <OrderDetailModal
         wsId={current.id}
