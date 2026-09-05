@@ -477,8 +477,11 @@ export class InboxService {
         amount: line.amount.toString(),
         source: 'IMPORT',
       });
+      // Живая категория И подходящего вида: расходная категория для прихода
+      // (возврат от магазина под правилом закупки) — не подсказка, а ошибка,
+      // которую ручной ввод отвергает; строка остаётся на разборе.
       const categoryId =
-        suggestion.categoryId && categories.has(suggestion.categoryId)
+        suggestion.categoryId && categories.get(suggestion.categoryId) === line.direction
           ? suggestion.categoryId
           : null;
       if (!categoryId) {
@@ -564,7 +567,7 @@ export class InboxService {
       categoryIds.size
         ? this.prisma.category.findMany({
             where: { id: { in: [...categoryIds] }, workspaceId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, kind: true },
           })
         : [],
       counterpartyIds.size
@@ -575,7 +578,8 @@ export class InboxService {
         : [],
     ]);
     return {
-      categories: new Set(cats.map((c) => c.id)),
+      // id → вид категории: доход/расход проверяется против направления строки.
+      categories: new Map(cats.map((c) => [c.id, c.kind])),
       counterparties: new Set(cps.map((c) => c.id)),
     };
   }

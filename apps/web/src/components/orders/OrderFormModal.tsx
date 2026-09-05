@@ -21,7 +21,7 @@ import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
-import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
+import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
 
 export function OrderFormModal({
   wsId,
@@ -55,6 +55,9 @@ export function OrderFormModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [discount, setDiscount] = useState('');
+  // Дата заказа (день спецификации). Раньше жила только в комментарии, хотя в
+  // модели для неё есть поле: без неё список заказов невозможно читать по датам.
+  const [orderDate, setOrderDate] = useState('');
   const [items, setItems] = useState<OrderItemInput[]>([
     { name: '', qty: '1', unitPrice: '', unitCost: '' },
   ]);
@@ -164,6 +167,7 @@ export function OrderFormModal({
       setTitle(editing.title ?? '');
       setDescription(editing.description ?? '');
       setDiscount(nextDiscount);
+      setOrderDate(editing.expectedDate ? editing.expectedDate.slice(0, 10) : '');
       setItems(nextItems);
       initialSnap.current = snapOf(
         editing.clientId ?? '',
@@ -179,6 +183,7 @@ export function OrderFormModal({
       setTitle('');
       setDescription('');
       setDiscount('');
+      setOrderDate('');
       setItems(nextItems);
       initialSnap.current = snapOf('', '', '', '', nextItems);
     }
@@ -228,7 +233,19 @@ export function OrderFormModal({
 
   // Разбор вставленного текста считаем на каждый ввод — человек видит, что
   // распозналось, ДО того как строки заменят форму.
-  const pasteParsed = useMemo(() => parseOrderItemsText(pasteText), [pasteText]);
+  // Вставка принимает и заказ целиком: шапку (телефон, заказчик, название,
+  // итог) вместе с позициями — ровно так, как заказ выглядит в спецификации.
+  const pasteParsed = useMemo(() => parseOrderDraftText(pasteText), [pasteText]);
+  /** Что из шапки нашлось — показывается человеку до применения. */
+  const pasteHead = useMemo(() => {
+    const h: string[] = [];
+    if (pasteParsed.phone) h.push(`телефон ${pasteParsed.phone}`);
+    if (pasteParsed.clientName) h.push(`заказчик ${pasteParsed.clientName}`);
+    if (pasteParsed.title) h.push('название');
+    if (pasteParsed.total) h.push(`итог ${formatRub(pasteParsed.total)}`);
+    if (pasteParsed.date) h.push(`дата ${formatDate(pasteParsed.date)}`);
+    return h;
+  }, [pasteParsed]);
 
   /**
    * Чеки закупки → себестоимость позиций. Файлы уходят по одному (лимит
@@ -354,6 +371,25 @@ export function OrderFormModal({
   };
 
   const applyPaste = (mode: 'replace' | 'append') => {
+    const skipped = pasteParsed.errors;
+    // Шапка заполняет пустые поля и не затирает уже введённое руками.
+    if (pasteParsed.phone && !phone.trim()) setPhone(pasteParsed.phone);
+    if (pasteParsed.title && !title.trim()) setTitle(pasteParsed.title);
+    if (pasteParsed.total) {
+      setSpecTotal(pasteParsed.total);
+      setAllocTotal(pasteParsed.total);
+    }
+    if (pasteParsed.date && !orderDate) setOrderDate(pasteParsed.date.slice(0, 10));
+    if (pasteParsed.clientName) {
+      const list = clients.data ?? [];
+      const match =
+        list.find((c) => c.contact && normalizePhone(c.contact) === pasteParsed.phone) ??
+        list.find(
+          (c) => c.name.trim().toLowerCase() === pasteParsed.clientName?.trim().toLowerCase(),
+        );
+      if (match) setClientId(match.id);
+      else setSpecClient(pasteParsed.clientName);
+    }
     const parsed = pasteParsed.items.map((it) => ({
       warehouseItemId: null,
       name: it.name,
@@ -372,6 +408,14 @@ export function OrderFormModal({
     setPasteText('');
     setPasteOpen(false);
     toast.success(`Позиций добавлено: ${parsed.length}`);
+    // Диалог со списком ошибок закрывается вместе со вставкой, поэтому про
+    // нераспознанные строки говорим отдельно: молча потерянная позиция — это
+    // недостающая себестоимость, которую потом никто не найдёт.
+    if (skipped.length > 0) {
+      toast.error(
+        `Не разобрано строк: ${skipped.length}. Строка ${skipped[0]?.line}: ${skipped[0]?.reason}`,
+      );
+    }
   };
 
   const applyAllocation = () => {
@@ -572,6 +616,7 @@ export function OrderFormModal({
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
+        expectedDate: orderDate ? new Date(orderDate + 'T07:00:00.000Z').toISOString() : undefined,
         items: cleaned,
       });
       // Заказ создан. Дальнейшие шаги оплаты — необязательные и восстановимые:
@@ -632,6 +677,7 @@ export function OrderFormModal({
         title: title.trim() || null,
         description: description.trim() || null,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : '0',
+        expectedDate: orderDate ? new Date(orderDate + 'T07:00:00.000Z').toISOString() : null,
         items: cleaned,
       });
       toast.success('Заказ обновлён');
@@ -703,6 +749,14 @@ export function OrderFormModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="напр. «Сборка ПК для офиса»"
+            />
+          </FormField>
+          <FormField label="Дата заказа" htmlFor="o-date">
+            <Input
+              id="o-date"
+              type="date"
+              value={orderDate}
+              onChange={(e) => setOrderDate(e.target.value)}
             />
           </FormField>
           <FormField label="Комментарий" htmlFor="o-description">
@@ -899,6 +953,12 @@ export function OrderFormModal({
                   Закупка и цена необязательны, разделители — «/», «|» или табуляция (вставка из
                   таблицы). Количество — хвостом названия: «Вентилятор 120мм ×4».
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  Можно вставить заказ целиком, вместе с шапкой спецификации: строки{' '}
+                  <span className="font-medium">Заказ №</span>, <span className="font-medium">Заказчик</span>,{' '}
+                  <span className="font-medium">Наименование</span>, <span className="font-medium">Итого</span>{' '}
+                  заполнят телефон, клиента, название и итог для распределения.
+                </p>
                 <Textarea
                   value={pasteText}
                   onChange={(e) => setPasteText(e.target.value)}
@@ -910,6 +970,9 @@ export function OrderFormModal({
                     <p className={pasteParsed.items.length ? 'text-success' : 'text-muted-foreground'}>
                       Распознано позиций: {pasteParsed.items.length}
                     </p>
+                    {pasteHead.length > 0 && (
+                      <p className="text-success">Из шапки: {pasteHead.join(', ')}</p>
+                    )}
                     {pasteParsed.errors.map((e) => (
                       <p key={e.line} className="text-destructive">
                         Строка {e.line}: {e.reason} — «{e.text}»
@@ -1017,6 +1080,18 @@ export function OrderFormModal({
               <span>Итого к оплате</span>
               <Money value={toMoneyString(total)} />
             </div>
+            {/* Сверка с итогом спецификации: заказ на 122 868 ₽, а позиции дают
+                118 000 — значит строка потерялась или цена не та. Раньше это
+                вскрывалось только в отчёте за месяц. */}
+            {specTotal && !D(specTotal).eq(total) && (
+              <div className="flex justify-between text-warning">
+                <span>Расходится с итогом спецификации ({formatRub(specTotal)})</span>
+                <span className="tabular-nums">
+                  {D(total).gt(D(specTotal)) ? '+' : '−'}
+                  {formatRub(toMoneyString(D(total).minus(D(specTotal)).abs()))}
+                </span>
+              </div>
+            )}
             {costTotal.gt(0) && (
               <div className="flex justify-between font-semibold text-success">
                 <span>Валовая прибыль (план)</span>

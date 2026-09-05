@@ -255,6 +255,23 @@ export class SyncService {
       suggestedCategoryId = suggestion.categoryId ?? null;
       suggestedCounterpartyId = suggestion.counterpartyId ?? null;
       appliedRuleId = suggestion.categoryRuleId ?? null;
+      // Категория расхода не годится приходу и наоборот. Ручной ввод это
+      // запрещает, а правило «Закупка ДНС» по слову «dns shop» ловило и возврат
+      // денег от магазина: приход уезжал в «Закупку товара» и раздувал доход.
+      // Такая строка остаётся на разборе — человек проведёт её правильно.
+      if (suggestedCategoryId) {
+        const cat = await this.prisma.category.findFirst({
+          where: { id: suggestedCategoryId, workspaceId: conn.workspaceId },
+          select: { kind: true },
+        });
+        if (cat && cat.kind !== line.direction) {
+          this.logger.warn(
+            `Правило подсказало категорию ${cat.kind} для строки ${line.direction} (${line.externalId}) — оставляем на разбор`,
+          );
+          suggestedCategoryId = null;
+          appliedRuleId = null;
+        }
+      }
     } catch (e) {
       this.logger.warn(
         `Правило упало на строке ${line.externalId} — уходит в Inbox без категории: ${

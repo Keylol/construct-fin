@@ -26,11 +26,11 @@ export function InboxNavBadge({ collapsed }: { collapsed?: boolean }) {
   return (
     <span
       className={cn(
-        'ml-auto min-w-5 shrink-0 rounded-full px-1.5 text-center text-[11px] font-semibold leading-5',
+        'ml-auto min-w-5 shrink-0 rounded-full px-1.5 text-center text-[11px] font-semibold leading-5 tabular-nums',
         'bg-warning/15 text-warning',
       )}
     >
-      {n > 99 ? '99+' : n}
+      {n}
     </span>
   );
 }
