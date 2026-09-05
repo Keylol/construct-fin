@@ -20,6 +20,7 @@ import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import { OrderService } from './order.service';
 import { parseOrderSpecDocx } from './spec-parser';
+import { detectAndParseReceipt } from '../wb-receipt/receipt-detect';
 import {
   CreateOrderSchema,
   UpdateOrderSchema,
@@ -44,6 +45,9 @@ import type { WorkspaceContext } from '../common/workspace.guard';
 
 /** Спецификации — это Word на 300–400 КБ; мегабайта хватает с запасом. */
 const MAX_SPEC_BYTES = 2 * 1024 * 1024;
+
+/** Чеки бывают на пару мегабайт: скан ДНС на 810 КБ, счета ОТ крупнее. */
+const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 
 @Controller('workspaces/:wsId/orders')
 @UseGuards(JwtAuthGuard, WorkspaceGuard)
@@ -104,6 +108,53 @@ export class OrderController {
         e instanceof Error ? e.message : 'Не удалось прочитать файл',
       );
     }
+  }
+
+  /**
+   * Чек закупки (PDF ДНС / Wildberries / Онлайн Трейд) → строки с ценами.
+   * Ничего не сохраняет и не спрашивает счёт: это второй шаг заведения заказа
+   * из архива — цены нужны, чтобы проставить себестоимость позиций, а
+   * проведение закупки идёт своим путём («Разобрать чек» в карточке).
+   *
+   * По файлу за запрос: @fastify/multipart настроен на files: 1, и менять
+   * глобальный лимит ради одной ручки не стоит — фронт шлёт чеки по очереди.
+   */
+  @Post('costs-preview')
+  @HttpCode(200)
+  async costsPreview(@Req() req: FastifyRequest) {
+    const reqAny = req as FastifyRequest & {
+      isMultipart?: () => boolean;
+      file?: () => Promise<unknown>;
+    };
+    if (!reqAny.isMultipart?.()) {
+      throw new BadRequestException('Ожидается multipart/form-data');
+    }
+    const part = (await reqAny.file?.()) as
+      | { filename: string; toBuffer: () => Promise<Buffer> }
+      | undefined;
+    if (!part) throw new BadRequestException('В запросе нет файла');
+
+    const buffer = await part.toBuffer();
+    if (buffer.byteLength === 0) throw new BadRequestException('Пустой файл');
+    if (buffer.byteLength > MAX_RECEIPT_BYTES) {
+      throw new BadRequestException(
+        `Файл больше ${Math.round(MAX_RECEIPT_BYTES / 1024 / 1024)} МБ`,
+      );
+    }
+
+    const parsed = await detectAndParseReceipt(buffer);
+    return {
+      filename: part.filename,
+      source: parsed.source,
+      receiptDate: parsed.receiptDate ? parsed.receiptDate.toISOString() : null,
+      totalAmount: parsed.totalAmount,
+      items: parsed.items.map((i) => ({
+        name: i.name,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+      })),
+      warnings: parsed.warnings,
+    };
   }
 
   @Post()

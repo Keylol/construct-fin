@@ -11,17 +11,17 @@ import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalTitle } 
 import { Money } from '@/components/ui/Money';
 import { Textarea } from '@/components/ui/Textarea';
 import { toast } from '@/components/ui/Toaster';
-import { ClipboardList, Paperclip, Plus, Trash2, X } from '@/components/ui/icons';
+import { ClipboardList, Paperclip, Plus, Receipt, Trash2, X } from '@/components/ui/icons';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCounterparties } from '@/hooks/useCounterparties';
-import { useParseOrderSpec, type OrderSpecDraft } from '@/hooks/useOrders';
+import { useParseOrderSpec, useParseReceiptCosts, type OrderSpecDraft } from '@/hooks/useOrders';
 import { type OrderItemInput, type ScheduleEntryInput, useAddOrderPayment, useCreateOrder, useSetOrderSchedule, useUpdateOrder } from '@/hooks/useOrders';
 import { useWarehouse } from '@/hooks/useWarehouse';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
-import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderItemsText, sub, toMoneyString } from '@construct/shared';
+import { D, add, allocateSalePrices, formatRub, matchCostsToItems, mul, normalizePhone, parseAmountInput, parseOrderItemsText, sub, toMoneyString } from '@construct/shared';
 
 export function OrderFormModal({
   wsId,
@@ -66,6 +66,14 @@ export function OrderFormModal({
   // переносит её целиком; цены продажи раскидываются по закупке одной кнопкой.
   const [pasteOpen, setPasteOpen] = useState(false);
   const parseSpec = useParseOrderSpec(wsId);
+  const parseCosts = useParseReceiptCosts(wsId);
+  // Итог последнего разбора чеков: сколько позиций получило цену и какие
+  // строки остались лишними — показывается под составом, пока форма открыта.
+  const [costsReport, setCostsReport] = useState<{
+    matched: { name: string; cost: string; why: string }[];
+    unmatchedLines: { name: string; price: string }[];
+    files: number;
+  } | null>(null);
   // Итог из спецификации: подсказка для «Распределить цену продажи» — в самом
   // документе цен по позициям нет.
   const [specTotal, setSpecTotal] = useState<string | null>(null);
@@ -207,6 +215,66 @@ export function OrderFormModal({
   // Разбор вставленного текста считаем на каждый ввод — человек видит, что
   // распозналось, ДО того как строки заменят форму.
   const pasteParsed = useMemo(() => parseOrderItemsText(pasteText), [pasteText]);
+
+  /**
+   * Чеки закупки → себестоимость позиций. Файлы уходят по одному (лимит
+   * multipart), строки со всех чеков складываются в общий список, и только
+   * потом раскладываются по позициям: одна строка — одной позиции.
+   *
+   * Ставим цену только там, где её ещё нет: разобранный чек не должен затирать
+   * то, что человек уже поправил руками.
+   */
+  const applyCosts = async (files: File[]) => {
+    const lines: { name: string; unitPrice: string; source: string }[] = [];
+    const failed: string[] = [];
+
+    for (const file of files) {
+      try {
+        const r = await parseCosts.mutateAsync(file);
+        r.items.forEach((i) =>
+          lines.push({ name: i.name, unitPrice: i.unitPrice, source: r.source }),
+        );
+        r.warnings.forEach((w) => toast.error(`${file.name}: ${w}`));
+      } catch (e) {
+        failed.push(file.name);
+        toast.error(`${file.name}: ${e instanceof Error ? e.message : 'не разобрался'}`);
+      }
+    }
+
+    if (lines.length === 0) {
+      if (failed.length < files.length) toast.error('В чеках не нашлось позиций с ценами');
+      return;
+    }
+
+    const matches = matchCostsToItems(items.map((it) => ({ name: it.name })), lines);
+    // Считаем ДО setItems: updater в React вызывается больше одного раза, и
+    // побочный эффект внутри него удваивал бы отчёт.
+    const used = new Set(matches.map((m) => m.lineIndex));
+    const matched = matches.map((m) => ({
+      name: items[m.itemIndex]?.name ?? '',
+      cost: m.unitCost,
+      why: m.reasons.join(', '),
+    }));
+
+    setItems((prev) =>
+      prev.map((it, idx) => {
+        const m = matches.find((x) => x.itemIndex === idx);
+        if (!m) return it;
+        // Уже проставленную руками закупку не трогаем.
+        return it.unitCost ? it : { ...it, unitCost: m.unitCost };
+      }),
+    );
+
+    setCostsReport({
+      matched,
+      unmatchedLines: lines
+        .map((l, i) => ({ line: l, i }))
+        .filter(({ i }) => !used.has(i))
+        .map(({ line }) => ({ name: line.name, price: line.unitPrice })),
+      files: files.length - failed.length,
+    });
+    toast.success(`Цены из чеков: ${matched.length} из ${items.length} позиций`);
+  };
 
   /**
    * Спецификация заполняет форму, но ничего не решает за человека: позиции
@@ -766,6 +834,24 @@ export function OrderFormModal({
                   }}
                 />
               </label>
+              {/* Второй шаг заведения из архива: чеки той же папки дают
+                  закупочные цены — в спецификации их нет. */}
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary">
+                <Receipt className="h-3.5 w-3.5" />
+                {parseCosts.isPending ? 'Читаю чеки…' : 'Цены из чеков'}
+                <input
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  className="hidden"
+                  disabled={parseCosts.isPending}
+                  onChange={(e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = '';
+                    if (files.length > 0) void applyCosts(files);
+                  }}
+                />
+              </label>
             </div>
 
             {pasteOpen && (
@@ -812,6 +898,33 @@ export function OrderFormModal({
                     Добавить к текущим
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {costsReport && (
+              <div className="space-y-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
+                <p className="font-medium text-foreground">
+                  Разобрано чеков: {costsReport.files} · цены проставлены у{' '}
+                  {costsReport.matched.length} позиций
+                </p>
+                {costsReport.matched.map((m) => (
+                  <p key={m.name} className="text-muted-foreground">
+                    <span className="text-foreground">{m.name}</span> → {formatRub(m.cost)}{' '}
+                    <span className="opacity-70">({m.why})</span>
+                  </p>
+                ))}
+                {costsReport.unmatchedLines.length > 0 && (
+                  <div className="border-t border-border pt-2">
+                    <p className="text-muted-foreground">
+                      Строки чеков без позиции — проверьте, не потерялось ли что-то:
+                    </p>
+                    {costsReport.unmatchedLines.map((l) => (
+                      <p key={l.name} className="text-muted-foreground">
+                        {formatRub(l.price)} · {l.name}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
