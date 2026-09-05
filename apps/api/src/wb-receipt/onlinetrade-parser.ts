@@ -118,19 +118,51 @@ export function parseOnlineTradeLines(lines: string[]): ParsedReceipt {
   //    на «)» (код модели в скобках). Пропускаем чисто-числовые/служебные строки.
   const names: string[] = [];
   let nameBuf: string[] = [];
-  for (let i = tableEndIdx; i < lines.length; i++) {
+  const flush = () => {
+    if (nameBuf.length === 0) return;
+    names.push(nameBuf.join(' ').replace(/\s+/g, ' ').trim());
+    nameBuf = [];
+  };
+  // Между таблицей и названиями лежит блок статусов заказа, и его строки-
+  // продолжения («обработку», «счёт на оплату») неотличимы от переносов внутри
+  // названия. Там, где ЛК печатает «схема проезда», это надёжная граница блока.
+  const anchorIdx = lines.findIndex((l, i) => i >= tableEndIdx && /схема проезда/i.test(l));
+  const namesFrom = anchorIdx === -1 ? tableEndIdx : anchorIdx + 1;
+
+  for (let i = namesFrom; i < lines.length; i++) {
     const line = lines[i] ?? '';
     if (FOOTER_RX.test(line)) break;
     if (!/[А-Яа-яA-Za-z]/.test(line)) continue; // «596 ₽», «●●●», даты
-    if (/^(Оплаты|Статус|Передан|Формируется|Готов|Выполнен|схема|Номер транзакции|Сумма:|Заказ No|Выход|Каталог|Главная|Личный кабинет)/i.test(line)) {
+    if (
+      /^(Оплаты|Статус|Передан|Подготовлен|Формируется|Готов|Ожидайте|Отменен|Выполнен|схема|Номер транзакции|Сумма:|Заказ No|Выход|Каталог|Главная|Личный кабинет)/i.test(
+        line,
+      )
+    ) {
       continue;
     }
+    // Название закрывает код модели в скобках — но он есть не у всех товаров.
+    // Без него имя склеивалось со следующим, и последняя позиция оставалась
+    // безымянной («Позиция 4»). Второй признак начала: строка открывается
+    // русским словом с большой буквы («Корпус», «Блок питания»), тогда как
+    // перенос внутри названия идёт латиницей, цифрой или строчной буквой
+    // («DDR4 (2x16GB kit)», «Bronze, ATX3.1», «черный (CVMBM2-A3)»).
+    const prev = nameBuf[nameBuf.length - 1];
+    const looksLikeStart = /^[А-ЯЁ][а-яё]/.test(line);
+    // Хвосты статусов («Передан на» / «обработку») отфильтрованы по первому
+    // слову, но их продолжения приходят отдельными строками — до первого
+    // названия в буфер не набираем ничего.
+    if (nameBuf.length === 0 && !looksLikeStart) continue;
+    const startsNew =
+      nameBuf.length > 0 &&
+      looksLikeStart &&
+      prev !== undefined &&
+      !/[,:;-]$/.test(prev) &&
+      !/\s(с|и|для|из|на|в|от|до)$/i.test(prev);
+    if (startsNew) flush();
     nameBuf.push(line);
-    if (/\)\s*$/.test(line)) {
-      names.push(nameBuf.join(' ').replace(/\s+/g, ' ').trim());
-      nameBuf = [];
-    }
+    if (/\)\s*$/.test(line)) flush();
   }
+  flush();
 
   // 4. Сшивка строк с именами по порядку.
   rows.forEach((r, i) => {
@@ -150,7 +182,9 @@ export function parseOnlineTradeLines(lines: string[]): ParsedReceipt {
   }
   if (names.length !== rows.length) {
     out.warnings.push(
-      `Распознано ${rows.length} строк и ${names.length} наименований — проверьте и поправьте названия вручную`,
+      `Распознано ${rows.length} строк и ${names.length} наименований. Названия ` +
+        `сшиваются со строками по порядку, и при расхождении счётчиков они могут ` +
+        `съехать — сверьте цены с товарами глазами`,
     );
   }
   if (out.totalAmount) {

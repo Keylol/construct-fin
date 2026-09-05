@@ -71,6 +71,41 @@ export function docxTables(documentXml: string): string[][][] {
   );
 }
 
+/** Абзацы документа (в порядке следования), включая лежащие вне таблиц. */
+export function docxParagraphs(documentXml: string): string[] {
+  return [...documentXml.matchAll(PARA_RX)]
+    .map((m) => [...m[0].matchAll(TEXT_RX)].map((t) => t[1]).join('').trim())
+    .filter(Boolean);
+}
+
+const SPEC_MARK = /^Техническ\S*\s+спецификаци/i;
+const WARRANTY_MARK = /^Гарантийное\s+обслуживание/i;
+
+/**
+ * Часть спецификаций свёрстана абзацами, без единой таблицы: подпись и значение
+ * идут соседними абзацами, позиции — списком после «Техническая спецификация:».
+ * Приводим их к той же форме «таблица шапки + таблица позиций», чтобы разбор
+ * дальше был общим.
+ *
+ * Границы обязательны: ниже «Гарантийного обслуживания» лежит текст договора,
+ * и его строки вида «Условия гарантии: …» неотличимы от позиций.
+ */
+export function paragraphsToTables(paragraphs: string[]): string[][][] {
+  const specAt = paragraphs.findIndex((p) => SPEC_MARK.test(p));
+  const warrantyAt = paragraphs.findIndex((p) => WARRANTY_MARK.test(p));
+  const headerEnd = specAt === -1 ? paragraphs.length : specAt;
+  const bodyEnd = warrantyAt === -1 ? paragraphs.length : warrantyAt;
+
+  const header: string[][] = [];
+  for (let i = 0; i < headerEnd; i += 1) {
+    const label = paragraphs[i] ?? '';
+    if (label.endsWith(':') && i + 1 < headerEnd) header.push([label, paragraphs[i + 1] ?? '']);
+  }
+
+  const body = paragraphs.slice(specAt + 1, bodyEnd).map((p) => [p]);
+  return [header, body];
+}
+
 // ── Разбор таблиц в черновик ─────────────────────────────────────────────────
 
 /** Сумма вида «113 343.00 руб.» / «5 397,00 руб.» → Decimal-строка. */
@@ -112,8 +147,13 @@ export function parseSpecTables(tables: string[][][]): OrderSpecDraft {
   const header = tables[0] ?? [];
 
   const orderNo = findByLabel(header, 'Заказ №');
-  // «+7 922 126 67 02 от 28 июля 2026г.» — номер и дата в одной строке.
-  const phoneRaw = orderNo ? (orderNo.split(/\s+от\s+/i)[0] ?? '').trim() : null;
+  // «+7 922 126 67 02 от 28 июля 2026г.» — номер и дата в одной строке. Пробел
+  // перед «от» ставят не всегда: «89103995527От 18 января 2026 г.» — четверть файлов.
+  // Второй номер через «/» встречается, когда заказ оформляли на родственника —
+  // в номер заказа идёт первый.
+  const phoneRaw = orderNo
+    ? ((orderNo.split(/\s*от\s+/i)[0] ?? '').split('/')[0] ?? '').trim()
+    : null;
   const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
   if (phoneRaw && !phone) warnings.push(`Номер заказа «${phoneRaw}» не похож на телефон`);
   if (!orderNo) warnings.push('В шапке нет строки «Заказ №»');
@@ -186,5 +226,7 @@ export async function parseOrderSpecDocx(file: Buffer): Promise<OrderSpecDraft> 
     throw new Error('Файл не похож на .docx: внутри нет word/document.xml');
   }
   const xml = await doc.async('string');
-  return parseSpecTables(docxTables(xml));
+  const tables = docxTables(xml);
+  // Без таблиц шаблон не «пустой», а другой — собираем таблицы из абзацев.
+  return parseSpecTables(tables.length > 0 ? tables : paragraphsToTables(docxParagraphs(xml)));
 }
