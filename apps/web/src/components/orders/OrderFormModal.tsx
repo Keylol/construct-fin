@@ -191,6 +191,7 @@ export function OrderFormModal({
     // с отчётом по чекам и итогом спецификации предыдущего заказа.
     setCostsReport(null);
     setSpecTotal(null);
+    setSpecClient(null);
     // Сброс плана оплаты.
     setPayMode('none');
     setPrepayAmount('');
