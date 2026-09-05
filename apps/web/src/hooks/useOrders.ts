@@ -156,6 +156,38 @@ export function useParseOrderSpec(wsId: string) {
   });
 }
 
+export interface ReceiptCostsPreview {
+  filename: string;
+  source: string;
+  receiptDate: string | null;
+  totalAmount: string | null;
+  items: { name: string; qty: string; unitPrice: string }[];
+  warnings: string[];
+}
+
+/**
+ * Чек закупки → строки с ценами. По файлу за запрос (лимит multipart), поэтому
+ * несколько чеков форма отправляет по очереди.
+ */
+export function useParseReceiptCosts(wsId: string) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/workspaces/${wsId}/orders/costs-preview`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as ReceiptCostsPreview;
+    },
+  });
+}
+
 export function useCreateOrder(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
