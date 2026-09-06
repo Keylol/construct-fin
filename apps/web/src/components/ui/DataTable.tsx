@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from '@/components/ui/icons';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { cn } from '@/lib/cn';
 
 export interface Column<T> {
@@ -65,6 +66,10 @@ interface DataTableProps<T> {
    * данным без калькулятора. Рендерится в <tfoot>.
    */
   footer?: Partial<Record<string, ReactNode>>;
+  /** Курсорная пагинация: есть ли ещё страницы — под таблицей появится «Загрузить ещё». */
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 }
 
 export function DataTable<T>({
@@ -83,6 +88,9 @@ export function DataTable<T>({
   groupBy,
   renderGroupHeader,
   footer,
+  hasMore,
+  onLoadMore,
+  loadingMore,
 }: DataTableProps<T>) {
   const toggleSort = (key: string) => {
     if (!onSortChange) return;
@@ -259,6 +267,8 @@ export function DataTable<T>({
           ))}
         </div>
       )}
+
+      {onLoadMore && <LoadMore hasMore={!!hasMore} loading={loadingMore} onClick={onLoadMore} />}
     </>
   );
 }

@@ -1,31 +1,35 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useWorkspaces } from './useWorkspaces';
+import { readStored, writeStored } from '@/lib/storage';
 
 const STORAGE_KEY = 'construct.currentWorkspaceId';
 
+/**
+ * Текущее пространство: выбранное человеком, иначе сохранённое, иначе первое.
+ *
+ * Выводится из данных синхронно, а не через useEffect: раньше между приходом
+ * списка и установкой id проходил один рендер с `current = null`, и каждый
+ * экран на этот кадр показывал «Нет активного пространства». Сохранённый id
+ * читается лениво и только в браузере — на сервере списка всё равно нет, так
+ * что гидратация не расходится.
+ */
 export function useCurrentWorkspace() {
   const workspaces = useWorkspaces();
-  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : readStored(STORAGE_KEY),
+  );
 
-  useEffect(() => {
-    if (!workspaces.data) return;
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    if (saved && workspaces.data.some((w) => w.id === saved)) {
-      setCurrentId(saved);
-    } else {
-      const first = workspaces.data[0];
-      setCurrentId(first ? first.id : null);
-    }
-  }, [workspaces.data]);
+  const list = workspaces.data;
+  const current =
+    (selectedId ? list?.find((w) => w.id === selectedId) : undefined) ?? list?.[0] ?? null;
+  const currentId = current?.id ?? null;
 
-  const select = (id: string) => {
-    setCurrentId(id);
-    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, id);
-  };
-
-  const current = workspaces.data?.find((w) => w.id === currentId) ?? null;
+  const select = useCallback((id: string) => {
+    setSelectedId(id);
+    writeStored(STORAGE_KEY, id);
+  }, []);
 
   return { current, currentId, workspaces, select };
 }

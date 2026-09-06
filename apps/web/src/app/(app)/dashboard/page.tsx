@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ReceiptText, Wallet } from '@/components/ui/icons';
+import { ArrowRight, ReceiptText } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useHealthChecks } from '@/hooks/useHealthChecks';
@@ -14,7 +14,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useMarginReport, useReceivables } from '@/hooks/useTradeReports';
-import { useStockValue, useWarehouse } from '@/hooks/useWarehouse';
+import { useStockValue } from '@/hooks/useWarehouse';
 import { useCashflowReport } from '@/hooks/useReports';
 import { useTotalCash } from '@/hooks/useTotalCash';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -61,7 +61,6 @@ export default function DashboardPage() {
   // Тренд 12 мес для sparkline доход/расход (месячные бакеты ОДДС, consolidated).
   const trendRange = useMemo(() => ({ preset: 'last-12m' as const }), []);
   const cashflowTrend = useCashflowReport(wsId, trendRange, null);
-  const warehouse = useWarehouse(wsId);
   const accounts = useAccounts(wsId);
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
@@ -76,20 +75,7 @@ export default function DashboardPage() {
     (counterparties.data ?? []).map((c) => [c.id, c]),
   );
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Главная" />
-        <div className="p-6">
-          <EmptyState
-            icon={Wallet}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   // Дебиторка: просрочка > 0 → красный тон + hint. Сравнение числовое, деньги — строкой.
   const overdueTotal = receivables.data?.overdueByPlanTotal ?? '0';

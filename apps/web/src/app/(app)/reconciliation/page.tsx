@@ -35,12 +35,13 @@ import {
 } from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
+import { todayInput } from '@/lib/periods';
 
 export default function ReconciliationPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const accounts = useAccounts(wsId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInput();
 
   const [accountId, setAccountId] = useState<string | null>(null);
   const [asOf, setAsOf] = useState(today);
@@ -59,20 +60,7 @@ export default function ReconciliationPage() {
   const checks = useBalanceChecks(wsId, accountId);
   const del = useDeleteBalanceCheck(current?.id ?? '');
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Сверка" />
-        <div className="p-6">
-          <EmptyState
-            icon={Scale}
-            title="Нет активного пространства"
-            hint="Выберите пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const data = report.data;
   const discrepancy = data?.lastCheck ? Number(data.lastCheck.discrepancy) : null;
@@ -135,7 +123,7 @@ export default function ReconciliationPage() {
         ) : data ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
-              <KpiCard label="Расчётный остаток" value={formatRub(data.computedBalance)} />
+              <KpiCard label="Расчётный остаток" value={<Money value={data.computedBalance} />} />
               <KpiCard
                 label="Последний факт"
                 value={data.lastCheck ? formatRub(data.lastCheck.actualBalance) : '—'}

@@ -7,7 +7,6 @@ import { formatRub } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { FormField } from '@/components/ui/FormField';
@@ -21,22 +20,9 @@ import {
 import type { AccountType, PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { plural } from '@/lib/plural';
+import { ACCOUNT_TYPE_LABEL, IMPORT_SOURCE_LABEL } from '@/lib/labels';
 
 type Stage = 'upload' | 'preview' | 'done';
-
-const SOURCE_LABEL: Record<PreviewResult['source'], string> = {
-  ALFA_XLSX: 'Альфа-Банк (xlsx)',
-  WB_PDF: 'Wildberries (pdf)',
-  TINKOFF_PDF: 'Т-Банк (pdf)',
-  GENERIC_CSV: 'CSV',
-  GENERIC_XLSX: 'Excel',
-};
-
-const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
-  CASH: 'Наличные',
-  BANK: 'Банк',
-  OTHER: 'Другое',
-};
 
 export default function ImportPage() {
   const ws = useCurrentWorkspace();
@@ -94,20 +80,7 @@ export default function ImportPage() {
     setBatchResult(null);
   }
 
-  if (!wsId) {
-    return (
-      <>
-        <PageHeader title="Импорт" />
-        <div className="p-6">
-          <EmptyState
-            icon={Upload}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!wsId) return null;
 
   return (
     <>
@@ -320,7 +293,7 @@ function PreviewStage({
     <div className="space-y-4">
       <Card>
         <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
-          <Stat label="Источник" value={SOURCE_LABEL[preview.source]} />
+          <Stat label="Источник" value={IMPORT_SOURCE_LABEL[preview.source]} />
           <Stat label="Кодировка" value={preview.encoding} />
           <Stat label="Всего строк" value={String(preview.stats.total)} />
           <Stat label="Распознано" value={String(preview.stats.valid)} />

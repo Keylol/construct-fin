@@ -2,6 +2,7 @@
 
 import { formatRub, formatPhone, sub, toMoneyString, D } from '@construct/shared';
 import { StatusStamp } from '@/components/ui/StatusStamp';
+import { Money } from '@/components/ui/Money';
 import { Tile } from '@/components/ui/Tile';
 import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
 
@@ -73,7 +74,7 @@ export function OrderTile({
         </>
       }
       subtitle={order.phone ? formatPhone(order.phone) : order.number}
-      primary={formatRub(order.totalAmount)}
+      primary={<Money value={order.totalAmount} />}
       accent={
         hasDebt ? (
           <span className="text-destructive">долг {formatRub(debt)}</span>
@@ -110,7 +111,7 @@ export function OrderGroupTile({
       title={client ?? 'Без клиента'}
       stamps={<StatusStamp tone="primary" label={`${orders.length} заказа`} />}
       subtitle={formatPhone(phone)}
-      primary={formatRub(toMoneyString(total))}
+      primary={<Money value={toMoneyString(total)} />}
       accent={
         debt.gt(0) ? (
           <span className="text-destructive">долг {formatRub(toMoneyString(debt))}</span>

@@ -8,7 +8,6 @@ import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -32,11 +31,8 @@ import { useTaxReport, usePayTax } from '@/hooks/useTax';
 import type { TaxMonthRow } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
-
-const MONTH_NAMES = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-];
+import { fromLocalDateInput, todayInput } from '@/lib/periods';
+import { MONTH_NAMES } from '@/lib/labels';
 
 const STATUS_META: Record<
   TaxMonthRow['status'],
@@ -65,16 +61,7 @@ export default function TaxPage() {
   const report = useTaxReport(wsId, year);
   const [payFor, setPayFor] = useState<TaxMonthRow | null>(null);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Налог" />
-        <div className="p-6">
-          <EmptyState icon={Calculator} title="Нет активного пространства" hint="Выберите или создайте пространство." />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const rep = report.data;
 
@@ -226,7 +213,7 @@ function PayDialog({
   // Остаток к доплате = к уплате − уже уплачено.
   const remaining = (Number(row.taxDue) - Number(row.taxPaid)).toFixed(2);
   const [amount, setAmount] = useState(remaining);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayInput());
 
   const accountOptions = useMemo<ComboboxOption[]>(
     () => (accounts.data ?? []).map((a) => ({ value: a.id, label: a.name })),
@@ -243,7 +230,7 @@ function PayDialog({
         month: row.monthNo,
         accountId,
         amount,
-        date: new Date(`${date}T12:00:00.000Z`).toISOString(),
+        date: fromLocalDateInput(date),
       },
       {
         onSuccess: () => {

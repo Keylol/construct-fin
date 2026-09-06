@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { BottomTabBar } from './BottomTabBar';
 import { GlobalCommandPalette } from './GlobalCommandPalette';
+import { WorkspaceGate } from './WorkspaceGate';
 import { Toaster } from '@/components/ui/Toaster';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 
@@ -23,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Header onCommandOpen={() => setCmdOpen(true)} />
           {/* На <md контент не прячется под нижним таб-баром (+safe-area). */}
           <main className="min-w-0 flex-1 animate-rise pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
-            {children}
+            <WorkspaceGate>{children}</WorkspaceGate>
           </main>
         </div>
       </div>

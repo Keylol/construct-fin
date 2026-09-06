@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, Package, Truck, ArrowRight } from '@/components/ui/icons';
+import { ChevronLeft, Package, ArrowRight } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { formatRub, add, D, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -41,20 +41,7 @@ export default function SupplierCardPage() {
   // Общая сумма закупок — Decimal-сложение (деньги никогда через float).
   const total = purchases.reduce((acc, p) => add(acc, purchaseTotal(p)), D(0));
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Поставщик" />
-        <div className="p-6">
-          <EmptyState
-            icon={Truck}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   return (
     <>

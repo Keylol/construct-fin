@@ -10,7 +10,8 @@ import { toast } from '@/components/ui/Toaster';
 import { Plus, Trash2 } from '@/components/ui/icons';
 import { useSetOrderSchedule } from '@/hooks/useOrders';
 import type { Order } from '@/lib/types';
-import { D, add, formatRub, parseAmountInput, toMoneyString } from '@construct/shared';
+import { D, add, parseAmountInput, toMoneyString } from '@construct/shared';
+import { todayInput } from '@/lib/periods';
 
 interface ScheduleRowDraft {
   dueDate: string; // yyyy-mm-dd
@@ -40,7 +41,7 @@ export function ScheduleModal({
         dueDate: e.dueDate.slice(0, 10),
         amount: e.amount,
         note: e.note ?? '',
-      })) ?? [{ dueDate: new Date().toISOString().slice(0, 10), amount: '', note: '' }],
+      })) ?? [{ dueDate: todayInput(), amount: '', note: '' }],
     );
     setError(null);
   }, [open, order]);
@@ -152,7 +153,7 @@ export function ScheduleModal({
             onClick={() =>
               setRows((arr) => [
                 ...arr,
-                { dueDate: new Date().toISOString().slice(0, 10), amount: '', note: '' },
+                { dueDate: todayInput(), amount: '', note: '' },
               ])
             }
           >

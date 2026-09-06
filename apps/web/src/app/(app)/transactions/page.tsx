@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Plus, ReceiptText, Wallet } from '@/components/ui/icons';
+import { Plus, ReceiptText } from '@/components/ui/icons';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
@@ -19,7 +20,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { toast } from '@/components/ui/Toaster';
 import {
@@ -30,9 +31,10 @@ import { TransactionFormDialog } from '@/components/transactions/TransactionForm
 import {
   filtersToSearchParams,
   readSavedPeriod,
-  searchParamsToFilters,
+  txFiltersCodec,
   writeSavedPeriod,
 } from '@/lib/tx-filters';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { D, add, sub, toMoneyString, formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
@@ -73,40 +75,30 @@ function TransactionsView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Инициализация из URL (drill-down из отчётов/карточек). Ленивый инициализатор —
-  // читаем один раз на маунте; дальше состояние ведёт форма фильтров + router.replace.
-  const [filters, setFiltersState] = useState<ActiveFilters>(() =>
-    searchParamsToFilters(searchParams),
-  );
+  // Фильтры живут в адресе (drill-down из отчётов, F5, ссылка коллеге).
+  const [filters, setFiltersInUrl] = useUrlFilters(txFiltersCodec);
 
-  // Пишем измерения фильтров обратно в URL (deep-link на текущий разрез).
-  // replace, а не push — клики по фильтрам не засоряют историю браузера.
   const setFilters = useCallback(
     (next: ActiveFilters) => {
       // Период запоминаем только когда его выбрал человек: возвращаться в
       // текущий месяц на каждом заходе — лишний клик, а работают неделями в
       // одном периоде. Измерения не помним (см. tx-filters).
       if (next.period !== filters.period) writeSavedPeriod(next.period);
-      setFiltersState(next);
-      const qs = filtersToSearchParams(next);
-      const href = (qs ? `${pathname}?${qs}` : pathname) as Parameters<typeof router.replace>[0];
-      router.replace(href, { scroll: false });
+      setFiltersInUrl(next);
     },
-    [pathname, router, filters.period],
+    [filters.period, setFiltersInUrl],
   );
 
   /**
-   * Сохранённый период применяем после маунта (как useTileView): localStorage
-   * на сервере не существует, а читать его в инициализаторе — рассинхрон
-   * гидратации. Drill-down с явными from/to главнее: там период задал отчёт.
+   * Сохранённый период применяем после маунта: localStorage на сервере не
+   * существует, а читать его в инициализаторе — рассинхрон гидратации.
+   * Drill-down с явными from/to главнее: там период задал отчёт.
    */
   useEffect(() => {
     if (searchParams.get('from') || searchParams.get('to')) return;
     const saved = readSavedPeriod();
-    if (!saved) return;
-    setFiltersState((prev) =>
-      prev.period === saved ? prev : { ...prev, period: saved, range: rangeForAny(saved) },
-    );
+    if (!saved || saved === filters.period) return;
+    setFiltersInUrl({ ...filters, period: saved, range: rangeForAny(saved) });
     // Разовый триггер на маунте — как в useCreateFromUrl.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -172,20 +164,7 @@ function TransactionsView() {
     [counterparties.data],
   );
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Операции" />
-        <div className="p-6">
-          <EmptyState
-            icon={Wallet}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   // Колонка «Дата» ушла в заголовки дневных групп (№27); в mobileCards дата остаётся.
   const columns: Column<Transaction>[] = [
@@ -253,22 +232,12 @@ function TransactionsView() {
         }
       />
 
-      <div className="space-y-4 px-6 py-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {summary.isLoading || !summary.data ? (
-            <>
-              <Skeleton className="h-[88px]" />
-              <Skeleton className="h-[88px]" />
-              <Skeleton className="h-[88px]" />
-            </>
-          ) : (
-            <>
-              <KpiCard label="Доходы" value={formatRub(summary.data.income)} tone="positive" />
-              <KpiCard label="Расходы" value={formatRub(summary.data.expense)} tone="negative" />
-              <KpiCard label="Чистый денежный поток" value={formatRub(summary.data.net)} />
-            </>
-          )}
-        </div>
+      <div className="px-6 py-4">
+        <KpiRow loading={summary.isLoading || !summary.data}>
+          <KpiCard label="Доходы" value={<Money value={summary.data?.income ?? '0'} tone="plain" />} tone="positive" />
+          <KpiCard label="Расходы" value={<Money value={summary.data?.expense ?? '0'} tone="plain" />} tone="negative" />
+          <KpiCard label="Чистый денежный поток" value={<Money value={summary.data?.net ?? '0'} />} />
+        </KpiRow>
       </div>
 
       <TransactionFilters
@@ -295,7 +264,7 @@ function TransactionsView() {
           footer={{
             description: 'Итого по видимым',
             // Σ по загруженным страницам infinite-пагинации — «по видимым» и есть.
-            amount: formatRub(sumSigned(txRows)),
+            amount: <Money value={sumSigned(txRows)} />,
           }}
           onRowClick={(t) => {
             // C1: доменные строки (ноги перевода/комиссия, оплаты заказа) через
@@ -360,17 +329,7 @@ function TransactionsView() {
             );
           }}
         />
-        {txs.hasNextPage && (
-          <div className="flex justify-center border-t border-border py-4">
-            <Button
-              variant="secondary"
-              onClick={() => txs.fetchNextPage()}
-              disabled={txs.isFetchingNextPage}
-            >
-              {txs.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
-            </Button>
-          </div>
-        )}
+        <LoadMore hasMore={txs.hasNextPage} loading={txs.isFetchingNextPage} onClick={() => void txs.fetchNextPage()} />
       </div>
 
       <TransactionFormDialog

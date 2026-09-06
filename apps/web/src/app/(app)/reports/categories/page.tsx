@@ -30,17 +30,7 @@ export default function CategoriesReportPage() {
 
   const query = useBreakdownReport('by-category', wsId, periodToQuery(period), type);
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={BarChart3}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   const rows = query.data?.rows ?? [];
   // Цвет сектора ↔ маркер строки: один источник (donutSlices, фиксированный порядок).

@@ -34,12 +34,7 @@ import {
 } from '@/components/ui/Modal';
 import { formatRub, D, add, toMoneyString } from '@construct/shared';
 import { plural } from '@/lib/plural';
-
-const TYPE_LABELS: Record<AccountType, string> = {
-  CASH: 'Наличные',
-  BANK: 'Банк',
-  OTHER: 'Другое',
-};
+import { ACCOUNT_TYPE_LABEL } from '@/lib/labels';
 
 export default function AccountsPage() {
   const { current } = useCurrentWorkspace();
@@ -78,20 +73,7 @@ export default function AccountsPage() {
     };
   })();
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Счета" />
-        <div className="p-6">
-          <EmptyState
-            icon={Wallet}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<Account>[] = [
     {
@@ -109,7 +91,7 @@ export default function AccountsPage() {
     {
       key: 'type',
       header: 'Тип',
-      cell: (a) => <span className="text-muted-foreground">{TYPE_LABELS[a.type]}</span>,
+      cell: (a) => <span className="text-muted-foreground">{ACCOUNT_TYPE_LABEL[a.type]}</span>,
       className: 'w-[140px]',
     },
     {
@@ -295,7 +277,7 @@ export default function AccountsPage() {
               <div className="min-w-0">
                 <div className="truncate font-medium">{a.name}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {TYPE_LABELS[a.type]}
+                  {ACCOUNT_TYPE_LABEL[a.type]}
                   {a.isArchived && ' · в архиве'}
                 </div>
               </div>

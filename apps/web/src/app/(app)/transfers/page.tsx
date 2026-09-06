@@ -22,6 +22,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { todayInput } from '@/lib/periods';
 import {
   Modal,
   ModalBody,
@@ -46,20 +47,7 @@ export default function TransfersPage() {
     return m;
   }, [accounts.data]);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Переводы" />
-        <div className="p-6">
-          <EmptyState
-            icon={ArrowLeftRight}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const acc = (id: string) => nameById.get(id) ?? '—';
 
@@ -209,7 +197,7 @@ function TransferForm({
   const [error, setError] = useState<string | null>(null);
 
   const active = accounts.filter((a) => !a.isArchived);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInput();
 
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
@@ -223,7 +211,7 @@ function TransferForm({
     setToAccountId('');
     setAmount('');
     setFee('');
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(todayInput());
     setNote('');
     setError(null);
   }, [open]);
