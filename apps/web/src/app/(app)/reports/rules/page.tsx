@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import { Plus, Filter, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -15,6 +16,7 @@ import { useRules, useCreateRule, useUpdateRule, useDeleteRule } from '@/hooks/u
 import type { Rule, RuleAction, RuleCondition } from '@/lib/types';
 import { RuleFormDialog } from '@/components/rules/RuleFormDialog';
 import { APPLIES_TO_LABELS } from '@/components/rules/dictionaries';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 
 export default function RulesPage() {
   const ws = useCurrentWorkspace();
@@ -29,6 +31,8 @@ export default function RulesPage() {
 
   const [editing, setEditing] = useState<Rule | null>(null);
   const [open, setOpen] = useState(false);
+  // «n» — новое правило.
+  useListHotkeys({ onNew: () => openCreate() });
   const [delTarget, setDelTarget] = useState<Rule | null>(null);
 
   // Справочники id→имя для человекочитаемой сводки условий/действий в таблице.
@@ -117,7 +121,7 @@ export default function RulesPage() {
     {
       key: 'appliesTo',
       header: 'Где',
-      cell: (r) => <Badge variant="outline">{APPLIES_TO_LABELS[r.appliesTo]}</Badge>,
+      cell: (r) => <span className="text-muted-foreground">{APPLIES_TO_LABELS[r.appliesTo]}</span>,
       className: 'w-[120px]',
     },
     {
@@ -146,22 +150,14 @@ export default function RulesPage() {
       key: 'active',
       header: 'Статус',
       cell: (r) => (
-        <label
-          className="inline-flex items-center gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <input
-            type="checkbox"
+        <span className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
             checked={r.isActive}
             onChange={(e) => updateMut.mutate({ id: r.id, isActive: e.target.checked })}
-            className="h-4 w-4 rounded border-input accent-primary"
+            aria-label={r.isActive ? 'Поставить на паузу' : 'Включить'}
           />
-          {r.isActive ? (
-            <Badge variant="outline">Активно</Badge>
-          ) : (
-            <Badge variant="muted">Пауза</Badge>
-          )}
-        </label>
+          <StatusDot tone={r.isActive ? 'success' : 'muted'} label={r.isActive ? 'Активно' : 'Пауза'} />
+        </span>
       ),
       className: 'w-[140px]',
     },
@@ -191,20 +187,19 @@ export default function RulesPage() {
 
   return (
     <>
-      <div className="border-b border-border bg-background px-6 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Правило срабатывает, когда выполнены <strong>все</strong> его условия, и
-            подставляет категорию, контрагента или счёт. При ручном вводе это
-            подсказка — вы подтверждаете её сами. А вот{' '}
-            <strong>строку из банка правило проводит сразу</strong>, без подтверждения:
-            результат смотрите во «Входящих» на вкладке «Проведено правилами», там же
-            его можно отменить. Правило с большим приоритетом применяется первым.
-          </p>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Новое правило
-          </Button>
-        </div>
+      {/* Заголовок «Правила» уже рисует reports/layout (вкладки отчётов) — здесь
+          только пояснение и действие, чтобы не было двух заголовков подряд. */}
+      <div className="flex flex-col gap-3 border-b border-border bg-background px-6 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Правило срабатывает, когда выполнены <strong>все</strong> его условия, и подставляет
+          категорию, контрагента или счёт. При ручном вводе это подсказка — вы подтверждаете
+          её сами. <strong>Строку из банка правило проводит сразу</strong>: результат — во
+          «Входящих» на вкладке «Проведено правилами», там же его можно отменить. Правило с
+          большим приоритетом применяется первым.
+        </p>
+        <Button onClick={openCreate} className="shrink-0">
+          <Plus className="h-4 w-4" /> Новое правило
+        </Button>
       </div>
 
       <div className="bg-card">
