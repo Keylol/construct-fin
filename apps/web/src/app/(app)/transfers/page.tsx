@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ArrowLeftRight, X, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import {
@@ -22,7 +21,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { todayInput } from '@/lib/periods';
+import { fromLocalDateInput, todayInput } from '@/lib/periods';
 import {
   Modal,
   ModalBody,
@@ -30,7 +29,10 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 
 export default function TransfersPage() {
   const { current } = useCurrentWorkspace();
@@ -39,6 +41,8 @@ export default function TransfersPage() {
   const accounts = useAccounts(wsId);
   const [creating, setCreating] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Transfer | null>(null);
+  // «n» — новый перевод.
+  useListHotkeys({ onNew: () => setCreating(true) });
   const del = useDeleteTransfer(current?.id ?? '');
 
   const nameById = useMemo(() => {
@@ -148,7 +152,12 @@ export default function TransfersPage() {
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
                   {formatDate(t.date)}
-                  {Number(t.fee) > 0 && ` · комиссия ${formatRub(t.fee)}`}
+                  {Number(t.fee) > 0 && (
+                    <>
+                      {' · комиссия '}
+                      <Money value={t.fee} tone="plain" />
+                    </>
+                  )}
                 </div>
               </div>
               <div className="shrink-0 text-sm font-medium tabular-nums">
@@ -216,6 +225,7 @@ function TransferForm({
     setError(null);
   }, [open]);
 
+  const dirty = !!fromAccountId || !!toAccountId || !!amount || !!fee || !!note.trim();
   const sameAccount = !!fromAccountId && fromAccountId === toAccountId;
   const canSave =
     !!fromAccountId && !!toAccountId && !sameAccount && Number(amount) > 0 && !create.isPending;
@@ -228,7 +238,7 @@ function TransferForm({
         toAccountId,
         amount: amount.replace(',', '.'),
         fee: fee.trim() ? fee.replace(',', '.') : undefined,
-        date: new Date(date).toISOString(),
+        date: fromLocalDateInput(date),
         note: note.trim() || undefined,
       };
       await create.mutateAsync(input);
@@ -239,13 +249,15 @@ function TransferForm({
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
       <ModalContent hideClose>
         <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <ModalTitle>Новый перевод</ModalTitle>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-            <X className="h-4 w-4" />
-          </Button>
+          <ModalClose asChild>
+            <Button variant="ghost" size="icon" aria-label="Закрыть">
+              <X className="h-4 w-4" />
+            </Button>
+          </ModalClose>
         </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -288,9 +300,8 @@ function TransferForm({
             )}
           </FormField>
           <FormField label="Сумма" htmlFor="tr-amount" required>
-            <Input
+            <MoneyInput
               id="tr-amount"
-              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -298,9 +309,8 @@ function TransferForm({
             />
           </FormField>
           <FormField label="Комиссия" htmlFor="tr-fee">
-            <Input
+            <MoneyInput
               id="tr-fee"
-              inputMode="decimal"
               value={fee}
               onChange={(e) => setFee(e.target.value)}
               placeholder="0.00 — расход на счёте-источнике"
@@ -325,9 +335,11 @@ function TransferForm({
           {error && <p className="text-sm text-destructive">{error}</p>}
         </ModalBody>
         <ModalFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
+          <ModalClose asChild>
+            <Button type="button" variant="secondary">
+              Отмена
+            </Button>
+          </ModalClose>
           <Button type="submit" loading={create.isPending} disabled={!canSave}>
             Создать
           </Button>

@@ -34,8 +34,10 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * Группа решает, куда категория попадёт в ОПиУ. Пояснения даны через последствие
@@ -320,6 +322,15 @@ function CategoryForm({
     setError(null);
   }, [initial, parentId, kind, open]);
 
+  // Несохранённый ввод — против значений, с которыми форма открылась.
+  const dirty = initial
+    ? name !== initial.name ||
+      parent !== (initial.parentId ?? '') ||
+      bucket !== initial.bucket ||
+      isFixedCost !== initial.isFixedCost ||
+      isArchived !== initial.isArchived
+    : !!name.trim();
+
   const onSave = async () => {
     setError(null);
     try {
@@ -355,15 +366,17 @@ function CategoryForm({
 
   return (
     <>
-      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
         <ModalContent hideClose>
           <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <ModalTitle>
               {initial ? 'Редактировать категорию' : 'Новая категория'}
             </ModalTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-              <X className="h-4 w-4" />
-            </Button>
+            <ModalClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Закрыть">
+                <X className="h-4 w-4" />
+              </Button>
+            </ModalClose>
           </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -419,25 +432,13 @@ function CategoryForm({
                   ))}
               </Select>
             </FormField>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isFixedCost}
-                onChange={(e) => setIsFixedCost(e.target.checked)}
-                className="h-4 w-4 rounded border-input accent-primary"
-              />
-              Постоянные расходы
-            </label>
+            <Checkbox
+              label="Постоянные расходы"
+              checked={isFixedCost}
+              onChange={(e) => setIsFixedCost(e.target.checked)}
+            />
             {initial && (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isArchived}
-                  onChange={(e) => setIsArchived(e.target.checked)}
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                В архиве
-              </label>
+              <Checkbox label="В архиве" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
@@ -452,9 +453,11 @@ function CategoryForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Отмена
-            </Button>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">
+                Отмена
+              </Button>
+            </ModalClose>
             <Button
               type="submit"
               loading={create.isPending || update.isPending}

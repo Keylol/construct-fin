@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, UserRound, Search, X, Trash2, Pencil } from '@/components/ui/icons';
+import { Plus, UserRound, RotateCcw, X, Trash2, Pencil } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -17,8 +17,10 @@ import type { Counterparty } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { SearchField } from '@/components/ui/SearchField';
+import { FilterField } from '@/components/ui/FilterField';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Textarea } from '@/components/ui/Textarea';
-import { Badge } from '@/components/ui/Badge';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -27,6 +29,9 @@ import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+
 import {
   Modal,
   ModalBody,
@@ -34,13 +39,27 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
 
+const DEFAULTS = { q: '', archived: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function ClientsPage() {
+  return (
+    <Suspense>
+      <ClientsView />
+    </Suspense>
+  );
+}
+
+
+function ClientsView() {
   const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useUrlFilters(FILTERS);
   /**
    * Куда ведёт клик по клиенту. Владелец идёт к заказу, а не к справочной
    * карточке: один заказ — открываем его сразу, несколько — показываем только
@@ -56,12 +75,11 @@ export default function ClientsPage() {
   // Вид: справочник обычно смотрят списком, плитки — когда следят за долгами.
   const [view, changeView] = useTileView('clients:view');
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
-  const debouncedSearch = useDebouncedValue(search);
+  const debouncedSearch = useDebouncedValue(filters.q);
   // Архив по умолчанию скрыт, но должен быть достижим: без этого переключателя
   // отправленная в архив карточка исчезала из интерфейса совсем — вернуть её
   // было нечем ни на одной странице.
-  const [showArchived, setShowArchived] = useState(false);
-  const list = useCounterparties(wsId, debouncedSearch || undefined, showArchived, 'CLIENT');
+  const list = useCounterparties(wsId, debouncedSearch || undefined, filters.archived, 'CLIENT');
   const [editing, setEditing] = useState<Counterparty | null>(null);
   const [creating, setCreating] = useState(false);
   // «/» — в поиск, «n» — создать: список листают с клавиатуры.
@@ -88,12 +106,7 @@ export default function ClientsPage() {
     {
       key: 'source',
       header: 'Источник',
-      cell: (c) =>
-        c.source ? (
-          <Badge variant="outline">{c.source}</Badge>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
+      cell: (c) => <span className="text-muted-foreground">{c.source ?? '—'}</span>,
       className: 'w-[160px]',
     },
     {
@@ -154,28 +167,27 @@ export default function ClientsPage() {
 
       <FilterBar>
         <div className="min-w-[240px] max-w-md flex-1">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <FilterField label="Поиск">
+            <SearchField
               ref={searchRef}
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
               placeholder="Поиск по имени или контакту"
-              className="h-9 pl-8"
             />
-          </div>
+          </FilterField>
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={showArchived}
-            onChange={(e) => setShowArchived(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
+        <div className="flex h-9 items-center">
+          <Checkbox
+            label="Показывать архив"
+            checked={filters.archived}
+            onChange={(e) => setFilters({ ...filters, archived: e.target.checked })}
           />
-          Показывать архив
-        </label>
+        </div>
         <ViewToggle view={view} onChange={changeView} />
+        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
       </FilterBar>
 
       {view === 'tiles' ? (
@@ -290,6 +302,14 @@ function ClientForm({
     setError(null);
   }, [initial, open]);
 
+  // Есть ли несохранённый ввод — сравниваем с тем, что было бы в форме при открытии.
+  const dirty =
+    name !== (initial?.name ?? '') ||
+    contact !== (initial?.contact ?? '') ||
+    source !== (initial?.source ?? '') ||
+    note !== (initial?.note ?? '') ||
+    isArchived !== (initial?.isArchived ?? false);
+
   const onSave = async () => {
     setError(null);
     try {
@@ -326,13 +346,15 @@ function ClientForm({
 
   return (
     <>
-      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
         <ModalContent hideClose>
           <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <ModalTitle>{initial ? 'Редактировать клиента' : 'Новый клиент'}</ModalTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-              <X className="h-4 w-4" />
-            </Button>
+            <ModalClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Закрыть">
+                <X className="h-4 w-4" />
+              </Button>
+            </ModalClose>
           </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -379,15 +401,7 @@ function ClientForm({
               />
             </FormField>
             {initial && (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isArchived}
-                  onChange={(e) => setIsArchived(e.target.checked)}
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                В архиве
-              </label>
+              <Checkbox label="В архиве" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
@@ -402,9 +416,11 @@ function ClientForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Отмена
-            </Button>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">
+                Отмена
+              </Button>
+            </ModalClose>
             <Button
               type="submit"
               loading={create.isPending || update.isPending}
