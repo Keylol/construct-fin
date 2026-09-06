@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AlfaAdapter, MAX_DAYS_PER_SYNC, dayKey, nextDay, prevDay } from './alfa.adapter';
+import { AlfaAdapter, MAX_DAYS_PER_SYNC, dayKey, nextDay, prevDay, pickBalance } from './alfa.adapter';
 import type { AlfaHttp, AlfaHttpResponse } from './alfa-transport';
 import type { AdapterRegistry } from '../adapter-registry';
 
@@ -430,5 +430,52 @@ describe('AlfaAdapter — календарные помощники', () => {
     expect(prevDay('2026-01-01')).toBe('2025-12-31');
     // 2028 — високосный.
     expect(nextDay('2028-02-28')).toBe('2028-02-29');
+  });
+});
+
+// ─────────────────────── остаток по счёту (fetchBalance) ───────────────────────
+
+describe('AlfaAdapter.fetchBalance', () => {
+  const startFrom = new Date('2026-06-01T00:00:00.000Z');
+
+  it('ходит в /v1/accounts/{номер} с ApiKey и читает balance.amount', async () => {
+    const { adapter, calls } = build(() => ({
+      status: 200,
+      body: JSON.stringify({ accountNumber: ACCOUNT, balance: { amount: 1301331.94, currency: 'RUR' } }),
+      headers: {},
+    }));
+    const res = await adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom });
+    expect(res.current?.amount).toBe('1301331.94');
+    expect(res.openingAt).toBeNull();
+    expect(calls[0]).toBe(`${BASE}/v1/accounts/${ACCOUNT}`);
+  });
+
+  it('403 — понятная ошибка про scope, синк строк её переживёт', async () => {
+    const { adapter } = build(() => ({ status: 403, body: '{}', headers: {} }));
+    await expect(
+      adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom }),
+    ).rejects.toThrow(/scope «Счета»/);
+  });
+
+  it('незнакомая форма ответа — current null без исключения', async () => {
+    const { adapter } = build(() => ({ status: 200, body: '{"foo":1}', headers: {} }));
+    const res = await adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom });
+    expect(res).toEqual({ current: null, openingAt: null });
+  });
+});
+
+describe('pickBalance: терпимость к форме ответа', () => {
+  it('вложенный объект, плоское число, массив счетов', () => {
+    expect(pickBalance({ balance: { amount: 10.5 } })).toBe('10.50');
+    expect(pickBalance({ balance: 7 })).toBe('7.00');
+    expect(pickBalance({ amount: '3.333' })).toBe('3.33');
+    expect(pickBalance([{ balance: { amount: -2 } }])).toBe('-2.00');
+    expect(pickBalance({ availableBalance: { amount: 1 } })).toBe('1.00');
+  });
+
+  it('мусор — null', () => {
+    expect(pickBalance(null)).toBeNull();
+    expect(pickBalance({ balance: 'abc' })).toBeNull();
+    expect(pickBalance({})).toBeNull();
   });
 });

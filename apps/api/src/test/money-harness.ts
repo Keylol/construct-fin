@@ -23,6 +23,7 @@ import { TaxService } from '../reports/tax.service';
 import { BalanceService } from '../reports/balance.service';
 import { BreakevenService } from '../reports/breakeven.service';
 import { TransferService } from '../transfer/transfer.service';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { MarginService } from '../trade-reports/margin.service';
 import { ReceivablesService } from '../trade-reports/receivables.service';
@@ -90,7 +91,7 @@ export function buildHarness(): Harness {
 
   // Доп. сервисы для e2e — все инстанцируются от того же prisma/uow/audit.
   const transfer = new TransferService(prisma, uow);
-  const reconciliation = new ReconciliationService(prisma);
+  const reconciliation = new ReconciliationService(prisma, new BalanceAnchorService(prisma));
   const tradeMargin = new MarginService(prisma);
   const tradeReceivables = new ReceivablesService(prisma);
   const balance = new BalanceService(prisma, tradeReceivables, tax);

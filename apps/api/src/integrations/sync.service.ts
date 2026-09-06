@@ -4,7 +4,14 @@ import { AusnMark, Prisma, type IntegrationProvider } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
-import type { RawBankLine } from './provider-adapter';
+import type {
+  BankProviderAdapter,
+  FetchBalanceInput,
+  FetchBalanceResult,
+  RawBankLine,
+} from './provider-adapter';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
+import { money } from '../common/money';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
 import { computeRowHash } from '../common/import-hash';
 import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
@@ -65,6 +72,7 @@ export class SyncService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly registry: AdapterRegistry,
+    private readonly anchor: BalanceAnchorService,
   ) {}
 
   /** Ежечасный фоновый синк всех активных подключений (решение №12). */
@@ -133,6 +141,11 @@ export class SyncService {
       // Уровень подключения: decrypt + запрос выписки. Отказ здесь = ERROR.
       const token = this.crypto.decrypt(conn.credentialEnc);
       const adapter = this.registry.resolve(conn.provider);
+      // Сертификат mTLS этого подключения (у разных ИП — разные сертификаты
+      // от банка). Null → транспорт возьмёт запасной из env.
+      const tls = conn.tlsCredentialEnc
+        ? deserializeTlsCredential(this.crypto.decrypt(conn.tlsCredentialEnc))
+        : null;
       const { lines, nextCursor } = await adapter.fetchStatement({
         token,
         cursor: conn.syncCursor,
@@ -142,11 +155,7 @@ export class SyncService {
         accountNumber: conn.externalAccountId,
         connectedAt: conn.createdAt,
         backfillFrom: conn.backfillFrom,
-        // Сертификат mTLS этого подключения (у разных ИП — разные сертификаты
-        // от банка). Null → транспорт возьмёт запасной из env.
-        tls: conn.tlsCredentialEnc
-          ? deserializeTlsCredential(this.crypto.decrypt(conn.tlsCredentialEnc))
-          : null,
+        tls,
       });
       const rules = await this.loadRules(conn.workspaceId);
 
@@ -175,6 +184,14 @@ export class SyncService {
         }
       }
 
+      // Остаток по банку — после строк: якорь считается от того, что уже в БД.
+      const balance = await this.fetchBalanceSafe(adapter, {
+        token,
+        accountNumber: conn.externalAccountId,
+        tls,
+        startFrom: conn.backfillFrom ?? conn.createdAt,
+      });
+
       await this.prisma.integrationConnection.update({
         where: { id: conn.id },
         data: {
@@ -182,8 +199,12 @@ export class SyncService {
           lastSyncAt: new Date(),
           status: 'ACTIVE',
           lastSyncError: null,
+          ...(balance?.current
+            ? { bankBalance: money(balance.current.amount), bankBalanceAt: balance.current.at }
+            : {}),
         },
       });
+      await this.anchorOpening(conn.accountId, balance);
       return { fetched: lines.length, created, autoPosted, adopted };
     } catch (e) {
       // Текст ошибки провайдера хранится в БД и показывается в UI интеграций —
@@ -195,6 +216,49 @@ export class SyncService {
         data: { status: 'ERROR', lastSyncError: message.slice(0, 500) },
       });
       throw e;
+    }
+  }
+
+  /**
+   * Остаток по банку — best-effort. Провайдер может не уметь (нет метода), ключ
+   * может не иметь прав на счета (403), метод может лечь отдельно от выписки.
+   * Ни одно из этого не повод ронять синк строк: без остатка учёт продолжает
+   * работать как раньше, просто без «по банку» и якоря.
+   */
+  private async fetchBalanceSafe(
+    adapter: BankProviderAdapter,
+    input: FetchBalanceInput,
+  ): Promise<FetchBalanceResult | null> {
+    if (!adapter.fetchBalance) return null;
+    try {
+      return await adapter.fetchBalance(input);
+    } catch (e) {
+      this.logger.warn(
+        `Остаток по банку не получен (синк строк не пострадал): ${sanitizeSecrets(
+          e instanceof Error ? e.message : String(e),
+        )}`,
+      );
+      return null;
+    }
+  }
+
+  /** Вывести начальный остаток счёта из полученного якоря (см. BalanceAnchorService). */
+  private async anchorOpening(accountId: string, balance: FetchBalanceResult | null): Promise<void> {
+    if (!balance || (!balance.current && !balance.openingAt)) return;
+    try {
+      await this.anchor.anchorFromBank(
+        accountId,
+        balance.current ? { amount: money(balance.current.amount), at: balance.current.at } : null,
+        balance.openingAt
+          ? { amount: money(balance.openingAt.amount), date: balance.openingAt.date }
+          : null,
+      );
+    } catch (e) {
+      // Якорь — производная от уже сохранённых данных; его сбой не должен
+      // откатывать успешный синк строк.
+      this.logger.warn(
+        `Якорь начального остатка не записан: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 

@@ -17,6 +17,7 @@ import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
 import { SyncService } from './sync.service';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { IntegrationsService } from './integrations.service';
 import { InboxService } from './inbox.service';
 import type { BankProviderAdapter, FetchStatementInput } from './provider-adapter';
@@ -57,7 +58,7 @@ function spyAdapter(tag: string) {
 function buildSync(adapter?: BankProviderAdapter) {
   const registry = new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never);
   if (adapter) registry.register('ALFA', adapter);
-  return new SyncService(h.prisma as never, crypto, registry);
+  return new SyncService(h.prisma as never, crypto, registry, new BalanceAnchorService(h.prisma as never));
 }
 
 async function makeConnection(seed: Seed, secret: string, tls?: string) {

@@ -3,6 +3,7 @@ import { buildHarness, resetDb, seedBase, type Harness, type Seed } from '../tes
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { SyncService } from './sync.service';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { InboxService } from './inbox.service';
 import { computeRowHash } from '../common/import-hash';
 import type {
@@ -103,7 +104,10 @@ function syncWith(lines: RawBankLine[]) {
   return new SyncService(
     h.prisma as never,
     crypto,
-    new AdapterRegistry(new ScriptedAdapter(lines), { get: () => 'test' } as never),
+    // ScriptedAdapter не наследует FakeBankAdapter (у того теперь ещё и
+    // остаток) — реестру важен только контракт BankProviderAdapter.
+    new AdapterRegistry(new ScriptedAdapter(lines) as never, { get: () => 'test' } as never),
+    new BalanceAnchorService(h.prisma as never),
   );
 }
 

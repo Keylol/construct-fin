@@ -51,24 +51,45 @@ function CreateMenu() {
 function HeaderCash() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const { total } = useTotalCash(wsId);
+  const { total, hasBank, unresolvedCount } = useTotalCash(wsId);
 
   if (total == null) return null;
 
   return (
-    <Link
-      href="/accounts"
-      title="Денежные средства на счетах — открыть"
-      className={cn(
-        'hidden h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5 sm:flex',
-        'transition-colors hover:border-ring',
+    <div className="hidden items-center gap-1.5 sm:flex">
+      <Link
+        href="/accounts"
+        title={
+          hasBank
+            ? 'По данным банков (где есть API) — открыть счета'
+            : 'Денежные средства на счетах — открыть'
+        }
+        className={cn(
+          'flex h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5',
+          'transition-colors hover:border-ring',
+        )}
+      >
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {hasBank ? 'По банку' : 'Денежные средства'}
+        </span>
+        <Money value={total} className="text-sm font-semibold" />
+      </Link>
+      {/* Очередь разбора рядом с деньгами: пока она непуста, «по учёту» неполон —
+          и это задача, а не ошибка. */}
+      {unresolvedCount > 0 && (
+        <Link
+          href="/inbox"
+          title="Строки выписки, которые ещё не проведены — открыть «Входящие»"
+          className={cn(
+            'flex h-8 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 text-xs',
+            'text-foreground transition-colors hover:border-warning',
+          )}
+        >
+          <span className="text-muted-foreground">не разобрано</span>
+          <span className="font-semibold tabular-nums">{unresolvedCount}</span>
+        </Link>
       )}
-    >
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        Денежные средства
-      </span>
-      <Money value={total} className="text-sm font-semibold" />
-    </Link>
+    </div>
   );
 }
 

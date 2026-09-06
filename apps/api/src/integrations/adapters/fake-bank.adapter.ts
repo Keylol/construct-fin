@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type {
   BankProviderAdapter,
+  FetchBalanceInput,
+  FetchBalanceResult,
   FetchStatementInput,
   FetchStatementResult,
   RawBankLine,
@@ -60,11 +62,22 @@ export class FakeBankAdapter implements BankProviderAdapter {
     },
   ];
 
+  /**
+   * Остаток по банку — по умолчанию не отдаётся (null): десятки тестов
+   * полного цикла считают балансы от seed-значений, и молчаливый якорь их бы
+   * переписал. Тест, проверяющий якорь, задаёт `balance` явно.
+   */
+  balance: FetchBalanceResult | null = null;
+
   // accountNumber/connectedAt фейку не нужны — набор строк фиксирован.
   fetchStatement(input: FetchStatementInput): Promise<FetchStatementResult> {
     if (input.cursor) {
       return Promise.resolve({ lines: [], nextCursor: input.cursor });
     }
     return Promise.resolve({ lines: FakeBankAdapter.LINES, nextCursor: 'done' });
+  }
+
+  fetchBalance(_input: FetchBalanceInput): Promise<FetchBalanceResult> {
+    return Promise.resolve(this.balance ?? { current: null, openingAt: null });
   }
 }

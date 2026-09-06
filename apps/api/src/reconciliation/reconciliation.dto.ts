@@ -14,6 +14,13 @@ export const CreateBalanceCheckSchema = z.object({
   /// Фактический остаток на счёте на указанную дату (по выписке/факту).
   actualBalance: moneyString,
   note: z.string().trim().max(500).optional(),
+  /**
+   * Принять факт как якорь начального остатка: openingBalance счёта выводится
+   * так, чтобы остаток по строкам выписки (или по проводкам у счёта без
+   * выписки) на конец дня сверки сошёлся с этим фактом. Для счетов без API
+   * банка это единственный способ получить честный остаток без ввода истории.
+   */
+  anchor: z.boolean().optional(),
 });
 export type CreateBalanceCheckDto = z.infer<typeof CreateBalanceCheckSchema>;
 

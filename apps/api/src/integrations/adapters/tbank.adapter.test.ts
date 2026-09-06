@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LOOKBACK_DAYS, TbankAdapter, mapOperation } from './tbank.adapter';
+import {
+  LOOKBACK_DAYS,
+  TbankAdapter,
+  mapOperation,
+  pickCurrentBalance,
+  pickOpeningBalance,
+} from './tbank.adapter';
 import type { BankHttp, BankHttpResponse } from './bank-http';
 import type { AdapterRegistry } from '../adapter-registry';
 
@@ -260,5 +266,87 @@ describe('TbankAdapter — маппинг операции', () => {
       mapOperation(op({ accountAmount: undefined, operationAmount: undefined })),
     ).toBeNull();
     expect(mapOperation(op({ operationDate: 'не дата' }))).toBeNull();
+  });
+});
+
+// ─────────────────────── остаток по банку (fetchBalance) ───────────────────────
+
+/** Счёт в форме `/v4/bank-accounts` (как в песочнице банка). */
+function bankAccount(over: Record<string, unknown> = {}) {
+  return {
+    accountNumber: ACCOUNT,
+    name: 'Расчётный',
+    status: 'NORM',
+    currency: '643',
+    balance: { balance: 444333, realOtb: 44000, otb: 45089, authorized: 0 },
+    ...over,
+  };
+}
+
+describe('TbankAdapter.fetchBalance', () => {
+  const startFrom = new Date('2026-06-01T00:00:00.000Z');
+
+  it('текущий остаток — учётный balance нужного счёта, сальдо — balanceBegin выписки за первый день', async () => {
+    const { adapter, calls } = stub((url) => {
+      if (url.includes('/v4/bank-accounts')) {
+        return ok([bankAccount({ accountNumber: '40702810000000000001', balance: { balance: 1 } }), bankAccount()]);
+      }
+      return ok({ balances: { balanceBegin: 1234.5, balanceEnd: 2000 }, operations: [] });
+    });
+    const res = await adapter.fetchBalance({ token: 'tok', accountNumber: ACCOUNT, startFrom });
+
+    expect(res.current?.amount).toBe('444333.00');
+    expect(res.current?.at).toBeInstanceOf(Date);
+    expect(res.openingAt).toEqual({ amount: '1234.50', date: startFrom });
+
+    // Сальдо запрошено за ОДИН день от startFrom, без холдов.
+    const statementUrl = calls.find((u) => u.includes('/v1/statement'))!;
+    const params = new URL(statementUrl).searchParams;
+    expect(params.get('from')).toBe('2026-06-01T00:00:00.000Z');
+    expect(params.get('to')).toBe('2026-06-02T00:00:00.000Z');
+    expect(params.get('operationStatus')).toBe('Transaction');
+    expect(params.get('limit')).toBe('1');
+  });
+
+  it('без счёта в ответе и без сальдо — оба null, ошибки нет', async () => {
+    const { adapter } = stub((url) =>
+      url.includes('/v4/bank-accounts') ? ok([bankAccount({ accountNumber: 'другой' })]) : ok({ operations: [] }),
+    );
+    const res = await adapter.fetchBalance({ token: 'tok', accountNumber: ACCOUNT, startFrom });
+    expect(res).toEqual({ current: null, openingAt: null });
+  });
+
+  it('403 на счетах — человеческая ошибка с упоминанием прав', async () => {
+    const { adapter } = stub(() => ({ status: 403, body: '{"errorId":"e-1"}', headers: {} }));
+    await expect(
+      adapter.fetchBalance({ token: 'tok', accountNumber: ACCOUNT, startFrom }),
+    ).rejects.toThrow(/нет доступа к счета/);
+  });
+
+  it('без номера счёта не ходит в банк', async () => {
+    const { adapter, calls } = stub([]);
+    const res = await adapter.fetchBalance({ token: 'tok', accountNumber: null, startFrom });
+    expect(res).toEqual({ current: null, openingAt: null });
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('pickCurrentBalance / pickOpeningBalance', () => {
+  it('предпочитает учётный balance, при его отсутствии — otb', () => {
+    expect(pickCurrentBalance([bankAccount()], ACCOUNT)).toBe('444333.00');
+    expect(pickCurrentBalance([bankAccount({ balance: { otb: 10.5 } })], ACCOUNT)).toBe('10.50');
+    expect(pickCurrentBalance([bankAccount({ balance: {} })], ACCOUNT)).toBeNull();
+    expect(pickCurrentBalance([], ACCOUNT)).toBeNull();
+  });
+
+  it('овердрафт (минус) сохраняет знак', () => {
+    expect(pickCurrentBalance([bankAccount({ balance: { balance: -1500.25 } })], ACCOUNT)).toBe('-1500.25');
+  });
+
+  it('сальдо строкой и числом; отсутствие — null', () => {
+    const d = new Date('2026-06-01T00:00:00.000Z');
+    expect(pickOpeningBalance({ balances: { balanceBegin: '99.9' } }, d)).toEqual({ amount: '99.90', date: d });
+    expect(pickOpeningBalance({ balances: { balanceBegin: 0 } }, d)).toEqual({ amount: '0.00', date: d });
+    expect(pickOpeningBalance({}, d)).toBeNull();
   });
 });

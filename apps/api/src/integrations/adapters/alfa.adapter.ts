@@ -6,6 +6,8 @@ import { money } from '../../common/money';
 import { businessDayParts, businessInstant } from '../../reports/period';
 import type {
   BankProviderAdapter,
+  FetchBalanceInput,
+  FetchBalanceResult,
   FetchStatementInput,
   FetchStatementResult,
   RawBankLine,
@@ -147,6 +149,49 @@ export class AlfaAdapter implements BankProviderAdapter, OnModuleInit {
   }
 
   /**
+   * Остаток по счёту (волна «Правда о деньгах»): `GET {base}/v1/accounts/{номер}`
+   * — метод «Счета» того же семейства API, что и выписка. Читаем остаток
+   * терпимо к форме ответа (`balance.amount` / `balance` / `amount`): живого
+   * ответа этого метода с боевым ключом ещё не было, а форма в документации
+   * плавает. Если ключ выпущен только на выписку, банк ответит 403 — это не
+   * ошибка синка, просто остатка не будет (см. SyncService.fetchBalanceSafe).
+   * Входящее сальдо на дату Альфа этим методом не отдаёт → openingAt = null.
+   */
+  async fetchBalance(input: FetchBalanceInput): Promise<FetchBalanceResult> {
+    const accountNumber = input.accountNumber?.trim();
+    if (!accountNumber) return { current: null, openingAt: null };
+    assertHeaderSafe(input.token);
+
+    const url = `${this.baseUrl()}/v1/accounts/${encodeURIComponent(accountNumber)}`;
+    const res = await this.http.getJson(
+      url,
+      {
+        Authorization: `ApiKey ${input.token}`,
+        Accept: 'application/json',
+        'x-fapi-interaction-id': randomUUID(),
+      },
+      input.tls ?? undefined,
+    );
+    if (res.status !== 200) {
+      throw new Error(`Alfa (остаток): ${balanceHttpReason(res.status)}`);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(res.body);
+    } catch {
+      throw new Error('Alfa (остаток): ответ банка не является JSON');
+    }
+    const amount = pickBalance(parsed);
+    if (amount === null) {
+      // Форма ответа неизвестна — имена полей в лог (значения не пишем), чтобы
+      // подправить разбор по живому ответу, а не гадать.
+      this.logger.warn(`Alfa (остаток): не нашёл сумму в ответе, поля: ${topKeys(parsed)}`);
+      return { current: null, openingAt: null };
+    }
+    return { current: { amount, at: new Date() }, openingAt: null };
+  }
+
+  /**
    * Календарные дни, которые нужно запросить: от дня после курсора (или от даты
    * старта — подключения либо явной backfillFrom) до сегодня включительно, но не
    * больше MAX_DAYS_PER_SYNC за раз.
@@ -237,6 +282,60 @@ function httpError(status: number, body: string, day: string): Error {
   // Тело ответа наружу не тащим: у банка там бывает эхо запроса с реквизитами.
   // Полный текст остаётся в форензик-логе через общий обработчик ошибок синка.
   return new Error(`Alfa (${day}): ${reason}`);
+}
+
+function balanceHttpReason(status: number): string {
+  const known: Record<number, string> = {
+    401: 'API-ключ не принят банком',
+    403: 'у ключа нет доступа к остаткам по счетам (нужен scope «Счета»)',
+    404: 'счёт не найден в Альфа-Банке',
+    429: 'банк временно ограничил частоту запросов',
+  };
+  return known[status] ?? `банк ответил HTTP ${status}`;
+}
+
+/**
+ * Сумма остатка из ответа метода «Счета» — терпимо к вложенности:
+ * `{balance: {amount}}`, `{balance: 123}`, `{amount: 123}`, а также массив
+ * счетов с такими элементами. Строкой с 2 знаками через Decimal (не float).
+ */
+export function pickBalance(parsed: unknown): string | null {
+  const node = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  const candidates: unknown[] = [];
+  const balance = obj['balance'];
+  if (balance && typeof balance === 'object') {
+    const b = balance as Record<string, unknown>;
+    candidates.push(b['amount'], b['value']);
+  } else {
+    candidates.push(balance);
+  }
+  candidates.push(obj['amount'], obj['availableBalance'], obj['currentBalance']);
+  for (const c of candidates) {
+    if (c === undefined || c === null || c === '') continue;
+    if (typeof c === 'object') {
+      const inner = (c as Record<string, unknown>)['amount'];
+      if (inner === undefined || inner === null) continue;
+      try {
+        return money(inner as string | number).toFixed(2);
+      } catch {
+        continue;
+      }
+    }
+    try {
+      return money(c as string | number).toFixed(2);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function topKeys(parsed: unknown): string {
+  const node = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!node || typeof node !== 'object') return typeof node;
+  return Object.keys(node as object).slice(0, 20).join(', ');
 }
 
 function parseBody(body: string, day: string): AlfaStatementResponse {

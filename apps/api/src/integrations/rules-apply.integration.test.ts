@@ -4,6 +4,7 @@ import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
 import { SyncService } from './sync.service';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { InboxService } from './inbox.service';
 
 /**
@@ -31,6 +32,7 @@ beforeAll(() => {
     h.prisma as never,
     crypto,
     new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never),
+    new BalanceAnchorService(h.prisma as never),
   );
   inbox = new InboxService(h.prisma as never, h.orders as never, h.rules as never, h.transfer as never, h.planning as never);
 });

@@ -99,9 +99,15 @@ export function useHealthChecks(wsId: string | null) {
       count: overdueClients.length,
     });
 
-    // 4. Счета в минусе — обычно это незаведённое пополнение, а не реальный овердрафт
+    // 4. Счета в минусе — по банку там, где он отдаёт остаток (учёт врёт, пока
+    // очередь «Входящих» непуста), иначе по учёту. Минус по банку — уже не
+    // незаведённое пополнение, а реальный овердрафт или чужой счёт.
     const negative = (accounts.data ?? [])
-      .map((a) => ({ name: a.name, balance: balances.data?.get(a.id) ?? '0' }))
+      .filter((a) => !a.isArchived)
+      .map((a) => {
+        const b = balances.data?.get(a.id);
+        return { name: a.name, balance: b ? (b.bank ?? b.ledger) : '0' };
+      })
       .filter((a) => Number(a.balance) < 0);
     out.push({
       key: 'negative-accounts',

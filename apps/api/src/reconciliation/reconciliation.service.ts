@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { money, toMoneyString } from '../common/money';
 import { NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
 import { endOfDay } from '../reports/period';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import type { CreateBalanceCheckDto } from './reconciliation.dto';
 
 /**
@@ -18,7 +19,10 @@ import type { CreateBalanceCheckDto } from './reconciliation.dto';
  */
 @Injectable()
 export class ReconciliationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly anchor: BalanceAnchorService,
+  ) {}
 
   async createCheck(workspaceId: string, createdById: string, dto: CreateBalanceCheckDto) {
     await this.assertAccount(workspaceId, dto.accountId);
@@ -32,6 +36,14 @@ export class ReconciliationService {
         createdById,
       },
     });
+    if (dto.anchor) {
+      // Факт зафиксирован на КОНЕЦ дня сверки (R5/M3, см. build ниже) — якорь
+      // берёт ту же границу, иначе операции дня сверки попали бы в вывод дважды.
+      await this.anchor.anchorFromCheck(dto.accountId, {
+        amount: money(dto.actualBalance),
+        at: endOfDay(check.date),
+      });
+    }
     return this.serializeCheck(check);
   }
 

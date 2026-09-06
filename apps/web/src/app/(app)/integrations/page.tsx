@@ -15,6 +15,7 @@ import {
 import type { IntegrationConnection, IntegrationProvider, IntegrationStatus } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { Money } from '@/components/ui/Money';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -163,6 +164,11 @@ export default function IntegrationsPage() {
                   {c.lastSyncAt
                     ? `Синхронизация: ${formatDateTime(c.lastSyncAt)}`
                     : 'Ещё не синхронизировано'}
+                  {c.bankBalance != null && (
+                    <div className="mt-0.5" title="Остаток по данным банка на последнем синке">
+                      По банку: <Money value={c.bankBalance} className="text-foreground" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
