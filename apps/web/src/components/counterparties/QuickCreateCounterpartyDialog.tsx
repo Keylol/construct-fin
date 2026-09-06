@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useCreateCounterparty } from '@/hooks/useCounterparties';
+import { useCounterparties, useCreateCounterparty } from '@/hooks/useCounterparties';
+import { findClient, normalizeClientName } from '@construct/shared';
 import type { CounterpartyRole } from '@/lib/types';
 import {
   Dialog,
@@ -46,6 +47,9 @@ export function QuickCreateCounterpartyDialog({
   onCreated: (id: string) => void;
 }) {
   const create = useCreateCounterparty(wsId);
+  // Второй рубеж против дублей: карточка с таким же именем или телефоном уже
+  // может быть в справочнике — тогда её надо выбрать, а не заводить вторую.
+  const existing = useCounterparties(wsId, undefined, false, role);
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +62,26 @@ export function QuickCreateCounterpartyDialog({
     }
   }, [open, initialName, initialContact]);
 
+  const twin =
+    name.trim() && existing.data ? findClient(existing.data, name, contact || null) : null;
+
   const submit = async () => {
     setError(null);
     if (!name.trim()) {
       setError('Укажите имя или название');
+      return;
+    }
+    // Справочник ещё грузится — ждём: создать вслепую значит рискнуть дублем.
+    if (!existing.data) {
+      setError('Справочник ещё загружается, секунду');
+      return;
+    }
+    if (twin && normalizeClientName(twin.name) === normalizeClientName(name)) {
+      onOpenChange(false);
+      onCreated(twin.id);
+      toast.success(`Выбран существующий: ${twin.name}`, {
+        description: 'Такая карточка уже была — второй не завожу',
+      });
       return;
     }
     try {
@@ -103,13 +123,21 @@ export function QuickCreateCounterpartyDialog({
             <FormField label="Контакт" hint="Телефон, email или @username — можно позже">
               <Input value={contact} onChange={(e) => setContact(e.target.value)} />
             </FormField>
+            {twin && (
+              <p className="text-xs text-muted-foreground">
+                Похоже, такая карточка уже есть: <b>{twin.name}</b>
+                {twin.contact ? ` · ${twin.contact}` : ''}. По кнопке подставлю её.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
             <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
-              Создать
+              {twin && normalizeClientName(twin.name) === normalizeClientName(name)
+                ? 'Выбрать существующего'
+                : 'Создать'}
             </Button>
           </DialogFooter>
         </form>

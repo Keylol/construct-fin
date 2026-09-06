@@ -21,7 +21,7 @@ import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
-import { D, add, allocateSalePrices, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
+import { D, add, allocateSalePrices, findClient, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
 
 export function OrderFormModal({
   wsId,
@@ -206,6 +206,22 @@ export function OrderFormModal({
     setPayError(null);
   }, [open, editing]);
 
+  // Справочник клиентов грузится параллельно с открытием формы, а спецификацию
+  // вставляют сразу. Если разбор случился раньше ответа, match не нашёлся бы
+  // ни у кого, и кнопка «Завести клиента» создала бы дубль уже существующего
+  // человека — так появились десять пар карточек. Досопоставляем, когда список
+  // приехал.
+  useEffect(() => {
+    if (!open || isEdit || clientId || !specClient) return;
+    const list = clients.data;
+    if (!list) return;
+    const match = findClient(list, specClient, phone);
+    if (match) {
+      setClientId(match.id);
+      setSpecClient(null);
+    }
+  }, [open, isEdit, clientId, specClient, phone, clients.data]);
+
   const isDirty =
     snapOf(clientId, title, description, discount, items) !== initialSnap.current ||
     // Незакрытый план оплаты при создании — тоже несохранённое состояние.
@@ -339,18 +355,10 @@ export function OrderFormModal({
           setAllocTotal(draft.total);
         }
 
-        // Ищем сперва по телефону: люди приходят повторно, а имя в справочнике
-        // может быть записано иначе («Иванов И.И.», с пометкой магазина).
-        const list = clients.data ?? [];
-        const byPhone = draft.phone
-          ? list.find((c) => c.contact && normalizePhone(c.contact) === draft.phone)
-          : undefined;
-        const byName = draft.clientName
-          ? list.find(
-              (c) => c.name.trim().toLowerCase() === draft.clientName?.trim().toLowerCase(),
-            )
-          : undefined;
-        const match = byPhone ?? byName;
+        // Поиск по телефону, затем по имени — общий с вставкой заказа целиком.
+        // Пока справочник не приехал, сравнивать не с чем: имя откладывается в
+        // specClient, и эффект ниже досопоставит его, когда список загрузится.
+        const match = findClient(clients.data ?? [], draft.clientName, draft.phone);
         if (match) setClientId(match.id);
         setSpecClient(match ? null : (draft.clientName ?? null));
 
@@ -383,12 +391,7 @@ export function OrderFormModal({
     }
     if (pasteParsed.date) setOrderDate(pasteParsed.date.slice(0, 10));
     if (pasteParsed.clientName) {
-      const list = clients.data ?? [];
-      const match =
-        list.find((c) => c.contact && normalizePhone(c.contact) === pasteParsed.phone) ??
-        list.find(
-          (c) => c.name.trim().toLowerCase() === pasteParsed.clientName?.trim().toLowerCase(),
-        );
+      const match = findClient(clients.data ?? [], pasteParsed.clientName, pasteParsed.phone);
       // Клиент тоже перевыбирается: иначе заказ уйдёт на предыдущего.
       setClientId(match?.id ?? '');
       setSpecClient(match ? null : pasteParsed.clientName);
@@ -726,7 +729,7 @@ export function OrderFormModal({
               onCreate={(q) => setCreateClientQuery(q)}
               createLabel={(q) => `Создать клиента «${q}»`}
             />
-            {specClient && !clientId && (
+            {specClient && !clientId && clients.data && (
               <button
                 type="button"
                 onClick={() => setCreateClientQuery(specClient)}
