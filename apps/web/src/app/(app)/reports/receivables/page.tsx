@@ -2,12 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BarChart3, ChevronRight } from '@/components/ui/icons';
+import { ChevronRight } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
@@ -40,17 +39,7 @@ export default function ReceivablesReportPage() {
   const asOfIso = asOf && !Number.isNaN(+parsedAsOf) ? parsedAsOf.toISOString() : undefined;
   const query = useReceivables(wsId, asOfIso);
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={BarChart3}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   const data = query.data;
   const clients = data?.clients ?? [];
@@ -96,15 +85,15 @@ export default function ReceivablesReportPage() {
               data.overdueByPlanTotal !== '0.00' ? 'lg:grid-cols-5' : 'lg:grid-cols-4',
             )}
           >
-            <KpiCard label="Всего к получению" value={formatRub(data.totalDue)} />
-            <KpiCard label="0–30 дней" value={formatRub(data.buckets['0-30'])} tone="positive" />
-            <KpiCard label="30–60 дней" value={formatRub(data.buckets['30-60'])} tone="warning" />
-            <KpiCard label="60+ дней" value={formatRub(data.buckets['60+'])} tone="negative" />
+            <KpiCard label="Всего к получению" value={<Money value={data.totalDue} />} />
+            <KpiCard label="0–30 дней" value={<Money value={data.buckets['0-30']} />} tone="positive" />
+            <KpiCard label="30–60 дней" value={<Money value={data.buckets['30-60']} />} tone="warning" />
+            <KpiCard label="60+ дней" value={<Money value={data.buckets['60+']} />} tone="negative" />
             {/* F2: просрочка по формальным графикам платежей (не по возрасту). */}
             {data.overdueByPlanTotal !== '0.00' && (
               <KpiCard
                 label="Просрочено по графику"
-                value={formatRub(data.overdueByPlanTotal)}
+                value={<Money value={data.overdueByPlanTotal} />}
                 tone="negative"
               />
             )}

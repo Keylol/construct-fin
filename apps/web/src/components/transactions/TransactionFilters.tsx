@@ -1,23 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState, type RefObject } from 'react';
-import { Search, RotateCcw, X } from '@/components/ui/icons';
-import { Input } from '@/components/ui/Input';
+import { useMemo, type RefObject } from 'react';
+import { RotateCcw, X } from '@/components/ui/icons';
 import { Select } from '@/components/ui/Select';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Button } from '@/components/ui/Button';
 import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
+import { DateRangeFields, PeriodSelect } from '@/components/ui/PeriodSelect';
 import { BUCKET_LABEL } from '@/lib/buckets';
 import type { ReportBucket, TxType, Account, Category, Counterparty } from '@/lib/types';
-import {
-  type AnyPeriod,
-  type DateRange,
-  ANY_PERIOD_LABELS,
-  ANY_PERIOD_ORDER,
-  rangeForAny,
-  toLocalDateInput,
-  fromLocalDateInput,
-} from '@/lib/periods';
+import { type AnyPeriod, type DateRange, rangeForAny } from '@/lib/periods';
 
 export interface ActiveFilters {
   period: AnyPeriod;
@@ -41,6 +35,11 @@ interface Props {
   searchRef?: RefObject<HTMLInputElement>;
 }
 
+/**
+ * Полоса фильтров операций — эталон для остальных списков: поиск, период с
+ * произвольными датами, измерения, «Сброс». Все контролы — из ui/*, здесь
+ * только их порядок и словари опций.
+ */
 export function TransactionFilters({
   active,
   onChange,
@@ -49,20 +48,6 @@ export function TransactionFilters({
   counterparties,
   searchRef,
 }: Props) {
-  const [customFrom, setCustomFrom] = useState<string>(
-    active.range.from ? toLocalDateInput(active.range.from) : '',
-  );
-  const [customTo, setCustomTo] = useState<string>(
-    active.range.to ? toLocalDateInput(active.range.to) : '',
-  );
-
-  // Синк полей дат при ВНЕШНЕЙ смене диапазона (заезд из URL/drill-down, сброс).
-  // Ввод в сами инпуты round-trip'ит через range → значение не меняется, цикла нет.
-  useEffect(() => {
-    setCustomFrom(active.range.from ? toLocalDateInput(active.range.from) : '');
-    setCustomTo(active.range.to ? toLocalDateInput(active.range.to) : '');
-  }, [active.range.from, active.range.to]);
-
   // Категории для комбобокса: та же иерархия групп, что в TransactionFormDialog —
   // заголовок = «kind · родитель», внутри «(общая)» + подкатегории. Список уже
   // без архивных (сервер), фильтр по isArchived не дублируем.
@@ -97,85 +82,28 @@ export function TransactionFilters({
     [counterparties],
   );
 
-  const setPeriod = (key: AnyPeriod) => {
-    const range = rangeForAny(key);
-    onChange({ ...active, period: key, range });
-    setCustomFrom(range.from ? toLocalDateInput(range.from) : '');
-    setCustomTo(range.to ? toLocalDateInput(range.to) : '');
-  };
-
-  const applyCustomDates = (from?: string, to?: string) => {
-    onChange({
-      ...active,
-      period: 'all',
-      range: {
-        from: from ? fromLocalDateInput(from) : undefined,
-        to: to ? fromLocalDateInput(to) : undefined,
-      },
-    });
-  };
-
-  const reset = () => {
-    onChange({ period: 'this-month', range: rangeForAny('this-month') });
-    setCustomFrom('');
-    setCustomTo('');
-  };
-
   return (
     <FilterBar>
       <div className="min-w-[180px] max-w-xs flex-1">
         <FilterField label="Поиск">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              type="search"
-              value={active.search ?? ''}
-              onChange={(e) =>
-                onChange({ ...active, search: e.target.value || undefined })
-              }
-              placeholder="Описание, контрагент…"
-              className="h-9 pl-8"
-            />
-          </div>
+          <SearchField
+            ref={searchRef}
+            value={active.search ?? ''}
+            onChange={(e) => onChange({ ...active, search: e.target.value || undefined })}
+            placeholder="Описание, контрагент…"
+          />
         </FilterField>
       </div>
 
-      <FilterField label="Период">
-        <Select
-          value={active.period}
-          onChange={(e) => setPeriod(e.target.value as AnyPeriod)}
-          className="h-9 w-[150px]"
-        >
-          {ANY_PERIOD_ORDER.map((k) => (
-            <option key={k} value={k}>
-              {ANY_PERIOD_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      </FilterField>
-      <FilterField label="С">
-        <Input
-          type="date"
-          value={customFrom}
-          onChange={(e) => {
-            setCustomFrom(e.target.value);
-            applyCustomDates(e.target.value, customTo);
-          }}
-          className="h-9 w-[150px]"
-        />
-      </FilterField>
-      <FilterField label="По">
-        <Input
-          type="date"
-          value={customTo}
-          onChange={(e) => {
-            setCustomTo(e.target.value);
-            applyCustomDates(customFrom, e.target.value);
-          }}
-          className="h-9 w-[150px]"
-        />
-      </FilterField>
+      <PeriodSelect
+        value={active.period}
+        onChange={(period, range) => onChange({ ...active, period, range })}
+      />
+      <DateRangeFields
+        range={active.range}
+        // Свой диапазон: пресет становится «Всё время», границы — явными.
+        onChange={(range) => onChange({ ...active, period: 'all', range })}
+      />
       <FilterField label="Тип">
         <Select
           value={active.type ?? ''}
@@ -256,25 +184,15 @@ export function TransactionFilters({
         </FilterField>
       )}
 
-      <Button variant="ghost" size="sm" onClick={reset} className="self-end">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onChange({ period: 'this-month', range: rangeForAny('this-month') })}
+        className="self-end"
+      >
         <RotateCcw className="h-3.5 w-3.5" />
         Сброс
       </Button>
     </FilterBar>
-  );
-}
-
-function FilterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col text-xs text-muted-foreground">
-      <span className="pb-1">{label}</span>
-      {children}
-    </label>
   );
 }

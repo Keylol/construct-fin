@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Inbox as InboxIcon, Sparkles } from '@/components/ui/icons';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -64,16 +65,7 @@ export default function InboxPage() {
     };
   }, [incomeCats.data, expenseCats.data]);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Входящие" />
-        <div className="p-6">
-          <EmptyState icon={InboxIcon} title="Нет активного пространства" hint="Выберите пространство." />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const items = inbox.data?.pages.flatMap((p) => p.items) ?? [];
 
@@ -231,17 +223,7 @@ export default function InboxPage() {
                 catOptions={line.direction === 'INCOME' ? catOptions.INCOME : catOptions.EXPENSE}
               />
             ))}
-            {inbox.hasNextPage && (
-              <div className="pt-2 text-center">
-                <Button
-                  variant="secondary"
-                  onClick={() => void inbox.fetchNextPage()}
-                  disabled={inbox.isFetchingNextPage}
-                >
-                  Показать ещё
-                </Button>
-              </div>
-            )}
+            <LoadMore hasMore={inbox.hasNextPage} loading={inbox.isFetchingNextPage} onClick={() => void inbox.fetchNextPage()} />
           </div>
         )}
       </div>

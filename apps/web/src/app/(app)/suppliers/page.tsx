@@ -46,16 +46,7 @@ export default function SuppliersPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   useListHotkeys({ searchRef, onNew: () => setCreating(true) });
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Поставщики" />
-        <div className="p-6">
-          <EmptyState icon={Truck} title="Нет активного пространства" hint="Выберите или создайте пространство." />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<Counterparty>[] = [
     {

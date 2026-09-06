@@ -2,11 +2,9 @@
 
 import { useState } from 'react';
 import { formatRub } from '@construct/shared';
-import { Calculator } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
@@ -27,17 +25,7 @@ export default function BreakevenPage() {
 
   const query = useBreakevenReport(wsId, periodToQuery(period));
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={Calculator}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   const r = query.data;
   const achieved = r?.achievedPct ?? null;

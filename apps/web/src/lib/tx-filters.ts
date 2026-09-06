@@ -2,6 +2,8 @@ import { ANY_PERIOD_LABELS, rangeForAny, type AnyPeriod } from '@/lib/periods';
 import { isReportBucket } from '@/lib/buckets';
 import type { ActiveFilters } from '@/components/transactions/TransactionFilters';
 import type { ReportBucket, TxType } from '@/lib/types';
+import type { UrlCodec } from '@/hooks/useUrlFilters';
+import { readStored, writeStored } from '@/lib/storage';
 
 /**
  * URL ↔ фильтры списка операций (drill-down из отчётов/карточек).
@@ -70,6 +72,13 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
   };
 }
 
+/** Кодек для useUrlFilters: те же parse/serialize, ключи — весь контракт выше. */
+export const txFiltersCodec: UrlCodec<ActiveFilters> = {
+  keys: ['from', 'to', 'accountId', 'categoryId', 'counterpartyId', 'type', 'bucket'],
+  parse: searchParamsToFilters,
+  serialize: (a) => new URLSearchParams(filtersToSearchParams(a)),
+};
+
 /**
  * Построить href в /transactions с точным периодом отчёта и одним измерением.
  * from/to — резолвленные ISO из ОТВЕТА отчёта (не из PeriodPicker).
@@ -109,20 +118,12 @@ export function txDrilldownHref(params: {
 const PERIOD_KEY = 'transactions:period';
 
 export function readSavedPeriod(): AnyPeriod | null {
-  try {
-    const saved = window.localStorage.getItem(PERIOD_KEY);
-    // Старые ключи ('month'/'quarter'/'year') остались в словаре — сохранённый
-    // до объединения выбор продолжает открываться тем же периодом.
-    return saved && saved in ANY_PERIOD_LABELS ? (saved as AnyPeriod) : null;
-  } catch {
-    return null;
-  }
+  const saved = readStored(PERIOD_KEY);
+  // Старые ключи ('month'/'quarter'/'year') остались в словаре — сохранённый
+  // до объединения выбор продолжает открываться тем же периодом.
+  return saved && saved in ANY_PERIOD_LABELS ? (saved as AnyPeriod) : null;
 }
 
 export function writeSavedPeriod(key: AnyPeriod): void {
-  try {
-    window.localStorage.setItem(PERIOD_KEY, key);
-  } catch {
-    // см. выше
-  }
+  writeStored(PERIOD_KEY, key);
 }

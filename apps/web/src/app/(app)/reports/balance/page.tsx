@@ -1,11 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { formatRub } from '@construct/shared';
-import { Scale } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -24,17 +21,7 @@ export default function BalancePage() {
   const wsId = current?.id ?? null;
   const query = useBalanceReport(wsId);
 
-  if (!current) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={Scale}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!current) return null;
 
   const b = query.data;
 
@@ -57,11 +44,11 @@ export default function BalancePage() {
         <>
           {/* Итоги */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <KpiCard label="Активы" value={formatRub(b.assets.total)} />
-            <KpiCard label="Обязательства" value={formatRub(b.liabilities.total)} />
+            <KpiCard label="Активы" value={<Money value={b.assets.total} />} />
+            <KpiCard label="Обязательства" value={<Money value={b.liabilities.total} />} />
             <KpiCard
               label="Капитал"
-              value={formatRub(b.equity)}
+              value={<Money value={b.equity} />}
               tone={Number(b.equity) >= 0 ? 'positive' : 'negative'}
               hint="Активы − Обязательства"
             />

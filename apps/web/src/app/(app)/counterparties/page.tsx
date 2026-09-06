@@ -48,20 +48,7 @@ export default function CounterpartiesPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   useListHotkeys({ searchRef, onNew: () => setCreating(true) });
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Контрагенты" />
-        <div className="p-6">
-          <EmptyState
-            icon={Users}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<Counterparty>[] = [
     {

@@ -2,12 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
@@ -27,17 +24,7 @@ export default function MarginReportPage() {
 
   const query = useMarginReport(method, wsId, periodToQuery(period));
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={BarChart3}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   const totals = query.data?.totals;
   const rows = query.data?.rows ?? [];
@@ -72,11 +59,11 @@ export default function MarginReportPage() {
           <p className="text-sm text-destructive">Не удалось загрузить отчёт.</p>
         ) : totals ? (
           <div className="stagger grid gap-4 sm:grid-cols-4">
-            <KpiCard label="Выручка" value={formatRub(totals.revenue)} tone="positive" />
-            <KpiCard label="Себестоимость" value={formatRub(totals.cogs)} tone="negative" />
+            <KpiCard label="Выручка" value={<Money value={totals.revenue} />} tone="positive" />
+            <KpiCard label="Себестоимость" value={<Money value={totals.cogs} />} tone="negative" />
             <KpiCard
               label="Валовая прибыль"
-              value={formatRub(totals.margin)}
+              value={<Money value={totals.margin} />}
               tone={Number(totals.margin) >= 0 ? 'positive' : 'negative'}
             />
             <KpiCard label="Рентабельность, %" value={`${totals.marginPct}%`} />

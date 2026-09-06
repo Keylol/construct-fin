@@ -1,6 +1,5 @@
 'use client';
 
-import { formatRub } from '@construct/shared';
 import { Check, Pencil, RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';

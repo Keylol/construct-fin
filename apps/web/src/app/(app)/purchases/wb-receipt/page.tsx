@@ -3,21 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { D, add, toMoneyString, formatRub } from '@construct/shared';
-import {
-  Receipt as ReceiptIcon,
-  Upload,
-  Check,
-  RotateCcw,
-  Plus,
-  X,
-} from '@/components/ui/icons';
+import { Upload, Check, RotateCcw, Plus, X } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -122,19 +114,8 @@ function useOrderFromUrl(): string | null {
 
 export default function ReceiptWizardPage() {
   const { current } = useCurrentWorkspace();
-  const wsId = current?.id ?? null;
-
-  if (!wsId) {
-    return (
-      <>
-        <PageHeader title="Обработка закупки" />
-        <div className="p-6">
-          <EmptyState icon={ReceiptIcon} title="Нет активного пространства" hint="Выберите или создайте пространство." />
-        </div>
-      </>
-    );
-  }
-  return <Wizard wsId={wsId} />;
+  if (!current) return null;
+  return <Wizard wsId={current.id} />;
 }
 
 function Wizard({ wsId }: { wsId: string }) {

@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Alarm, ArrowRight, Check } from '@/components/ui/icons';
+import { ArrowRight, Check } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -22,20 +21,7 @@ export default function HealthPage() {
   const wsId = current?.id ?? null;
   const { checks, failing, isLoading } = useHealthChecks(wsId);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Здоровье" />
-        <div className="p-6">
-          <EmptyState
-            icon={Alarm}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   return (
     <>

@@ -6,6 +6,7 @@ import { OrderFormModal } from '@/components/orders/OrderFormModal';
 import { OrderGroupTile, OrderTile } from '@/components/orders/OrderTile';
 import { PAY_LABEL, PAY_TONE, STATUS_LABEL, STATUS_TONE, canCloseOrder } from '@/components/orders/order-shared';
 import { Button } from '@/components/ui/Button';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { type Column, DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FilterBar } from '@/components/ui/FilterBar';
@@ -165,20 +166,7 @@ function OrdersView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Заказы" />
-        <div className="p-6">
-          <EmptyState
-            icon={ClipboardList}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<Order>[] = [
     {
@@ -384,17 +372,7 @@ function OrdersView() {
               </div>
             </>
           )}
-          {orders.hasNextPage && (
-            <div className="flex justify-center">
-              <Button
-                variant="secondary"
-                onClick={() => orders.fetchNextPage()}
-                disabled={orders.isFetchingNextPage}
-              >
-                {orders.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
-              </Button>
-            </div>
-          )}
+          <LoadMore hasMore={orders.hasNextPage} loading={orders.isFetchingNextPage} onClick={() => void orders.fetchNextPage()} />
         </div>
       ) : (
       <div className="bg-card">
@@ -458,17 +436,7 @@ function OrdersView() {
             </div>
           )}
         />
-        {orders.hasNextPage && (
-          <div className="flex justify-center border-t border-border py-4">
-            <Button
-              variant="secondary"
-              onClick={() => orders.fetchNextPage()}
-              disabled={orders.isFetchingNextPage}
-            >
-              {orders.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
-            </Button>
-          </div>
-        )}
+        <LoadMore hasMore={orders.hasNextPage} loading={orders.isFetchingNextPage} onClick={() => void orders.fetchNextPage()} />
       </div>
       )}
 
