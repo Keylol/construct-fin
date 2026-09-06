@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Package, Search, X, Trash2, ShoppingCart } from '@/components/ui/icons';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { Plus, Package, X, Trash2, ShoppingCart, RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub, parseAmountInput } from '@construct/shared';
+import { parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import {
@@ -25,7 +25,9 @@ import type { WarehouseItem } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
+import { SearchField } from '@/components/ui/SearchField';
+import { FilterField } from '@/components/ui/FilterField';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -39,19 +41,36 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { MoneyInput } from '@/components/ui/MoneyInput';
+import { Checkbox } from '@/components/ui/Checkbox';
+
+const DEFAULTS = { q: '' };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
+export default function WarehousePage() {
+  return (
+    <Suspense>
+      <WarehouseView />
+    </Suspense>
+  );
+}
 
 function lineValue(qty: string, avg: string): number {
   return (Number(qty) || 0) * (Number(avg) || 0);
 }
 
-export default function WarehousePage() {
+function WarehouseView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useUrlFilters(FILTERS);
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
-  const debouncedSearch = useDebouncedValue(search);
+  const debouncedSearch = useDebouncedValue(filters.q);
   const items = useWarehouse(wsId, debouncedSearch || undefined);
   const stockValue = useStockValue(wsId);
   const [editing, setEditing] = useState<WarehouseItem | null>(null);
@@ -95,7 +114,7 @@ export default function WarehousePage() {
       align: 'right',
       cell: (i) =>
         Number(i.avgCost) === 0 && Number(i.qty) > 0 ? (
-          <Badge variant="outline">себестоимость не задана</Badge>
+          <StatusDot tone="warning" label="не задана" />
         ) : (
           <Money value={i.avgCost} tone="plain" className="text-muted-foreground" />
         ),
@@ -111,7 +130,7 @@ export default function WarehousePage() {
     {
       key: 'status',
       header: '',
-      cell: (i) => (i.isArchived ? <Badge variant="muted">архив</Badge> : null),
+      cell: (i) => (i.isArchived ? <StatusDot tone="muted" label="архив" /> : null),
       className: 'w-[70px]',
     },
   ];
@@ -140,7 +159,7 @@ export default function WarehousePage() {
           />
           <KpiCard
             label="Стоимость запасов"
-            value={stockValue.data ? formatRub(stockValue.data.value) : '—'}
+            value={stockValue.data ? <Money value={stockValue.data.value} /> : '—'}
           />
           <KpiCard
             label="Без себестоимости"
@@ -161,18 +180,19 @@ export default function WarehousePage() {
 
       <FilterBar>
         <div className="min-w-[240px] max-w-md flex-1">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <FilterField label="Поиск">
+            <SearchField
               ref={searchRef}
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
               placeholder="Поиск по названию или артикулу"
-              className="h-9 pl-8"
             />
-          </div>
+          </FilterField>
         </div>
+        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
       </FilterBar>
 
       <div className="bg-card">
@@ -201,7 +221,7 @@ export default function WarehousePage() {
               <div className="min-w-0">
                 <div className="truncate font-medium">{i.name}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {Number(i.qty)} {i.unit} · {formatRub(i.avgCost)}
+                  {Number(i.qty)} {i.unit} · <Money value={i.avgCost} tone="plain" />
                 </div>
               </div>
               <div className="shrink-0 text-right">
@@ -287,6 +307,16 @@ function WarehouseItemForm({
     setWoReason('');
     setError(null);
   }, [initial, open]);
+
+  // Несохранённый ввод — против значений, с которыми форма открылась.
+  const dirty = initial
+    ? name !== initial.name ||
+      sku !== (initial.sku ?? '') ||
+      color !== (initial.color ?? '') ||
+      unit !== initial.unit ||
+      isArchived !== initial.isArchived ||
+      adjustQty !== String(Number(initial.qty))
+    : !!name.trim() || !!sku.trim() || !!color.trim() || !!openingQty || !!openingCost;
 
   const onSave = async () => {
     setError(null);
@@ -375,13 +405,15 @@ function WarehouseItemForm({
 
   return (
     <>
-      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
         <ModalContent size="lg" hideClose>
           <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <ModalTitle>{initial ? 'Позиция склада' : 'Новая позиция'}</ModalTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-              <X className="h-4 w-4" />
-            </Button>
+            <ModalClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Закрыть">
+                <X className="h-4 w-4" />
+              </Button>
+            </ModalClose>
           </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -418,7 +450,7 @@ function WarehouseItemForm({
                   <Input id="w-oqty" inputMode="decimal" value={openingQty} onChange={(e) => setOpeningQty(e.target.value)} placeholder="0" />
                 </FormField>
                 <FormField label="Себестоимость ед." htmlFor="w-ocost">
-                  <Input id="w-ocost" inputMode="decimal" value={openingCost} onChange={(e) => setOpeningCost(e.target.value)} placeholder="0" />
+                  <MoneyInput id="w-ocost" value={openingCost} onChange={(e) => setOpeningCost(e.target.value)} placeholder="0" />
                 </FormField>
               </div>
             ) : (
@@ -449,11 +481,10 @@ function WarehouseItemForm({
                     будущие продажи. Деньги не двигаются (это не закупка).
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      inputMode="decimal"
+                    <MoneyInput
                       value={setCostValue}
                       onChange={(e) => setSetCostValue(e.target.value)}
-                      placeholder="Себест. ед., ₽"
+                      placeholder="Себест. ед."
                       aria-label="Себестоимость единицы"
                     />
                     <Input
@@ -550,25 +581,15 @@ function WarehouseItemForm({
             )}
 
             {initial && (
-              <label
-                className={`flex items-center gap-2 text-sm${
-                  hasStock && !isArchived ? ' cursor-not-allowed opacity-60' : ''
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isArchived}
-                  // F2: архивировать позицию с остатком нельзя (стоимость исчезла
-                  // бы из отчётов). Разрешаем только разархивацию.
-                  disabled={hasStock && !isArchived}
-                  onChange={(e) => setIsArchived(e.target.checked)}
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                В архиве
-                {hasStock && !isArchived && (
-                  <span className="text-xs text-muted-foreground">— сначала спишите остаток</span>
-                )}
-              </label>
+              <Checkbox
+                label="В архиве"
+                hint={hasStock && !isArchived ? 'Сначала спишите остаток' : undefined}
+                checked={isArchived}
+                // F2: архивировать позицию с остатком нельзя (стоимость исчезла
+                // бы из отчётов). Разрешаем только разархивацию.
+                disabled={hasStock && !isArchived}
+                onChange={(e) => setIsArchived(e.target.checked)}
+              />
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
@@ -587,9 +608,11 @@ function WarehouseItemForm({
                 <Trash2 className="h-3.5 w-3.5" /> Удалить
               </Button>
             )}
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Отмена
-            </Button>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">
+                Отмена
+              </Button>
+            </ModalClose>
             <Button
               type="submit"
               loading={create.isPending || update.isPending || adjust.isPending}

@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/Modal';
 import { formatDate, formatDateTime } from '@/lib/dates';
 import { todayInput } from '@/lib/periods';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   ALFA: 'Альфа-Банк',
@@ -100,10 +101,94 @@ export default function IntegrationsPage() {
 
   const rows = connections.data ?? [];
 
+  const columns: Column<IntegrationConnection>[] = [
+    {
+      key: 'provider',
+      header: 'Подключение',
+      cell: (c) => (
+        <div className="min-w-0">
+          <div className="font-medium">{PROVIDER_LABELS[c.provider]}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {c.account.name} · ключ …{c.keyLast4}
+            {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
+          </div>
+          {c.tlsExpiresAt && <CertNote expiresAt={c.tlsExpiresAt} />}
+          <BackfillNote connection={c} wsId={wsId!} />
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      cell: (c) => (
+        <div>
+          <StatusDot tone={STATUS[c.status].tone} label={STATUS[c.status].label} />
+          {c.status === 'ERROR' && c.lastSyncError && (
+            <div className="mt-0.5 max-w-[240px] truncate text-xs text-destructive" title={c.lastSyncError}>
+              {c.lastSyncError}
+            </div>
+          )}
+        </div>
+      ),
+      className: 'w-[200px]',
+    },
+    {
+      key: 'sync',
+      header: 'Синхронизация',
+      cell: (c) => (
+        <span className="text-muted-foreground">
+          {c.lastSyncAt ? formatDateTime(c.lastSyncAt) : 'Ещё не было'}
+        </span>
+      ),
+      className: 'w-[170px]',
+    },
+    {
+      key: 'bank',
+      header: 'По банку',
+      align: 'right',
+      cell: (c) =>
+        c.bankBalance != null ? (
+          <span title={c.bankBalanceAt ? `На ${formatDateTime(c.bankBalanceAt)}` : undefined}>
+            <Money value={c.bankBalance} />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      className: 'w-[150px]',
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (c) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="secondary" size="sm" onClick={() => runSync(c)} disabled={sync.isPending}>
+            <RotateCcw className="h-3.5 w-3.5" />
+            Обновить
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setResetting(c)}
+            disabled={reset.isPending}
+            title="Снести загруженное из банка и вытянуть заново"
+          >
+            Перезагрузить
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setDeleting(c)} aria-label="Удалить">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+      className: 'w-[300px]',
+    },
+  ];
+
   return (
     <>
       <PageHeader
         title="Интеграции"
+        description="Подключите расчётный счёт по API банка — операции будут поступать автоматически и попадать во «Входящие». Токен хранится зашифрованным и наружу не отдаётся."
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
@@ -112,83 +197,60 @@ export default function IntegrationsPage() {
         }
       />
 
-      <div className="px-6 py-4">
-        <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          Подключите расчётный счёт по API банка — операции будут поступать автоматически
-          и попадать на обработку во «Входящие». Токен хранится в зашифрованном виде,
-          наружу не отдаётся.
-        </p>
-
-        {rows.length === 0 ? (
-          <EmptyState
-            icon={Plug}
-            title="Пока нет подключений"
-            hint="Подключите Альфа-Банк или Т-Банк, чтобы операции поступали автоматически."
-            action={
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4" />
-                Подключить банк
-              </Button>
-            }
-          />
-        ) : (
-          <div className="divide-y divide-border rounded-md border border-border bg-card">
-            {rows.map((c) => (
-              <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <div className="min-w-[180px] flex-1">
-                  <div className="font-medium">{PROVIDER_LABELS[c.provider]}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {c.account.name} · ключ …{c.keyLast4}
-                    {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
-                  </div>
-                  {c.tlsExpiresAt && <CertNote expiresAt={c.tlsExpiresAt} />}
-                  <BackfillNote connection={c} wsId={wsId!} />
-                </div>
-                <div className="min-w-[140px]">
-                  <StatusDot tone={STATUS[c.status].tone} label={STATUS[c.status].label} />
-                  {c.status === 'ERROR' && c.lastSyncError && (
-                    <div className="mt-0.5 max-w-[220px] truncate text-xs text-destructive" title={c.lastSyncError}>
-                      {c.lastSyncError}
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-[150px] text-xs text-muted-foreground">
-                  {c.lastSyncAt
-                    ? `Синхронизация: ${formatDateTime(c.lastSyncAt)}`
-                    : 'Ещё не синхронизировано'}
-                  {c.bankBalance != null && (
-                    <div className="mt-0.5" title="Остаток по данным банка на последнем синке">
-                      По банку: <Money value={c.bankBalance} className="text-foreground" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => runSync(c)}
-                    disabled={sync.isPending}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Обновить
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setResetting(c)}
-                    disabled={reset.isPending}
-                    title="Снести загруженное из банка и вытянуть заново"
-                  >
-                    Перезагрузить
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setDeleting(c)} aria-label="Удалить">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+      <div className="bg-card">
+        <DataTable
+          data={rows}
+          columns={columns}
+          rowKey={(c) => c.id}
+          loading={connections.isLoading}
+          error={connections.error}
+          onRetry={() => connections.refetch()}
+          empty={
+            <EmptyState
+              icon={Plug}
+              title="Пока нет подключений"
+              hint="Подключите Альфа-Банк или Т-Банк, чтобы операции поступали автоматически."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" />
+                  Подключить банк
+                </Button>
+              }
+            />
+          }
+          mobileCards={(c) => (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">{PROVIDER_LABELS[c.provider]}</div>
+                <StatusDot tone={STATUS[c.status].tone} label={STATUS[c.status].label} />
               </div>
-            ))}
-          </div>
-        )}
+              <div className="text-xs text-muted-foreground">
+                {c.account.name} · ключ …{c.keyLast4}
+                {c.accountNumber && ` · счёт …${c.accountNumber.slice(-4)}`}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {c.lastSyncAt ? `Синхронизация: ${formatDateTime(c.lastSyncAt)}` : 'Ещё не синхронизировано'}
+                {c.bankBalance != null && (
+                  <>
+                    {' · по банку '}
+                    <Money value={c.bankBalance} className="text-foreground" />
+                  </>
+                )}
+              </div>
+              <div className="flex gap-1 pt-1">
+                <Button variant="secondary" size="sm" onClick={() => runSync(c)} disabled={sync.isPending}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Обновить
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setResetting(c)} disabled={reset.isPending}>
+                  Перезагрузить
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setDeleting(c)} aria-label="Удалить">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        />
       </div>
 
       <CreateConnectionModal
