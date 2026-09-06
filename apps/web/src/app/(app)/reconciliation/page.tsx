@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Scale, X, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
 import {
@@ -13,15 +12,15 @@ import {
   useDeleteBalanceCheck,
   type CreateCheckInput,
 } from '@/hooks/useReconciliation';
-import type { BalanceCheck } from '@/lib/types';
+import type { BalanceCheck, ReconciliationReport } from '@/lib/types';
+
+type ReconciliationOp = ReconciliationReport['unreconciled']['operations'][number];
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -32,10 +31,17 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
-import { todayInput } from '@/lib/periods';
+import { fromLocalDateInput, todayInput } from '@/lib/periods';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { FilterField } from '@/components/ui/FilterField';
+import { MoneyInput } from '@/components/ui/MoneyInput';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 export default function ReconciliationPage() {
   const { current } = useCurrentWorkspace();
@@ -56,7 +62,7 @@ export default function ReconciliationPage() {
     }
   }, [accounts.data, accountId]);
 
-  const report = useReconciliation(wsId, accountId, new Date(asOf).toISOString());
+  const report = useReconciliation(wsId, accountId, fromLocalDateInput(asOf));
   const checks = useBalanceChecks(wsId, accountId);
   const del = useDeleteBalanceCheck(current?.id ?? '');
 
@@ -64,6 +70,67 @@ export default function ReconciliationPage() {
 
   const data = report.data;
   const discrepancy = data?.lastCheck ? Number(data.lastCheck.discrepancy) : null;
+
+  const opColumns: Column<ReconciliationOp>[] = [
+    {
+      key: 'date',
+      header: 'Дата',
+      cell: (op) => <span className="whitespace-nowrap">{formatDate(op.date)}</span>,
+      className: 'w-[120px]',
+    },
+    {
+      key: 'description',
+      header: 'Описание',
+      className: 'w-full max-w-0',
+      cell: (op) => <span className="block truncate text-muted-foreground">{op.description ?? '—'}</span>,
+    },
+    {
+      key: 'amount',
+      header: 'Сумма',
+      align: 'right',
+      cell: (op) => (
+        <span className={cn('font-semibold', op.type === 'INCOME' ? 'text-success' : 'text-destructive')}>
+          {op.type === 'INCOME' ? '+' : '−'}
+          <Money value={op.amount} tone="plain" />
+        </span>
+      ),
+      className: 'w-[150px]',
+    },
+  ];
+
+  const checkColumns: Column<BalanceCheck>[] = [
+    {
+      key: 'date',
+      header: 'Дата',
+      cell: (c) => <span className="whitespace-nowrap">{formatDate(c.date)}</span>,
+      className: 'w-[120px]',
+    },
+    {
+      key: 'note',
+      header: 'Примечание',
+      className: 'w-full max-w-0',
+      cell: (c) => <span className="block truncate text-muted-foreground">{c.note ?? '—'}</span>,
+    },
+    {
+      key: 'actual',
+      header: 'Факт. остаток',
+      align: 'right',
+      cell: (c) => <Money value={c.actualBalance} className="font-medium" />,
+      className: 'w-[160px]',
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      hoverOnly: true,
+      cell: (c) => (
+        <Button variant="ghost" size="icon" aria-label="Удалить снимок" onClick={() => setConfirmDel(c)}>
+          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        </Button>
+      ),
+      className: 'w-[56px]',
+    },
+  ];
 
   return (
     <>
@@ -78,8 +145,7 @@ export default function ReconciliationPage() {
       />
 
       <FilterBar>
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Счёт</span>
+        <FilterField label="Счёт">
           <Select
             value={accountId ?? ''}
             onChange={(e) => setAccountId(e.target.value || null)}
@@ -93,16 +159,15 @@ export default function ReconciliationPage() {
               </option>
             ))}
           </Select>
-        </label>
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">На дату</span>
+        </FilterField>
+        <FilterField label="На дату">
           <Input
             type="date"
             value={asOf}
             onChange={(e) => setAsOf(e.target.value)}
             className="h-9 w-[160px]"
           />
-        </label>
+        </FilterField>
       </FilterBar>
 
       <div className="space-y-4 px-6 py-4">
@@ -112,130 +177,95 @@ export default function ReconciliationPage() {
             title="Выберите счёт"
             hint="Сверка показывает расчётный остаток против снимка остатка."
           />
-        ) : report.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Skeleton className="h-[88px]" />
-            <Skeleton className="h-[88px]" />
-            <Skeleton className="h-[88px]" />
-          </div>
         ) : report.isError ? (
-          <p className="text-sm text-destructive">Не удалось загрузить сверку.</p>
-        ) : data ? (
+          <ErrorState error={report.error} onRetry={() => report.refetch()} />
+        ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <KpiCard label="Расчётный остаток" value={<Money value={data.computedBalance} />} />
+            <KpiRow loading={report.isLoading || !data}>
+              <KpiCard label="Расчётный остаток" value={<Money value={data?.computedBalance ?? '0'} />} />
               <KpiCard
                 label="Последний факт"
-                value={data.lastCheck ? formatRub(data.lastCheck.actualBalance) : '—'}
-                hint={data.lastCheck ? `на ${formatDate(data.lastCheck.date)}` : 'снимков нет'}
+                value={data?.lastCheck ? <Money value={data.lastCheck.actualBalance} /> : '—'}
+                hint={data?.lastCheck ? `на ${formatDate(data.lastCheck.date)}` : 'снимков нет'}
               />
               <KpiCard
                 label="Расхождение (факт − расчёт)"
-                value={discrepancy === null ? '—' : formatRub(data.lastCheck!.discrepancy)}
-                tone={
-                  discrepancy === null || discrepancy === 0
-                    ? 'neutral'
-                    : 'negative'
-                }
+                value={data?.lastCheck ? <Money value={data.lastCheck.discrepancy} /> : '—'}
+                tone={discrepancy === null || discrepancy === 0 ? 'neutral' : 'negative'}
                 hint={
-                  discrepancy === null
-                    ? undefined
-                    : discrepancy === 0
-                      ? 'сходится'
-                      : 'есть расхождение'
+                  discrepancy === null ? undefined : discrepancy === 0 ? 'сходится' : 'есть расхождение'
                 }
               />
-            </div>
+            </KpiRow>
 
-            <Card className="!p-0 overflow-hidden">
-              <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
-                <h3 className="font-medium">
+            <section className="space-y-2">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-foreground">
                   Операции после последнего снимка
-                  {data.unreconciled.since && ` (с ${formatDate(data.unreconciled.since)})`}
-                </h3>
-                <span className="text-xs text-muted-foreground">
-                  {data.unreconciled.count} шт · сальдо{' '}
-                  <Money value={data.unreconciled.net} />
-                </span>
-              </header>
-              {data.unreconciled.operations.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Нет операций после снимка.
-                </p>
-              ) : (
-                <table className="w-full text-base">
-                  <thead className="border-b border-border">
-                    <tr className="text-left text-xs uppercase text-muted-foreground">
-                      <th className="px-4 py-2 font-medium">Дата</th>
-                      <th className="px-4 py-2 font-medium">Описание</th>
-                      <th className="px-4 py-2 text-right font-medium">Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.unreconciled.operations.map((op) => (
-                      <tr key={op.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-2 tabular-nums">{formatDate(op.date)}</td>
-                        <td className="px-4 py-2 text-muted-foreground">
-                          {op.description ?? '—'}
-                        </td>
-                        <td
-                          className={cn(
-                            'px-4 py-2 text-right tabular-nums',
-                            op.type === 'INCOME' ? 'text-success' : 'text-destructive',
-                          )}
-                        >
-                          {op.type === 'INCOME' ? '+' : '−'}
-                          {formatRub(op.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
+                  {data?.unreconciled.since && ` (с ${formatDate(data.unreconciled.since)})`}
+                </h2>
+                {data && (
+                  <span className="text-xs text-muted-foreground">
+                    {data.unreconciled.count} шт · сальдо <Money value={data.unreconciled.net} />
+                  </span>
+                )}
+              </div>
+              <div className="rounded-md border border-border bg-card">
+                <DataTable
+                  data={data?.unreconciled.operations ?? []}
+                  columns={opColumns}
+                  rowKey={(op) => op.id}
+                  loading={report.isLoading}
+                  empty={
+                    <p className="px-4 py-2 text-center text-sm text-muted-foreground">
+                      Нет операций после снимка.
+                    </p>
+                  }
+                  mobileCards={(op) => (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm">{op.description ?? '—'}</div>
+                        <div className="text-xs text-muted-foreground">{formatDate(op.date)}</div>
+                      </div>
+                      <span className={cn('font-semibold', op.type === 'INCOME' ? 'text-success' : 'text-destructive')}>
+                        {op.type === 'INCOME' ? '+' : '−'}
+                        <Money value={op.amount} tone="plain" />
+                      </span>
+                    </div>
+                  )}
+                />
+              </div>
+            </section>
 
-            <Card className="!p-0 overflow-hidden">
-              <header className="border-b border-border px-4 py-3 font-medium">
-                История снимков
-              </header>
-              {checks.data && checks.data.length > 0 ? (
-                <table className="w-full text-base">
-                  <thead className="border-b border-border">
-                    <tr className="text-left text-xs uppercase text-muted-foreground">
-                      <th className="px-4 py-2 font-medium">Дата</th>
-                      <th className="px-4 py-2 font-medium">Примечание</th>
-                      <th className="px-4 py-2 text-right font-medium">Факт. остаток</th>
-                      <th className="w-[56px] px-4 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {checks.data.map((c) => (
-                      <tr key={c.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-2 tabular-nums">{formatDate(c.date)}</td>
-                        <td className="px-4 py-2 text-muted-foreground">{c.note ?? '—'}</td>
-                        <td className="px-4 py-2 text-right font-medium"><Money value={c.actualBalance} /></td>
-                        <td className="px-4 py-2 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Удалить снимок"
-                            onClick={() => setConfirmDel(c)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Снимков пока нет. Сделайте снимок фактического остатка по выписке.
-                </p>
-              )}
-            </Card>
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-foreground">История снимков</h2>
+              <div className="rounded-md border border-border bg-card">
+                <DataTable
+                  data={checks.data ?? []}
+                  columns={checkColumns}
+                  rowKey={(c) => c.id}
+                  loading={checks.isLoading}
+                  error={checks.error}
+                  onRetry={() => checks.refetch()}
+                  empty={
+                    <p className="px-4 py-2 text-center text-sm text-muted-foreground">
+                      Снимков пока нет. Сделайте снимок фактического остатка по выписке.
+                    </p>
+                  }
+                  mobileCards={(c) => (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm">{formatDate(c.date)}</div>
+                        <div className="truncate text-xs text-muted-foreground">{c.note ?? '—'}</div>
+                      </div>
+                      <Money value={c.actualBalance} className="font-medium" />
+                    </div>
+                  )}
+                />
+              </div>
+            </section>
           </>
-        ) : null}
+        )}
       </div>
 
       <CheckForm
@@ -291,6 +321,7 @@ function CheckForm({
   }, [open, defaultDate]);
 
   const canSave = !!accountId && actualBalance.trim() !== '' && !create.isPending;
+  const dirty = actualBalance.trim() !== '' || note.trim() !== '' || anchor;
 
   const onSave = async () => {
     if (!accountId) return;
@@ -298,7 +329,7 @@ function CheckForm({
     try {
       const input: CreateCheckInput = {
         accountId,
-        date: new Date(date).toISOString(),
+        date: fromLocalDateInput(date),
         actualBalance: actualBalance.replace(',', '.'),
         note: note.trim() || undefined,
         anchor: anchor || undefined,
@@ -311,13 +342,15 @@ function CheckForm({
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
       <ModalContent hideClose>
         <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <ModalTitle>Снимок остатка</ModalTitle>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-            <X className="h-4 w-4" />
-          </Button>
+          <ModalClose asChild>
+            <Button variant="ghost" size="icon" aria-label="Закрыть">
+              <X className="h-4 w-4" />
+            </Button>
+          </ModalClose>
         </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -337,9 +370,8 @@ function CheckForm({
             />
           </FormField>
           <FormField label="Фактический остаток" htmlFor="rc-balance" required>
-            <Input
+            <MoneyInput
               id="rc-balance"
-              inputMode="decimal"
               value={actualBalance}
               onChange={(e) => setActualBalance(e.target.value)}
               placeholder="по выписке / факту"
@@ -357,27 +389,20 @@ function CheckForm({
           {/* Счёт без API банка (карта, наличные): стартового остатка нет, и этот
               факт — единственный способ его получить. Начальный остаток счёта
               выводится так, чтобы остаток на конец дня сверки сошёлся с фактом. */}
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={anchor}
-              onChange={(e) => setAnchor(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
-            />
-            <span>
-              Принять как начальный остаток счёта
-              <span className="block text-xs text-muted-foreground">
-                Начальный остаток будет выведен из этой цифры: выписка по счёту должна быть
-                загружена по эту дату.
-              </span>
-            </span>
-          </label>
+          <Checkbox
+            label="Принять как начальный остаток счёта"
+            hint="Начальный остаток будет выведен из этой цифры: выписка по счёту должна быть загружена по эту дату."
+            checked={anchor}
+            onChange={(e) => setAnchor(e.target.checked)}
+          />
           {error && <p className="text-sm text-destructive">{error}</p>}
         </ModalBody>
         <ModalFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
+          <ModalClose asChild>
+            <Button type="button" variant="secondary">
+              Отмена
+            </Button>
+          </ModalClose>
           <Button type="submit" loading={create.isPending} disabled={!canSave}>
             Сохранить
           </Button>

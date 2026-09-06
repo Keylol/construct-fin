@@ -17,7 +17,7 @@ import {
   useImportCommit,
   useImportPreview,
 } from '@/hooks/useImport';
-import type { AccountType, PreviewResult } from '@/lib/types';
+import type { PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { plural } from '@/lib/plural';
 import { ACCOUNT_TYPE_LABEL, IMPORT_SOURCE_LABEL } from '@/lib/labels';

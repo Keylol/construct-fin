@@ -17,7 +17,6 @@ import { PAY_LABEL, PAY_TONE, STATUS_LABEL, STATUS_TONE } from '@/components/ord
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
-import type { OrderStatus, OrderPaymentState } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
 import { txDrilldownHref } from '@/lib/tx-filters';
 

@@ -1,29 +1,27 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { formatRub } from '@construct/shared';
+import { D, add, toMoneyString } from '@construct/shared';
 import { Pencil, Plus, Repeat, Users } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormField } from '@/components/ui/FormField';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { Badge } from '@/components/ui/Badge';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
   useCounterparties,
@@ -34,7 +32,6 @@ import {
   usePlannedList,
   useRecurring,
   useUpcoming,
-  useUpdateRecurring,
 } from '@/hooks/usePlanning';
 import type { Counterparty, PlannedPayment, RecurringPayment } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
@@ -42,8 +39,19 @@ import { plural } from '@/lib/plural';
 import { PayDialog } from '@/components/planning/PayDialog';
 import { PlannedDialog } from '@/components/planning/PlannedDialog';
 import { RecurringDialog } from '@/components/planning/RecurringDialog';
-import { PaidRow, PlannedRow } from '@/components/planning/PlannedRows';
+import {
+  PaidActions,
+  RecurringActions,
+  paidColumns,
+  plannedColumns,
+  plannedMobileCard,
+  recurringColumns,
+} from '@/components/planning/planned-columns';
 import { scheduleLabel } from '@/components/planning/shared';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { StatusDot } from '@/components/ui/StatusDot';
 
 /**
  * Раздел «Зарплата»: сотрудники (Counterparty role=EMPLOYEE) + зарплатные
@@ -94,22 +102,102 @@ export default function SalaryPage() {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
-    let sum = 0;
+    let sum = D(0);
     for (const p of rows) {
       const d = new Date(p.dueDate);
-      if (d.getFullYear() === y && d.getMonth() === m) sum += Number(p.amount);
+      if (d.getFullYear() === y && d.getMonth() === m) sum = add(sum, D(p.amount));
     }
-    return sum.toFixed(2);
+    return toMoneyString(sum);
   }, [paid.data]);
 
   const plannedSum = useMemo(
-    () => plannedSalary.reduce((acc, p) => acc + Number(p.amount), 0).toFixed(2),
+    () => toMoneyString(plannedSalary.reduce((acc, p) => add(acc, D(p.amount)), D(0))),
     [plannedSalary],
   );
 
   if (!current) return null;
 
   const employeeRows = employees.data ?? [];
+
+  const editPlanned = (p: PlannedPayment) =>
+    p.source !== 'RECURRING' ? () => setPlannedDialog({ editing: p }) : undefined;
+  const plannedCols = plannedColumns({ wsId: current.id, onPay: setPayFor, onEdit: editPlanned });
+  const recurringCols = recurringColumns({
+    wsId: current.id,
+    onEdit: (r) => setRecurringDialog({ editing: r }),
+    showKind: false,
+  });
+  const paidCols = paidColumns(current.id);
+  const employeeCols: Column<Counterparty>[] = [
+    {
+      key: 'name',
+      header: 'Сотрудник',
+      className: 'w-full max-w-0',
+      cell: (emp) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium">{emp.name}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {[emp.position, emp.contact].filter(Boolean).join(' · ') || 'Без должности'}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'recurring',
+      header: 'Зарплата',
+      cell: (emp) =>
+        salaryRecurring.some((r) => r.counterpartyId === emp.id && r.isActive) ? (
+          <StatusDot tone="success" label="регулярная" />
+        ) : (
+          <span className="text-muted-foreground">разовые</span>
+        ),
+      className: 'w-[130px]',
+    },
+    {
+      key: 'payRate',
+      header: 'Оклад',
+      align: 'right',
+      cell: (emp) =>
+        emp.payRate ? <Money value={emp.payRate} tone="plain" className="text-muted-foreground" /> : <span className="text-muted-foreground">—</span>,
+      className: 'w-[140px]',
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (emp) => {
+        const hasRecurring = salaryRecurring.some((r) => r.counterpartyId === emp.id && r.isActive);
+        return (
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                setPlannedDialog({ editing: null, presetEmployeeId: emp.id, presetAmount: emp.payRate ?? undefined })
+              }
+            >
+              Выплата
+            </Button>
+            {!hasRecurring && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setRecurringDialog({ editing: null, presetEmployeeId: emp.id, presetAmount: emp.payRate ?? undefined })
+                }
+              >
+                <Repeat className="h-3.5 w-3.5" /> Регулярная
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setEmployeeDialog({ editing: emp })} aria-label="Править">
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+      className: 'w-[300px]',
+    },
+  ];
 
   return (
     <>
@@ -148,7 +236,7 @@ export default function SalaryPage() {
       <div className="space-y-6 px-6 py-4">
 
         {/* KPI */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <KpiRow loading={employees.isLoading}>
           <KpiCard label="Сотрудников" value={String(employeeRows.length)} />
           <KpiCard
             label="К выплате"
@@ -157,120 +245,122 @@ export default function SalaryPage() {
             hint={`${plannedSalary.length} ${plural(plannedSalary.length, 'выплата', 'выплаты', 'выплат')}`}
           />
           <KpiCard label="Выплачено за месяц" value={<Money value={paidThisMonth} />} />
-        </div>
+        </KpiRow>
 
         {/* Сотрудники */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Сотрудники</h2>
-          {employees.isError ? (
-            <ErrorState error={employees.error} onRetry={() => employees.refetch()} />
-          ) : employees.isLoading ? (
-            <Skeleton className="h-24" />
-          ) : employeeRows.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title="Пока нет сотрудников"
-              hint="Добавьте сотрудника — имя, должность, оклад. Дальше — регулярная зарплата или разовая выплата."
-              action={
-                <Button onClick={() => setEmployeeDialog({ editing: null })}>
-                  <Plus className="h-4 w-4" /> Добавить сотрудника
-                </Button>
-              }
-            />
-          ) : (
-            <Card className="divide-y divide-border/60 p-0">
-              {employeeRows.map((emp) => (
-                <EmployeeRow
-                  key={emp.id}
-                  emp={emp}
-                  hasRecurring={salaryRecurring.some(
-                    (r) => r.counterpartyId === emp.id && r.isActive,
-                  )}
-                  onEdit={() => setEmployeeDialog({ editing: emp })}
-                  onPayOnce={() =>
-                    setPlannedDialog({
-                      editing: null,
-                      presetEmployeeId: emp.id,
-                      presetAmount: emp.payRate ?? undefined,
-                    })
-                  }
-                  onRecurring={() =>
-                    setRecurringDialog({
-                      editing: null,
-                      presetEmployeeId: emp.id,
-                      presetAmount: emp.payRate ?? undefined,
-                    })
+          <div className="rounded-md border border-border bg-card">
+            <DataTable
+              data={employeeRows}
+              columns={employeeCols}
+              rowKey={(e) => e.id}
+              loading={employees.isLoading}
+              error={employees.error}
+              onRetry={() => employees.refetch()}
+              onRowClick={(emp) => setEmployeeDialog({ editing: emp })}
+              empty={
+                <EmptyState
+                  icon={Users}
+                  title="Пока нет сотрудников"
+                  hint="Добавьте сотрудника — имя, должность, оклад. Дальше — регулярная зарплата или разовая выплата."
+                  action={
+                    <Button onClick={() => setEmployeeDialog({ editing: null })}>
+                      <Plus className="h-4 w-4" /> Добавить сотрудника
+                    </Button>
                   }
                 />
-              ))}
-            </Card>
-          )}
+              }
+              mobileCards={(emp) => (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{emp.name}</span>
+                    {emp.payRate && <Money value={emp.payRate} tone="plain" className="text-muted-foreground" />}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {[emp.position, emp.contact].filter(Boolean).join(' · ') || 'Без должности'}
+                  </div>
+                </div>
+              )}
+            />
+          </div>
         </section>
 
         {/* Ожидаемые выплаты */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Ожидаемые выплаты</h2>
-          {upcoming.isLoading ? (
-            <Skeleton className="h-24" />
-          ) : plannedSalary.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title="Нет ожидаемых выплат"
-              hint="Создайте разовую выплату или настройте регулярную зарплату."
-            />
-          ) : (
-            <Card className="divide-y divide-border/60 p-0">
-              {plannedSalary.map((p) => (
-                <PlannedRow
-                  key={p.id}
-                  p={p}
-                  onPay={() => setPayFor(p)}
-                  onEdit={
-                    p.source !== 'RECURRING'
-                      ? () => setPlannedDialog({ editing: p })
-                      : undefined
-                  }
-                  wsId={current.id}
+          <div className="rounded-md border border-border bg-card">
+            <DataTable
+              data={plannedSalary}
+              columns={plannedCols}
+              rowKey={(p) => p.id}
+              loading={upcoming.isLoading}
+              error={upcoming.error}
+              onRetry={() => upcoming.refetch()}
+              empty={
+                <EmptyState
+                  icon={Users}
+                  title="Нет ожидаемых выплат"
+                  hint="Создайте разовую выплату или настройте регулярную зарплату."
                 />
-              ))}
-            </Card>
-          )}
+              }
+              mobileCards={(p) => plannedMobileCard(p, current.id, () => setPayFor(p), editPlanned(p))}
+            />
+          </div>
         </section>
 
         {/* Регулярная зарплата */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Регулярная зарплата</h2>
-          {recurring.isLoading ? (
-            <Skeleton className="h-16" />
-          ) : salaryRecurring.length === 0 ? (
-            <EmptyState
-              icon={Repeat}
-              title="Регулярная зарплата не настроена"
-              hint="Задайте график (например, 10-го числа каждого месяца) — выплаты будут появляться сами."
-            />
-          ) : (
-            <Card className="divide-y divide-border/60 p-0">
-              {salaryRecurring.map((r) => (
-                <SalaryRecurringRow
-                  key={r.id}
-                  r={r}
-                  wsId={current.id}
-                  onEdit={() => setRecurringDialog({ editing: r })}
+          <div className="rounded-md border border-border bg-card">
+            <DataTable
+              data={salaryRecurring}
+              columns={recurringCols}
+              rowKey={(r) => r.id}
+              loading={recurring.isLoading}
+              error={recurring.error}
+              onRetry={() => recurring.refetch()}
+              empty={
+                <EmptyState
+                  icon={Repeat}
+                  title="Регулярная зарплата не настроена"
+                  hint="Задайте график (например, 10-го числа каждого месяца) — выплаты будут появляться сами."
                 />
-              ))}
-            </Card>
-          )}
+              }
+              mobileCards={(r) => (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{r.title}</span>
+                    <Money value={r.amount} className="font-semibold" />
+                  </div>
+                  <div className="text-xs text-muted-foreground">{scheduleLabel(r)}</div>
+                  <RecurringActions r={r} wsId={current.id} onEdit={() => setRecurringDialog({ editing: r })} />
+                </div>
+              )}
+            />
+          </div>
         </section>
 
         {/* Выплачено */}
         {(paid.data?.length ?? 0) > 0 && (
           <section className="space-y-2">
             <h2 className="text-sm font-semibold text-muted-foreground">Выплачено</h2>
-            <Card className="divide-y divide-border/60 p-0">
-              {paid.data!.map((p) => (
-                <PaidRow key={p.id} p={p} wsId={current.id} />
-              ))}
-            </Card>
+            <div className="rounded-md border border-border bg-card">
+              <DataTable
+                data={paid.data ?? []}
+                columns={paidCols}
+                rowKey={(p) => p.id}
+                mobileCards={(p) => (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate">{p.title}</div>
+                      <div className="text-xs text-muted-foreground">{formatDate(p.dueDate)}</div>
+                    </div>
+                    <PaidActions p={p} wsId={current.id} />
+                  </div>
+                )}
+              />
+            </div>
           </section>
         )}
       </div>
@@ -304,98 +394,6 @@ export default function SalaryPage() {
       )}
       {payFor && <PayDialog wsId={current.id} plan={payFor} onClose={() => setPayFor(null)} />}
     </>
-  );
-}
-
-function EmployeeRow({
-  emp,
-  hasRecurring,
-  onEdit,
-  onPayOnce,
-  onRecurring,
-}: {
-  emp: Counterparty;
-  hasRecurring: boolean;
-  onEdit: () => void;
-  onPayOnce: () => void;
-  onRecurring: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{emp.name}</span>
-          {hasRecurring && <Badge variant="outline">регулярная</Badge>}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">
-          {[emp.position, emp.contact].filter(Boolean).join(' · ') || 'Без должности'}
-        </div>
-      </div>
-      {emp.payRate && (
-        <div className="text-right text-sm tabular-nums text-muted-foreground">
-          оклад {formatRub(emp.payRate)}
-        </div>
-      )}
-      <div className="flex shrink-0 items-center gap-1">
-        <Button variant="secondary" size="sm" onClick={onPayOnce}>
-          Выплата
-        </Button>
-        {!hasRecurring && (
-          <Button variant="ghost" size="sm" onClick={onRecurring}>
-            <Repeat className="h-3.5 w-3.5" /> Регулярная
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Править">
-          <Pencil className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function SalaryRecurringRow({
-  r,
-  wsId,
-  onEdit,
-}: {
-  r: RecurringPayment;
-  wsId: string;
-  onEdit: () => void;
-}) {
-  const update = useUpdateRecurring(wsId);
-  const toggleActive = () =>
-    update.mutate(
-      { id: r.id, isActive: !r.isActive },
-      { onError: (e) => toast.error(e instanceof Error ? e.message : 'Ошибка') },
-    );
-
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{r.title}</span>
-          {!r.isActive && (
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
-              пауза
-            </span>
-          )}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">
-          {scheduleLabel(r)}
-          {r.counterpartyName && ` · ${r.counterpartyName}`}
-          {r.nextDueDate && r.isActive && ` · след. ${formatDate(r.nextDueDate)}`}
-        </div>
-      </div>
-      <div className="text-right text-sm font-semibold tabular-nums"><Money value={r.amount} /></div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="sm" onClick={toggleActive} disabled={update.isPending}>
-          {r.isActive ? 'Пауза' : 'Включить'}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Править">
-          <Pencil className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -461,12 +459,12 @@ function EmployeeDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[420px]">
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Сотрудник' : 'Новый сотрудник'}</DialogTitle>
-        </DialogHeader>
-        <div className="max-h-[70vh] space-y-3 overflow-y-auto py-2">
+    <Modal open onOpenChange={(o) => !o && onClose()} dirty={name !== (editing?.name ?? '') || position !== (editing?.position ?? '') || payRate !== (editing?.payRate ?? '') || contact !== (editing?.contact ?? '') || note !== (editing?.note ?? '') || isArchived !== (editing?.isArchived ?? false)}>
+      <ModalContent size="md" onConfirm={submit}>
+        <ModalHeader>
+          <ModalTitle>{editing ? 'Сотрудник' : 'Новый сотрудник'}</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
           <FormField label="Имя" required>
             <Input
               value={name}
@@ -498,26 +496,18 @@ function EmployeeDialog({
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
           </FormField>
           {editing && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isArchived}
-                onChange={(e) => setIsArchived(e.target.checked)}
-                className="h-4 w-4 rounded border-input accent-primary"
-              />
-              В архиве (уволен)
-            </label>
+            <Checkbox label="В архиве (уволен)" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
           )}
-        </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
+        </ModalBody>
+        <ModalFooter>
+          <ModalClose asChild>
+            <Button variant="secondary">Отмена</Button>
+          </ModalClose>
           <Button onClick={submit} disabled={!valid} loading={pending}>
             {editing ? 'Сохранить' : 'Добавить'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
