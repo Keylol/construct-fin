@@ -51,6 +51,29 @@ function tokens(raw: string): string[] {
 }
 
 /**
+ * Русское слово без окончания. Спецификация пишет «Корпусные вентиляторы»,
+ * чек — «Вентилятор для корпуса»: без этого у пары нет ни одного общего слова,
+ * и комплект вентиляторов оставался без цены в 26 заказах.
+ *
+ * Режем только длинные русские слова и только хвост — не морфология, а
+ * огрубление до общего корня. Латиница и модельные куски не трогаются: там
+ * окончаний нет, а «lancer» и «lance» — разные товары.
+ */
+const RU_ENDINGS = [
+  'ами', 'ями', 'ого', 'ему', 'ому', 'ыми', 'ими', 'ев', 'ов', 'ый', 'ий', 'ой',
+  'ые', 'ие', 'ая', 'яя', 'ую', 'юю', ' am', 'ах', 'ях', 'ам', 'ям', 'ом', 'ем',
+  'ы', 'и', 'а', 'я', 'о', 'е', 'у', 'ю', 'й', 'ь',
+];
+
+function stem(t: string): string {
+  if (/\d/.test(t) || !/^[а-я]+$/.test(t) || t.length < 6) return t;
+  for (const end of RU_ENDINGS) {
+    if (t.length - end.length >= 4 && t.endsWith(end)) return t.slice(0, -end.length);
+  }
+  return t;
+}
+
+/**
  * Характеристика, а не модель: «16гб», «8g», «750w», «5600мгц», «2280».
  * Объём и частота совпадают у совершенно разных товаров, и вес модели им не
  * положен — иначе «16Гб Patriot Viper Venom» цепляется к любой строке с «16гб».
@@ -103,11 +126,14 @@ export function scoreCostPair(
   const itemTokens = tokens(item.name);
   const lineTokens = tokens(line.name);
   const lineSet = withGlued(lineTokens);
+  // Второй набор — по корням: «вентиляторы» из спецификации против
+  // «вентилятор» из чека совпадут только здесь.
+  const lineStems = new Set([...lineSet].map(stem));
 
   const meaningful = itemTokens.filter((t) => !STOP.has(t));
   if (meaningful.length === 0) return { score: 0, reasons: [] };
 
-  const hits = meaningful.filter((t) => lineSet.has(t));
+  const hits = meaningful.filter((t) => lineSet.has(t) || lineStems.has(stem(t)));
   const modelHits = hits.filter(isModelToken);
 
   if (hits.length === 0) return { score: 0, reasons: [] };
@@ -215,6 +241,24 @@ export interface CostPlan {
  * (иначе человек уже указал своё), а позиции с введённой руками закупкой
  * остаются нетронутыми — и это видно в отчёте, а не молча.
  */
+/**
+ * Позиция-комплект: одна строка спецификации покрывает несколько строк чека.
+ *
+ * «Корпусные вентиляторы: 7 шт. ARGB вентиляторов» — это в чеке три-четыре
+ * строки разных партий по 340–580 ₽. Матчер отдаёт строку ровно одной позиции,
+ * поэтому комплект получал цену одного вентилятора вместо всего набора.
+ * Признак комплекта — множественное число и количество больше единицы.
+ */
+const SET_CLASSES = ['вентилятор', 'кулер'];
+
+function setClassOf(name: string): string | null {
+  const t = tokens(name).map(stem);
+  const cls = SET_CLASSES.find((c) => t.includes(stem(c)));
+  if (!cls) return null;
+  // Комплект, а не одиночная деталь: «7 шт.», «3 шт», «+ 4 ARGB вентилятора».
+  return /(\d+)\s*(шт|штук)/i.test(name) || /вентилятор[оа]?в/i.test(name) ? cls : null;
+}
+
 export function planCostApplication(
   items: ApplicableItem[],
   lines: ApplicableLine[],
@@ -239,6 +283,30 @@ export function planCostApplication(
       reasons: applied ? m.reasons : [...m.reasons, 'закупка уже заполнена — не меняем'],
     };
   });
+
+  // Добор комплекта: оставшиеся строки того же класса уходят в ту же позицию.
+  // Считаем суммой закупки набора, а не ценой одной штуки.
+  for (const app of applications) {
+    const item = items[app.itemIndex];
+    const cls = item ? setClassOf(item.name) : null;
+    if (!cls || !app.applied) continue;
+
+    let total = Number(app.unitCost) * Number(app.qty || '1');
+    let extra = 0;
+    lines.forEach((line, i) => {
+      if (used.has(i)) return;
+      const lineCls = tokens(line.name).map(stem).includes(stem(cls));
+      if (!lineCls) return;
+      used.add(i);
+      extra += 1;
+      total += Number(line.unitPrice) * Number(line.qty || '1');
+    });
+    if (extra > 0) {
+      app.unitCost = total.toFixed(2);
+      app.qty = '1';
+      app.reasons.push(`комплект: собрано строк чека ${extra + 1}, сумма закупки`);
+    }
+  }
 
   const unusedLineIndexes = lines.map((_, i) => i).filter((i) => !used.has(i));
   return { applications, unusedLineIndexes };

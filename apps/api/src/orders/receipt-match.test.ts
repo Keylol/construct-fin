@@ -154,3 +154,62 @@ describe('раскладка цен чеков по позициям заказ�
     expect(plan.unusedLineIndexes).toEqual([0]);
   });
 });
+
+describe('комплект вентиляторов', () => {
+  it('«вентиляторы» из спецификации совпадают с «вентилятор для корпуса» из чека', () => {
+    const { score } = scoreCostPair(
+      { name: 'Корпусные вентиляторы: 7 шт. ARGB вентиляторов' },
+      { name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '409' },
+    );
+    expect(score).toBeGreaterThan(50);
+  });
+
+  it('комплект собирает все строки чека суммой, а не ценой одной штуки', () => {
+    const plan = planCostApplication(
+      [{ name: 'Корпусные вентиляторы: 7 шт. ARGB вентиляторов', qty: '1', unitCost: '' }],
+      [
+        { name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '409', qty: '1' },
+        { name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '579', qty: '5' },
+        { name: 'Вентилятор для корпуса Powercase M56-12 ARGB', unitPrice: '340', qty: '1' },
+      ],
+    );
+    expect(plan.applications[0]?.unitCost).toBe('3644.00');
+    expect(plan.applications[0]?.reasons.join(' ')).toContain('комплект');
+    expect(plan.unusedLineIndexes).toHaveLength(0);
+  });
+
+  it('корпус с вентиляторами в одной позиции суммирует корпус и вентиляторы', () => {
+    const plan = planCostApplication(
+      [{ name: 'Корпус: Powercase Vision Micro M2 ARGB, белый + 4 шт. ARGB вентиляторов', qty: '1', unitCost: '' }],
+      [
+        { name: 'Корпус Powercase Vision Micro M2 ARGB, белый', unitPrice: '3890', qty: '1' },
+        { name: 'Вентилятор для корпуса 1STPLAYER FN7 White OEM', unitPrice: '529', qty: '2' },
+      ],
+    );
+    expect(plan.applications[0]?.unitCost).toBe('4948.00');
+  });
+
+  it('одиночный кулер процессора комплектом не считается', () => {
+    const plan = planCostApplication(
+      [{ name: 'Охлаждение: DEEPCOOL LE360 V2', qty: '1', unitCost: '' }],
+      [
+        { name: 'Кулер DEEPCOOL LE360 V2 ARGB 360мм черная', unitPrice: '4633', qty: '1' },
+        { name: 'Вентилятор для корпуса XASTRA FM120B ARGB', unitPrice: '409', qty: '3' },
+      ],
+    );
+    expect(plan.applications[0]?.unitCost).toBe('4633');
+    expect(plan.unusedLineIndexes).toHaveLength(1);
+  });
+
+  it('стемминг не роднит разные модели на латинице', () => {
+    const { score } = scoreCostPair(
+      { name: 'Оперативная память: ADATA XPG Lancer Blade' },
+      { name: 'Оперативная память ADATA XPG Lance', unitPrice: '1' },
+    );
+    const exact = scoreCostPair(
+      { name: 'Оперативная память: ADATA XPG Lancer Blade' },
+      { name: 'Оперативная память ADATA XPG Lancer Blade RGB', unitPrice: '1' },
+    ).score;
+    expect(score).toBeLessThan(exact);
+  });
+});
