@@ -10,12 +10,14 @@ import { FormField } from '@/components/ui/FormField';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { useAccounts } from '@/hooks/useAccounts';
 import { usePayPlanned } from '@/hooks/usePlanning';
 import type { PlannedPayment } from '@/lib/types';
@@ -59,12 +61,12 @@ export function PayDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[420px]">
-        <DialogHeader>
-          <DialogTitle>Оплата: {plan.title}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
+    <Modal open onOpenChange={(o) => !o && onClose()} dirty={amount !== plan.amount || accountId !== (plan.accountId ?? '')}>
+      <ModalContent size="md" onConfirm={submit}>
+        <ModalHeader>
+          <ModalTitle>Оплата: {plan.title}</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
             Плановая сумма <b className="tabular-nums"><Money value={plan.amount} /></b> · срок{' '}
             {formatDate(plan.dueDate)}
@@ -91,16 +93,16 @@ export function PayDialog({
             Создастся операция на выбранном счёте и свяжется с планом. Отменить можно в разделе
             «Оплаченные».
           </p>
-        </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
+        </ModalBody>
+        <ModalFooter>
+          <ModalClose asChild>
+            <Button variant="secondary">Отмена</Button>
+          </ModalClose>
           <Button onClick={submit} disabled={!valid} loading={pay.isPending}>
             <Check className="h-4 w-4" /> Оплатить
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
