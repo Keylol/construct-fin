@@ -19,6 +19,7 @@ export {
   ChevronSort as ChevronsUpDown,
   ChevronUp,
   ListChecked as ClipboardList,
+  Document as FileText,
   Download,
   Filter,
   Time as History,
