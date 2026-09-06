@@ -372,14 +372,16 @@ export function OrderFormModal({
 
   const applyPaste = (mode: 'replace' | 'append') => {
     const skipped = pasteParsed.errors;
-    // Шапка заполняет пустые поля и не затирает уже введённое руками.
-    if (pasteParsed.phone && !phone.trim()) setPhone(pasteParsed.phone);
-    if (pasteParsed.title && !title.trim()) setTitle(pasteParsed.title);
+    // Шапка ПЕРЕЗАПИСЫВАЕТ поля: вставка заказа целиком — это «вот другой
+    // заказ», и оставленные от предыдущего телефон с датой уходили бы в чужую
+    // сделку. Поймано на живом заведении: два заказа получили телефон соседа.
+    if (pasteParsed.phone) setPhone(pasteParsed.phone);
+    if (pasteParsed.title) setTitle(pasteParsed.title);
     if (pasteParsed.total) {
       setSpecTotal(pasteParsed.total);
       setAllocTotal(pasteParsed.total);
     }
-    if (pasteParsed.date && !orderDate) setOrderDate(pasteParsed.date.slice(0, 10));
+    if (pasteParsed.date) setOrderDate(pasteParsed.date.slice(0, 10));
     if (pasteParsed.clientName) {
       const list = clients.data ?? [];
       const match =
@@ -387,8 +389,9 @@ export function OrderFormModal({
         list.find(
           (c) => c.name.trim().toLowerCase() === pasteParsed.clientName?.trim().toLowerCase(),
         );
-      if (match) setClientId(match.id);
-      else setSpecClient(pasteParsed.clientName);
+      // Клиент тоже перевыбирается: иначе заказ уйдёт на предыдущего.
+      setClientId(match?.id ?? '');
+      setSpecClient(match ? null : pasteParsed.clientName);
     }
     const parsed = pasteParsed.items.map((it) => ({
       warehouseItemId: null,
