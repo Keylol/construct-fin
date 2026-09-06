@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AlfaAdapter, MAX_DAYS_PER_SYNC, dayKey, nextDay, prevDay, pickBalance } from './alfa.adapter';
+import {
+  AlfaAdapter,
+  MAX_DAYS_PER_SYNC,
+  dayKey,
+  nextDay,
+  prevDay,
+  pickSummaryBalance,
+} from './alfa.adapter';
 import type { AlfaHttp, AlfaHttpResponse } from './alfa-transport';
 import type { AdapterRegistry } from '../adapter-registry';
 
@@ -435,47 +442,78 @@ describe('AlfaAdapter — календарные помощники', () => {
 
 // ─────────────────────── остаток по счёту (fetchBalance) ───────────────────────
 
+/** Сводка оборотов за день в форме Альфы. */
+function summary(opening: number | null, closing: number | null) {
+  return {
+    composedDateTime: '2026-09-06',
+    openingBalance: opening === null ? null : { amount: opening, currencyName: 'RUR' },
+    openingBalanceRub: opening === null ? null : { amount: opening, currencyName: 'RUR' },
+    closingBalance: closing === null ? null : { amount: closing, currencyName: 'RUR' },
+    closingBalanceRub: closing === null ? null : { amount: closing, currencyName: 'RUR' },
+  };
+}
+
 describe('AlfaAdapter.fetchBalance', () => {
   const startFrom = new Date('2026-06-01T00:00:00.000Z');
+  const dayOf = (url: string) => new URL(url).searchParams.get('statementDate');
 
-  it('ходит в /v1/accounts/{номер} с ApiKey и читает balance.amount', async () => {
-    const { adapter, calls } = build(() => ({
-      status: 200,
-      body: JSON.stringify({ accountNumber: ACCOUNT, balance: { amount: 1301331.94, currency: 'RUR' } }),
-      headers: {},
-    }));
+  it('входящий остаток за день начала и исходящий за сегодня — из /v1/statement/summary', async () => {
+    const today = dayKey(new Date());
+    const { adapter, calls } = build((url) => {
+      const day = dayOf(url);
+      const body = day === '2026-06-01' ? summary(1000.5, 900) : summary(500, 1301331.94);
+      return { status: 200, body: JSON.stringify(body), headers: {} };
+    });
     const res = await adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom });
+
+    expect(res.openingAt).toEqual({ amount: '1000.50', date: startFrom });
     expect(res.current?.amount).toBe('1301331.94');
-    expect(res.openingAt).toBeNull();
-    expect(calls[0]).toBe(`${BASE}/v1/accounts/${ACCOUNT}`);
+    expect(calls.every((u) => u.startsWith(`${BASE}/v1/statement/summary?accountNumber=${ACCOUNT}`))).toBe(true);
+    expect(calls.map(dayOf)).toEqual(['2026-06-01', today]);
   });
 
-  it('403 — понятная ошибка про scope, синк строк её переживёт', async () => {
-    const { adapter } = build(() => ({ status: 403, body: '{}', headers: {} }));
-    await expect(
-      adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom }),
-    ).rejects.toThrow(/scope «Счета»/);
-  });
-
-  it('незнакомая форма ответа — current null без исключения', async () => {
-    const { adapter } = build(() => ({ status: 200, body: '{"foo":1}', headers: {} }));
+  it('за сегодня сводки ещё нет — исходящий остаток берётся за вчера', async () => {
+    const today = dayKey(new Date());
+    const { adapter, calls } = build((url) => {
+      const day = dayOf(url);
+      if (day === today) return { status: 404, body: '{}', headers: {} };
+      return { status: 200, body: JSON.stringify(summary(10, 20)), headers: {} };
+    });
     const res = await adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom });
+    expect(res.current?.amount).toBe('20.00');
+    expect(calls.map(dayOf)).toEqual(['2026-06-01', today, prevDay(today)]);
+  });
+
+  it('отказ банка по одному дню не лишает второго числа и не бросает', async () => {
+    const { adapter } = build((url) =>
+      dayOf(url) === '2026-06-01'
+        ? { status: 403, body: '{}', headers: {} }
+        : { status: 200, body: JSON.stringify(summary(1, 2)), headers: {} },
+    );
+    const res = await adapter.fetchBalance({ token: 'key', accountNumber: ACCOUNT, startFrom });
+    expect(res.openingAt).toBeNull();
+    expect(res.current?.amount).toBe('2.00');
+  });
+
+  it('без номера счёта не ходит в банк', async () => {
+    const { adapter, calls } = build({});
+    const res = await adapter.fetchBalance({ token: 'key', accountNumber: null, startFrom });
     expect(res).toEqual({ current: null, openingAt: null });
+    expect(calls).toHaveLength(0);
   });
 });
 
-describe('pickBalance: терпимость к форме ответа', () => {
-  it('вложенный объект, плоское число, массив счетов', () => {
-    expect(pickBalance({ balance: { amount: 10.5 } })).toBe('10.50');
-    expect(pickBalance({ balance: 7 })).toBe('7.00');
-    expect(pickBalance({ amount: '3.333' })).toBe('3.33');
-    expect(pickBalance([{ balance: { amount: -2 } }])).toBe('-2.00');
-    expect(pickBalance({ availableBalance: { amount: 1 } })).toBe('1.00');
+describe('pickSummaryBalance', () => {
+  it('рублёвое поле предпочтительнее валютного, знак сохраняется', () => {
+    expect(pickSummaryBalance({ closingBalance: { amount: 1 }, closingBalanceRub: { amount: 2.5 } }, 'closing')).toBe('2.50');
+    expect(pickSummaryBalance({ openingBalance: { amount: -7 } }, 'opening')).toBe('-7.00');
+    expect(pickSummaryBalance({ openingBalance: { amount: '3.333' } }, 'opening')).toBe('3.33');
   });
 
-  it('мусор — null', () => {
-    expect(pickBalance(null)).toBeNull();
-    expect(pickBalance({ balance: 'abc' })).toBeNull();
-    expect(pickBalance({})).toBeNull();
+  it('нет поля / мусор — null', () => {
+    expect(pickSummaryBalance({}, 'opening')).toBeNull();
+    expect(pickSummaryBalance({ openingBalance: null }, 'opening')).toBeNull();
+    expect(pickSummaryBalance({ closingBalance: { amount: 'abc' } }, 'closing')).toBeNull();
+    expect(pickSummaryBalance(null, 'closing')).toBeNull();
   });
 });
