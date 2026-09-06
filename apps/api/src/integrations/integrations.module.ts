@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { RuleModule } from '../rule/rule.module';
 import { TransferModule } from '../transfer/transfer.module';
 import { PlanningModule } from '../planning/planning.module';
+import { AccountModule } from '../account/account.module';
 import { CryptoService } from './crypto.service';
 import { AdapterRegistry } from './adapter-registry';
 import { FakeBankAdapter } from './adapters/fake-bank.adapter';
@@ -28,7 +29,8 @@ import { InboxController } from './inbox.controller';
   // AuditModule: след подключения/ротации токена банка (integration.*).
   // RuleModule: InboxService.applyRulesToPending → общая загрузка активных правил.
   // TransferModule: подтверждение перевода из пары строк выписки.
-  imports: [OrderModule, AuditModule, RuleModule, TransferModule, PlanningModule],
+  // AccountModule: BalanceAnchorService — вывод начального остатка из остатка банка.
+  imports: [OrderModule, AuditModule, RuleModule, TransferModule, PlanningModule, AccountModule],
   controllers: [IntegrationsController, InboxController],
   providers: [
     CryptoService,

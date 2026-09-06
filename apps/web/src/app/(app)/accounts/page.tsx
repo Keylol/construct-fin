@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Plus, Wallet, X, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -12,7 +13,8 @@ import {
   useDeleteAccount,
   type CreateAccountInput,
 } from '@/hooks/useAccounts';
-import type { Account, AccountType } from '@/lib/types';
+import type { Account, AccountBalance, AccountType } from '@/lib/types';
+import { formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -31,6 +33,7 @@ import {
   ModalTitle,
 } from '@/components/ui/Modal';
 import { formatRub, D, add, toMoneyString } from '@construct/shared';
+import { plural } from '@/lib/plural';
 
 const TYPE_LABELS: Record<AccountType, string> = {
   CASH: 'Наличные',
@@ -47,16 +50,32 @@ export default function AccountsPage() {
   const [editing, setEditing] = useState<Account | null>(null);
   const [creating, setCreating] = useState(false);
 
-  // «Итого денежных средств» — сумма текущих остатков активных счетов (Decimal, не number).
-  const totalMoney = (() => {
+  // Итоги по активным счетам (Decimal, не number): «по банку ?? по учёту» —
+  // главное число, рядом — сколько строк ждёт разбора и «по учёту» целиком.
+  const totals = (() => {
     if (!balances.data || !accounts.data) return null;
-    let acc = D(0);
+    let total = D(0);
+    let ledger = D(0);
+    let unresolvedNet = D(0);
+    let unresolvedCount = 0;
+    let hasBank = false;
     for (const a of accounts.data) {
       if (a.isArchived) continue;
       const b = balances.data.get(a.id);
-      if (b != null) acc = add(acc, D(b));
+      if (!b) continue;
+      total = add(total, D(b.bank ?? b.ledger));
+      ledger = add(ledger, D(b.ledger));
+      unresolvedNet = add(unresolvedNet, D(b.unresolvedNet));
+      unresolvedCount += b.unresolvedCount;
+      if (b.bank != null) hasBank = true;
     }
-    return toMoneyString(acc);
+    return {
+      total: toMoneyString(total),
+      ledger: toMoneyString(ledger),
+      unresolvedNet: toMoneyString(unresolvedNet),
+      unresolvedCount,
+      hasBank,
+    };
   })();
 
   if (!current) {
@@ -108,23 +127,97 @@ export default function AccountsPage() {
       key: 'opening',
       header: 'Начальный остаток',
       align: 'right',
-      cell: (a) => <span className="text-muted-foreground"><Money value={a.openingBalance} /></span>,
-      className: 'w-[170px]',
+      cell: (a) => (
+        <span
+          className="text-muted-foreground"
+          title={
+            a.openingAnchoredAt
+              ? `Выведен из остатка банка/сверки ${formatDateTime(a.openingAnchoredAt)}`
+              : 'Введён вручную'
+          }
+        >
+          <Money value={a.openingBalance} />
+          {a.openingAnchoredAt && <span className="ml-1 text-[10px] uppercase">авто</span>}
+        </span>
+      ),
+      className: 'w-[160px]',
     },
     {
-      // Главная колонка страницы: сколько денег на счёте СЕЙЧАС.
-      key: 'balance',
-      header: 'Текущий остаток',
+      // Число, не зависящее от разбора: банк провёл всё, что провёл.
+      key: 'bank',
+      header: 'По банку',
       align: 'right',
       cell: (a) => {
         const b = balances.data?.get(a.id);
-        return b != null ? (
-          <Money value={b} className="font-semibold" />
+        if (!b) return <span className="text-muted-foreground">…</span>;
+        if (b.bank == null) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span title={b.bankAt ? `На ${formatDateTime(b.bankAt)}` : undefined}>
+            <Money value={b.bank} className="font-semibold" />
+          </span>
+        );
+      },
+      className: 'w-[150px]',
+    },
+    {
+      // Деньги, которые уже в банке, но ещё не в учёте — задача, а не ошибка.
+      key: 'unresolved',
+      header: 'Не разобрано',
+      align: 'right',
+      cell: (a) => {
+        const b = balances.data?.get(a.id);
+        if (!b || b.unresolvedCount === 0) return <span className="text-muted-foreground">—</span>;
+        return (
+          <Link
+            href="/inbox"
+            className="inline-flex flex-col items-end leading-tight hover:underline"
+            title="Открыть «Входящие»"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Money value={b.unresolvedNet} />
+            <span className="text-[10px] text-muted-foreground">
+              {b.unresolvedCount} {plural(b.unresolvedCount, 'строка', 'строки', 'строк')}
+            </span>
+          </Link>
+        );
+      },
+      className: 'w-[140px]',
+    },
+    {
+      // Начальный + проводки. Сходится с банком, когда очередь пуста.
+      key: 'ledger',
+      header: 'По учёту',
+      align: 'right',
+      cell: (a) => {
+        const b = balances.data?.get(a.id);
+        return b ? (
+          <Money value={b.ledger} className={b.bank == null ? 'font-semibold' : undefined} />
         ) : (
           <span className="text-muted-foreground">…</span>
         );
       },
-      className: 'w-[170px]',
+      className: 'w-[150px]',
+    },
+    {
+      // Что осталось необъяснённым после очереди: «не учитывать», ручные
+      // проводки без банка, операции в пути. Ноль — учёт сошёлся с банком.
+      key: 'discrepancy',
+      header: 'Расхождение',
+      align: 'right',
+      cell: (a) => {
+        const b = balances.data?.get(a.id);
+        if (!b || b.discrepancy == null) return <span className="text-muted-foreground">—</span>;
+        const zero = D(b.discrepancy).isZero();
+        return (
+          <span
+            className={zero ? 'text-muted-foreground' : 'text-warning'}
+            title="По банку − по учёту − не разобрано"
+          >
+            <Money value={b.discrepancy} tone={zero ? 'plain' : 'auto'} />
+          </span>
+        );
+      },
+      className: 'w-[140px]',
     },
   ];
 
@@ -139,13 +232,41 @@ export default function AccountsPage() {
           </Button>
         }
       />
-      {totalMoney != null && (
-        <div className="flex items-baseline justify-between border-t border-border bg-card px-6 py-4">
-          <span className="text-sm text-muted-foreground">
-            Итого денежных средств (активные счета)
-          </span>
-          {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
-          <Money value={totalMoney} className="text-3xl font-semibold sm:text-4xl" />
+      {totals != null && (
+        <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border bg-card px-6 py-4">
+          <div>
+            <div className="text-sm text-muted-foreground">
+              {totals.hasBank
+                ? 'Денежные средства по банку (активные счета)'
+                : 'Итого денежных средств (активные счета)'}
+            </div>
+            {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
+            <Money value={totals.total} className="text-3xl font-semibold sm:text-4xl" />
+          </div>
+          {totals.hasBank && (
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+              <dt className="text-muted-foreground">По учёту</dt>
+              <dd className="text-right"><Money value={totals.ledger} /></dd>
+              <dt className="text-muted-foreground">
+                Не разобрано
+                {totals.unresolvedCount > 0 && (
+                  <span className="ml-1 text-xs">
+                    ({totals.unresolvedCount}{' '}
+                    {plural(totals.unresolvedCount, 'строка', 'строки', 'строк')})
+                  </span>
+                )}
+              </dt>
+              <dd className="text-right">
+                {totals.unresolvedCount > 0 ? (
+                  <Link href="/inbox" className="hover:underline">
+                    <Money value={totals.unresolvedNet} />
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </dd>
+            </dl>
+          )}
         </div>
       )}
       <div className="bg-card border-t border-border">
@@ -179,13 +300,24 @@ export default function AccountsPage() {
                 </div>
               </div>
               <div className="shrink-0 text-right">
-                <div className="text-[10px] uppercase text-muted-foreground">Остаток</div>
-                <div className="text-sm font-medium tabular-nums">
-                  {/* Текущий остаток, а не начальный — раньше карточка вводила в заблуждение. */}
-                  {balances.data?.get(a.id) != null
-                    ? formatRub(balances.data.get(a.id)!)
-                    : formatRub(a.openingBalance)}
-                </div>
+                {(() => {
+                  const b = balances.data?.get(a.id);
+                  return (
+                    <>
+                      <div className="text-[10px] uppercase text-muted-foreground">
+                        {b?.bank != null ? 'По банку' : 'Остаток'}
+                      </div>
+                      <div className="text-sm font-medium tabular-nums">
+                        {b ? formatRub(b.bank ?? b.ledger) : formatRub(a.openingBalance)}
+                      </div>
+                      {b && b.unresolvedCount > 0 && (
+                        <div className="text-[10px] text-muted-foreground">
+                          не разобрано {b.unresolvedCount}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}

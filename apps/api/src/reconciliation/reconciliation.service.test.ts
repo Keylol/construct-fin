@@ -107,7 +107,7 @@ function buildService(opts: {
     },
   };
 
-  const service = new ReconciliationService(prisma as never);
+  const service = new ReconciliationService(prisma as never, { anchorFromCheck: async () => null } as never);
   return { service, prisma, created, deleted };
 }
 

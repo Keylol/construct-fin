@@ -128,8 +128,15 @@ export default function DashboardPage() {
             <Skeleton className="h-[124px] sm:col-span-2" />
           ) : (
             <KpiCard
-              label="Денежные средства"
+              label={cash.hasBank ? 'Денежные средства по банку' : 'Денежные средства'}
               value={<AnimatedNumber value={cash.total} />}
+              hint={
+                cash.unresolvedCount > 0
+                  ? `не разобрано ${cash.unresolvedCount} ${plural(cash.unresolvedCount, 'строка', 'строки', 'строк')} на ${formatRub(cash.unresolvedNet ?? '0')}`
+                  : cash.hasBank
+                    ? `по учёту ${formatRub(cash.ledger ?? '0')}`
+                    : undefined
+              }
               size="display"
               href="/accounts"
               className="sm:col-span-2"

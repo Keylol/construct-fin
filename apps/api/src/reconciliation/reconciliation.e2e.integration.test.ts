@@ -489,3 +489,57 @@ describe('D-e2e deleteCheck: физическое удаление снимка'
     expect(row).not.toBeNull();
   });
 });
+
+// ─────────────────── якорь начального остатка из сверки ───────────────────
+
+describe('D-e2e createCheck({anchor}): факт как якорь начального остатка', () => {
+  it('счёт без выписки (наличные): начальный остаток = факт − проводки до конца дня сверки', async () => {
+    await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: new Date('2026-06-03T10:00:00.000Z'),
+        amount: '500.00',
+        type: 'INCOME',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+    // Операция ПОСЛЕ дня сверки в якорь не входит.
+    await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: new Date('2026-06-20T10:00:00.000Z'),
+        amount: '99.00',
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+    await h.reconciliation.createCheck(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-06-05T00:00:00.000Z',
+      actualBalance: '800.00',
+      anchor: true,
+    });
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('300.00');
+    expect(acc.openingAnchoredAt).not.toBeNull();
+
+    // После якоря книга на день сверки сходится с фактом.
+    const report = await h.reconciliation.build(seed.workspaceId, seed.accountId, '2026-06-05');
+    expect(report.lastCheck?.discrepancy).toBe('0.00');
+  });
+
+  it('без флага anchor начальный остаток не меняется', async () => {
+    await h.reconciliation.createCheck(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-06-05T00:00:00.000Z',
+      actualBalance: '800.00',
+    });
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('0.00');
+    expect(acc.openingAnchoredAt).toBeNull();
+  });
+});

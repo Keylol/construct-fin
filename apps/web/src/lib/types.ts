@@ -19,10 +19,29 @@ export interface Account {
   name: string;
   type: AccountType;
   openingBalance: string;
+  /** Когда начальный остаток выведен из якоря (банк/сверка); null — введён руками. */
+  openingAnchoredAt: string | null;
   note: string | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Остатки счёта тремя числами (GET /accounts/balances): «по учёту» —
+ * начальный + проводки; «по банку» — из API на последнем синке (null без API);
+ * «не разобрано» — строки выписки, чьи деньги уже в банке, но ещё не в учёте.
+ */
+export interface AccountBalance {
+  accountId: string;
+  ledger: string;
+  bank: string | null;
+  bankAt: string | null;
+  unresolvedCount: number;
+  unresolvedNet: string;
+  /** bank − ledger − unresolvedNet; null без банка. */
+  discrepancy: string | null;
+  anchoredAt: string | null;
 }
 
 export interface Transfer {
@@ -791,6 +810,9 @@ export interface IntegrationConnection {
   account: { id: string; name: string };
   lastSyncAt: string | null;
   lastSyncError: string | null;
+  /** Остаток по данным банка на последнем синке; null — банк не отдал. */
+  bankBalance: string | null;
+  bankBalanceAt: string | null;
   createdAt: string;
 }
 

@@ -6,6 +6,7 @@ import { FakeBankAdapter } from './adapters/fake-bank.adapter';
 import { AlfaAdapter, dayKey } from './adapters/alfa.adapter';
 import type { AlfaHttp } from './adapters/alfa-transport';
 import { SyncService } from './sync.service';
+import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { IntegrationsService } from './integrations.service';
 import { InboxService } from './inbox.service';
 
@@ -27,7 +28,7 @@ let tg = 1900000n;
 function buildSync(registry: AdapterRegistry) {
   // h.prisma типизирован как PrismaClient; сервисы харнесса конструируются от
   // того же инстанса (он же PrismaService) — каст как в остальных e2e-тестах.
-  return new SyncService(h.prisma as never, crypto, registry);
+  return new SyncService(h.prisma as never, crypto, registry, new BalanceAnchorService(h.prisma as never));
 }
 
 function fakeRegistry() {
@@ -392,5 +393,97 @@ describe('SyncService + AlfaAdapter', () => {
     await expect(alfa.syncConnection(conn.id)).rejects.toThrow(/номера расчётного счёта/);
     const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
     expect(after.status).toBe('ERROR');
+  });
+});
+
+// ─────────────── остаток по банку и якорь начального остатка ───────────────
+
+describe('SyncService: остаток по банку → якорь начального остатка', () => {
+  /** FakeBank с заданным остатком; строки те же четыре (net +5549.50). */
+  function syncWithBalance(balance: FakeBankAdapter['balance']) {
+    const fake = new FakeBankAdapter();
+    fake.balance = balance;
+    return { fake, sync: buildSync(new AdapterRegistry(fake, { get: () => 'test' } as never)) };
+  }
+  const at = new Date('2026-07-10T12:00:00.000Z');
+
+  it('сохраняет остаток банка на подключении и выводит начальный остаток счёта', async () => {
+    const conn = await makeConnection();
+    const { sync } = syncWithBalance({ current: { amount: '20000.00', at }, openingAt: null });
+    await sync.syncConnection(conn.id);
+
+    const c = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(c.bankBalance?.toFixed(2)).toBe('20000.00');
+    expect(c.bankBalanceAt?.toISOString()).toBe(at.toISOString());
+
+    // 20000 − (15000 − 250 − 8000 − 1200.50) = 14450.50
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('14450.50');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(at.toISOString());
+  });
+
+  it('входящее сальдо выписки точнее вывода — берётся оно', async () => {
+    const conn = await makeConnection();
+    const start = new Date('2026-06-01T00:00:00.000Z');
+    const { sync } = syncWithBalance({
+      current: { amount: '20000.00', at },
+      openingAt: { amount: '777.00', date: start },
+    });
+    await sync.syncConnection(conn.id);
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('777.00');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(start.toISOString());
+  });
+
+  it('ручной ненулевой начальный остаток синк не трогает, но остаток банка сохраняет', async () => {
+    await h.prisma.account.update({
+      where: { id: seed.accountId },
+      data: { openingBalance: '1000.00', openingAnchoredAt: null },
+    });
+    const conn = await makeConnection();
+    const { sync } = syncWithBalance({ current: { amount: '20000.00', at }, openingAt: null });
+    await sync.syncConnection(conn.id);
+
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('1000.00');
+    expect(acc.openingAnchoredAt).toBeNull();
+    const c = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(c.bankBalance?.toFixed(2)).toBe('20000.00');
+  });
+
+  it('следующий синк перевыводит якорь по новому остатку (самопроверка)', async () => {
+    const conn = await makeConnection();
+    const { fake, sync } = syncWithBalance({ current: { amount: '20000.00', at }, openingAt: null });
+    await sync.syncConnection(conn.id);
+    const later = new Date('2026-07-11T12:00:00.000Z');
+    fake.balance = { current: { amount: '21000.00', at: later }, openingAt: null };
+    await sync.syncConnection(conn.id); // курсор 'done' → новых строк нет
+
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('15450.50');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(later.toISOString());
+  });
+
+  it('провайдер без остатка — синк строк как раньше, счёт не тронут', async () => {
+    const conn = await makeConnection();
+    const res = await sync.syncConnection(conn.id); // общий sync: fake.balance = null
+    expect(res.created).toBe(4);
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('0.00');
+    expect(acc.openingAnchoredAt).toBeNull();
+    const c = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(c.bankBalance).toBeNull();
+  });
+
+  it('падение метода остатка не роняет синк строк', async () => {
+    const conn = await makeConnection();
+    const fake = new FakeBankAdapter();
+    fake.fetchBalance = () => Promise.reject(new Error('403 нет прав на счета'));
+    const s = buildSync(new AdapterRegistry(fake, { get: () => 'test' } as never));
+    const res = await s.syncConnection(conn.id);
+    expect(res.created).toBe(4);
+    const c = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(c.status).toBe('ACTIVE');
+    expect(c.bankBalance).toBeNull();
   });
 });

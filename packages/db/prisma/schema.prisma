@@ -117,6 +117,12 @@ model Account {
   /// сливаются в один пул, и переводы между ними не создают приток/отток.
   class          AccountClass @default(OPERATING)
   openingBalance Decimal      @default(0) @db.Decimal(14, 2)
+  /// Когда начальный остаток был ВЫВЕДЕН из якоря (остаток по банку из API либо
+  /// сверка, принятая как якорь), а не введён руками. Null — значение ручное
+  /// (или никогда не задавалось): синк такое не трогает, если оно ненулевое.
+  /// Формула: openingBalance = остаток_по_банку − Σ(строк выписки до момента
+  /// остатка). Так остаток «по учёту» сходится с банком без ввода истории.
+  openingAnchoredAt DateTime?
   isArchived     Boolean      @default(false)
   note           String?
   createdAt      DateTime     @default(now())
@@ -1063,6 +1069,11 @@ model IntegrationConnection {
   syncCursor    String?
   lastSyncAt    DateTime?
   lastSyncError String?
+  /// Остаток счёта по данным банка на момент последнего синка (если провайдер
+  /// его отдаёт). Это «по банку» в UI — число, не зависящее от того, разобраны
+  /// строки или нет, и якорь для вывода Account.openingBalance.
+  bankBalance   Decimal?            @db.Decimal(14, 2)
+  bankBalanceAt DateTime?
   createdById   String
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt

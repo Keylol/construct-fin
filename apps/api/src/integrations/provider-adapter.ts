@@ -55,13 +55,46 @@ export interface FetchStatementInput {
   tls?: TlsMaterial | null;
 }
 
+/** Остаток счёта по данным банка на момент `at` (Decimal-строка со знаком). */
+export interface BankBalanceSnapshot {
+  amount: string;
+  at: Date;
+}
+
+export interface FetchBalanceInput {
+  token: string;
+  accountNumber?: string | null;
+  tls?: TlsMaterial | null;
+  /**
+   * С какой даты у нас есть строки выписки (backfillFrom либо дата подключения).
+   * Провайдер, умеющий отдать остаток НА НАЧАЛО этого дня, отдаёт его в
+   * `openingAt` — это точный начальный остаток счёта без вывода по формуле.
+   */
+  startFrom: Date;
+}
+
+export interface FetchBalanceResult {
+  /** Текущий остаток по банку (null — провайдер не отдал). */
+  current: BankBalanceSnapshot | null;
+  /**
+   * Остаток на начало `startFrom` (входящее сальдо выписки), если банк его
+   * отдаёт. Точнее вывода «текущий − Σ строк»: не зависит от операций в пути.
+   */
+  openingAt: { amount: string; date: Date } | null;
+}
+
 /**
  * Адаптер провайдера выписки. Реализации: FakeBankAdapter (Ф1, тесты/демо),
  * AlfaAdapter (Ф2), TbankAdapter (Ф3), WbPdfAdapter (Ф6). Чистый ввод-вывод:
  * получает токен + курсор, отдаёт нормализованные строки. Никакой записи в БД —
  * это делает SyncService.
+ *
+ * `fetchBalance` необязателен: остаток нужен для «по банку» и якоря начального
+ * остатка, но его отсутствие (провайдер не умеет, ключ без прав) не должно
+ * останавливать синк выписки — SyncService переживёт и null, и исключение.
  */
 export interface BankProviderAdapter {
   readonly provider: IntegrationProvider | 'FAKE';
   fetchStatement(input: FetchStatementInput): Promise<FetchStatementResult>;
+  fetchBalance?(input: FetchBalanceInput): Promise<FetchBalanceResult>;
 }

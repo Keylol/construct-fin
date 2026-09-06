@@ -23,6 +23,8 @@ const PUBLIC_SELECT = {
   syncCursor: true,
   lastSyncAt: true,
   lastSyncError: true,
+  bankBalance: true,
+  bankBalanceAt: true,
   createdAt: true,
   account: { select: { id: true, name: true } },
 } satisfies Prisma.IntegrationConnectionSelect;
@@ -337,6 +339,8 @@ export class IntegrationsService {
     syncCursor: string | null;
     lastSyncAt: Date | null;
     lastSyncError: string | null;
+    bankBalance: Prisma.Decimal | null;
+    bankBalanceAt: Date | null;
     createdAt: Date;
     account: { id: string; name: string };
   }) {
@@ -353,6 +357,9 @@ export class IntegrationsService {
       account: r.account,
       lastSyncAt: r.lastSyncAt?.toISOString() ?? null,
       lastSyncError: r.lastSyncError,
+      // Остаток по данным банка на последнем синке — «по банку» на карточке.
+      bankBalance: r.bankBalance ? r.bankBalance.toFixed(2) : null,
+      bankBalanceAt: r.bankBalanceAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
     };
   }

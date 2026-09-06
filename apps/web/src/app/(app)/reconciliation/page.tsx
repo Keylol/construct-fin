@@ -292,11 +292,13 @@ function CheckForm({
   const [date, setDate] = useState(defaultDate);
   const [actualBalance, setActualBalance] = useState('');
   const [note, setNote] = useState('');
+  const [anchor, setAnchor] = useState(false);
 
   useEffect(() => {
     setDate(defaultDate);
     setActualBalance('');
     setNote('');
+    setAnchor(false);
     setError(null);
   }, [open, defaultDate]);
 
@@ -311,6 +313,7 @@ function CheckForm({
         date: new Date(date).toISOString(),
         actualBalance: actualBalance.replace(',', '.'),
         note: note.trim() || undefined,
+        anchor: anchor || undefined,
       };
       await create.mutateAsync(input);
       onClose();
@@ -363,6 +366,24 @@ function CheckForm({
               placeholder="Необязательно"
             />
           </FormField>
+          {/* Счёт без API банка (карта, наличные): стартового остатка нет, и этот
+              факт — единственный способ его получить. Начальный остаток счёта
+              выводится так, чтобы остаток на конец дня сверки сошёлся с фактом. */}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={anchor}
+              onChange={(e) => setAnchor(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <span>
+              Принять как начальный остаток счёта
+              <span className="block text-xs text-muted-foreground">
+                Начальный остаток будет выведен из этой цифры: выписка по счёту должна быть
+                загружена по эту дату.
+              </span>
+            </span>
+          </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </ModalBody>
         <ModalFooter>

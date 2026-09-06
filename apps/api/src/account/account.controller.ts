@@ -38,6 +38,12 @@ export class AccountController {
     return this.service.list(ws.workspaceId, query);
   }
 
+  /** Остатки по счетам: по учёту / по банку / не разобрано / расхождение. */
+  @Get('balances')
+  balances(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.service.balances(ws.workspaceId);
+  }
+
   @Post()
   create(
     @CurrentWorkspace() ws: WorkspaceContext,

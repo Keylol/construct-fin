@@ -9,6 +9,8 @@ export interface CreateCheckInput {
   date: string;
   actualBalance: string;
   note?: string;
+  /** Принять факт как якорь начального остатка счёта. */
+  anchor?: boolean;
 }
 
 function buildQuery(params: Record<string, string | undefined>): string {
