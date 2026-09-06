@@ -2,13 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { Home, ClipboardList, Receipt, Menu, Plus, type LucideIcon } from '@/components/ui/icons';
+import { usePathname } from 'next/navigation';
+import { Home, ClipboardList, Receipt, Menu as MenuIcon, Plus, type LucideIcon } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
-import { Sheet, SheetContent } from '@/components/ui/Sheet';
-import { Sidebar } from './Sidebar';
-import { CreateActionsContent, CREATE_POPOVER_CLASSES } from './create-actions';
+import { Modal, ModalBody, ModalContent, ModalHeader, ModalTitle } from '@/components/ui/Modal';
+import { NavList } from './Sidebar';
+import { CreateMenu } from './CreateMenu';
 
 const TABS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: '/dashboard', label: 'Главная', icon: Home },
@@ -19,15 +18,13 @@ const TABS_RIGHT: { href: string; label: string; icon: LucideIcon }[] = [
 ];
 
 /**
- * Нижний таб-бар Mini App (решение №22 блица, отдельная М-волна): навигация
- * одним пальцем на <md. Центральная кнопка «+» — глобальное создание
- * (заменяет FAB), «Ещё» открывает полное меню drawer-ом. Учитывает
- * safe-area снизу (Telegram/iOS).
+ * Нижний таб-бар Mini App (решение №22 блица): навигация одним пальцем на
+ * <md. Центральная кнопка «+» — то же меню создания, что в шапке; «Ещё» —
+ * полное меню разделов в окне снизу (Modal на телефоне — панель), а не
+ * отдельной шторкой со своим кодом. Учитывает safe-area снизу.
  */
 export function BottomTabBar() {
   const pathname = usePathname() ?? '/';
-  const router = useRouter();
-  const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + '/');
@@ -41,8 +38,7 @@ export function BottomTabBar() {
         key={t.href}
         href={t.href as Parameters<typeof Link>[0]['href']}
         className={cn(
-          'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5',
-          'transition-colors',
+          'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-colors',
           active ? 'text-primary' : 'text-muted-foreground',
         )}
       >
@@ -63,10 +59,11 @@ export function BottomTabBar() {
       >
         {TABS.map(tab)}
 
-        {/* Центральная кнопка «+» — глобальное создание */}
         <div className="flex flex-1 items-center justify-center">
-          <PopoverPrimitive.Root open={createOpen} onOpenChange={setCreateOpen}>
-            <PopoverPrimitive.Trigger asChild>
+          <CreateMenu
+            side="top"
+            align="center"
+            trigger={
               <button
                 type="button"
                 aria-label="Создать"
@@ -78,28 +75,12 @@ export function BottomTabBar() {
               >
                 <Plus className="h-6 w-6" />
               </button>
-            </PopoverPrimitive.Trigger>
-            <PopoverPrimitive.Portal>
-              <PopoverPrimitive.Content
-                side="top"
-                align="center"
-                sideOffset={10}
-                className={CREATE_POPOVER_CLASSES}
-              >
-                <CreateActionsContent
-                  onPick={(href) => {
-                    setCreateOpen(false);
-                    router.push(href as Parameters<typeof router.push>[0]);
-                  }}
-                />
-              </PopoverPrimitive.Content>
-            </PopoverPrimitive.Portal>
-          </PopoverPrimitive.Root>
+            }
+          />
         </div>
 
         {TABS_RIGHT.map(tab)}
 
-        {/* «Ещё» — полное меню drawer-ом */}
         <button
           type="button"
           onClick={() => setMoreOpen(true)}
@@ -108,16 +89,21 @@ export function BottomTabBar() {
             !knownActive ? 'text-primary' : 'text-muted-foreground',
           )}
         >
-          <Menu className="h-5 w-5" aria-hidden />
+          <MenuIcon className="h-5 w-5" aria-hidden />
           <span className="text-[10px] font-medium leading-none">Ещё</span>
         </button>
       </nav>
 
-      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-        <SheetContent side="left" className="w-60 p-0">
-          <Sidebar onNavigate={() => setMoreOpen(false)} />
-        </SheetContent>
-      </Sheet>
+      <Modal open={moreOpen} onOpenChange={setMoreOpen}>
+        <ModalContent size="md">
+          <ModalHeader>
+            <ModalTitle>Разделы</ModalTitle>
+          </ModalHeader>
+          <ModalBody className="p-3">
+            <NavList onNavigate={() => setMoreOpen(false)} expandAll />
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </>
   );
 }
