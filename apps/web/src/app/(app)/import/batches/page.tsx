@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Upload, History, RotateCcw } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -74,12 +74,9 @@ export default function ImportBatchesPage() {
     {
       key: 'status',
       header: 'Статус',
-      cell: (b) =>
-        b.deletedAt ? (
-          <Badge variant="muted">Отменён</Badge>
-        ) : (
-          <Badge variant="outline">Активен</Badge>
-        ),
+      cell: (b) => (
+        <StatusDot tone={b.deletedAt ? 'muted' : 'success'} label={b.deletedAt ? 'Отменён' : 'Активен'} />
+      ),
       className: 'w-[110px]',
     },
     {
@@ -140,9 +137,9 @@ export default function ImportBatchesPage() {
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate font-medium">{b.filename}</span>
                 {b.deletedAt ? (
-                  <Badge variant="muted">Отменён</Badge>
+                  <StatusDot tone="muted" label="Отменён" />
                 ) : (
-                  <Badge variant="outline">Активен</Badge>
+                  <StatusDot tone="success" label="Активен" />
                 )}
               </div>
               <div className="text-xs text-muted-foreground tabular-nums">

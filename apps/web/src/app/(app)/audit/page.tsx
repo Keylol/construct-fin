@@ -10,27 +10,28 @@ import { formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge, type BadgeProps } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 
 // Человекочитаемые подписи и визуальный вес действий аудита.
 // Ключи синхронны с AuditAction в apps/api/src/audit/audit.service.ts.
-const ACTION_META: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
-  'order.finalize': { label: 'Заказ закрыт', variant: 'success' },
-  'order.cancel': { label: 'Заказ отменён', variant: 'destructive' },
-  'order.reopen': { label: 'Заказ переоткрыт', variant: 'secondary' },
-  'order.restore': { label: 'Заказ восстановлен', variant: 'secondary' },
-  'order.delete': { label: 'Заказ удалён', variant: 'destructive' },
-  'order.refund': { label: 'Возврат по заказу', variant: 'destructive' },
-  'period.close': { label: 'Период закрыт', variant: 'success' },
-  'period.reopen': { label: 'Период переоткрыт', variant: 'secondary' },
-  'purchase.register': { label: 'Закупка', variant: 'success' },
-  'warehouse.supplier-return': { label: 'Возврат поставщику', variant: 'destructive' },
-  'transaction.update': { label: 'Операция изменена', variant: 'secondary' },
-  'transaction.delete': { label: 'Операция удалена', variant: 'destructive' },
+type Tone = 'success' | 'destructive' | 'primary' | 'muted';
+const ACTION_META: Record<string, { label: string; tone: Tone }> = {
+  'order.finalize': { label: 'Заказ закрыт', tone: 'success' },
+  'order.cancel': { label: 'Заказ отменён', tone: 'destructive' },
+  'order.reopen': { label: 'Заказ переоткрыт', tone: 'primary' },
+  'order.restore': { label: 'Заказ восстановлен', tone: 'primary' },
+  'order.delete': { label: 'Заказ удалён', tone: 'destructive' },
+  'order.refund': { label: 'Возврат по заказу', tone: 'destructive' },
+  'period.close': { label: 'Период закрыт', tone: 'success' },
+  'period.reopen': { label: 'Период переоткрыт', tone: 'primary' },
+  'purchase.register': { label: 'Закупка', tone: 'success' },
+  'warehouse.supplier-return': { label: 'Возврат поставщику', tone: 'destructive' },
+  'transaction.update': { label: 'Операция изменена', tone: 'primary' },
+  'transaction.delete': { label: 'Операция удалена', tone: 'destructive' },
 };
 
 function actionMeta(action: string) {
-  return ACTION_META[action] ?? { label: action, variant: 'muted' as const };
+  return ACTION_META[action] ?? { label: action, tone: 'muted' as const };
 }
 
 function hasDiff(diff: unknown): diff is Record<string, unknown> {
@@ -58,7 +59,7 @@ export default function AuditPage() {
       header: 'Действие',
       cell: (r) => {
         const m = actionMeta(r.action);
-        return <Badge variant={m.variant}>{m.label}</Badge>;
+        return <StatusDot tone={m.tone} label={m.label} />;
       },
     },
     {
