@@ -4,7 +4,15 @@ import { useEffect, useState } from 'react';
 import { Row } from '@/components/orders/order-shared';
 import { Button } from '@/components/ui/Button';
 import { Money } from '@/components/ui/Money';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
+import {
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { toast } from '@/components/ui/Toaster';
 import { Plus, Trash2 } from '@/components/ui/icons';
@@ -12,6 +20,7 @@ import { useSetOrderSchedule } from '@/hooks/useOrders';
 import type { Order } from '@/lib/types';
 import { D, add, parseAmountInput, toMoneyString } from '@construct/shared';
 import { todayInput } from '@/lib/periods';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 
 interface ScheduleRowDraft {
   dueDate: string; // yyyy-mm-dd
@@ -45,6 +54,12 @@ export function ScheduleModal({
     );
     setError(null);
   }, [open, order]);
+
+  // Несохранённый ввод: строки против графика, с которым окно открылось.
+  const initialRows = JSON.stringify(
+    order.schedule?.entries.map((e) => ({ dueDate: e.dueDate.slice(0, 10), amount: e.amount, note: e.note ?? '' })) ?? [],
+  );
+  const dirty = rows.length > 0 && JSON.stringify(rows) !== initialRows && !(rows.length === 1 && !rows[0]!.amount && !order.schedule);
 
   // Σ-превью черновика через Decimal (введённое сравнивается с итогом заказа).
   const planned = rows.reduce((acc, r) => {
@@ -96,13 +111,12 @@ export function ScheduleModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>График платежей · {order.number}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-2">
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
+      <ModalContent size="md" onConfirm={save}>
+        <ModalHeader>
+          <ModalTitle>График платежей · {order.number}</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
           {rows.map((r, i) => (
             <div key={i} className="flex items-center gap-2">
               <Input
@@ -115,8 +129,7 @@ export function ScheduleModal({
                 }
                 className="w-[150px]"
               />
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 placeholder="Сумма"
                 value={r.amount}
                 onChange={(e) =>
@@ -171,9 +184,9 @@ export function ScheduleModal({
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
+        </ModalBody>
 
-        <DialogFooter>
+        <ModalFooter>
           {order.schedule && (
             <Button
               variant="ghost"
@@ -184,14 +197,16 @@ export function ScheduleModal({
               Убрать график
             </Button>
           )}
-          <Button variant="secondary" onClick={onClose} disabled={setSchedule.isPending}>
-            Отмена
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" disabled={setSchedule.isPending}>
+              Отмена
+            </Button>
+          </ModalClose>
           <Button onClick={save} disabled={setSchedule.isPending}>
             {setSchedule.isPending ? 'Сохранение…' : 'Сохранить'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

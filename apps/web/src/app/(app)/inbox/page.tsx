@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Inbox as InboxIcon, Sparkles } from '@/components/ui/icons';
+import { Suspense, useMemo, useRef } from 'react';
+import { Inbox as InboxIcon, Sparkles, RotateCcw } from '@/components/ui/icons';
 import { LoadMore } from '@/components/ui/LoadMore';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -11,7 +11,9 @@ import { useInbox, useApplyRules, useInboxCount } from '@/hooks/useInbox';
 import type { ApplyRulesResult, BankLineStatus } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { SearchField } from '@/components/ui/SearchField';
+import { FilterField } from '@/components/ui/FilterField';
+import { FilterBar } from '@/components/ui/FilterBar';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -22,6 +24,21 @@ import { toast } from '@/components/ui/Toaster';
 import { InboxRow } from '@/components/inbox/InboxRow';
 import { TransferSuggestions } from '@/components/inbox/TransferSuggestions';
 import { PlannedSuggestions } from '@/components/inbox/PlannedSuggestions';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
+
+const DEFAULTS = { tab: 'NEW', q: '', direction: '', accountId: '' };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
+export default function InboxPage() {
+  return (
+    <Suspense>
+      <InboxView />
+    </Suspense>
+  );
+}
 
 // Вкладки экрана; DISMISSED вкладки не имеет — подсказку для него не держим.
 const TAB_HINTS: Partial<Record<BankLineStatus, string>> = {
@@ -32,15 +49,22 @@ const TAB_HINTS: Partial<Record<BankLineStatus, string>> = {
     'Обработанные строки, а также узнанные при загрузке — те, что совпали с операциями, внесёнными вами раньше. Отмена снимает только связь: сама операция остаётся.',
 };
 
-export default function InboxPage() {
+function InboxView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [tab, setTab] = useState<BankLineStatus>('NEW');
-  // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
-  const [search, setSearch] = useState('');
-  const [direction, setDirection] = useState<'' | 'INCOME' | 'EXPENSE'>('');
-  const [accountId, setAccountId] = useState('');
+  // Вкладка и фильтры — в адресе: строк за месяц под три сотни, и разрез
+  // должен переживать F5 и уходить ссылкой.
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const tab = (['NEW', 'AUTO_POSTED', 'RESOLVED'] as string[]).includes(filters.tab)
+    ? (filters.tab as BankLineStatus)
+    : 'NEW';
+  const setTab = (t: BankLineStatus) => setFilters({ ...filters, tab: t });
+  const search = filters.q;
+  const direction = filters.direction as '' | 'INCOME' | 'EXPENSE';
+  const accountId = filters.accountId;
   const q = useDebouncedValue(search);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef });
 
   const accounts = useAccounts(wsId);
   const inbox = useInbox(wsId, tab, {
@@ -119,32 +143,37 @@ export default function InboxPage() {
           </Tabs>
         </div>
 
-        {/* Поиск и фильтры. Строк за месяц бывает под три сотни, и без них нужную
-            находили прокруткой через «Показать ещё». */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Сумма, назначение, контрагент или ИНН"
-            className="w-full sm:w-80"
-            aria-label="Поиск по строкам"
-          />
+      </div>
+
+      {/* Поиск и фильтры. Строк за месяц бывает под три сотни, и без них нужную
+          находили прокруткой через «Загрузить ещё». */}
+      <FilterBar>
+        <div className="min-w-[220px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Сумма, назначение, контрагент или ИНН"
+            />
+          </FilterField>
+        </div>
+        <FilterField label="Направление">
           <Select
             value={direction}
-            onChange={(e) => setDirection(e.target.value as '' | 'INCOME' | 'EXPENSE')}
-            className="w-auto"
-            aria-label="Направление"
+            onChange={(e) => setFilters({ ...filters, direction: e.target.value })}
+            className="h-9 w-[180px]"
           >
             <option value="">Приходы и расходы</option>
             <option value="INCOME">Только приходы</option>
             <option value="EXPENSE">Только расходы</option>
           </Select>
+        </FilterField>
+        <FilterField label="Счёт">
           <Select
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="w-auto"
-            aria-label="Счёт"
+            onChange={(e) => setFilters({ ...filters, accountId: e.target.value })}
+            className="h-9 w-[180px]"
           >
             <option value="">Все счета</option>
             {(accounts.data ?? [])
@@ -155,20 +184,19 @@ export default function InboxPage() {
                 </option>
               ))}
           </Select>
-          {filtersActive && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setSearch('');
-                setDirection('');
-                setAccountId('');
-              }}
-            >
-              Сбросить
-            </Button>
-          )}
-        </div>
+        </FilterField>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })}
+          className="self-end"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
+      </FilterBar>
 
+      <div className="px-6 py-4">
         {/* Подсказки переводов и планов считаются по всему списку, а не по
             отфильтрованному — при активном поиске прячем, чтобы не сбивать с толку. */}
         {tab === 'NEW' && !filtersActive && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
 import { OrderFormModal } from '@/components/orders/OrderFormModal';
 import { OrderGroupTile, OrderTile } from '@/components/orders/OrderTile';
@@ -10,13 +10,14 @@ import { LoadMore } from '@/components/ui/LoadMore';
 import { type Column, DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FilterBar } from '@/components/ui/FilterBar';
-import { Input } from '@/components/ui/Input';
+import { SearchField } from '@/components/ui/SearchField';
+import { FilterField } from '@/components/ui/FilterField';
 import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
-import { ClipboardList, Plus, X } from '@/components/ui/icons';
+import { ClipboardList, Plus, X, RotateCcw } from '@/components/ui/icons';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -25,7 +26,12 @@ import { useOrders } from '@/hooks/useOrders';
 import { useUrlDialog } from '@/hooks/useUrlDialog';
 import { formatDate } from '@/lib/dates';
 import type { Order, OrderStatus } from '@/lib/types';
-import { D, add, formatRub, toMoneyString } from '@construct/shared';
+import { D, add, toMoneyString } from '@construct/shared';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+
+const DEFAULTS = { q: '', status: '', client: '', closedFrom: '', closedTo: '' };
+const FILTERS = flatCodec(DEFAULTS);
 
 // useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function OrdersPage() {
@@ -39,37 +45,19 @@ export default function OrdersPage() {
 function OrdersView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
-  // Фильтр по клиенту — приходит переходом с его плитки (?client=<id>).
-  const [clientFilter, setClientFilter] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  // IJ9 drill-down «Выручка» из ОПиУ: период по дате ЗАКРЫТИЯ заказа
-  // (?closedFrom&closedTo&status=DONE). Читаем window.location в эффекте
-  // (как useCreateFromUrl) — без Suspense и hydration-рассинхрона.
-  const [closedRange, setClosedRange] = useState<{ from?: string; to?: string } | null>(null);
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const from = sp.get('closedFrom') || undefined;
-    const to = sp.get('closedTo') || undefined;
-    if (from || to) {
-      setClosedRange({ from, to });
-      const st = sp.get('status');
-      if (st === 'OPEN' || st === 'DONE' || st === 'CANCELLED') setStatusFilter(st);
-    }
-  }, []);
-  // Снятие чипа чистит и URL — иначе refresh вернул бы фильтр из адреса.
-  const clearClosedRange = () => {
-    setClosedRange(null);
-    const sp = new URLSearchParams(window.location.search);
-    sp.delete('closedFrom');
-    sp.delete('closedTo');
-    const qs = sp.toString();
-    window.history.replaceState(
-      null,
-      '',
-      qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
-    );
-  };
+  // Разрез списка живёт в адресе: статус, поиск, клиент (переход с его плитки),
+  // период закрытия (IJ9 drill-down «Выручка» из ОПиУ: ?closedFrom&closedTo&status=DONE).
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const statusFilter = (['OPEN', 'DONE', 'CANCELLED'] as string[]).includes(filters.status)
+    ? (filters.status as OrderStatus)
+    : '';
+  const clientFilter = filters.client || null;
+  const search = filters.q;
+  const closedRange =
+    filters.closedFrom || filters.closedTo
+      ? { from: filters.closedFrom || undefined, to: filters.closedTo || undefined }
+      : null;
+  const clearClosedRange = () => setFilters({ ...filters, closedFrom: '', closedTo: '' });
   // В инпуте — сырой search, в запрос уходит значение после паузы в наборе.
   const debouncedSearch = useDebouncedValue(search);
   const orders = useOrders(wsId, {
@@ -145,26 +133,6 @@ function OrdersView() {
   // «/» — в поиск, «n» — новый заказ: заведение архива идёт пачкой.
   const searchRef = useRef<HTMLInputElement>(null);
   useListHotkeys({ searchRef, onNew: () => setCreating(true) });
-
-  /**
-   * Переход с плитки клиента: ?client=<id> оставляет на экране только его
-   * заказы. Экран клиента между кликом и делом не нужен — владелец идёт к
-   * заказу, а не к справочнику. Параметр разовый: после применения убираем его
-   * из адреса, чтобы «назад» не возвращал фильтр. Сам заказ открывается уже не
-   * так, а постоянным ?order=<id> (useUrlDialog выше).
-   */
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const sp = new URLSearchParams(window.location.search);
-    const client = sp.get('client');
-    if (!client) return;
-    setClientFilter(client);
-    sp.delete('client');
-    const qs = sp.toString();
-    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
-    // Разовый триггер на маунте — как в useCreateFromUrl.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (!current) return null;
 
@@ -256,27 +224,29 @@ function OrdersView() {
       />
 
       <FilterBar>
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Поиск</span>
-          <Input
+        <FilterField label="Поиск">
+          <SearchField
             ref={searchRef}
-            type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Номер или название"
-            className="h-9 w-[220px]"
+            onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+            placeholder="Номер, название или телефон"
+            className="w-[240px]"
           />
-        </label>
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Статус</span>
+        </FilterField>
+        <FilterField label="Статус">
           <Select
             value={statusFilter}
             onChange={(e) => {
               const st = e.target.value as OrderStatus | '';
-              setStatusFilter(st);
               // Период закрытия совместим только с DONE (у OPEN/CANCELLED нет
               // closedAt — фильтр дал бы пустой список без объяснения).
-              if (closedRange && (st === 'OPEN' || st === 'CANCELLED')) clearClosedRange();
+              const dropRange = !!closedRange && (st === 'OPEN' || st === 'CANCELLED');
+              setFilters({
+                ...filters,
+                status: st,
+                closedFrom: dropRange ? '' : filters.closedFrom,
+                closedTo: dropRange ? '' : filters.closedTo,
+              });
             }}
             className="h-9 w-[150px]"
           >
@@ -285,11 +255,24 @@ function OrdersView() {
             <option value="DONE">Закрыт</option>
             <option value="CANCELLED">Отменён</option>
           </Select>
-        </label>
+        </FilterField>
+        {/* Чип клиента — приходит переходом с его плитки, здесь его можно только снять. */}
+        {clientFilter && (
+          <FilterField label="Клиент">
+            <button
+              type="button"
+              onClick={() => setFilters({ ...filters, client: '' })}
+              title="Показать заказы всех клиентов"
+              className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
+            >
+              {orderRows[0]?.client?.name ?? 'Выбранный клиент'}
+              <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            </button>
+          </FilterField>
+        )}
         {/* IJ9: чип периода закрытия — приходит только drill-down'ом из ОПиУ */}
         {closedRange && (
-          <label className="flex flex-col text-xs text-muted-foreground">
-            <span className="pb-1">Закрыты в периоде</span>
+          <FilterField label="Закрыты в периоде">
             <button
               type="button"
               onClick={clearClosedRange}
@@ -301,8 +284,12 @@ function OrdersView() {
               {closedRange.to ? formatDate(closedRange.to) : '…'}
               <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
             </button>
-          </label>
+          </FilterField>
         )}
+        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
         <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
@@ -366,8 +353,8 @@ function OrdersView() {
               </TileGrid>
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm">
                 <span className="text-muted-foreground">Итого по видимым</span>
-                <span className="tabular-nums">
-                  оплачено {formatRub(listTotals.paid)} из {formatRub(listTotals.total)}
+                <span>
+                  оплачено <Money value={listTotals.paid} /> из <Money value={listTotals.total} />
                 </span>
               </div>
             </>
@@ -398,8 +385,8 @@ function OrdersView() {
           }
           footer={{
             number: 'Итого по видимым',
-            paid: formatRub(listTotals.paid),
-            total: formatRub(listTotals.total),
+            paid: <Money value={listTotals.paid} />,
+            total: <Money value={listTotals.total} />,
           }}
           mobileCards={(o) => (
             <div className="space-y-1">

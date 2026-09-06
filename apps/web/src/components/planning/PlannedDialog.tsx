@@ -10,12 +10,14 @@ import { FormField } from '@/components/ui/FormField';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -150,12 +152,12 @@ export function PlannedDialog({
       : 'Новый разовый платёж';
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[440px]">
-        <DialogHeader>
-          <DialogTitle>{heading}</DialogTitle>
-        </DialogHeader>
-        <div className="max-h-[70vh] space-y-3 overflow-y-auto py-2">
+    <Modal open onOpenChange={(o) => !o && onClose()} dirty={title !== (editing?.title ?? '') || amount !== (editing?.amount ?? presetAmount ?? '') || note !== (editing?.note ?? '')}>
+      <ModalContent size="md" onConfirm={submit}>
+        <ModalHeader>
+          <ModalTitle>{heading}</ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
           {isSalary && (
             <FormField label="Сотрудник" required>
               <Combobox
@@ -233,16 +235,16 @@ export function PlannedDialog({
           <FormField label="Заметка">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
           </FormField>
-        </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
+        </ModalBody>
+        <ModalFooter>
+          <ModalClose asChild>
+            <Button variant="secondary">Отмена</Button>
+          </ModalClose>
           <Button onClick={submit} disabled={!valid} loading={pending}>
             {editing ? 'Сохранить' : 'Запланировать'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ModalFooter>
+      </ModalContent>
       <QuickCreateCounterpartyDialog
         wsId={wsId}
         role="EMPLOYEE"
@@ -251,6 +253,6 @@ export function PlannedDialog({
         onOpenChange={(o) => setQuickEmp((s) => ({ ...s, open: o }))}
         onCreated={(id) => setCounterpartyId(id)}
       />
-    </Dialog>
+    </Modal>
   );
 }

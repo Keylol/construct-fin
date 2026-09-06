@@ -13,7 +13,7 @@ import {
   useDeleteAccount,
   type CreateAccountInput,
 } from '@/hooks/useAccounts';
-import type { Account, AccountBalance, AccountType } from '@/lib/types';
+import type { Account, AccountType } from '@/lib/types';
 import { formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
