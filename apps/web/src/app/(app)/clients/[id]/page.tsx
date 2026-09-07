@@ -1,31 +1,89 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardList, ArrowRight } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
+import { D, formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { useOrders } from '@/hooks/useOrders';
 import { useMarginReport, useReceivables } from '@/hooks/useTradeReports';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { PAY_LABEL, PAY_TONE, STATUS_LABEL, STATUS_TONE } from '@/components/orders/order-shared';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/dates';
 import { txDrilldownHref } from '@/lib/tx-filters';
+import type { Order } from '@/lib/types';
 
 // typedRoutes: динамические href собираются строкой — каст к типу href из Link.
 type LinkHref = Parameters<typeof Link>[0]['href'];
 
+const ORDER_COLUMNS: Column<Order>[] = [
+  {
+    key: 'number',
+    header: 'Номер',
+    cell: (o) => (
+      <div>
+        <div className="font-medium">{o.number}</div>
+        {o.title && (
+          <div className="max-w-[220px] truncate text-xs text-muted-foreground">{o.title}</div>
+        )}
+        <div className="text-xs tabular-nums text-muted-foreground">{formatDate(o.createdAt)}</div>
+      </div>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Статус',
+    cell: (o) => <StatusDot tone={STATUS_TONE[o.status]} label={STATUS_LABEL[o.status]} />,
+  },
+  {
+    key: 'pay',
+    header: 'Оплата',
+    cell: (o) => <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} />,
+  },
+  {
+    key: 'paid',
+    header: 'Оплачено',
+    align: 'right',
+    cell: (o) => <Money value={o.paidAmount} tone="plain" className="text-muted-foreground" />,
+  },
+  {
+    key: 'total',
+    header: 'Сумма',
+    align: 'right',
+    cell: (o) => <Money value={o.totalAmount} className="font-medium" />,
+  },
+];
+
+const orderCard = (o: Order) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div className="min-w-0">
+      <div className="truncate font-medium">
+        {o.number}
+        {o.title && <span className="text-muted-foreground"> · {o.title}</span>}
+      </div>
+      <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+        <span>{formatDate(o.createdAt)}</span>
+        <StatusDot tone={STATUS_TONE[o.status]} label={STATUS_LABEL[o.status]} className="text-xs" />
+        <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} className="text-xs" />
+      </div>
+    </div>
+    <Money value={o.totalAmount} className="font-semibold" />
+  </div>
+);
+
 export default function ClientCardPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
 
@@ -104,48 +162,30 @@ export default function ClientCardPage() {
         )}
 
         {/* KPI: выручка/прибыль за месяц + долг */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <KpiRow loading={marginQ.isLoading || receivablesQ.isLoading} count={3}>
           <KpiCard
             label="Выручка за месяц"
-            value={
-              marginQ.isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                formatRub(marginRow?.revenue ?? '0')
-              )
-            }
+            value={<Money value={marginRow?.revenue ?? '0'} />}
             tone="positive"
           />
           <KpiCard
             label="Валовая прибыль за месяц"
-            value={
-              marginQ.isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                formatRub(marginRow?.margin ?? '0')
-              )
-            }
-            tone={Number(marginRow?.margin ?? 0) >= 0 ? 'positive' : 'negative'}
+            value={<Money value={marginRow?.margin ?? '0'} />}
+            tone={D(marginRow?.margin ?? 0).gte(0) ? 'positive' : 'negative'}
           />
           <KpiCard
             label="Дебиторская задолженность"
-            value={
-              receivablesQ.isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                formatRub(receivableRow?.due ?? '0')
-              )
-            }
-            tone={Number(receivableRow?.due ?? 0) > 0 ? 'negative' : 'neutral'}
+            value={<Money value={receivableRow?.due ?? '0'} />}
+            tone={D(receivableRow?.due ?? 0).gt(0) ? 'negative' : 'neutral'}
             hint={overdue ? `просрочено ${formatRub(overdue)}` : undefined}
           />
-        </div>
+        </KpiRow>
         {(marginQ.isError || receivablesQ.isError) && (
           <p className="text-xs text-destructive">Часть показателей не загрузилась.</p>
         )}
 
-        {/* Заказы клиента */}
-        <Card className="!p-0">
+        {/* Заказы клиента: строка открывает окно заказа на экране заказов. */}
+        <Card className="overflow-hidden !p-0">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="text-sm font-semibold">Заказы</div>
             <Button asChild variant="ghost" size="sm">
@@ -154,67 +194,25 @@ export default function ClientCardPage() {
               </Link>
             </Button>
           </div>
-          {ordersQ.isLoading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : ordersQ.isError ? (
-            <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">Не удалось загрузить заказы.</p>
-              <Button variant="secondary" size="sm" onClick={() => ordersQ.refetch()}>
-                Повторить
-              </Button>
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="px-4 py-8">
+          <DataTable
+            data={orders}
+            columns={ORDER_COLUMNS}
+            rowKey={(o) => o.id}
+            onRowClick={(o) =>
+              router.push(`/orders?order=${o.id}` as Parameters<typeof router.push>[0])
+            }
+            loading={ordersQ.isLoading}
+            error={ordersQ.error}
+            onRetry={() => ordersQ.refetch()}
+            empty={
               <EmptyState
                 icon={ClipboardList}
                 title="Заказов нет"
                 hint="У этого клиента пока нет заказов."
               />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-base">
-                <thead className="border-b border-border">
-                  <tr className="text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-4 py-2 font-medium">Номер</th>
-                    <th className="px-4 py-2 font-medium">Статус</th>
-                    <th className="px-4 py-2 font-medium">Оплата</th>
-                    <th className="px-4 py-2 text-right font-medium">Оплачено</th>
-                    <th className="px-4 py-2 text-right font-medium">Сумма</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2">
-                        <div className="font-medium">{o.number}</div>
-                        {o.title && (
-                          <div className="max-w-[220px] truncate text-xs text-muted-foreground">
-                            {o.title}
-                          </div>
-                        )}
-                        <div className="text-xs tabular-nums text-muted-foreground">
-                          {formatDate(o.createdAt)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <StatusDot tone={STATUS_TONE[o.status]} label={STATUS_LABEL[o.status]} />
-                      </td>
-                      <td className="px-4 py-2">
-                        <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} />
-                      </td>
-                      <td className="px-4 py-2 text-right text-muted-foreground"><Money value={o.paidAmount} tone="plain" /></td>
-                      <td className="px-4 py-2 text-right font-medium"><Money value={o.totalAmount} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            }
+            mobileCards={orderCard}
+          />
         </Card>
       </div>
     </>

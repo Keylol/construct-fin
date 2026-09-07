@@ -6,7 +6,6 @@
  * карточка заказа и график платежей. Вынесено из page.tsx, чтобы список, форма
  * и карточка ссылались на один словарь, а не расходились по копиям.
  */
-import type { BadgeProps } from '@/components/ui/Badge';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import type { Order, OrderPaymentState, OrderStatus, ScheduleEntryStatus } from '@/lib/types';
@@ -53,9 +52,9 @@ export const SCHED_LABEL: Record<ScheduleEntryStatus, string> = {
   PENDING: 'Ожидается',
   OVERDUE: 'Просрочен',
 };
-export const SCHED_VARIANT: Record<ScheduleEntryStatus, BadgeProps['variant']> = {
+export const SCHED_TONE: Record<ScheduleEntryStatus, StatusTone> = {
   PAID: 'success',
-  PARTIAL: 'outline',
+  PARTIAL: 'warning',
   PENDING: 'muted',
   OVERDUE: 'destructive',
 };

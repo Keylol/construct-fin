@@ -16,7 +16,7 @@ import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { Select } from '@/components/ui/Select';
-import { PeriodField } from '@/components/reports/PeriodPicker';
+import { FilterField } from '@/components/ui/FilterField';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useForecast } from '@/hooks/usePlanning';
 import { formatDate } from '@/lib/dates';
@@ -52,7 +52,7 @@ export function ForecastCard({ wsId }: { wsId: string }) {
         <h2 className="text-sm font-semibold text-foreground">Прогноз остатка</h2>
         {/* Здесь период смотрит ВПЕРЁД — это горизонт прогноза, а не «период
             назад» из отчётов. Оболочка та же, набор значений свой. */}
-        <PeriodField label="Горизонт">
+        <FilterField label="Горизонт">
           <Select
             value={String(days)}
             onChange={(e) => setDays(Number(e.target.value))}
@@ -63,7 +63,7 @@ export function ForecastCard({ wsId }: { wsId: string }) {
             <option value="90">90 дней</option>
             <option value="180">180 дней</option>
           </Select>
-        </PeriodField>
+        </FilterField>
       </div>
 
       {query.isLoading || !f ? (

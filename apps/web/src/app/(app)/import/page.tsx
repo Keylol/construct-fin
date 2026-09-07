@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowRight, Check, History, Upload } from '@/components/ui/icons';
-import { formatRub } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
-import { Badge } from '@/components/ui/Badge';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { Money } from '@/components/ui/Money';
 import { FormField } from '@/components/ui/FormField';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -21,6 +22,98 @@ import type { PreviewResult } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { plural } from '@/lib/plural';
 import { ACCOUNT_TYPE_LABEL, IMPORT_SOURCE_LABEL } from '@/lib/labels';
+
+type PreviewRow = PreviewResult['rows'][number];
+
+// Флаги строки: дубликат и «уже учтено чеком WB» не импортируются, ошибка —
+// строка не распознана. Точка-статус вместо пилюль (решение №15).
+function previewFlags(r: PreviewRow) {
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {r.isDuplicate && <StatusDot tone="muted" label="дубликат" />}
+      {r.receiptMatch && <StatusDot tone="muted" label="проведено по чеку WB" />}
+      {r.errors.length > 0 && <StatusDot tone="destructive" label="ошибка" />}
+    </span>
+  );
+}
+
+const PREVIEW_COLUMNS: Column<PreviewRow>[] = [
+  {
+    key: 'idx',
+    header: '#',
+    cell: (r) => <span className="text-muted-foreground">{r.rawIndex}</span>,
+    className: 'w-[60px]',
+  },
+  {
+    key: 'date',
+    header: 'Дата',
+    cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.date.slice(0, 10)}</span>,
+    className: 'w-[110px]',
+  },
+  {
+    key: 'amount',
+    header: 'Сумма',
+    align: 'right',
+    cell: (r) => (
+      <span
+        className={cn(
+          'whitespace-nowrap font-medium',
+          r.type === 'INCOME' ? 'text-success' : 'text-destructive',
+        )}
+      >
+        {r.type === 'INCOME' ? '+' : '−'} <Money value={r.amount} tone="plain" />
+      </span>
+    ),
+    className: 'w-[150px]',
+  },
+  {
+    key: 'type',
+    header: 'Тип',
+    cell: (r) => (
+      <span className="text-muted-foreground">{r.type === 'INCOME' ? 'Доход' : 'Расход'}</span>
+    ),
+    className: 'w-[90px]',
+  },
+  {
+    key: 'counterparty',
+    header: 'Контрагент',
+    cell: (r) => (
+      <span className="block max-w-[200px] truncate" title={r.counterpartyName ?? ''}>
+        {r.counterpartyName ?? '—'}
+        {r.resolvedCounterpartyId && (
+          <span className="ml-1.5 text-xs text-muted-foreground">связан</span>
+        )}
+      </span>
+    ),
+  },
+  {
+    key: 'description',
+    header: 'Описание',
+    cell: (r) => (
+      <span className="block truncate" title={r.description ?? ''}>
+        {r.description ?? '—'}
+      </span>
+    ),
+    className: 'w-full max-w-0',
+  },
+  { key: 'flags', header: 'Флаг', cell: previewFlags, className: 'w-[200px]' },
+];
+
+const previewCard = (r: PreviewRow) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div className="min-w-0">
+      <div className="truncate font-medium">{r.description ?? r.counterpartyName ?? '—'}</div>
+      <div className="text-xs text-muted-foreground">
+        {r.date.slice(0, 10)}
+        {r.counterpartyName ? ` · ${r.counterpartyName}` : ''}
+      </div>
+      {previewFlags(r)}
+    </div>
+    <span className={cn('font-semibold', r.type === 'INCOME' ? 'text-success' : 'text-destructive')}>
+      {r.type === 'INCOME' ? '+' : '−'} <Money value={r.amount} tone="plain" />
+    </span>
+  </div>
+);
 
 type Stage = 'upload' | 'preview' | 'done';
 
@@ -302,63 +395,13 @@ function PreviewStage({
         </div>
       </Card>
 
-      <Card className="overflow-x-auto !p-0">
-        <table className="w-full text-base">
-          <thead className="border-b border-border bg-background">
-            <tr className="text-left text-xs uppercase text-muted-foreground">
-              <th className="px-3 py-2 font-medium">#</th>
-              <th className="px-3 py-2 font-medium">Дата</th>
-              <th className="px-3 py-2 text-right font-medium">Сумма</th>
-              <th className="px-3 py-2 font-medium">Тип</th>
-              <th className="px-3 py-2 font-medium">Контрагент</th>
-              <th className="px-3 py-2 font-medium">Описание</th>
-              <th className="px-3 py-2 font-medium">Флаг</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((r) => (
-              <tr key={r.rawIndex} className="border-b border-border last:border-0">
-                <td className="px-3 py-2 text-muted-foreground tabular-nums">
-                  {r.rawIndex}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums">
-                  {r.date.slice(0, 10)}
-                </td>
-                <td
-                  className={cn(
-                    'whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums',
-                    r.type === 'INCOME' ? 'text-success' : 'text-destructive',
-                  )}
-                >
-                  {r.type === 'INCOME' ? '+' : '−'} {formatRub(r.amount)}
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {r.type === 'INCOME' ? 'Доход' : 'Расход'}
-                </td>
-                <td
-                  className="max-w-[200px] truncate px-3 py-2"
-                  title={r.counterpartyName ?? ''}
-                >
-                  {r.counterpartyName ?? '—'}
-                  {r.resolvedCounterpartyId && (
-                    <Badge variant="outline" className="ml-1.5">
-                      связан
-                    </Badge>
-                  )}
-                </td>
-                <td className="max-w-[300px] truncate px-3 py-2" title={r.description ?? ''}>
-                  {r.description ?? '—'}
-                </td>
-                <td className="px-3 py-2">
-                  {r.isDuplicate && <Badge variant="muted">дубликат</Badge>}
-                  {/* Ф6: расход уже создан проведением чека WB — строка не импортируется. */}
-                  {r.receiptMatch && <Badge variant="muted">проведено по чеку WB</Badge>}
-                  {r.errors.length > 0 && <Badge variant="destructive">ошибка</Badge>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Card className="overflow-hidden !p-0">
+        <DataTable
+          data={visibleRows}
+          columns={PREVIEW_COLUMNS}
+          rowKey={(r) => String(r.rawIndex)}
+          mobileCards={previewCard}
+        />
         {preview.rows.length > 50 && (
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
             Показаны первые 50 из {preview.rows.length}

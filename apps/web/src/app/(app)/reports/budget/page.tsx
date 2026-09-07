@@ -1,15 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { formatRub } from '@construct/shared';
-import { ChevronLeft, ChevronRight, Pencil, Plus, Tag, Trash2 } from '@/components/ui/icons';
+import { ChevronLeft, ChevronRight, Plus, Tag, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
@@ -26,6 +29,9 @@ import {
   ModalTitle,
 } from '@/components/ui/Modal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { D } from '@construct/shared';
 import { useCategories } from '@/hooks/useCategories';
 import {
   useBudgets,
@@ -60,10 +66,26 @@ function monthTitle(month: string): string {
   return `${MONTH_NAMES[(m ?? 1) - 1]} ${y}`;
 }
 
+// Месяц живёт в адресе; пустое значение = текущий месяц (в адрес не пишется).
+const DEFAULTS = { month: '' };
+const CODEC = flatCodec(DEFAULTS);
+const MONTH_RE = /^\d{4}-\d{2}$/;
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function BudgetPage() {
+  return (
+    <Suspense>
+      <BudgetView />
+    </Suspense>
+  );
+}
+
+function BudgetView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [month, setMonth] = useState(currentMonth());
+  const [filters, setFilters] = useUrlFilters(CODEC);
+  const month = MONTH_RE.test(filters.month) ? filters.month : currentMonth();
+  const setMonth = (next: string) => setFilters({ month: next === currentMonth() ? '' : next });
   const query = useBudgets(wsId, month);
 
   const [editing, setEditing] = useState<BudgetRow | null>(null);
@@ -76,43 +98,50 @@ export default function BudgetPage() {
   const incomeRows = r?.rows.filter((row) => row.kind === 'INCOME') ?? [];
 
   return (
-    <div className="space-y-6 px-6 py-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            aria-label="Предыдущий месяц"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="min-w-[150px] text-center text-sm font-semibold">
-            {monthTitle(month)}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-            aria-label="Следующий месяц"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          {month !== currentMonth() && (
-            <Button variant="link" size="sm" onClick={() => setMonth(currentMonth())}>
-              Текущий
+    <>
+      <FilterBar>
+        <FilterField label="Месяц">
+          <div className="flex h-9 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMonth(shiftMonth(month, -1))}
+              aria-label="Предыдущий месяц"
+            >
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-          )}
+            <span className="min-w-[140px] text-center text-sm font-medium text-foreground">
+              {monthTitle(month)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMonth(shiftMonth(month, 1))}
+              aria-label="Следующий месяц"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </FilterField>
+        {month !== currentMonth() && (
+          <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
+            Текущий
+          </Button>
+        )}
+        <div className="ml-auto self-end">
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> Лимит
+          </Button>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Лимит
-        </Button>
-      </div>
+      </FilterBar>
 
+      <div className="space-y-6 px-6 py-6">
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isLoading || !r ? (
-        <Skeleton className="h-64" />
+        <KpiRow loading count={3}>
+          {null}
+        </KpiRow>
       ) : r.rows.length === 0 ? (
         <EmptyState
           icon={Tag}
@@ -127,21 +156,17 @@ export default function BudgetPage() {
       ) : (
         <>
           {/* Итоги месяца */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <KpiRow count={3}>
             <KpiCard
               label="Расходы: факт / план"
-              value={`${formatRub(r.totals.expenseFact)} / ${formatRub(r.totals.expensePlan)}`}
-              tone={Number(r.totals.expenseFact) > Number(r.totals.expensePlan) ? 'negative' : 'neutral'}
+              value={<PlanFact fact={r.totals.expenseFact} plan={r.totals.expensePlan} />}
+              tone={D(r.totals.expenseFact).gt(r.totals.expensePlan) ? 'negative' : 'neutral'}
             />
-            {Number(r.totals.incomePlan) > 0 && (
+            {D(r.totals.incomePlan).gt(0) && (
               <KpiCard
                 label="Доходы: факт / план"
-                value={`${formatRub(r.totals.incomeFact)} / ${formatRub(r.totals.incomePlan)}`}
-                tone={
-                  Number(r.totals.incomeFact) >= Number(r.totals.incomePlan)
-                    ? 'positive'
-                    : 'neutral'
-                }
+                value={<PlanFact fact={r.totals.incomeFact} plan={r.totals.incomePlan} />}
+                tone={D(r.totals.incomeFact).gte(r.totals.incomePlan) ? 'positive' : 'neutral'}
               />
             )}
             <KpiCard
@@ -149,7 +174,7 @@ export default function BudgetPage() {
               value={String(r.totals.overCount)}
               tone={r.totals.overCount > 0 ? 'negative' : 'positive'}
             />
-          </div>
+          </KpiRow>
 
           {expenseRows.length > 0 && (
             <BudgetSection
@@ -180,7 +205,21 @@ export default function BudgetPage() {
           }}
         />
       )}
-    </div>
+      </div>
+    </>
+  );
+}
+
+/** «Факт / план» одной плиткой: факт — главная цифра, план — приглушённо. */
+function PlanFact({ fact, plan }: { fact: string; plan: string }) {
+  return (
+    <>
+      <Money value={fact} />
+      <span className="text-base font-normal text-muted-foreground">
+        {' '}
+        / <Money value={plan} tone="plain" />
+      </span>
+    </>
   );
 }
 
@@ -193,23 +232,78 @@ function BudgetSection({
   rows: BudgetRow[];
   onEdit: (row: BudgetRow) => void;
 }) {
+  const columns: Column<BudgetRow>[] = [
+    {
+      key: 'category',
+      header: 'Категория',
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium">{row.categoryName}</div>
+          {row.note && <div className="truncate text-xs text-muted-foreground">{row.note}</div>}
+        </div>
+      ),
+      className: 'w-full max-w-0',
+    },
+    {
+      key: 'fact',
+      header: 'Факт',
+      align: 'right',
+      cell: (row) => (
+        <Money value={row.fact} className={cn(row.over && 'font-semibold text-destructive')} />
+      ),
+      className: 'w-[150px]',
+    },
+    {
+      key: 'plan',
+      header: 'План',
+      align: 'right',
+      cell: (row) => <Money value={row.amount} tone="plain" className="text-muted-foreground" />,
+      className: 'w-[150px]',
+    },
+    {
+      key: 'usage',
+      header: 'Использовано',
+      align: 'right',
+      cell: (row) => <UsageBar row={row} />,
+      className: 'w-[220px]',
+    },
+  ];
+  const card = (row: BudgetRow) => (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate font-medium">{row.categoryName}</div>
+          {row.note && <div className="truncate text-xs text-muted-foreground">{row.note}</div>}
+        </div>
+        <div className="shrink-0 text-right">
+          <Money value={row.fact} className={cn('font-semibold', row.over && 'text-destructive')} />
+          <div className="text-xs text-muted-foreground">из {formatRub(row.amount)}</div>
+        </div>
+      </div>
+      <UsageBar row={row} />
+    </div>
+  );
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      <Card className="divide-y divide-border/60 p-0">
-        {rows.map((row) => (
-          <BudgetRowView key={row.id} row={row} onEdit={() => onEdit(row)} />
-        ))}
+      <Card className="overflow-hidden !p-0">
+        <DataTable
+          data={rows}
+          columns={columns}
+          rowKey={(row) => row.id}
+          onRowClick={onEdit}
+          mobileCards={card}
+        />
       </Card>
     </section>
   );
 }
 
-function BudgetRowView({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) {
+/** Полоса использования лимита: зелёный → янтарь (от 80%) → красный (>100%); доход — к цели. */
+function UsageBar({ row }: { row: BudgetRow }) {
   const isExpense = row.kind === 'EXPENSE';
   const pct = Math.max(0, row.usagePct);
   const barWidth = Math.min(100, pct);
-  // Расход: зелёный → янтарь (от 80%) → красный (>100%). Доход: к цели, зелёный от 100%.
   const barClass = isExpense
     ? row.over
       ? 'bg-destructive'
@@ -219,39 +313,19 @@ function BudgetRowView({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) 
     : pct >= 100
       ? 'bg-success'
       : 'bg-primary/50';
-
   return (
-    <div className="space-y-1.5 px-4 py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0 truncate text-sm font-medium text-foreground">
-          {row.categoryName}
-          {row.note && (
-            <span className="ml-2 text-xs font-normal text-muted-foreground">{row.note}</span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className={cn('num text-sm', row.over && 'font-semibold text-destructive')}>
-            <Money value={row.fact} />
-          </span>
-          <span className="text-xs text-muted-foreground">/ {formatRub(row.amount)}</span>
-          <span
-            className={cn(
-              'rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums',
-              row.over
-                ? 'bg-destructive/15 text-destructive'
-                : 'bg-secondary text-muted-foreground',
-            )}
-          >
-            {row.usagePct}%
-          </span>
-          <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Изменить">
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+    <div className="flex items-center justify-end gap-2">
+      <div className="h-1.5 w-full max-w-[140px] overflow-hidden rounded-full bg-border/60">
         <div className={cn('h-full rounded-full', barClass)} style={{ width: `${barWidth}%` }} />
       </div>
+      <span
+        className={cn(
+          'w-11 shrink-0 text-right text-xs tabular-nums',
+          row.over ? 'font-semibold text-destructive' : 'text-muted-foreground',
+        )}
+      >
+        {row.usagePct}%
+      </span>
     </div>
   );
 }

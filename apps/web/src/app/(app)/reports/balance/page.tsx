@@ -5,11 +5,12 @@ import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBalanceReport } from '@/hooks/useReports';
 import { formatDateTime } from '@/lib/dates';
 import { cn } from '@/lib/cn';
+import { D } from '@construct/shared';
 
 /**
  * Управленческий баланс «на сейчас»: активы (деньги, дебиторская задолженность
@@ -35,24 +36,22 @@ export default function BalancePage() {
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isLoading || !b ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Skeleton className="h-[124px]" />
-          <Skeleton className="h-[124px]" />
-          <Skeleton className="h-[124px]" />
-        </div>
+        <KpiRow loading count={3}>
+          {null}
+        </KpiRow>
       ) : (
         <>
           {/* Итоги */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <KpiRow count={3}>
             <KpiCard label="Активы" value={<Money value={b.assets.total} />} />
             <KpiCard label="Обязательства" value={<Money value={b.liabilities.total} />} />
             <KpiCard
               label="Капитал"
               value={<Money value={b.equity} />}
-              tone={Number(b.equity) >= 0 ? 'positive' : 'negative'}
+              tone={D(b.equity).gte(0) ? 'positive' : 'negative'}
               hint="Активы − Обязательства"
             />
-          </div>
+          </KpiRow>
 
           <div className="grid gap-4 md:grid-cols-2">
             {/* Активы */}
@@ -109,7 +108,7 @@ export default function BalancePage() {
                   <span
                     className={cn(
                       'num text-sm font-semibold',
-                      Number(b.equity) < 0 && 'text-destructive',
+                      D(b.equity).lt(0) && 'text-destructive',
                     )}
                   >
                     <Money value={b.equity} />
@@ -155,7 +154,7 @@ function BalanceRow({
           nested ? 'text-muted-foreground' : 'font-medium',
           // Минус в бухгалтерии виден дважды — скобками и цветом (решение №13):
           // счёт в минусе не должен теряться среди обычных строк.
-          Number(value) < 0 && 'text-destructive',
+          D(value).lt(0) && 'text-destructive',
         )}
       >
         <Money value={value} />

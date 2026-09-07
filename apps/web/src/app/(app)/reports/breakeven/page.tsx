@@ -1,29 +1,44 @@
 'use client';
 
-import { useState } from 'react';
-import { formatRub } from '@construct/shared';
+import { Suspense } from 'react';
+import { D, formatRub } from '@construct/shared';
+import { RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { FilterBar } from '@/components/ui/FilterBar';
-import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
+import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakevenReport } from '@/hooks/useReports';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { cn } from '@/lib/cn';
+import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
+
+const DEFAULT_PERIOD = 'this-month';
+const CODEC = reportCodec(DEFAULT_PERIOD, {});
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
+export default function BreakevenPage() {
+  return (
+    <Suspense>
+      <BreakevenView />
+    </Suspense>
+  );
+}
 
 /**
  * Точка безубыточности: при какой выручке за период прибыль равна нулю.
  * Методология та же, что в ОПиУ (IJ9): выручка/себестоимость по закрытию
  * заказов, зарплата — в постоянных, налог вне формулы.
  */
-export default function BreakevenPage() {
-  const ws = useCurrentWorkspace();
-  const wsId = ws.currentId;
-  const [period, setPeriod] = useState<PeriodValue>({ mode: 'preset', preset: 'this-month' });
+function BreakevenView() {
+  const { currentId: wsId } = useCurrentWorkspace();
+  const [filters, setFilters] = useUrlFilters(CODEC);
 
-  const query = useBreakevenReport(wsId, periodToQuery(period));
+  const query = useBreakevenReport(wsId, toPeriodParams(filters));
 
   if (!wsId) return null;
 
@@ -33,7 +48,16 @@ export default function BreakevenPage() {
   return (
     <>
       <FilterBar>
-        <PeriodPicker value={period} onChange={setPeriod} />
+        <ReportPeriodFields value={filters} onChange={(p) => setFilters({ ...filters, ...p })} />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setFilters(reportPeriod(DEFAULT_PERIOD))}
+          className="self-end"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
       </FilterBar>
 
       <div className="space-y-6 px-6 py-6">
@@ -43,43 +67,43 @@ export default function BreakevenPage() {
         </p>
 
         {query.isError ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} />
-      ) : query.isLoading || !r ? (
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Skeleton className="h-[124px]" />
-            <Skeleton className="h-[124px]" />
-            <Skeleton className="h-[124px]" />
-          </div>
+          <ErrorState error={query.error} onRetry={() => query.refetch()} />
         ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <KpiCard
-                label="Точка безубыточности"
-                value={r.breakevenRevenue ? formatRub(r.breakevenRevenue) : '—'}
-                hint={
-                  r.breakevenRevenue
-                    ? 'выручка, при которой прибыль = 0'
-                    : Number(r.revenue) === 0
-                      ? 'нет выручки за период'
-                      : 'переменные расходы не ниже выручки'
-                }
-                size="display"
-                className="sm:col-span-2"
-              />
-              <KpiCard
-                label="Запас прочности"
-                value={r.safetyMarginPct != null ? `${r.safetyMarginPct}%` : '—'}
-                tone={
-                  r.safetyMarginPct == null
-                    ? 'neutral'
-                    : r.safetyMarginPct >= 0
-                      ? 'positive'
-                      : 'negative'
-                }
-                hint="насколько выручка выше точки"
-              />
-            </div>
+          <KpiRow loading={query.isLoading || !r} count={3}>
+            {r && (
+              <>
+                <KpiCard
+                  label="Точка безубыточности"
+                  value={r.breakevenRevenue ? <Money value={r.breakevenRevenue} /> : '—'}
+                  hint={
+                    r.breakevenRevenue
+                      ? 'выручка, при которой прибыль = 0'
+                      : D(r.revenue).isZero()
+                        ? 'нет выручки за период'
+                        : 'переменные расходы не ниже выручки'
+                  }
+                  size="display"
+                  className="sm:col-span-2"
+                />
+                <KpiCard
+                  label="Запас прочности"
+                  value={r.safetyMarginPct != null ? `${r.safetyMarginPct}%` : '—'}
+                  tone={
+                    r.safetyMarginPct == null
+                      ? 'neutral'
+                      : r.safetyMarginPct >= 0
+                        ? 'positive'
+                        : 'negative'
+                  }
+                  hint="насколько выручка выше точки"
+                />
+              </>
+            )}
+          </KpiRow>
+        )}
 
+        {r && (
+          <>
             {/* Прогресс прохождения точки */}
             {r.breakevenRevenue && (
               <Card className="space-y-2 p-4">
@@ -184,7 +208,7 @@ function FormulaRow({
           'num shrink-0',
           nested ? 'text-muted-foreground' : 'font-medium',
           negative && 'text-destructive',
-          strong && Number(value) < 0 && 'text-destructive',
+          strong && D(value).lt(0) && 'text-destructive',
         )}
       >
         {negative ? `(${formatRub(value)})` : formatRub(value)}
