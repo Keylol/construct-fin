@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { formatRub } from '@construct/shared';
 import { Check } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';

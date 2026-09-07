@@ -32,6 +32,7 @@ import {
   ModalTitle,
 } from '@/components/ui/Modal';
 import { formatDate, formatDateTime } from '@/lib/dates';
+import { todayInput } from '@/lib/periods';
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   ALFA: 'Альфа-Банк',
@@ -61,16 +62,7 @@ export default function IntegrationsPage() {
   const sync = useSyncIntegration(wsId ?? '');
   const reset = useResetIntegration(wsId ?? '');
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Интеграции" />
-        <div className="p-6">
-          <EmptyState icon={Plug} title="Нет активного пространства" hint="Выберите пространство." />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   if (!isOwner) {
     return (
@@ -461,7 +453,7 @@ function CreateConnectionModal({
               type="date"
               value={backfillFrom}
               onChange={(e) => setBackfillFrom(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)}
+              max={todayInput()}
             />
           </FormField>
           <FormField

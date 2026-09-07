@@ -14,14 +14,7 @@ import { useImportBatches, useRevertImportBatch } from '@/hooks/useImport';
 import type { ImportBatch } from '@/lib/types';
 import { formatDateTime } from '@/lib/dates';
 import { plural } from '@/lib/plural';
-
-const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
-  ALFA_XLSX: 'Альфа-Банк (xlsx)',
-  WB_PDF: 'Wildberries (pdf)',
-  TINKOFF_PDF: 'Т-Банк (pdf)',
-  GENERIC_CSV: 'CSV',
-  GENERIC_XLSX: 'Excel',
-};
+import { IMPORT_SOURCE_LABEL } from '@/lib/labels';
 
 export default function ImportBatchesPage() {
   const ws = useCurrentWorkspace();
@@ -30,20 +23,7 @@ export default function ImportBatchesPage() {
   const revert = useRevertImportBatch(wsId ?? '');
   const [confirmRevert, setConfirmRevert] = useState<ImportBatch | null>(null);
 
-  if (!wsId) {
-    return (
-      <>
-        <PageHeader title="История" />
-        <div className="p-6">
-          <EmptyState
-            icon={History}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!wsId) return null;
 
   const columns: Column<ImportBatch>[] = [
     {
@@ -59,7 +39,7 @@ export default function ImportBatchesPage() {
     {
       key: 'source',
       header: 'Источник',
-      cell: (b) => SOURCE_LABEL[b.source],
+      cell: (b) => IMPORT_SOURCE_LABEL[b.source],
       className: 'w-[120px]',
     },
     {
@@ -166,7 +146,7 @@ export default function ImportBatchesPage() {
                 )}
               </div>
               <div className="text-xs text-muted-foreground tabular-nums">
-                {formatDateTime(b.createdAt)} · {SOURCE_LABEL[b.source]} ·
+                {formatDateTime(b.createdAt)} · {IMPORT_SOURCE_LABEL[b.source]} ·
                 {' '}
                 {b.rowsImported} {plural(b.rowsImported, 'операция', 'операции', 'операций')}
               </div>

@@ -55,17 +55,7 @@ export default function PnlReportPage() {
 
   const query = usePnlReport(wsId, periodToQuery(period), groupBy, compareWith);
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={BarChart3}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   const data =
     query.data?.primary.buckets.map((b, i) => ({
@@ -140,20 +130,20 @@ export default function PnlReportPage() {
                 собственника и неденежных списаний) — иначе одинаковый ярлык
                 «Расходы» с дашбордом (кэш-поток) давал разные суммы за период. */}
             <div className="stagger grid gap-4 sm:grid-cols-3">
-              <KpiCard label="Операционные доходы" value={formatRub(totals.income)} tone="positive" />
-              <KpiCard label="Операционные расходы" value={formatRub(totals.expense)} tone="negative" />
+              <KpiCard label="Операционные доходы" value={<Money value={totals.income} />} tone="positive" />
+              <KpiCard label="Операционные расходы" value={<Money value={totals.expense} />} tone="negative" />
               <KpiCard
                 label="Чистая прибыль"
-                value={formatRub(totals.net)}
+                value={<Money value={totals.net} />}
                 tone={Number(totals.net) >= 0 ? 'positive' : 'negative'}
               />
             </div>
             {Number(totals.cogs) > 0 && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <KpiCard label="Себестоимость продаж" value={formatRub(totals.cogs)} tone="negative" />
+                <KpiCard label="Себестоимость продаж" value={<Money value={totals.cogs} />} tone="negative" />
                 <KpiCard
                   label="Валовая прибыль (Выручка − Себестоимость)"
-                  value={formatRub(totals.grossProfit)}
+                  value={<Money value={totals.grossProfit} />}
                   tone={Number(totals.grossProfit) >= 0 ? 'positive' : 'negative'}
                 />
               </div>

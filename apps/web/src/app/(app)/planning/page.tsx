@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Repeat, Plus, Pencil, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -46,20 +45,7 @@ export default function PlanningPage() {
   } | null>(null);
   const [payFor, setPayFor] = useState<PlannedPayment | null>(null);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Платежи" />
-        <div className="p-6">
-          <EmptyState
-            icon={Calendar}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const up = upcoming.data;
 

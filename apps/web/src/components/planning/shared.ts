@@ -50,7 +50,6 @@ export function scheduleLabel(r: RecurringPayment): string {
   return `Еженедельно, ${WEEKDAYS[r.weekday ?? 0]}`;
 }
 
-export const todayISODate = () => new Date().toISOString().slice(0, 10);
-
-/** Дата из <input type=date> в ISO-инстант на полдень бизнес-дня (стабильно). */
-export const dateToNoonIso = (d: string) => new Date(`${d}T12:00:00.000Z`).toISOString();
+// Дата ↔ поле формы: единственный конвертер живёт в lib/periods (UTC+5, покрыт
+// тестом). Здесь были свои копии в UTC — они расходились с ним на границе суток.
+export { todayInput as todayISODate, fromLocalDateInput as dateToNoonIso } from '@/lib/periods';

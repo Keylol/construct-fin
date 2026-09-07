@@ -33,6 +33,7 @@ import {
 } from '@/hooks/useBudgets';
 import type { BudgetRow } from '@/lib/types';
 import { cn } from '@/lib/cn';
+import { MONTH_NAMES } from '@/lib/labels';
 
 /**
  * Бюджет план/факт: месячные лимиты расходов (и планы доходов) по категориям.
@@ -40,20 +41,6 @@ import { cn } from '@/lib/cn';
  * за выбранный месяц. Превышение подсвечивается.
  */
 
-const MONTH_LABELS = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-];
 
 function currentMonth(): string {
   const d = new Date();
@@ -68,7 +55,7 @@ function shiftMonth(month: string, delta: number): string {
 
 function monthTitle(month: string): string {
   const [y, m] = month.split('-').map(Number);
-  return `${MONTH_LABELS[(m ?? 1) - 1]} ${y}`;
+  return `${MONTH_NAMES[(m ?? 1) - 1]} ${y}`;
 }
 
 export default function BudgetPage() {
@@ -80,17 +67,7 @@ export default function BudgetPage() {
   const [editing, setEditing] = useState<BudgetRow | null>(null);
   const [creating, setCreating] = useState(false);
 
-  if (!current) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={Tag}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!current) return null;
 
   const r = query.data;
   const expenseRows = r?.rows.filter((row) => row.kind === 'EXPENSE') ?? [];

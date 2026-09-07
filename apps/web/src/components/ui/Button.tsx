@@ -31,7 +31,7 @@ const buttonVariants = cva(
   },
 );
 
-export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>['variant']> | 'danger';
+export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>['variant']>;
 
 export interface ButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size'>,
@@ -65,8 +65,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { className, variant = 'primary', size, asChild, loading, disabled, children, ...props },
   ref,
 ) {
-  // Backwards-compat: pre-Redwood code used variant="danger" — alias to destructive.
-  const v = variant === 'danger' ? 'destructive' : variant;
+  const v = variant;
   if (asChild) {
     return (
       <Slot

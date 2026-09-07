@@ -60,20 +60,7 @@ function PurchasesView() {
   // Глобальное «+ Создать» → ?new=1 открывает форму закупки.
   useCreateFromUrl(() => setCreating(true));
 
-  if (!wsId) {
-    return (
-      <>
-        <PageHeader title="Закупки" />
-        <div className="p-6">
-          <EmptyState
-            icon={ShoppingCart}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!wsId) return null;
 
   const columns: Column<Purchase>[] = [
     {

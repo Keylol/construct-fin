@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Package, Search, X, Trash2, ShoppingCart } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { formatRub, parseAmountInput } from '@construct/shared';
@@ -25,7 +25,6 @@ import type { WarehouseItem } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -62,16 +61,7 @@ export default function WarehousePage() {
   useListHotkeys({ searchRef, onNew: () => setCreating(true) });
   const [purchasing, setPurchasing] = useState(false);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Склад" />
-        <div className="p-6">
-          <EmptyState icon={Package} title="Нет активного пространства" hint="Выберите или создайте пространство." />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<WarehouseItem>[] = [
     {

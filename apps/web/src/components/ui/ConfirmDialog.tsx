@@ -2,13 +2,13 @@
 
 import { useState, type ReactNode } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './Dialog';
+  Modal,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from './Modal';
 import { Button, type ButtonVariant } from './Button';
 
 interface ConfirmDialogProps {
@@ -23,6 +23,12 @@ interface ConfirmDialogProps {
   loading?: boolean;
 }
 
+/**
+ * Подтверждение опасного действия. Построен на том же `Modal`, что и формы:
+ * на телефоне — панель снизу, Cmd/Ctrl+Enter — подтвердить. Кнопка
+ * подтверждения в фокусе сразу, Enter не нужен — действие уже названо в
+ * заголовке.
+ */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -48,25 +54,21 @@ export function ConfirmDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="secondary"
-            onClick={() => onOpenChange(false)}
-            disabled={isBusy}
-          >
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent size="md" hideClose onConfirm={() => void handleConfirm()}>
+        <ModalHeader>
+          <ModalTitle>{title}</ModalTitle>
+          {description && <ModalDescription>{description}</ModalDescription>}
+        </ModalHeader>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={isBusy}>
             {cancelText}
           </Button>
-          <Button variant={variant} onClick={handleConfirm} disabled={isBusy}>
-            {isBusy ? 'Минуту…' : confirmText}
+          <Button variant={variant} onClick={() => void handleConfirm()} loading={isBusy} autoFocus>
+            {confirmText}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

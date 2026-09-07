@@ -3,7 +3,7 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from '@/components/ui/Toaster';
 import { ApiError } from '@/lib/api';
-import { hapticSuccess, hapticError } from '@/lib/haptics';
+import { hapticError } from '@/lib/haptics';
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {

@@ -4,10 +4,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
 import { Button } from '@/components/ui/Button';
 import { Combobox } from '@/components/ui/Combobox';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/Modal';
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+  ModalClose,
+} from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
 import { Textarea } from '@/components/ui/Textarea';
 import { toast } from '@/components/ui/Toaster';
@@ -21,7 +28,7 @@ import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
-import { D, add, allocateSalePrices, findClient, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, parseOrderItemsText, planCostApplication, sub, toMoneyString } from '@construct/shared';
+import { D, add, allocateSalePrices, findClient, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, planCostApplication, sub, toMoneyString } from '@construct/shared';
 
 export function OrderFormModal({
   wsId,
@@ -65,7 +72,6 @@ export function OrderFormModal({
   // Ошибки по строкам позиций: индекс строки → текст. Невалидная строка больше
   // не выбрасывается молча — подсвечивается и блокирует сабмит.
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
-  const [confirmClose, setConfirmClose] = useState(false);
   // «+ Создать клиента» из комбобокса: null = закрыто, строка = префилл имени.
   const [createClientQuery, setCreateClientQuery] = useState<string | null>(null);
   // Заказчик из спецификации, которого нет в справочнике: заводится одной
@@ -227,14 +233,9 @@ export function OrderFormModal({
     // Незакрытый план оплаты при создании — тоже несохранённое состояние.
     (!isEdit && payMode !== 'none');
 
-  // Закрытие через guard: заполненная форма не стирается молча по Esc/оверлею.
-  const requestClose = () => {
-    if (isDirty && !create.isPending && !update.isPending) {
-      setConfirmClose(true);
-    } else {
-      onClose();
-    }
-  };
+  // Гвард «закрыть без сохранения?» — у самого окна (Modal dirty): крестик,
+  // «Отмена», Esc и клик мимо идут через один и тот же вопрос.
+  const guard = isDirty && !create.isPending && !update.isPending;
 
   // Правка строки позиции + сброс её ошибки (пользователь начал исправлять).
   const patchItem = (i: number, patch: Partial<OrderItemInput>) => {
@@ -622,7 +623,7 @@ export function OrderFormModal({
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : undefined,
-        expectedDate: orderDate ? new Date(orderDate + 'T07:00:00.000Z').toISOString() : undefined,
+        expectedDate: orderDate ? fromLocalDateInput(orderDate) : undefined,
         items: cleaned,
       });
       // Заказ создан. Дальнейшие шаги оплаты — необязательные и восстановимые:
@@ -683,7 +684,7 @@ export function OrderFormModal({
         title: title.trim() || null,
         description: description.trim() || null,
         discountAmount: discount ? parseAmountInput(discount) ?? undefined : '0',
-        expectedDate: orderDate ? new Date(orderDate + 'T07:00:00.000Z').toISOString() : null,
+        expectedDate: orderDate ? fromLocalDateInput(orderDate) : null,
         items: cleaned,
       });
       toast.success('Заказ обновлён');
@@ -695,13 +696,15 @@ export function OrderFormModal({
 
   return (
     <>
-    <Modal open={open} onOpenChange={(o) => !o && requestClose()}>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={guard}>
       <ModalContent hideClose size="2xl">
         <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <ModalTitle>{isEdit ? `Изменить ${editing?.number ?? 'заказ'}` : 'Новый заказ'}</ModalTitle>
-          <Button variant="ghost" size="icon" onClick={requestClose} aria-label="Закрыть">
+          <ModalClose asChild>
+            <Button variant="ghost" size="icon" aria-label="Закрыть">
             <X className="h-4 w-4" />
           </Button>
+          </ModalClose>
         </ModalHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -1271,14 +1274,15 @@ export function OrderFormModal({
         <ModalFooter>
           {isEdit ? (
             <>
+              <ModalClose asChild>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={requestClose}
                 disabled={update.isPending}
               >
                 Отмена
               </Button>
+              </ModalClose>
               <Button type="submit" loading={update.isPending}>
                 Сохранить
               </Button>
@@ -1295,18 +1299,6 @@ export function OrderFormModal({
         </form>
       </ModalContent>
     </Modal>
-    <ConfirmDialog
-      open={confirmClose}
-      onOpenChange={setConfirmClose}
-      title="Закрыть без сохранения?"
-      description="В форме заказа есть несохранённые изменения — они будут потеряны."
-      confirmText="Закрыть"
-      cancelText="Вернуться к форме"
-      onConfirm={() => {
-        setConfirmClose(false);
-        onClose();
-      }}
-    />
     <QuickCreateCounterpartyDialog
       wsId={wsId}
       role="CLIENT"

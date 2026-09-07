@@ -28,17 +28,7 @@ export default function CounterpartiesReportPage() {
 
   const query = useBreakdownReport('by-counterparty', wsId, periodToQuery(period), type);
 
-  if (!wsId) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={BarChart3}
-          title="Нет активного пространства"
-          hint="Выберите или создайте пространство."
-        />
-      </div>
-    );
-  }
+  if (!wsId) return null;
 
   return (
     <>

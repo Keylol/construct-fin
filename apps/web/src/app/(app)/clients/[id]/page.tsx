@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, ClipboardList, UserRound, ArrowRight } from '@/components/ui/icons';
+import { ChevronLeft, ClipboardList, ArrowRight } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { formatRub } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -12,7 +12,8 @@ import { useMarginReport, useReceivables } from '@/hooks/useTradeReports';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
-import { Badge, type BadgeProps } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { PAY_LABEL, PAY_TONE, STATUS_LABEL, STATUS_TONE } from '@/components/orders/order-shared';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
@@ -22,32 +23,6 @@ import { txDrilldownHref } from '@/lib/tx-filters';
 
 // typedRoutes: динамические href собираются строкой — каст к типу href из Link.
 type LinkHref = Parameters<typeof Link>[0]['href'];
-
-// Ярлыки статусов заказа — те же, что на списке /orders (там не экспортируются).
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  OPEN: 'В работе',
-  DONE: 'Выполнен',
-  CANCELLED: 'Отменён',
-};
-const STATUS_VARIANT: Record<OrderStatus, BadgeProps['variant']> = {
-  OPEN: 'default',
-  DONE: 'success',
-  CANCELLED: 'destructive',
-};
-const PAY_LABEL: Record<OrderPaymentState, string> = {
-  UNPAID: 'Не оплачен',
-  PARTIAL: 'Частично',
-  PAID: 'Оплачен',
-  OVERPAID: 'Переплата',
-  REFUNDED: 'Возврат',
-};
-const PAY_VARIANT: Record<OrderPaymentState, BadgeProps['variant']> = {
-  UNPAID: 'muted',
-  PARTIAL: 'outline',
-  PAID: 'success',
-  OVERPAID: 'outline',
-  REFUNDED: 'destructive',
-};
 
 export default function ClientCardPage() {
   const params = useParams<{ id: string }>();
@@ -71,20 +46,7 @@ export default function ClientCardPage() {
   const ordersQ = useOrders(wsId, { clientId: id });
   const orders = ordersQ.data?.pages.flatMap((p) => p.items) ?? [];
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Клиент" />
-        <div className="p-6">
-          <EmptyState
-            icon={UserRound}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const overdue =
     receivableRow && receivableRow.overdueByPlan !== '0.00'
@@ -241,12 +203,10 @@ export default function ClientCardPage() {
                         </div>
                       </td>
                       <td className="px-4 py-2">
-                        <Badge variant={STATUS_VARIANT[o.status]}>{STATUS_LABEL[o.status]}</Badge>
+                        <StatusDot tone={STATUS_TONE[o.status]} label={STATUS_LABEL[o.status]} />
                       </td>
                       <td className="px-4 py-2">
-                        <Badge variant={PAY_VARIANT[o.paymentStatus]}>
-                          {PAY_LABEL[o.paymentStatus]}
-                        </Badge>
+                        <StatusDot tone={PAY_TONE[o.paymentStatus]} label={PAY_LABEL[o.paymentStatus]} />
                       </td>
                       <td className="px-4 py-2 text-right text-muted-foreground"><Money value={o.paidAmount} tone="plain" /></td>
                       <td className="px-4 py-2 text-right font-medium"><Money value={o.totalAmount} /></td>

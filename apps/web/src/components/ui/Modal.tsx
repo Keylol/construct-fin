@@ -20,7 +20,85 @@ import { cn } from '@/lib/cn';
  * API повторяет Sheet один в один, чтобы перенос экрана был заменой имён:
  * Modal / ModalContent / ModalHeader / ModalBody / ModalFooter / ModalTitle.
  */
-export const Modal = DialogPrimitive.Root;
+export interface ModalProps extends DialogPrimitive.DialogProps {
+  /**
+   * В окне есть несохранённый ввод. Попытка закрыть (Esc, клик мимо, крестик,
+   * «Отмена» через onOpenChange) сначала спрашивает «Закрыть без сохранения?».
+   * Раньше это умела одна форма из двадцати семи — остальные молча теряли
+   * восемь заполненных полей от случайного клика.
+   */
+  dirty?: boolean;
+}
+
+export function Modal({ dirty, onOpenChange, children, ...props }: ModalProps) {
+  const [asking, setAsking] = React.useState(false);
+  const handleOpenChange = (open: boolean) => {
+    if (!open && dirty) {
+      setAsking(true);
+      return;
+    }
+    onOpenChange?.(open);
+  };
+  return (
+    <DialogPrimitive.Root onOpenChange={handleOpenChange} {...props}>
+      {children}
+      {dirty && (
+        <DiscardPrompt
+          open={asking}
+          onKeep={() => setAsking(false)}
+          onDiscard={() => {
+            setAsking(false);
+            onOpenChange?.(false);
+          }}
+        />
+      )}
+    </DialogPrimitive.Root>
+  );
+}
+
+/**
+ * Вопрос «закрыть без сохранения?» — вложенное окно поверх формы. Свой, а не
+ * ConfirmDialog: тот построен на ModalContent из этого же файла, и импорт
+ * друг друга замкнул бы модули в кольцо.
+ */
+function DiscardPrompt({
+  open,
+  onKeep,
+  onDiscard,
+}: {
+  open: boolean;
+  onKeep: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onKeep()}>
+      <ModalContent size="md" hideClose onConfirm={onDiscard}>
+        <ModalHeader>
+          <ModalTitle>Закрыть без сохранения?</ModalTitle>
+          <ModalDescription>Введённое в этом окне пропадёт.</ModalDescription>
+        </ModalHeader>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onKeep}
+            className="inline-flex h-9 items-center justify-center rounded-sm border border-input bg-background px-4 text-sm font-medium hover:bg-secondary"
+          >
+            Вернуться
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            autoFocus
+            className="inline-flex h-9 items-center justify-center rounded-sm bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+          >
+            Закрыть
+          </button>
+        </ModalFooter>
+      </ModalContent>
+    </DialogPrimitive.Root>
+  );
+}
+
 export const ModalTrigger = DialogPrimitive.Trigger;
 export const ModalClose = DialogPrimitive.Close;
 export const ModalPortal = DialogPrimitive.Portal;

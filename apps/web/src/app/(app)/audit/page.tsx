@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { History } from '@/components/ui/icons';
+import { LoadMore } from '@/components/ui/LoadMore';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAudit } from '@/hooks/useAudit';
 import type { AuditEntry } from '@/lib/types';
@@ -10,7 +11,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge, type BadgeProps } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 
 // Человекочитаемые подписи и визуальный вес действий аудита.
 // Ключи синхронны с AuditAction в apps/api/src/audit/audit.service.ts.
@@ -116,17 +116,7 @@ export default function AuditPage() {
             />
           }
         />
-        {query.hasNextPage && (
-          <div className="mt-4 flex justify-center">
-            <Button
-              variant="secondary"
-              onClick={() => query.fetchNextPage()}
-              disabled={query.isFetchingNextPage}
-            >
-              {query.isFetchingNextPage ? 'Загрузка…' : 'Загрузить ещё'}
-            </Button>
-          </div>
-        )}
+        <LoadMore hasMore={query.hasNextPage} loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()} />
       </div>
     </div>
   );

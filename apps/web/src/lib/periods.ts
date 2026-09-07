@@ -200,6 +200,11 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
 };
 
 /** Локальная дата YYYY-MM-DD для <input type="date">. */
+/** Сегодня для `<input type="date">` — в бизнес-поясе, а не по UTC. */
+export function todayInput(now: Date = new Date()): string {
+  return toLocalDateInput(now);
+}
+
 export function toLocalDateInput(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d;
   const y = date.getFullYear();

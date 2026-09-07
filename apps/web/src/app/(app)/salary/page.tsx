@@ -107,20 +107,7 @@ export default function SalaryPage() {
     [plannedSalary],
   );
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Зарплата" />
-        <div className="p-6">
-          <EmptyState
-            icon={Users}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const employeeRows = employees.data ?? [];
 
@@ -165,11 +152,11 @@ export default function SalaryPage() {
           <KpiCard label="Сотрудников" value={String(employeeRows.length)} />
           <KpiCard
             label="К выплате"
-            value={formatRub(plannedSum)}
+            value={<Money value={plannedSum} />}
             tone={Number(plannedSum) > 0 ? 'warning' : 'neutral'}
             hint={`${plannedSalary.length} ${plural(plannedSalary.length, 'выплата', 'выплаты', 'выплат')}`}
           />
-          <KpiCard label="Выплачено за месяц" value={formatRub(paidThisMonth)} />
+          <KpiCard label="Выплачено за месяц" value={<Money value={paidThisMonth} />} />
         </div>
 
         {/* Сотрудники */}

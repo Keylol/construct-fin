@@ -70,20 +70,7 @@ export default function ClientsPage() {
   // Глобальное «+ Создать» → ?new=1 открывает форму клиента.
   useCreateFromUrl(() => setCreating(true));
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Клиенты" />
-        <div className="p-6">
-          <EmptyState
-            icon={UserRound}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   const columns: Column<Counterparty>[] = [
     {

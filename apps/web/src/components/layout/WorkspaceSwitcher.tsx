@@ -2,31 +2,12 @@
 
 import { useState } from 'react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
-import { useCreateWorkspace } from '@/hooks/useWorkspaces';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { FormField } from '@/components/ui/FormField';
+import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
 export function WorkspaceSwitcher() {
   const { current, currentId, workspaces, select } = useCurrentWorkspace();
-  const create = useCreateWorkspace();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const onCreate = async () => {
-    setError(null);
-    try {
-      const ws = await create.mutateAsync({ name });
-      select(ws.id);
-      setName('');
-      setOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось создать');
-    }
-  };
 
   return (
     <>
@@ -58,34 +39,7 @@ export function WorkspaceSwitcher() {
         </button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Новое пространство</DialogTitle>
-          </DialogHeader>
-          <FormField label="Название" htmlFor="ws-name" required>
-            <Input
-              id="ws-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Напр. «ИП Каменский»"
-              autoFocus
-            />
-          </FormField>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setOpen(false)}>
-              Отмена
-            </Button>
-            <Button
-              onClick={onCreate}
-              disabled={!name.trim() || create.isPending}
-            >
-              {create.isPending ? 'Создание…' : 'Создать'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateWorkspaceModal open={open} onOpenChange={setOpen} onCreated={select} />
 
       {!current && workspaces.isSuccess && (workspaces.data?.length ?? 0) === 0 && (
         <p className="mt-2 px-1 text-xs text-muted-foreground">

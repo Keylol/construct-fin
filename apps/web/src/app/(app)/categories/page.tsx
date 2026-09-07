@@ -102,20 +102,7 @@ export default function CategoriesPage() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState<{ parentId: string | null } | null>(null);
 
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Категории" />
-        <div className="p-6">
-          <EmptyState
-            icon={Tag}
-            title="Нет активного пространства"
-            hint="Выберите или создайте пространство."
-          />
-        </div>
-      </>
-    );
-  }
+  if (!current) return null;
 
   return (
     <>
