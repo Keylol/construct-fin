@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { cn } from '@/lib/cn';
+import { useRole } from '@/hooks/useRole';
 
 const TABS = [
   { href: '/reports', label: 'ОПиУ' },
@@ -16,14 +17,17 @@ const TABS = [
   { href: '/reports/breakeven', label: 'Безубыточность' },
   { href: '/reports/budget', label: 'Бюджет' },
   { href: '/reports/receivables', label: 'Дебиторская задолженность' },
-  { href: '/reports/rules', label: 'Правила' },
+  { href: '/reports/rules', label: 'Правила', ownerOnly: true },
 ] as const;
 
 export default function ReportsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { ownerSections } = useRole();
+  // «Правила» — технический раздел, оператору не показываем (docs/roles.md).
+  const tabs = TABS.filter((t) => !('ownerOnly' in t) || ownerSections);
   // Заголовок — имя открытого отчёта, а не слово «Отчёты»: раздел уже назван
   // в крошках сверху, а вкладок десять и на них легко потерять, где ты.
-  const active = TABS.find((t) => t.href === pathname);
+  const active = tabs.find((t) => t.href === pathname);
   return (
     <>
       <PageHeader title={active ? active.label : 'Отчёты'} />
@@ -32,7 +36,7 @@ export default function ReportsLayout({ children }: { children: ReactNode }) {
         className="border-b border-border bg-background"
       >
         <ul className="flex flex-wrap items-center gap-6 px-6">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = pathname === t.href;
             return (
               <li key={t.href}>

@@ -24,6 +24,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { OpenLotView, WarehouseItem } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { Input } from '@/components/ui/Input';
 import { SearchField } from '@/components/ui/SearchField';
 import { FilterField } from '@/components/ui/FilterField';
@@ -326,6 +327,7 @@ function WarehouseItemForm({
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const { canDelete } = useRole();
   const [confirmWo, setConfirmWo] = useState(false);
   // F1/F2: позицию с остатком нельзя удалять/архивировать (бэкенд вернёт 400).
   // qty — количество, не деньги → Number допустим (N-19 про деньги).
@@ -626,7 +628,7 @@ function WarehouseItemForm({
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
           <ModalFooter>
-            {initial && (
+            {initial && canDelete && (
               <Button
                 type="button"
                 variant="destructive"

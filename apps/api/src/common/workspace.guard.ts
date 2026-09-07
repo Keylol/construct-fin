@@ -1,8 +1,10 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { PrismaService } from '../prisma/prisma.service';
 import type { JwtPayload } from '../auth/auth.service';
 import type { Role } from '@prisma/client';
+import { DESTRUCTIVE_KEY, deniedForRole } from './role-policy';
 
 export interface WorkspaceContext {
   workspaceId: string;
@@ -17,12 +19,15 @@ declare module 'fastify' {
 }
 
 /**
- * Проверяет, что аутентифицированный пользователь — член workspace из URL-параметра :wsId.
- * Должен идти после JwtAuthGuard.
+ * Проверяет, что аутентифицированный пользователь — член workspace из URL-параметра :wsId,
+ * и что его роли разрешён этот запрос (см. role-policy.ts). Должен идти после JwtAuthGuard.
  */
 @Injectable()
 export class WorkspaceGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<FastifyRequest & { user?: JwtPayload }>();
@@ -42,6 +47,15 @@ export class WorkspaceGuard implements CanActivate {
 
     // Soft-deleted workspace недоступен на чтение/запись по вложенным URL (R1).
     if (membership.workspace.deletedAt) throw new ForbiddenException('Workspace is deleted');
+
+    // Роль: оператор не удаляет и не отменяет, наблюдатель не пишет.
+    const destructive =
+      this.reflector.getAllAndOverride<boolean>(DESTRUCTIVE_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? false;
+    const denied = deniedForRole(membership.role, req.method, destructive);
+    if (denied) throw new ForbiddenException(denied);
 
     req.workspace = { workspaceId: wsId, userId: user.sub, role: membership.role };
     return true;

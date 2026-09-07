@@ -16,6 +16,7 @@ import {
 import type { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { WorkspaceGuard } from '../common/workspace.guard';
+import { Destructive } from '../common/role-policy';
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import { OrderService } from './order.service';
@@ -265,6 +266,8 @@ export class OrderController {
   reopen(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
     return this.service.reopen(ws.workspaceId, id, ws.userId);
   }
+
+  @Destructive()
 
   @Post(':id/cancel')
   @HttpCode(200)
