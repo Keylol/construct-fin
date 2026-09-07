@@ -1,18 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, Package, ArrowRight } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub, add, D, toMoneyString } from '@construct/shared';
+import { add, D, toMoneyString } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { usePurchases } from '@/hooks/usePurchases';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import type { Purchase } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
@@ -27,9 +28,53 @@ function purchaseTotal(p: Purchase): string {
   return toMoneyString(p.lines.reduce((acc, l) => add(acc, l.lineTotal), D(0)));
 }
 
+const PURCHASE_COLUMNS: Column<Purchase>[] = [
+  {
+    key: 'date',
+    header: 'Дата',
+    cell: (p) => (
+      <span className="whitespace-nowrap tabular-nums text-muted-foreground">
+        {formatDate(p.transaction?.date ?? p.createdAt)}
+      </span>
+    ),
+    className: 'w-[120px]',
+  },
+  { key: 'lines', header: 'Позиций', align: 'right', cell: (p) => p.lines.length, className: 'w-[100px]' },
+  {
+    key: 'note',
+    header: 'Комментарий',
+    cell: (p) => (
+      <span className="block truncate text-muted-foreground" title={p.note ?? ''}>
+        {p.note ?? '—'}
+      </span>
+    ),
+    className: 'w-full max-w-0',
+  },
+  {
+    key: 'total',
+    header: 'Сумма',
+    align: 'right',
+    cell: (p) => <Money value={purchaseTotal(p)} className="font-medium" />,
+    className: 'w-[160px]',
+  },
+];
+
+const purchaseCard = (p: Purchase) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div className="min-w-0">
+      <div className="font-medium tabular-nums">{formatDate(p.transaction?.date ?? p.createdAt)}</div>
+      <div className="truncate text-xs text-muted-foreground">
+        {p.lines.length} поз.{p.note ? ` · ${p.note}` : ''}
+      </div>
+    </div>
+    <Money value={purchaseTotal(p)} className="font-semibold" />
+  </div>
+);
+
 export default function SupplierCardPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
 
@@ -39,7 +84,7 @@ export default function SupplierCardPage() {
   const purchasesQ = usePurchases(wsId, id);
   const purchases = purchasesQ.data ?? [];
   // Общая сумма закупок — Decimal-сложение (деньги никогда через float).
-  const total = purchases.reduce((acc, p) => add(acc, purchaseTotal(p)), D(0));
+  const total = toMoneyString(purchases.reduce((acc, p) => add(acc, purchaseTotal(p)), D(0)));
 
   if (!current) return null;
 
@@ -95,83 +140,34 @@ export default function SupplierCardPage() {
         )}
 
         {/* KPI: сумма и количество закупок (долга/маржи по поставщику нет) */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <KpiCard
-            label="Сумма закупок"
-            value={
-              purchasesQ.isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                formatRub(toMoneyString(total))
-              )
-            }
-          />
-          <KpiCard
-            label="Закупок"
-            value={
-              purchasesQ.isLoading ? (
-                <Skeleton className="h-7 w-16" />
-              ) : (
-                String(purchases.length)
-              )
-            }
-          />
-        </div>
+        <KpiRow loading={purchasesQ.isLoading} count={2}>
+          <KpiCard label="Сумма закупок" value={<Money value={total} />} />
+          <KpiCard label="Закупок" value={String(purchases.length)} />
+        </KpiRow>
 
-        {/* Закупки поставщика */}
-        <Card className="!p-0">
+        {/* Закупки поставщика: строка открывает окно закупки на экране закупок. */}
+        <Card className="overflow-hidden !p-0">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">Закупки</div>
-          {purchasesQ.isLoading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : purchasesQ.isError ? (
-            <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">Не удалось загрузить закупки.</p>
-              <Button variant="secondary" size="sm" onClick={() => purchasesQ.refetch()}>
-                Повторить
-              </Button>
-            </div>
-          ) : purchases.length === 0 ? (
-            <div className="px-4 py-8">
+          <DataTable
+            data={purchases}
+            columns={PURCHASE_COLUMNS}
+            rowKey={(p) => p.id}
+            onRowClick={(p) =>
+              router.push(`/purchases?purchase=${p.id}` as Parameters<typeof router.push>[0])
+            }
+            loading={purchasesQ.isLoading}
+            error={purchasesQ.error}
+            onRetry={() => purchasesQ.refetch()}
+            empty={
               <EmptyState
                 icon={Package}
                 title="Закупок нет"
                 hint="У этого поставщика пока нет закупок."
               />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-base">
-                <thead className="border-b border-border">
-                  <tr className="text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-4 py-2 font-medium">Дата</th>
-                    <th className="px-4 py-2 text-right font-medium">Позиций</th>
-                    <th className="px-4 py-2 font-medium">Комментарий</th>
-                    <th className="px-4 py-2 text-right font-medium">Сумма</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchases.map((p) => (
-                    <tr key={p.id} className="border-b border-border last:border-0">
-                      <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">
-                        {formatDate(p.transaction?.date ?? p.createdAt)}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">{p.lines.length}</td>
-                      <td className="px-4 py-2 text-muted-foreground">
-                        <span className="block max-w-[280px] truncate" title={p.note ?? ''}>
-                          {p.note ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium"><Money value={purchaseTotal(p)} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            }
+            mobileCards={purchaseCard}
+            footer={purchases.length > 0 ? { note: 'Итого', total: <Money value={total} /> } : undefined}
+          />
         </Card>
       </div>
     </>

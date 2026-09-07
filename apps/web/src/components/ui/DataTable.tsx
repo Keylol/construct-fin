@@ -66,6 +66,12 @@ interface DataTableProps<T> {
    * данным без калькулятора. Рендерится в <tfoot>.
    */
   footer?: Partial<Record<string, ReactNode>>;
+  /**
+   * Раскрытие строки (дебиторка: заказы клиента под строкой). Вернуть узел —
+   * под строкой появится вкладка на всю ширину, null — свёрнуто. Переключать
+   * раскрытие — в `onRowClick`.
+   */
+  renderExpanded?: (row: T) => ReactNode;
   /** Курсорная пагинация: есть ли ещё страницы — под таблицей появится «Загрузить ещё». */
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -88,6 +94,7 @@ export function DataTable<T>({
   groupBy,
   renderGroupHeader,
   footer,
+  renderExpanded,
   hasMore,
   onLoadMore,
   loadingMore,
@@ -134,32 +141,43 @@ export function DataTable<T>({
     groups.push({ key: null, rows: data });
   }
 
-  const renderRow = (row: T) => (
-    <tr
-      key={rowKey(row)}
-      onClick={onRowClick ? () => onRowClick(row) : undefined}
-      className={cn(
-        'group/row border-b border-border last:border-0 transition-colors',
-        onRowClick && 'cursor-pointer hover:bg-secondary',
-      )}
-    >
-      {columns.map((c) => (
-        <td
-          key={c.key}
+  const renderRow = (row: T) => {
+    const expanded = renderExpanded?.(row) ?? null;
+    return (
+      <Fragment key={rowKey(row)}>
+        <tr
+          onClick={onRowClick ? () => onRowClick(row) : undefined}
           className={cn(
-            'px-4 py-3 align-middle text-foreground',
-            c.align === 'right' && 'text-right tabular-nums',
-            // Действия по hover (№29): фокус тоже раскрывает — клавиатура не страдает.
-            c.hoverOnly &&
-              'opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100',
-            c.className,
+            'group/row border-b border-border last:border-0 transition-colors',
+            onRowClick && 'cursor-pointer hover:bg-secondary',
           )}
         >
-          {c.cell(row)}
-        </td>
-      ))}
-    </tr>
-  );
+          {columns.map((c) => (
+            <td
+              key={c.key}
+              className={cn(
+                'px-4 py-3 align-middle text-foreground',
+                c.align === 'right' && 'text-right tabular-nums',
+                // Действия по hover (№29): фокус тоже раскрывает — клавиатура не страдает.
+                c.hoverOnly &&
+                  'opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100',
+                c.className,
+              )}
+            >
+              {c.cell(row)}
+            </td>
+          ))}
+        </tr>
+        {expanded !== null && expanded !== false && (
+          <tr className="border-b border-border bg-sunken last:border-0">
+            <td colSpan={columns.length} className="px-4 py-2">
+              {expanded}
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
 
   return (
     <>
@@ -263,6 +281,9 @@ export function DataTable<T>({
               )}
             >
               {mobileCards(row)}
+              {renderExpanded && renderExpanded(row) != null && (
+                <div className="mt-2 border-t border-border pt-2">{renderExpanded(row)}</div>
+              )}
             </div>
           ))}
         </div>

@@ -21,7 +21,7 @@
    «Сброс».
 4. **`DataTable`** — единственная таблица приложения. Обязательны
    `loading`, `error` + `onRetry`, `empty` (`EmptyState` с `action`),
-   `mobileCards`. Для дат — `groupBy` + `renderGroupHeader`; для денег —
+   `mobileCards` (без них на телефоне таблица не рендерится вовсе). Для дат — `groupBy` + `renderGroupHeader`; для денег —
    `footer`; для курсорной пагинации — `hasMore` / `onLoadMore` /
    `loadingMore` (или `LoadMore` под своим списком). Сырой `<table>` запрещён.
 5. **Окно** сущности — `Modal`; крупные сущности (заказ, закупка) открываются
@@ -62,6 +62,15 @@
   нельзя, импортировать.
 - Даты — `lib/dates.ts` (`formatDate`, `formatDateTime`, `formatDayLabel`) и
   `lib/periods.ts`. Свои `toLocaleDateString` не заводить.
+
+## Отчёт
+
+`FilterBar` → `ReportPeriodFields` (период и «Свой диапазон» — в адресе через
+`reportCodec` из `lib/report-filters.ts`, измерения отчёта — плоскими
+ключами там же) → «Сброс» → экспорт справа (`ExportButtons`) → `KpiRow` с
+`Money` → графики → `DataTable` с `footer` итогов и `mobileCards`. Строки
+с деталями (заказы клиента в дебиторке) раскрываются через `renderExpanded`,
+а не вложенной таблицей. `PeriodPicker` не существует.
 
 ## Карточка сущности
 

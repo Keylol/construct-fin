@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { FindPaymentPanel } from '@/components/orders/FindPaymentPanel';
 import { ScheduleModal } from '@/components/orders/ScheduleModal';
-import { PAY_LABEL, PAY_TONE, Row, SCHED_LABEL, SCHED_VARIANT, STATUS_LABEL, STATUS_TONE } from '@/components/orders/order-shared';
-import { Badge } from '@/components/ui/Badge';
+import { PAY_LABEL, PAY_TONE, Row, SCHED_LABEL, SCHED_TONE, STATUS_LABEL, STATUS_TONE } from '@/components/orders/order-shared';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { StatusStamp } from '@/components/ui/StatusStamp';
@@ -24,6 +26,112 @@ import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
 import { D, formatRub, parseAmountInput, sub, toMoneyString } from '@construct/shared';
+
+type Item = NonNullable<Order['items']>[number];
+type ScheduleEntry = NonNullable<Order['schedule']>['entries'][number];
+
+// Позиции: строка читается как «закупка → продажа → маржа». Закупка за
+// единицу — эффективная себестоимость с бэкенда (каскад BR1: факт FIFO →
+// ручной ввод → оценка по складу); «≈» — пока оценка (до выдачи).
+const ITEM_COLUMNS: Column<Item>[] = [
+  { key: 'name', header: 'Позиция', cell: (it) => it.name, className: 'w-full max-w-0 truncate' },
+  { key: 'qty', header: 'Кол-во', align: 'right', cell: (it) => it.qty },
+  {
+    key: 'cost',
+    header: 'Закупка',
+    align: 'right',
+    cell: (it) =>
+      it.margin?.unitCost ? (
+        <span className="text-muted-foreground">
+          {it.margin.costSource === 'estimate' && '≈ '}
+          <Money value={it.margin.unitCost} tone="plain" />
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  { key: 'price', header: 'Цена', align: 'right', cell: (it) => <Money value={it.unitPrice} /> },
+  { key: 'total', header: 'Сумма', align: 'right', cell: (it) => <Money value={it.lineTotal} /> },
+  {
+    key: 'margin',
+    header: 'Маржа',
+    align: 'right',
+    // Маржа строки — с бэкенда (netQty за вычетом возвратов).
+    cell: (it) =>
+      it.margin ? (
+        <>
+          <div>
+            {it.margin.costSource === 'estimate' && '≈ '}
+            <Money value={it.margin.margin} />
+          </div>
+          <div className="text-xs text-muted-foreground">{it.margin.marginPct}%</div>
+        </>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+];
+const itemCard = (it: Item) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div className="min-w-0">
+      <div className="truncate font-medium">{it.name}</div>
+      <div className="text-xs text-muted-foreground">
+        {it.qty} × <Money value={it.unitPrice} tone="plain" />
+        {it.margin && (
+          <>
+            {' '}· маржа <Money value={it.margin.margin} tone="plain" /> ({it.margin.marginPct}%)
+          </>
+        )}
+      </div>
+    </div>
+    <Money value={it.lineTotal} className="font-semibold" />
+  </div>
+);
+
+// График платежей (F2): план «суммы + даты», покрытие строк считает бэкенд
+// FIFO из paidAmount — здесь только рисуем.
+const SCHEDULE_COLUMNS: Column<ScheduleEntry>[] = [
+  {
+    key: 'due',
+    header: 'Срок',
+    cell: (e) => (
+      <>
+        <span className="tabular-nums">{formatDate(e.dueDate)}</span>
+        {e.note && <div className="text-xs text-muted-foreground">{e.note}</div>}
+      </>
+    ),
+  },
+  {
+    key: 'amount',
+    header: 'Сумма',
+    align: 'right',
+    cell: (e) => (
+      <>
+        <Money value={e.amount} />
+        {e.status !== 'PAID' && e.covered !== '0.00' && (
+          <div className="text-xs text-muted-foreground">
+            осталось <Money value={e.remaining} tone="plain" />
+          </div>
+        )}
+      </>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Статус',
+    cell: (e) => <StatusDot tone={SCHED_TONE[e.status]} label={SCHED_LABEL[e.status]} />,
+    className: 'w-[130px]',
+  },
+];
+const scheduleCard = (e: ScheduleEntry) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div>
+      <div className="font-medium tabular-nums">{formatDate(e.dueDate)}</div>
+      <StatusDot tone={SCHED_TONE[e.status]} label={SCHED_LABEL[e.status]} />
+    </div>
+    <Money value={e.amount} className="font-semibold" />
+  </div>
+);
 
 export function OrderDetailModal({
   wsId,
@@ -217,61 +325,14 @@ export function OrderDetailModal({
                     </Button>
                   </div>
                 )}
-                {/* Items: строка читается как «закупка → продажа → маржа».
-                    Закупка за единицу — эффективная себестоимость с бэкенда
-                    (каскад BR1: факт FIFO → ручной ввод → оценка по складу). */}
-                <div className="overflow-x-auto rounded-md border border-border">
-                  <table className="w-full text-base">
-                    <thead className="border-b border-border bg-secondary/40">
-                      <tr className="text-left text-xs uppercase text-muted-foreground">
-                        <th className="px-3 py-2 font-medium">Позиция</th>
-                        <th className="px-3 py-2 text-right font-medium">Кол-во</th>
-                        <th className="px-3 py-2 text-right font-medium">Закупка</th>
-                        <th className="px-3 py-2 text-right font-medium">Цена</th>
-                        <th className="px-3 py-2 text-right font-medium">Сумма</th>
-                        <th className="px-3 py-2 text-right font-medium">Маржа</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(order.items ?? []).map((it) => (
-                        <tr key={it.id} className="border-b border-border last:border-0">
-                          <td className="px-3 py-2">{it.name}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
-                          {/* «≈» — себестоимость пока оценка по складу (до выдачи). */}
-                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                            {it.margin?.unitCost ? (
-                              <>
-                                {it.margin.costSource === 'estimate' && '≈ '}
-                                <Money value={it.margin.unitCost} tone="plain" />
-                              </>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right"><Money value={it.unitPrice} /></td>
-                          <td className="px-3 py-2 text-right"><Money value={it.lineTotal} /></td>
-                          {/* Маржа строки — с бэкенда (netQty за вычетом возвратов). */}
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {it.margin ? (
-                              <>
-                                <div>
-                                  {it.margin.costSource === 'estimate' && '≈ '}
-                                  <Money value={it.margin.margin} />
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {it.margin.marginPct}%
-                                </div>
-                              </>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="overflow-hidden rounded-md border border-border">
+                  <DataTable
+                    data={order.items ?? []}
+                    columns={ITEM_COLUMNS}
+                    rowKey={(it) => it.id}
+                    mobileCards={itemCard}
+                  />
                 </div>
-
                 {/* Totals */}
                 <div className="space-y-1 text-sm">
                   <Row label="Сумма позиций" value={<Money value={order.subtotal} />} />
@@ -360,8 +421,7 @@ export function OrderDetailModal({
                     <div className="text-sm font-medium">Принять оплату</div>
                     <div className="flex items-end gap-2">
                       <div className="w-32">
-                        <Input
-                          inputMode="decimal"
+                        <MoneyInput
                           value={payAmount}
                           onChange={(e) => setPayAmount(e.target.value)}
                           placeholder={payInstallment ? 'Полная сумма' : 'Сумма'}
@@ -410,11 +470,10 @@ export function OrderDetailModal({
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <div className="w-32">
-                            <Input
-                              inputMode="decimal"
+                            <MoneyInput
                               value={payFee}
                               onChange={(e) => setPayFee(e.target.value)}
-                              placeholder="Комиссия, ₽"
+                              placeholder="Комиссия"
                               aria-label="Комиссия банка рассрочки"
                             />
                           </div>
@@ -457,33 +516,12 @@ export function OrderDetailModal({
                         </p>
                       )}
                       <div className="overflow-hidden rounded-md border border-border">
-                        <table className="w-full text-base">
-                          <tbody>
-                            {order.schedule.entries.map((e) => (
-                              <tr key={e.id} className="border-b border-border last:border-0">
-                                <td className="px-3 py-1.5 tabular-nums">
-                                  {formatDate(e.dueDate)}
-                                  {e.note && (
-                                    <div className="text-xs text-muted-foreground">{e.note}</div>
-                                  )}
-                                </td>
-                                <td className="px-3 py-1.5 text-right tabular-nums">
-                                  <Money value={e.amount} />
-                                  {e.status !== 'PAID' && e.covered !== '0.00' && (
-                                    <div className="text-xs text-muted-foreground">
-                                      осталось <Money value={e.remaining} tone="plain" />
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="w-[110px] px-3 py-1.5 text-right">
-                                  <Badge variant={SCHED_VARIANT[e.status]}>
-                                    {SCHED_LABEL[e.status]}
-                                  </Badge>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <DataTable
+                          data={order.schedule.entries}
+                          columns={SCHEDULE_COLUMNS}
+                          rowKey={(e) => e.id}
+                          mobileCards={scheduleCard}
+                        />
                       </div>
                       <div className="space-y-1 text-sm">
                         {order.schedule.summary.overdueAmount !== '0.00' && (

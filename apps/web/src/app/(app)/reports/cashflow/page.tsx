@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import {
   CartesianGrid,
@@ -12,34 +12,52 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3 } from '@/components/ui/icons';
+import { BarChart3, RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { formatRub } from '@construct/shared';
+import { D, formatRub } from '@construct/shared';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
 import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { FilterBar } from '@/components/ui/FilterBar';
-import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
 import { ExportButtons } from '@/components/reports/ExportButtons';
+import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
+import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCashflowReport } from '@/hooks/useReports';
-import { txDrilldownHref } from '@/lib/tx-filters';
-import { useAccounts } from '@/hooks/useAccounts';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { CHART_PALETTE as COLORS } from '@/lib/chart';
+import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
+import { txDrilldownHref } from '@/lib/tx-filters';
+import type { CashflowPoint, CashflowSeries } from '@/lib/types';
 
+type LinkHref = Parameters<typeof Link>[0]['href'];
+
+const DEFAULT_PERIOD = 'this-year';
+const EXTRAS = { accountId: '' };
+const CODEC = reportCodec(DEFAULT_PERIOD, EXTRAS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function CashflowReportPage() {
-  const ws = useCurrentWorkspace();
-  const wsId = ws.currentId;
-  const [period, setPeriod] = useState<PeriodValue>({
-    mode: 'preset',
-    preset: 'this-year',
-  });
-  const [accountId, setAccountId] = useState<string | null>(null);
+  return (
+    <Suspense>
+      <CashflowReportView />
+    </Suspense>
+  );
+}
+
+function CashflowReportView() {
+  const { currentId: wsId } = useCurrentWorkspace();
+  const [filters, setFilters] = useUrlFilters(CODEC);
+  const accountId = filters.accountId || null;
+  const periodParams = toPeriodParams(filters);
 
   const accounts = useAccounts(wsId);
-  const query = useCashflowReport(wsId, periodToQuery(period), accountId);
+  const query = useCashflowReport(wsId, periodParams, accountId);
 
   const chartData = useMemo(() => {
     if (!query.data) return [];
@@ -60,15 +78,65 @@ export default function CashflowReportPage() {
 
   if (!wsId) return null;
 
+  const pointColumns = (s: CashflowSeries): Column<CashflowPoint>[] => [
+    {
+      key: 'label',
+      header: 'Период',
+      cell: (p) =>
+        s.accountId !== null ? (
+          <Link
+            href={txDrilldownHref({ accountId: s.accountId, from: p.from, to: p.to }) as LinkHref}
+            className="hover:text-foreground hover:underline"
+          >
+            {p.label}
+          </Link>
+        ) : (
+          p.label
+        ),
+    },
+    {
+      key: 'inflow',
+      header: 'Поступления',
+      align: 'right',
+      cell: (p) => <Money value={p.inflow} tone="plain" className="text-success" />,
+    },
+    {
+      key: 'outflow',
+      header: 'Выплаты',
+      align: 'right',
+      cell: (p) => <Money value={p.outflow} tone="plain" className="text-destructive" />,
+    },
+    {
+      key: 'balance',
+      header: 'Остаток',
+      align: 'right',
+      cell: (p) => (
+        <span title={D(p.balance).lt(0) ? 'Отрицательный остаток (кассовый разрыв)' : undefined}>
+          <Money value={p.balance} className="font-medium" />
+        </span>
+      ),
+    },
+  ];
+  const pointCard = (p: CashflowPoint) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <div>
+        <div className="font-medium">{p.label}</div>
+        <div className="text-xs text-muted-foreground">
+          +<Money value={p.inflow} tone="plain" /> · −<Money value={p.outflow} tone="plain" />
+        </div>
+      </div>
+      <Money value={p.balance} className="font-semibold" />
+    </div>
+  );
+
   return (
     <>
       <FilterBar>
-        <PeriodPicker value={period} onChange={setPeriod} />
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Счёт</span>
+        <ReportPeriodFields value={filters} onChange={(p) => setFilters({ ...filters, ...p })} />
+        <FilterField label="Счёт">
           <Select
-            value={accountId ?? ''}
-            onChange={(e) => setAccountId(e.target.value || null)}
+            value={filters.accountId}
+            onChange={(e) => setFilters({ ...filters, accountId: e.target.value })}
             className="h-9 w-[180px]"
           >
             <option value="">Все счета</option>
@@ -78,12 +146,21 @@ export default function CashflowReportPage() {
               </option>
             ))}
           </Select>
-        </label>
+        </FilterField>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setFilters({ ...reportPeriod(DEFAULT_PERIOD), ...EXTRAS })}
+          className="self-end"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
         <div className="ml-auto self-end">
           <ExportButtons
             wsId={wsId}
             kind="cashflow"
-            params={{ ...periodToQuery(period), accountId: accountId ?? undefined }}
+            params={{ ...periodParams, accountId: accountId ?? undefined }}
           />
         </div>
       </FilterBar>
@@ -154,62 +231,20 @@ export default function CashflowReportPage() {
         {query.data && (
           <div className="grid gap-3 md:grid-cols-2">
             {query.data.series.map((s) => (
-              <Card key={s.accountId ?? 'none'} className="!p-0 overflow-hidden">
+              <Card key={s.accountId ?? 'none'} className="overflow-hidden !p-0">
                 <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
                   <h3 className="font-medium">{s.accountName ?? 'Без счёта'}</h3>
                   <span className="text-xs text-muted-foreground">
-                    Остаток на начало:{' '}
-                    <Money value={s.openingBalance} />
+                    Остаток на начало: <Money value={s.openingBalance} />
                   </span>
                 </header>
-                <table className="w-full text-base">
-                  <thead className="border-b border-border">
-                    <tr className="text-left text-xs uppercase text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Период</th>
-                      <th className="px-3 py-2 text-right font-medium">Поступления</th>
-                      <th className="px-3 py-2 text-right font-medium">Выплаты</th>
-                      <th className="px-3 py-2 text-right font-medium">Остаток</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {s.points.map((p) => (
-                      <tr key={p.label} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2">
-                          {s.accountId !== null ? (
-                            <Link
-                              href={
-                                txDrilldownHref({
-                                  accountId: s.accountId,
-                                  from: p.from,
-                                  to: p.to,
-                                }) as Parameters<typeof Link>[0]['href']
-                              }
-                              className="cursor-pointer hover:text-foreground hover:underline"
-                            >
-                              {p.label}
-                            </Link>
-                          ) : (
-                            p.label
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right text-success"><Money value={p.inflow} tone="plain" /></td>
-                        <td className="px-3 py-2 text-right text-destructive"><Money value={p.outflow} tone="plain" /></td>
-                        <td
-                          className={`px-3 py-2 text-right font-medium tabular-nums ${
-                            Number(p.balance) < 0 ? 'text-destructive' : ''
-                          }`}
-                          title={
-                            Number(p.balance) < 0
-                              ? 'Отрицательный остаток (кассовый разрыв)'
-                              : undefined
-                          }
-                        >
-                          <Money value={p.balance} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  data={s.points}
+                  columns={pointColumns(s)}
+                  rowKey={(p) => p.label}
+                  mobileCards={pointCard}
+                  empty={<p className="px-4 text-sm text-muted-foreground">Нет движений за период.</p>}
+                />
               </Card>
             ))}
           </div>

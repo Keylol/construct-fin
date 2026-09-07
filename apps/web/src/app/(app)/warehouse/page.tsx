@@ -21,7 +21,7 @@ import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { parseQty } from '@/lib/qty';
 import { formatDate } from '@/lib/dates';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import type { WarehouseItem } from '@/lib/types';
+import type { OpenLotView, WarehouseItem } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -51,6 +51,53 @@ import { Checkbox } from '@/components/ui/Checkbox';
 
 const DEFAULTS = { q: '' };
 const FILTERS = flatCodec(DEFAULTS);
+
+// F5: открытые партии — «что лежит и откуда» (поставщик/счёт закупки).
+function lotColumns(unit: string): Column<OpenLotView>[] {
+  return [
+    {
+      key: 'received',
+      header: 'Поступила',
+      cell: (l) => (
+        <>
+          <span className="tabular-nums">{formatDate(l.receivedAt)}</span>
+          {l.supplier && (
+            <div className="text-xs text-muted-foreground">
+              {l.supplier.name}
+              {l.account ? ` · ${l.account.name}` : ''}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'qty',
+      header: 'Остаток',
+      align: 'right',
+      cell: (l) => `${Number(l.qtyRemaining)} из ${Number(l.qtyInitial)} ${unit}`,
+    },
+    {
+      key: 'cost',
+      header: 'Себестоимость',
+      align: 'right',
+      cell: (l) => <Money value={l.unitCost} tone="plain" className="text-muted-foreground" />,
+    },
+  ];
+}
+function LotCard({ l, unit }: { l: OpenLotView; unit: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <div>
+        <div className="font-medium tabular-nums">{formatDate(l.receivedAt)}</div>
+        <div className="text-xs text-muted-foreground">
+          {Number(l.qtyRemaining)} из {Number(l.qtyInitial)} {unit}
+          {l.supplier ? ` · ${l.supplier.name}` : ''}
+        </div>
+      </div>
+      <Money value={l.unitCost} tone="plain" className="text-muted-foreground" />
+    </div>
+  );
+}
 
 // useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function WarehousePage() {
@@ -518,27 +565,12 @@ function WarehouseItemForm({
                   Партии на складе
                 </div>
                 <div className="overflow-hidden rounded-md border border-border">
-                  <table className="w-full text-base">
-                    <tbody>
-                      {lots.data!.map((l) => (
-                        <tr key={l.id} className="border-b border-border last:border-0">
-                          <td className="px-3 py-1.5 tabular-nums">
-                            {formatDate(l.receivedAt)}
-                            {l.supplier && (
-                              <div className="text-xs text-muted-foreground">
-                                {l.supplier.name}
-                                {l.account ? ` · ${l.account.name}` : ''}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">
-                            {Number(l.qtyRemaining)} из {Number(l.qtyInitial)} {initial.unit}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground"><Money value={l.unitCost} tone="plain" /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <DataTable
+                    data={lots.data ?? []}
+                    columns={lotColumns(initial.unit)}
+                    rowKey={(l) => l.id}
+                    mobileCards={(l) => <LotCard l={l} unit={initial.unit} />}
+                  />
                 </div>
               </div>
             )}

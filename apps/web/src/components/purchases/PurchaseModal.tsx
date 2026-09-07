@@ -14,6 +14,7 @@ import { parseQty } from '@/lib/qty';
 import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
@@ -288,8 +289,7 @@ export function PurchaseModal({
                         />
                       </div>
                       <div className="w-28">
-                        <Input
-                          inputMode="decimal"
+                        <MoneyInput
                           value={l.unitPrice}
                           onChange={(e) => patchLine(i, { unitPrice: e.target.value })}
                           placeholder="Цена"

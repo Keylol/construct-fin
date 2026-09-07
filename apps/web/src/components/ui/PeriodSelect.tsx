@@ -27,11 +27,17 @@ export function PeriodSelect({
   onChange,
   className,
   label = 'Период',
+  options = ANY_PERIOD_ORDER,
+  labels,
 }: {
   value: AnyPeriod;
   onChange: (period: AnyPeriod, range: DateRange) => void;
   className?: string;
   label?: string;
+  /** Какие пресеты показывать (по умолчанию — все, от короткого к длинному). */
+  options?: AnyPeriod[];
+  /** Подписи поверх общего словаря — отчёты зовут «Всё время» «Своим диапазоном». */
+  labels?: Partial<Record<AnyPeriod, string>>;
 }) {
   return (
     <FilterField label={label}>
@@ -43,9 +49,9 @@ export function PeriodSelect({
         }}
         className={className ?? 'h-9 w-[150px]'}
       >
-        {ANY_PERIOD_ORDER.map((k) => (
+        {options.map((k) => (
           <option key={k} value={k}>
-            {ANY_PERIOD_LABELS[k]}
+            {labels?.[k] ?? ANY_PERIOD_LABELS[k]}
           </option>
         ))}
       </Select>
