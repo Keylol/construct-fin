@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, Check } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { StatusDot } from '@/components/ui/StatusDot';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useHealthChecks, type HealthCheck } from '@/hooks/useHealthChecks';
 import { cn } from '@/lib/cn';
@@ -17,75 +17,84 @@ import { cn } from '@/lib/cn';
  * видеть не только «что горит», но и что проверено и чисто.
  */
 export default function HealthPage() {
+  const router = useRouter();
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const { checks, failing, isLoading } = useHealthChecks(wsId);
 
   if (!current) return null;
 
+  const columns: Column<HealthCheck>[] = [
+    {
+      key: 'check',
+      header: 'Проверка',
+      cell: (c) => {
+        const ok = c.tone === 'ok';
+        return (
+          <div className="flex items-center gap-2">
+            {ok ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Пройдена" />
+            ) : (
+              <StatusDot tone={c.tone === 'destructive' ? 'destructive' : 'warning'} label="" />
+            )}
+            <span className={cn('font-medium', ok && 'text-muted-foreground')}>{c.title}</span>
+          </div>
+        );
+      },
+      className: 'w-[280px]',
+    },
+    {
+      key: 'detail',
+      header: 'Что именно',
+      className: 'w-full max-w-0',
+      cell: (c) => <span className="block truncate text-muted-foreground" title={c.detail}>{c.detail}</span>,
+    },
+    {
+      key: 'go',
+      header: '',
+      align: 'right',
+      hoverOnly: true,
+      cell: () => <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />,
+      className: 'w-[48px]',
+    },
+  ];
+
   return (
     <>
       <PageHeader
         title="Здоровье"
         description={
-          <>
-            Что в учёте не доделано: необработанные строки банка, заказы без закрытия,
-            просрочки, минусовые остатки и позиции без себестоимости. Каждая строка ведёт
-            туда, где это исправляют.
-          </>
+          failing.length === 0 && !isLoading
+            ? 'Все проверки пройдены — учёт сведён.'
+            : `Что в учёте не доделано. Каждая строка ведёт туда, где это исправляют${
+                checks.length ? ` — требует внимания: ${failing.length} из ${checks.length}` : ''
+              }.`
         }
       />
 
-      <div className="space-y-6 px-6 py-6">
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : (
-          <>
-            <p className="text-sm text-muted-foreground">
-              {failing.length === 0
-                ? 'Все проверки пройдены — учёт сведён.'
-                : `Требует внимания: ${failing.length} из ${checks.length}.`}
-            </p>
-
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-              {checks.map((c) => (
-                <CheckRow key={c.key} check={c} />
-              ))}
+      <div className="bg-card">
+        <DataTable
+          data={checks}
+          columns={columns}
+          rowKey={(c) => c.key}
+          loading={isLoading}
+          onRowClick={(c) => router.push(c.href as Parameters<typeof router.push>[0])}
+          mobileCards={(c) => (
+            <div className="flex items-start gap-3">
+              {c.tone === 'ok' ? (
+                <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-success" />
+              ) : (
+                <StatusDot tone={c.tone === 'destructive' ? 'destructive' : 'warning'} label="" className="mt-1" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">{c.title}</div>
+                <div className="text-xs text-muted-foreground">{c.detail}</div>
+              </div>
+              <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
             </div>
-          </>
-        )}
+          )}
+        />
       </div>
     </>
-  );
-}
-
-function CheckRow({ check }: { check: HealthCheck }) {
-  const ok = check.tone === 'ok';
-  return (
-    <Link
-      href={check.href as Parameters<typeof Link>[0]['href']}
-      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary/40"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {ok ? (
-            <Check className="h-3.5 w-3.5 shrink-0 text-success" />
-          ) : (
-            <StatusDot
-              tone={check.tone === 'destructive' ? 'destructive' : 'warning'}
-              label=""
-              className="shrink-0"
-            />
-          )}
-          <span className={cn('font-medium', ok && 'text-muted-foreground')}>{check.title}</span>
-        </div>
-        <p className="mt-0.5 pl-5 text-sm text-muted-foreground">{check.detail}</p>
-      </div>
-      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </Link>
   );
 }

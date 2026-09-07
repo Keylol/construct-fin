@@ -19,7 +19,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
@@ -31,10 +31,14 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
-import { formatRub, D, add, toMoneyString } from '@construct/shared';
+import { D, add, toMoneyString } from '@construct/shared';
 import { plural } from '@/lib/plural';
 import { ACCOUNT_TYPE_LABEL } from '@/lib/labels';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { MoneyInput } from '@/components/ui/MoneyInput';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 
 export default function AccountsPage() {
   const { current } = useCurrentWorkspace();
@@ -44,6 +48,8 @@ export default function AccountsPage() {
   const balances = useAccountBalances(wsId);
   const [editing, setEditing] = useState<Account | null>(null);
   const [creating, setCreating] = useState(false);
+  // «n» — новый счёт: список короткий, поиска нет.
+  useListHotkeys({ onNew: () => setCreating(true) });
 
   // Итоги по активным счетам (Decimal, не number): «по банку ?? по учёту» —
   // главное число, рядом — сколько строк ждёт разбора и «по учёту» целиком.
@@ -97,12 +103,10 @@ export default function AccountsPage() {
     {
       key: 'status',
       header: 'Статус',
-      cell: (a) =>
-        a.isArchived ? (
-          <Badge variant="muted">В архиве</Badge>
-        ) : (
-          <Badge variant="outline">Активен</Badge>
-        ),
+      // №15: точка + текст вместо пилюли.
+      cell: (a) => (
+        <StatusDot tone={a.isArchived ? 'muted' : 'success'} label={a.isArchived ? 'В архиве' : 'Активен'} />
+      ),
       className: 'w-[120px]',
     },
     {
@@ -289,8 +293,8 @@ export default function AccountsPage() {
                       <div className="text-[10px] uppercase text-muted-foreground">
                         {b?.bank != null ? 'По банку' : 'Остаток'}
                       </div>
-                      <div className="text-sm font-medium tabular-nums">
-                        {b ? formatRub(b.bank ?? b.ledger) : formatRub(a.openingBalance)}
+                      <div className="text-sm font-medium">
+                        <Money value={b ? (b.bank ?? b.ledger) : a.openingBalance} />
                       </div>
                       {b && b.unresolvedCount > 0 && (
                         <div className="text-[10px] text-muted-foreground">
@@ -359,6 +363,14 @@ function AccountForm({
     setError(null);
   }, [initial, open]);
 
+  // Несохранённый ввод — против значений, с которыми форма открылась.
+  const dirty =
+    name !== (initial?.name ?? '') ||
+    type !== (initial?.type ?? 'BANK') ||
+    openingBalance !== (initial?.openingBalance ?? '0') ||
+    note !== (initial?.note ?? '') ||
+    isArchived !== (initial?.isArchived ?? false);
+
   const onSave = async () => {
     setError(null);
     try {
@@ -387,13 +399,15 @@ function AccountForm({
 
   return (
     <>
-      <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
         <ModalContent hideClose>
           <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <ModalTitle>{initial ? 'Редактировать счёт' : 'Новый счёт'}</ModalTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть">
-              <X className="h-4 w-4" />
-            </Button>
+            <ModalClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Закрыть">
+                <X className="h-4 w-4" />
+              </Button>
+            </ModalClose>
           </ModalHeader>
           <form
             className="flex min-h-0 flex-1 flex-col"
@@ -425,9 +439,8 @@ function AccountForm({
               </Select>
             </FormField>
             <FormField label="Начальный остаток" htmlFor="acc-opening">
-              <Input
+              <MoneyInput
                 id="acc-opening"
-                inputMode="decimal"
                 value={openingBalance}
                 onChange={(e) => setOpeningBalance(e.target.value)}
                 placeholder="0.00"
@@ -442,15 +455,7 @@ function AccountForm({
               />
             </FormField>
             {initial && (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isArchived}
-                  onChange={(e) => setIsArchived(e.target.checked)}
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                В архиве
-              </label>
+              <Checkbox label="В архиве" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
@@ -466,9 +471,11 @@ function AccountForm({
                 Удалить
               </Button>
             )}
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Отмена
-            </Button>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">
+                Отмена
+              </Button>
+            </ModalClose>
             <Button
               type="submit"
               loading={create.isPending || update.isPending}
