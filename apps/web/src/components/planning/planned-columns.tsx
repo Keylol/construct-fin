@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Check, Pencil, RotateCcw, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
@@ -148,6 +149,9 @@ export function plannedMobileCard(p: PlannedPayment, wsId: string, onPay: () => 
 /** Оплаченный платёж: отмена оплаты (корректировка). */
 export function PaidActions({ p, wsId }: { p: PlannedPayment; wsId: string }) {
   const revert = useRevertPlanned(wsId);
+  const { canDelete } = useRole();
+  // Откат оплаты — отмена сделанного, оператору закрыт (docs/roles.md).
+  if (!canDelete) return null;
   return (
     <Button
       variant="ghost"
@@ -214,6 +218,7 @@ export function RecurringActions({
   const update = useUpdateRecurring(wsId);
   const del = useDeleteRecurring(wsId);
   const [confirmDel, setConfirmDel] = useState(false);
+  const { canDelete } = useRole();
   const toggleActive = () =>
     update.mutate(
       { id: r.id, isActive: !r.isActive },
@@ -227,7 +232,7 @@ export function RecurringActions({
       <Button variant="ghost" size="sm" onClick={onEdit} aria-label="Править">
         <Pencil className="h-4 w-4" />
       </Button>
-      {deletable && (
+      {deletable && canDelete && (
         <>
           <Button variant="ghost" size="sm" onClick={() => setConfirmDel(true)} aria-label="Удалить">
             <Trash2 className="h-4 w-4" />

@@ -63,6 +63,8 @@ services:
       UPLOAD_DIR: /app/data/uploads
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
+      # Второй пароль — оператор (MEMBER: без удаления/отмены, без тех. разделов).
+      OPERATOR_PASSWORD_HASH: ${OPERATOR_PASSWORD_HASH}
       # Ф1: мастер-ключ шифрования секретов интеграций (банковские токены).
       # Без проброса переменная не доходила до приложения даже будучи заданной в
       # .env.production → CryptoService получал null и весь модуль интеграций

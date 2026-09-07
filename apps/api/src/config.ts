@@ -33,7 +33,12 @@ const RawConfigSchema = z.object({
     ),
   UPLOAD_DIR: z.string().default('./data/uploads'),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().default(10),
+  // Два парольных входа: AUTH_PASSWORD_HASH — разработчик/владелец (OWNER во
+  // всех пространствах), OPERATOR_PASSWORD_HASH — оператор (MEMBER: вносит и
+  // правит, но не удаляет и не отменяет; технические разделы скрыты). Хэш:
+  // `node -e "require('bcryptjs').hash(process.argv[1],10).then(console.log)" 'пароль'`.
   AUTH_PASSWORD_HASH: optionalEnv(),
+  OPERATOR_PASSWORD_HASH: optionalEnv(),
   // L5-хвост: chat_id для Telegram-алертов о 5xx (обычно telegramId владельца).
   // Не задан (или пуст) → алертинг выключен (локалка/CI/тесты).
   ALERT_TELEGRAM_CHAT_ID: optionalEnv(),

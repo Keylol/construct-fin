@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { Button } from '@/components/ui/Button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/Menu';
-import { ChevronDown, Plus } from '@/components/ui/icons';
+import { ChevronDown, LogOut, Plus } from '@/components/ui/icons';
+import { useRole } from '@/hooks/useRole';
+import { api } from '@/lib/api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
 /**
@@ -18,6 +20,17 @@ export function WorkspaceSwitcher() {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const list = workspaces.data ?? [];
+  const { ownerSections, label: roleLabel } = useRole();
+
+  // Выход — полной перезагрузкой: серверный layout заново спросит /auth/me,
+  // кэш запросов не переживёт смену человека за тем же экраном.
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      window.location.assign('/login');
+    }
+  };
 
   return (
     <>
@@ -54,15 +67,21 @@ export function WorkspaceSwitcher() {
             </MenuItem>
           ))}
           {list.length > 0 && <MenuSeparator />}
-          <MenuItem
-            icon={Plus}
-            value="__new"
-            onSelect={() => {
-              setOpen(false);
-              setCreating(true);
-            }}
-          >
-            Новое пространство
+          {/* Пространства заводит владелец; оператор входит в существующие. */}
+          {ownerSections && (
+            <MenuItem
+              icon={Plus}
+              value="__new"
+              onSelect={() => {
+                setOpen(false);
+                setCreating(true);
+              }}
+            >
+              Новое пространство
+            </MenuItem>
+          )}
+          <MenuItem icon={LogOut} value="__logout" hint={roleLabel} onSelect={() => void logout()}>
+            Выйти
           </MenuItem>
         </MenuContent>
       </Menu>

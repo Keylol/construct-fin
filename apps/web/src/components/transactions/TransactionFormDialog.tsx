@@ -25,6 +25,7 @@ import {
   ModalTitle,
 } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Select } from '@/components/ui/Select';
@@ -68,6 +69,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const { canDelete } = useRole();
   // «+ Создать контрагента» из комбобокса: null = закрыто, строка = префилл имени.
   const [createCpQuery, setCreateCpQuery] = useState<string | null>(null);
   // Подсказка движка правил (только при создании): что подставить + какие правила
@@ -481,14 +483,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {(a.size / 1024).toFixed(0)} KB
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => removeAtt.mutate({ id: a.id, txId: transactionId })}
-                        aria-label="Удалить вложение"
-                        className="text-destructive transition-colors hover:opacity-80"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => removeAtt.mutate({ id: a.id, txId: transactionId })}
+                          aria-label="Удалить вложение"
+                          className="text-destructive transition-colors hover:opacity-80"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                   <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
@@ -515,7 +519,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
           </ModalBody>
 
           <ModalFooter>
-            {isEdit && (
+            {isEdit && canDelete && (
               <Button
                 type="button"
                 variant="destructive"

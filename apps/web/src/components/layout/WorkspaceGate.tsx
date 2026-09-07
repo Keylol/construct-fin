@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Plus, Wallet } from '@/components/ui/icons';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
+import { RoleGate } from './RoleGate';
 
 /**
  * Один вход для всех экранов: пока список пространств грузится — скелетон
@@ -22,7 +23,7 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
   const { current, workspaces, select } = useCurrentWorkspace();
   const [creating, setCreating] = useState(false);
 
-  if (current) return <>{children}</>;
+  if (current) return <RoleGate role={current.role}>{children}</RoleGate>;
 
   if (workspaces.isError) {
     return (

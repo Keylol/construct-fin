@@ -48,6 +48,8 @@ export {
   User as UserRound,
   UserMultiple as Users,
   Wallet,
+  Logout as LogOut,
+  Locked,
   Close as X,
 } from '@carbon/icons-react';
 

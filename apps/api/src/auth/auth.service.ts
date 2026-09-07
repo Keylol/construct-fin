@@ -8,7 +8,10 @@ import { verifyTelegramLogin, verifyTelegramInitData } from './telegram-verify';
 import type { ConfigSchema } from '../config';
 import type { TelegramLoginPayload, UserProfile } from '@construct/shared';
 
+// Парольные входы — синтетические telegramId, не совпадающие с реальными
+// аккаунтами: 1 — владелец/разработчик (OWNER), 2 — оператор (MEMBER).
 const PASSWORD_USER_TELEGRAM_ID = 1n;
+const OPERATOR_TELEGRAM_ID = 2n;
 
 // Структура поля `user` в Telegram initData (после JSON.parse). Минимально
 // требуем числовой id; остальные поля опциональны.
@@ -80,24 +83,54 @@ export class AuthService {
     });
   }
 
+  /**
+   * Парольный вход. Паролей два: владельца (AUTH_PASSWORD_HASH → telegramId=1,
+   * OWNER) и оператора (OPERATOR_PASSWORD_HASH → telegramId=2, MEMBER во всех
+   * пространствах: вносит и правит, но не удаляет и не отменяет — см.
+   * common/role-policy.ts). Кто вошёл, решает совпавший хэш; экран входа один.
+   * Оба синтетических id проходят тот же allowlist, что и Telegram (Фаза 2
+   * п.11): чтобы пароль работал, добавь `1` (владелец) и `2` (оператор) в
+   * TELEGRAM_ALLOWED_IDS.
+   */
   async loginViaPassword(password: string): Promise<{ token: string; user: UserProfile }> {
-    const hash = this.config.get('AUTH_PASSWORD_HASH', { infer: true });
-    if (!hash) throw new UnauthorizedException('Password auth not configured');
-    const ok = await bcrypt.compare(password, hash);
-    if (!ok) throw new UnauthorizedException('Неверный пароль');
-    // Password-вход прогоняем через тот же allowlist, что и Telegram (Фаза 2 п.11):
-    // раньше он обходил TELEGRAM_ALLOWED_IDS. Синтетический id=1 не соответствует
-    // ни одному реальному Telegram-аккаунту, поэтому его наличие в списке = «пароль
-    // разрешён». Чтобы десктоп-вход продолжал работать, добавь `1` в TELEGRAM_ALLOWED_IDS.
-    this.assertAllowed(PASSWORD_USER_TELEGRAM_ID);
+    const ownerHash = this.config.get('AUTH_PASSWORD_HASH', { infer: true });
+    const operatorHash = this.config.get('OPERATOR_PASSWORD_HASH', { infer: true });
+    if (!ownerHash && !operatorHash) throw new UnauthorizedException('Password auth not configured');
+    const isOwner = !!ownerHash && (await bcrypt.compare(password, ownerHash));
+    const isOperator = !isOwner && !!operatorHash && (await bcrypt.compare(password, operatorHash));
+    if (!isOwner && !isOperator) throw new UnauthorizedException('Неверный пароль');
+
+    const telegramId = isOwner ? PASSWORD_USER_TELEGRAM_ID : OPERATOR_TELEGRAM_ID;
+    this.assertAllowed(telegramId);
     const user = await this.prisma.user.upsert({
-      where: { telegramId: PASSWORD_USER_TELEGRAM_ID },
+      where: { telegramId },
       update: {},
-      create: { telegramId: PASSWORD_USER_TELEGRAM_ID, firstName: 'Admin' },
+      create: { telegramId, firstName: isOwner ? 'Admin' : 'Оператор' },
     });
+    if (isOperator) await this.syncOperatorMemberships(user.id);
     const payload: JwtPayload = { sub: user.id, tg: user.telegramId.toString() };
     const token = await this.jwt.signAsync(payload);
     return { token, user: this.toProfile(user) };
+  }
+
+  /**
+   * Оператор состоит во всех живых пространствах как MEMBER: приложение —
+   * один бизнес с парой пространств, второй человек работает в обоих, и
+   * новое пространство владельца подхватится на следующем входе. Роль,
+   * поднятую владельцем вручную, не понижаем (update: {}).
+   */
+  private async syncOperatorMemberships(userId: string): Promise<void> {
+    const workspaces = await this.prisma.workspace.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+    });
+    for (const ws of workspaces) {
+      await this.prisma.workspaceMember.upsert({
+        where: { workspaceId_userId: { workspaceId: ws.id, userId } },
+        update: {},
+        create: { workspaceId: ws.id, userId, role: 'MEMBER' },
+      });
+    }
   }
 
   async getProfile(userId: string): Promise<UserProfile> {

@@ -7,6 +7,7 @@ import { Upload, Check, RotateCcw, Plus, X } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { Card } from '@/components/ui/Card';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { Input } from '@/components/ui/Input';
@@ -793,6 +794,7 @@ function ReceiptHistory({
   items: WbReceiptListItem[];
   onRevert: (r: WbReceiptListItem) => void;
 }) {
+  const { canDelete } = useRole();
   const columns: Column<WbReceiptListItem>[] = [
     {
       key: 'source',
@@ -842,7 +844,7 @@ function ReceiptHistory({
       key: 'actions',
       header: '',
       cell: (r) =>
-        r.deletedAt ? null : (
+        r.deletedAt || !canDelete ? null : (
           <Button variant="ghost" size="sm" onClick={() => onRevert(r)} title="Отменить проведение">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
