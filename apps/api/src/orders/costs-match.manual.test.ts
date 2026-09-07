@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { matchCostsToItems } from '@construct/shared';
+import { planCostApplication } from '@construct/shared';
 import { parseOrderSpecDocx } from './spec-parser';
 import { detectAndParseReceipt } from '../wb-receipt/receipt-detect';
 
@@ -27,6 +27,10 @@ describe.skipIf(!DIR || !existsSync(DIR))('живые архивы: цены и�
 
     let items = 0;
     let matched = 0;
+    // Доля позиций молчит о деньгах: комплект вентиляторов — одна позиция из
+    // девяти, но без него себестоимость занижена на тысячи. Считаем и рубли.
+    let costFound = 0;
+    let specTotal = 0;
     const bySource = new Map<string, number>();
     const failures: string[] = [];
 
@@ -61,15 +65,22 @@ describe.skipIf(!DIR || !existsSync(DIR))('живые архивы: цены и�
         }
       }
 
-      const specItems = draft.items.map((i) => ({ name: `${i.kind}: ${i.name}` }));
-      const pairs = matchCostsToItems(specItems, lines);
+      // Меряем ровно то, что делает форма: planCostApplication, а не голое
+      // сопоставление. Разница существенная — комплект вентиляторов собирается
+      // из нескольких строк чека именно здесь, и старый замер его не видел.
+      const specItems = draft.items.map((i) => ({
+        name: `${i.kind}: ${i.name}`,
+        qty: '1',
+        unitCost: '',
+      }));
+      const plan = planCostApplication(specItems, lines);
+      const pairs = plan.applications;
       items += specItems.length;
       matched += pairs.length;
 
-      const cost = pairs.reduce(
-        (acc, p) => acc + Number(p.unitCost) * Number(lines[p.lineIndex]?.qty ?? 1),
-        0,
-      );
+      const cost = pairs.reduce((acc, p) => acc + Number(p.unitCost) * Number(p.qty), 0);
+      costFound += cost;
+      specTotal += Number(draft.total ?? 0);
       const multi = lines.filter((l) => Number(l.qty) > 1).length;
       const dupes = lines.length - new Set(lines.map((l) => l.name)).size;
 
@@ -88,9 +99,9 @@ describe.skipIf(!DIR || !existsSync(DIR))('живые архивы: цены и�
             : `    · ${it.name.slice(0, 44).padEnd(44)} ${'—'.padStart(10)}  цены нет`,
         );
       });
-      const used = new Set(pairs.map((p) => p.lineIndex));
-      lines.forEach((l, i) => {
-        if (!used.has(i)) console.log(`    ⌀ лишняя строка чека: ${l.name.slice(0, 50)} ${l.unitPrice}`);
+      plan.unusedLineIndexes.forEach((i) => {
+        const l = lines[i];
+        if (l) console.log(`    ⌀ лишняя строка чека: ${l.name.slice(0, 50)} ${l.unitPrice}`);
       });
       unread.forEach((u) => console.log(`    ✗ не прочитан: ${u}`));
     }
@@ -98,6 +109,8 @@ describe.skipIf(!DIR || !existsSync(DIR))('живые архивы: цены и�
     const share = items === 0 ? 0 : matched / items;
     console.log(
       `\nитого: позиций ${items}, сопоставлено ${matched} (${(share * 100).toFixed(1)} %)` +
+        `\nсебестоимость из чеков ${costFound.toFixed(0)} при продаже ${specTotal.toFixed(0)}` +
+        ` — валовая по найденному ${(specTotal - costFound).toFixed(0)}` +
         `\nисточники чеков: ${[...bySource].map(([s, n]) => `${s}:${n}`).join(', ')}`,
     );
     if (failures.length > 0) console.log('сбои:\n  ' + failures.join('\n  '));
