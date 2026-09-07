@@ -1,10 +1,16 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { D, add, toMoneyString, formatRub } from '@construct/shared';
+import { D, add, toMoneyString } from '@construct/shared';
 import { ShoppingCart, RotateCcw, Plus, X, Receipt } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
+import { KpiCard } from '@/components/ui/KpiCard';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -17,6 +23,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ModalClose,
 } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toaster';
 import { PurchaseModal } from '@/components/purchases/PurchaseModal';
@@ -27,11 +34,17 @@ import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useUrlDialog } from '@/hooks/useUrlDialog';
 import type { Purchase } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { rangeForAny, type AnyPeriod } from '@/lib/periods';
 
 function purchaseTotal(p: Purchase): string {
   if (p.transaction?.amount) return p.transaction.amount;
-  return p.lines.reduce((acc, l) => acc + Number(l.lineTotal), 0).toFixed(2);
+  return toMoneyString(p.lines.reduce((acc, l) => add(acc, D(l.lineTotal)), D(0)));
 }
+
+const DEFAULTS = { q: '', period: 'all' };
+const FILTERS = flatCodec(DEFAULTS);
 
 // useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function PurchasesPage() {
@@ -50,8 +63,29 @@ function PurchasesView() {
   const voidPurchase = useVoidPurchase(wsId ?? '');
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
   const [creating, setCreating] = useState(false);
-  // Поиска на экране нет — только «n» на создание закупки.
-  useListHotkeys({ onNew: () => setCreating(true) });
+  // Список приходит целиком — поиск и период считаем на клиенте, но держим их в
+  // адресе, как у остальных списков.
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const range = useMemo(() => rangeForAny(filters.period as AnyPeriod), [filters.period]);
+  const rows = useMemo(() => {
+    const q = filters.q.trim().toLowerCase();
+    return (purchases.data ?? []).filter((p) => {
+      const date = p.transaction?.date ?? p.createdAt;
+      if (range.from && date < range.from) return false;
+      if (range.to && date > range.to) return false;
+      if (!q) return true;
+      const hay = `${p.supplier?.name ?? ''} ${p.note ?? ''} ${p.lines
+        .map((l) => l.warehouseItem?.name ?? '')
+        .join(' ')}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [purchases.data, filters.q, range]);
+  const total = useMemo(
+    () => toMoneyString(rows.reduce((acc, p) => add(acc, purchaseTotal(p)), D(0))),
+    [rows],
+  );
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
   // Открытая закупка — в адресе (?purchase=<id>), как и заказ. Сам объект
   // берём из уже загруженного списка: отдельного запроса на одну закупку
   // во фронте нет, а список приходит целиком.
@@ -141,19 +175,43 @@ function PurchasesView() {
         }
       />
 
-      <div className="bg-card border-t border-border">
+      <div className="px-6 py-4">
+        <KpiRow loading={purchases.isLoading} count={2}>
+          <KpiCard label="Сумма закупок за период" value={<Money value={total} />} />
+          <KpiCard label="Закупок" value={String(rows.length)} />
+        </KpiRow>
+      </div>
+
+      <FilterBar>
+        <div className="min-w-[220px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Поставщик, позиция или комментарий"
+            />
+          </FilterField>
+        </div>
+        <PeriodSelect
+          value={filters.period as AnyPeriod}
+          onChange={(period) => setFilters({ ...filters, period })}
+        />
+        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
+      </FilterBar>
+
+      <div className="bg-card">
         <DataTable
-          data={purchases.data ?? []}
+          data={rows}
           columns={columns}
           rowKey={(p) => p.id}
           footer={{
             supplier: 'Итого по видимым',
             // Σ purchaseTotal по строкам — Decimal, без Number (решение №28).
-            total: formatRub(
-              toMoneyString(
-                (purchases.data ?? []).reduce((acc, p) => add(acc, purchaseTotal(p)), D(0)),
-              ),
-            ),
+            total: <Money value={total} />,
           }}
           onRowClick={(p) => purchaseUrl.open(p.id)}
           loading={purchases.isLoading}
@@ -207,9 +265,11 @@ function PurchasesView() {
               Закупка от{' '}
               {detail ? formatDate(detail.transaction?.date ?? detail.createdAt) : ''}
             </ModalTitle>
-            <Button variant="ghost" size="icon" onClick={() => purchaseUrl.close()} aria-label="Закрыть">
-              <X className="h-4 w-4" />
-            </Button>
+            <ModalClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Закрыть">
+                <X className="h-4 w-4" />
+              </Button>
+            </ModalClose>
           </ModalHeader>
           <ModalBody className="space-y-4">
             {detail && (
@@ -235,7 +295,7 @@ function PurchasesView() {
                           {l.warehouseItem?.name ?? 'Позиция склада'}
                         </span>
                         <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-                          {Number(l.qty)} × {formatRub(l.unitPrice)} ={' '}
+                          {Number(l.qty)} × <Money value={l.unitPrice} tone="plain" /> ={' '}
                           <span className="font-medium text-foreground"><Money value={l.lineTotal} /></span>
                         </span>
                       </div>
@@ -263,9 +323,11 @@ function PurchasesView() {
             >
               <RotateCcw className="h-3.5 w-3.5" /> Отменить закупку
             </Button>
-            <Button type="button" variant="secondary" onClick={() => purchaseUrl.close()}>
-              Закрыть
-            </Button>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">
+                Закрыть
+              </Button>
+            </ModalClose>
           </ModalFooter>
         </ModalContent>
       </Modal>

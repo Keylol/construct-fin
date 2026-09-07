@@ -17,12 +17,14 @@ import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCategories } from '@/hooks/useCategories';
 import {
@@ -313,14 +315,14 @@ function BudgetDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[420px]">
-        <DialogHeader>
-          <DialogTitle>
+    <Modal open onOpenChange={(o) => !o && onClose()} dirty={amount !== (editing?.amount ?? '') || note !== (editing?.note ?? '') || (!editing && !!categoryId)}>
+      <ModalContent size="md" onConfirm={submit}>
+        <ModalHeader>
+          <ModalTitle>
             {editing ? `Лимит: ${editing.categoryName}` : 'Новый лимит по категории'}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
           {!editing && (
             <FormField label="Категория" required>
               <Combobox
@@ -343,23 +345,23 @@ function BudgetDialog({
           <FormField label="Заметка">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно" />
           </FormField>
-        </div>
-        <DialogFooter className={cn(editing && 'sm:justify-between')}>
+        </ModalBody>
+        <ModalFooter className={cn(editing && 'sm:justify-between')}>
           {editing && (
             <Button variant="destructive" onClick={() => setConfirmDel(true)}>
               <Trash2 className="h-4 w-4" /> Удалить
             </Button>
           )}
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>
-              Отмена
-            </Button>
+            <ModalClose asChild>
+              <Button variant="secondary">Отмена</Button>
+            </ModalClose>
             <Button onClick={submit} disabled={!valid} loading={pending}>
               {editing ? 'Сохранить' : 'Задать'}
             </Button>
           </div>
-        </DialogFooter>
-      </DialogContent>
+        </ModalFooter>
+      </ModalContent>
       {editing && (
         <ConfirmDialog
           open={confirmDel}
@@ -375,6 +377,6 @@ function BudgetDialog({
           }}
         />
       )}
-    </Dialog>
+    </Modal>
   );
 }

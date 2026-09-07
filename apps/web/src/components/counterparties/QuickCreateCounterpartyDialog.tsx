@@ -5,12 +5,14 @@ import { useCounterparties, useCreateCounterparty } from '@/hooks/useCounterpart
 import { findClient, normalizeClientName } from '@construct/shared';
 import type { CounterpartyRole } from '@/lib/types';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
@@ -101,8 +103,8 @@ export function QuickCreateCounterpartyDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Modal open={open} onOpenChange={onOpenChange} dirty={!!name.trim() || !!contact.trim()}>
+      <ModalContent size="md" onConfirm={submit}>
         <form
           noValidate
           onSubmit={(e) => {
@@ -113,10 +115,10 @@ export function QuickCreateCounterpartyDialog({
             void submit();
           }}
         >
-          <DialogHeader>
-            <DialogTitle>{ROLE_TITLES[role] ?? 'Новый контрагент'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+          <ModalHeader>
+            <ModalTitle>{ROLE_TITLES[role] ?? 'Новый контрагент'}</ModalTitle>
+          </ModalHeader>
+          <ModalBody className="space-y-3">
             <FormField label="Имя / название" required error={error ?? undefined}>
               <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </FormField>
@@ -129,19 +131,19 @@ export function QuickCreateCounterpartyDialog({
                 {twin.contact ? ` · ${twin.contact}` : ''}. По кнопке подставлю её.
               </p>
             )}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Отмена
-            </Button>
+          </ModalBody>
+          <ModalFooter>
+            <ModalClose asChild>
+              <Button type="button" variant="secondary">Отмена</Button>
+            </ModalClose>
             <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
               {twin && normalizeClientName(twin.name) === normalizeClientName(name)
                 ? 'Выбрать существующего'
                 : 'Создать'}
             </Button>
-          </DialogFooter>
+          </ModalFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ModalContent>
+    </Modal>
   );
 }
