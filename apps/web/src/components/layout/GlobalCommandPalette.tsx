@@ -8,8 +8,8 @@ import {
   CommandItem,
 } from '@/components/ui/CommandPalette';
 import { NAV_ITEMS } from '@/components/layout/nav-items';
-import { CREATE_ACTIONS } from '@/components/layout/create-actions';
-import { Plus, Receipt } from '@/components/ui/icons';
+import { CREATE_ACTIONS } from '@/components/layout/CreateMenu';
+
 
 interface GlobalCommandPaletteProps {
   open: boolean;
@@ -86,20 +86,16 @@ export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPalett
       {/* Создание — первым: чаще всего палитру открывают, чтобы что-то завести,
           а не чтобы перейти. Формы открываются тем же ?new=1, что и «+ Создать». */}
       <CommandGroup heading="Создать">
-        {CREATE_ACTIONS.map((a) => (
-          <CommandItem key={a.href} value={`создать ${a.label}`} onSelect={() => go(a.href)}>
-            <Plus />
-            <span>{a.label}</span>
-          </CommandItem>
-        ))}
-        <CommandItem
-          value="разобрать чек pdf закупка"
-          onSelect={() => go('/purchases/wb-receipt')}
-        >
-          <Receipt />
-          <span>Разобрать чек</span>
-          <span className="ml-auto text-xs text-muted-foreground">PDF Wildberries, ДНС, ОТ</span>
-        </CommandItem>
+        {CREATE_ACTIONS.map((a) => {
+          const Icon = a.icon;
+          return (
+            <CommandItem key={a.href} value={`создать ${a.label} ${a.hint ?? ''}`} onSelect={() => go(a.href)}>
+              <Icon />
+              <span>{a.label}</span>
+              {a.hint && <span className="ml-auto text-xs text-muted-foreground">{a.hint}</span>}
+            </CommandItem>
+          );
+        })}
       </CommandGroup>
 
       <CommandGroup heading="Навигация">

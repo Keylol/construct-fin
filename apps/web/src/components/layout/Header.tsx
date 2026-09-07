@@ -2,51 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import * as PopoverPrimitive from '@radix-ui/react-popover';
+import { usePathname } from 'next/navigation';
 import { Search, ChevronRight, ChevronDown, Plus } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
+import { Button } from '@/components/ui/Button';
+import { CountBadge } from '@/components/ui/CountBadge';
 import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
-import { Button } from '@/components/ui/Button';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTotalCash } from '@/hooks/useTotalCash';
-
-import { CreateActionsContent, CREATE_POPOVER_CLASSES } from './create-actions';
+import { CreateMenu } from './CreateMenu';
 
 interface HeaderProps {
   onCommandOpen: () => void;
 }
 
-function CreateMenu() {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <PopoverPrimitive.Trigger asChild>
-        <Button size="sm" className="gap-1">
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Создать</span>
-          <ChevronDown className="h-3.5 w-3.5 opacity-80" />
-        </Button>
-      </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content align="end" sideOffset={6} className={CREATE_POPOVER_CLASSES}>
-          <CreateActionsContent
-            onPick={(href) => {
-              setOpen(false);
-              router.push(href as Parameters<typeof router.push>[0]);
-            }}
-          />
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
-  );
-}
-
 /**
- * «Всего денег» в хедере (решение №19): главный вопрос владельца виден из
- * любого экрана. Сумма активных счетов; клик — на /accounts.
+ * Деньги в шапке (решение №19): главный вопрос владельца виден с любого
+ * экрана. По банку там, где банк отдаёт остаток, иначе по учёту; рядом —
+ * очередь разбора. Оба — обычные кнопки-ссылки системы, а не свои чипы.
  */
 function HeaderCash() {
   const { current } = useCurrentWorkspace();
@@ -57,37 +31,29 @@ function HeaderCash() {
 
   return (
     <div className="hidden items-center gap-1.5 sm:flex">
-      <Link
-        href="/accounts"
-        title={
-          hasBank
-            ? 'По данным банков (где есть API) — открыть счета'
-            : 'Денежные средства на счетах — открыть'
-        }
-        className={cn(
-          'flex h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5',
-          'transition-colors hover:border-ring',
-        )}
+      <Button
+        asChild
+        variant="secondary"
+        size="sm"
+        className="gap-2"
       >
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {hasBank ? 'По банку' : 'Денежные средства'}
-        </span>
-        <Money value={total} className="text-sm font-semibold" />
-      </Link>
-      {/* Очередь разбора рядом с деньгами: пока она непуста, «по учёту» неполон —
-          и это задача, а не ошибка. */}
-      {unresolvedCount > 0 && (
         <Link
-          href="/inbox"
-          title="Строки выписки, которые ещё не проведены — открыть «Входящие»"
-          className={cn(
-            'flex h-8 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 text-xs',
-            'text-foreground transition-colors hover:border-warning',
-          )}
+          href="/accounts"
+          title={hasBank ? 'По данным банков (где есть API) — открыть счета' : 'Денежные средства на счетах — открыть'}
         >
-          <span className="text-muted-foreground">не разобрано</span>
-          <span className="font-semibold tabular-nums">{unresolvedCount}</span>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {hasBank ? 'По банку' : 'Денежные средства'}
+          </span>
+          <Money value={total} className="font-semibold" />
         </Link>
+      </Button>
+      {unresolvedCount > 0 && (
+        <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+          <Link href="/inbox" title="Строки выписки, которые ещё не проведены — открыть «Входящие»">
+            не разобрано
+            <CountBadge count={unresolvedCount} tone="warning" />
+          </Link>
+        </Button>
       )}
     </div>
   );
@@ -113,71 +79,73 @@ export function Header({ onCommandOpen }: HeaderProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background px-4 sm:px-6',
+        'sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background px-4 sm:px-6',
       )}
     >
       {/* Мобильное меню живёт в нижнем таб-баре («Ещё») — гамбургер не нужен. */}
 
-      {/* Breadcrumbs (только вложенные пути — см. showBreadcrumbs выше) */}
       {!showBreadcrumbs && <div className="min-w-0 flex-1" />}
       {showBreadcrumbs && (
-      <nav aria-label="Хлебные крошки" className="min-w-0 flex-1">
-        <ol className="flex items-center gap-1 text-sm">
-          {breadcrumbs.map((c, i) => {
-            const isLast = i === breadcrumbs.length - 1;
-            return (
-              <li key={`${c.href ?? c.label}-${i}`} className="flex items-center gap-1 min-w-0">
-                {c.href && !isLast ? (
-                  <Link
-                    href={c.href as Parameters<typeof Link>[0]['href']}
-                    className="truncate text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {c.label}
-                  </Link>
-                ) : (
-                  <span
-                    className={cn(
-                      'truncate',
-                      isLast ? 'font-medium text-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {c.label}
-                  </span>
-                )}
-                {!isLast && (
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
+        <nav aria-label="Хлебные крошки" className="min-w-0 flex-1">
+          <ol className="flex items-center gap-1 text-sm">
+            {breadcrumbs.map((c, i) => {
+              const isLast = i === breadcrumbs.length - 1;
+              return (
+                <li key={`${c.href ?? c.label}-${i}`} className="flex min-w-0 items-center gap-1">
+                  {c.href && !isLast ? (
+                    <Link
+                      href={c.href as Parameters<typeof Link>[0]['href']}
+                      className="truncate text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {c.label}
+                    </Link>
+                  ) : (
+                    <span
+                      className={cn(
+                        'truncate',
+                        isLast ? 'font-medium text-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      {c.label}
+                    </span>
+                  )}
+                  {!isLast && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
       )}
 
-      {/* Денежные средства — сумма по всем счетам */}
       <HeaderCash />
 
-      {/* Глобальное создание (десктоп; на мобиле — центр таб-бара) */}
+      {/* Глобальное создание (десктоп; на телефоне — центр таб-бара) */}
       <div className="hidden md:block">
-        <CreateMenu />
+        <CreateMenu
+          trigger={
+            <Button size="sm" className="gap-1">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Создать</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-80" />
+            </Button>
+          }
+        />
       </div>
 
-      {/* Command palette trigger */}
-      <button
-        type="button"
+      {/* Палитра: кнопка выглядит как поле поиска — это и есть вход в поиск. */}
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={onCommandOpen}
-        className={cn(
-          'inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-xs',
-          'text-muted-foreground shadow-xs transition-colors hover:bg-secondary',
-        )}
         aria-label="Открыть поиск"
+        className="gap-2 font-normal text-muted-foreground"
       >
         <Search className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Поиск</span>
-        <kbd className="ml-2 hidden rounded border border-input bg-muted px-1.5 py-0.5 text-[10px] font-medium sm:inline">
+        <kbd className="hidden rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground sm:inline">
           {isMac ? '⌘K' : 'Ctrl+K'}
         </kbd>
-      </button>
+      </Button>
     </header>
   );
 }
@@ -217,7 +185,6 @@ function buildBreadcrumbs(pathname: string): CrumbItem[] {
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 0) return [{ label: 'Главная' }];
 
-  // Try to match a known nav item first (e.g. /reports → "Отчёты").
   const match = NAV_ITEMS.find((n) => n.href === pathname);
   if (match && parts.length === 1) {
     return [{ label: match.label }];
