@@ -37,6 +37,19 @@ node -e "require('bcryptjs').hash(process.argv[1],10).then(console.log)" 'пар
 `TELEGRAM_ALLOWED_IDS` (как `1` для владельца). Без `2` в allowlist вход
 оператора отвечает 403.
 
+**Грабли:** Docker Compose интерполирует `$имя` внутри значений env-файла —
+куски bcrypt-хэша после `$` он считает переменными и обнуляет (в контейнере
+приходит обрезанный хэш, вход отвечает «Неверный пароль», в логах `up -d` —
+`The "…" variable is not set`). Каждый `$` в хэше пишется как `$$`:
+
+```bash
+node -e "require('bcryptjs').hash(process.argv[1],10).then(h=>console.log(h.replace(/\$/g,'\$\$')))" 'пароль'
+```
+
+Переменные читаются при создании контейнера: после правки `.env.production`
+нужен `docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d api`
+(обычный `restart` оставит старое окружение); следующий деплой делает то же сам.
+
 ## На web
 
 `useRole()` (`hooks/useRole.ts`) отдаёт роль текущего пространства и
