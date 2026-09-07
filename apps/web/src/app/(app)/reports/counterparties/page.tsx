@@ -1,57 +1,140 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { BarChart3 } from '@/components/ui/icons';
+import { BarChart3, RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-
+import { D, add, toMoneyString } from '@construct/shared';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
 import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { FilterBar } from '@/components/ui/FilterBar';
-import { PeriodPicker, periodToQuery, type PeriodValue } from '@/components/reports/PeriodPicker';
 import { ExportButtons } from '@/components/reports/ExportButtons';
+import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
 import { txDrilldownHref } from '@/lib/tx-filters';
+import type { BreakdownRow } from '@/lib/types';
 
+type LinkHref = Parameters<typeof Link>[0]['href'];
+type BreakdownType = 'INCOME' | 'EXPENSE' | 'ALL';
+
+const DEFAULT_PERIOD = 'this-month';
+const EXTRAS = { type: 'ALL' };
+const CODEC = reportCodec(DEFAULT_PERIOD, EXTRAS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function CounterpartiesReportPage() {
-  const ws = useCurrentWorkspace();
-  const wsId = ws.currentId;
-  const [period, setPeriod] = useState<PeriodValue>({
-    mode: 'preset',
-    preset: 'this-month',
-  });
-  const [type, setType] = useState<'INCOME' | 'EXPENSE' | 'ALL'>('ALL');
+  return (
+    <Suspense>
+      <CounterpartiesReportView />
+    </Suspense>
+  );
+}
 
-  const query = useBreakdownReport('by-counterparty', wsId, periodToQuery(period), type);
+function CounterpartiesReportView() {
+  const { currentId: wsId } = useCurrentWorkspace();
+  const [filters, setFilters] = useUrlFilters(CODEC);
+  const type: BreakdownType =
+    filters.type === 'INCOME' || filters.type === 'EXPENSE' ? filters.type : 'ALL';
+  const periodParams = toPeriodParams(filters);
+
+  const query = useBreakdownReport('by-counterparty', wsId, periodParams, type);
 
   if (!wsId) return null;
+
+  const rows = query.data?.rows ?? [];
+  const period = query.data?.period;
+  const sum = (pick: (r: BreakdownRow) => string) =>
+    toMoneyString(rows.reduce((acc, r) => add(acc, pick(r)), D(0)));
+
+  const name = (r: BreakdownRow) =>
+    r.id !== null ? (
+      <Link
+        href={
+          txDrilldownHref({
+            counterpartyId: r.id,
+            from: period?.from,
+            to: period?.to,
+            type: type === 'ALL' ? undefined : type,
+          }) as LinkHref
+        }
+        className="hover:text-foreground hover:underline"
+      >
+        {r.name}
+      </Link>
+    ) : (
+      r.name
+    );
+
+  const columns: Column<BreakdownRow>[] = [
+    { key: 'name', header: 'Контрагент', cell: name },
+    { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
+    {
+      key: 'income',
+      header: 'Доход',
+      align: 'right',
+      cell: (r) => <Money value={r.income} tone="plain" className="text-success" />,
+    },
+    {
+      key: 'expense',
+      header: 'Расход',
+      align: 'right',
+      cell: (r) => <Money value={r.expense} tone="plain" className="text-destructive" />,
+    },
+    {
+      key: 'total',
+      header: 'Итого',
+      align: 'right',
+      cell: (r) => <Money value={r.total} className="font-medium" />,
+    },
+  ];
+  const card = (r: BreakdownRow) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <div className="min-w-0">
+        <div className="truncate font-medium">{name(r)}</div>
+        <div className="text-xs text-muted-foreground">
+          {r.count} оп. · +<Money value={r.income} tone="plain" /> · −
+          <Money value={r.expense} tone="plain" />
+        </div>
+      </div>
+      <Money value={r.total} className="font-semibold" />
+    </div>
+  );
 
   return (
     <>
       <FilterBar>
-        <PeriodPicker value={period} onChange={setPeriod} />
-        <label className="flex flex-col text-xs text-muted-foreground">
-          <span className="pb-1">Тип</span>
+        <ReportPeriodFields value={filters} onChange={(p) => setFilters({ ...filters, ...p })} />
+        <FilterField label="Тип">
           <Select
             value={type}
-            onChange={(e) => setType(e.target.value as 'INCOME' | 'EXPENSE' | 'ALL')}
+            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
             className="h-9 w-[120px]"
           >
             <option value="ALL">Всё</option>
             <option value="EXPENSE">Расход</option>
             <option value="INCOME">Доход</option>
           </Select>
-        </label>
+        </FilterField>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setFilters({ ...reportPeriod(DEFAULT_PERIOD), ...EXTRAS })}
+          className="self-end"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Сброс
+        </Button>
         <div className="ml-auto self-end">
-          <ExportButtons
-            wsId={wsId}
-            kind="by-counterparty"
-            params={{ ...periodToQuery(period), type }}
-          />
+          <ExportButtons wsId={wsId} kind="by-counterparty" params={{ ...periodParams, type }} />
         </div>
       </FilterBar>
 
@@ -61,7 +144,7 @@ export default function CounterpartiesReportPage() {
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
         )}
 
-        {query.data && query.data.rows.length === 0 && (
+        {query.data && rows.length === 0 && (
           <Card>
             <EmptyState
               icon={BarChart3}
@@ -71,48 +154,20 @@ export default function CounterpartiesReportPage() {
           </Card>
         )}
 
-        {query.data && query.data.rows.length > 0 && (
-          <Card className="overflow-x-auto !p-0">
-            <table className="w-full text-base">
-              <thead className="border-b border-border">
-                <tr className="text-left text-xs uppercase text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Контрагент</th>
-                  <th className="px-4 py-2 text-right font-medium">Операций</th>
-                  <th className="px-4 py-2 text-right font-medium">Доход</th>
-                  <th className="px-4 py-2 text-right font-medium">Расход</th>
-                  <th className="px-4 py-2 text-right font-medium">Итого</th>
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.rows.map((r) => (
-                  <tr key={r.id ?? 'none'} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2">
-                      {r.id !== null ? (
-                        <Link
-                          href={
-                            txDrilldownHref({
-                              counterpartyId: r.id,
-                              from: query.data!.period.from,
-                              to: query.data!.period.to,
-                              type: type === 'ALL' ? undefined : type,
-                            }) as Parameters<typeof Link>[0]['href']
-                          }
-                          className="cursor-pointer hover:text-foreground hover:underline"
-                        >
-                          {r.name}
-                        </Link>
-                      ) : (
-                        r.name
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{r.count}</td>
-                    <td className="px-4 py-2 text-right text-success"><Money value={r.income} tone="plain" /></td>
-                    <td className="px-4 py-2 text-right text-destructive"><Money value={r.expense} tone="plain" /></td>
-                    <td className="px-4 py-2 text-right font-medium"><Money value={r.total} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {query.data && rows.length > 0 && (
+          <Card className="overflow-hidden !p-0">
+            <DataTable
+              data={rows}
+              columns={columns}
+              rowKey={(r) => r.id ?? `none:${r.name}`}
+              mobileCards={card}
+              footer={{
+                name: 'Итого',
+                income: <Money value={sum((r) => r.income)} />,
+                expense: <Money value={sum((r) => r.expense)} />,
+                total: <Money value={sum((r) => r.total)} />,
+              }}
+            />
           </Card>
         )}
       </div>

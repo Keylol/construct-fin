@@ -8,8 +8,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -381,7 +382,9 @@ function Wizard({ wsId }: { wsId: string }) {
             {/* Шапка документа + предупреждения */}
             <Card className="space-y-2">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <Badge variant="muted">{SOURCE_LABELS[source]}</Badge>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {SOURCE_LABELS[source]}
+                </span>
                 {!isManual && (
                   <span>
                     {parsed.receipt.checkNumber ? `№${parsed.receipt.checkNumber} · ` : ''}
@@ -622,9 +625,8 @@ function LineRow({
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>Цена</span>
-          <Input
+          <MoneyInput
             value={line.unitPrice}
-            inputMode="decimal"
             onChange={(e) => onChange({ ...line, unitPrice: e.target.value })}
             className="h-9 w-[100px] text-right tabular-nums"
           />
@@ -673,9 +675,8 @@ function LineRow({
             />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="w-[110px]">Продажная цена</span>
-              <Input
+              <MoneyInput
                 value={line.salePrice}
-                inputMode="decimal"
                 onChange={(e) => onChange({ ...line, salePrice: e.target.value })}
                 className="h-8 w-[120px] text-right tabular-nums"
               />
@@ -796,7 +797,7 @@ function ReceiptHistory({
     {
       key: 'source',
       header: 'Источник',
-      cell: (r) => <Badge variant="muted">{SOURCE_LABELS[r.source]}</Badge>,
+      cell: (r) => <span className="text-muted-foreground">{SOURCE_LABELS[r.source]}</span>,
     },
     {
       key: 'date',
@@ -824,11 +825,11 @@ function ReceiptHistory({
       header: 'Деньги',
       cell: (r) =>
         r.deletedAt ? (
-          <Badge variant="muted">проведение отменено</Badge>
+          <StatusDot tone="muted" label="проведение отменено" />
         ) : r.transactionCreated ? (
-          <Badge variant="muted">расход создан</Badge>
+          <StatusDot tone="success" label="расход создан" />
         ) : (
-          <Badge variant="muted">привязан к выписке</Badge>
+          <StatusDot tone="primary" label="привязан к выписке" />
         ),
     },
     {

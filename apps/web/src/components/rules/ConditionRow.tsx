@@ -4,6 +4,7 @@ import { X } from '@/components/ui/icons';
 import type { Account, RuleCondition, RuleConditionType } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Select } from '@/components/ui/Select';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { CONDITION_LABELS, defaultCondition } from './dictionaries';
@@ -106,16 +107,14 @@ export function ConditionRow({
         )}
         {condition.type === 'AMOUNT_RANGE' && (
           <div className="grid grid-cols-2 gap-2">
-            <Input
-              inputMode="decimal"
+            <MoneyInput
               value={condition.min ?? ''}
               onChange={(e) =>
                 onChange({ type: 'AMOUNT_RANGE', min: e.target.value, max: condition.max })
               }
               placeholder="от"
             />
-            <Input
-              inputMode="decimal"
+            <MoneyInput
               value={condition.max ?? ''}
               onChange={(e) =>
                 onChange({ type: 'AMOUNT_RANGE', min: condition.min, max: e.target.value })

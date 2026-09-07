@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { formatRub } from '@construct/shared';
+import { D, add, formatRub, toMoneyString } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { CHART_CATEGORICAL, CHART_OTHER } from '@/lib/chart';
@@ -19,7 +19,9 @@ import type { BreakdownRow } from '@/lib/types';
 export interface DonutSlice {
   key: string;
   name: string;
+  /** Для recharts — число; показ и суммы идут по `amount`. */
   value: number;
+  amount: string;
   share: number;
   color: string;
 }
@@ -35,22 +37,31 @@ export function donutKey(r: Pick<BreakdownRow, 'id' | 'name'>): string {
 
 /** Разложить строки отчёта на топ-7 + «Прочее» с фиксированными цветами. */
 export function donutSlices(rows: BreakdownRow[]): DonutSlice[] {
-  const sorted = [...rows].sort((a, b) => Number(b.total) - Number(a.total));
+  const sorted = [...rows].sort((a, b) => D(b.total).comparedTo(D(a.total)));
   const top = sorted.slice(0, CHART_CATEGORICAL.length);
   const rest = sorted.slice(CHART_CATEGORICAL.length);
   const slices: DonutSlice[] = top.map((r, i) => ({
     key: donutKey(r),
     name: r.name,
     value: Number(r.total),
+    amount: r.total,
     share: r.share,
     color: CHART_CATEGORICAL[i]!,
   }));
   if (rest.length > 0) {
-    const value = rest.reduce((acc, r) => acc + Number(r.total), 0);
+    // Сумма «Прочего» — Decimal, как любые деньги; float только для recharts.
+    const amount = toMoneyString(rest.reduce((acc, r) => add(acc, r.total), D(0)));
     const share = rest.reduce((acc, r) => acc + r.share, 0);
-    slices.push({ key: '__other__', name: `Прочее (${rest.length})`, value, share, color: CHART_OTHER });
+    slices.push({
+      key: '__other__',
+      name: `Прочее (${rest.length})`,
+      value: Number(amount),
+      amount,
+      share,
+      color: CHART_OTHER,
+    });
   }
-  return slices.filter((s) => s.value > 0);
+  return slices.filter((s) => D(s.amount).gt(0));
 }
 
 export function CategoryDonut({
@@ -63,7 +74,10 @@ export function CategoryDonut({
   totalLabel: string;
 }) {
   const slices = useMemo(() => donutSlices(rows), [rows]);
-  const total = useMemo(() => slices.reduce((acc, s) => acc + s.value, 0), [slices]);
+  const total = useMemo(
+    () => toMoneyString(slices.reduce((acc, s) => add(acc, s.amount), D(0))),
+    [slices],
+  );
   if (slices.length === 0) return null;
 
   return (
@@ -88,10 +102,13 @@ export function CategoryDonut({
                 ))}
               </Pie>
               <Tooltip
-                formatter={(v, name, entry) => [
-                  `${formatRub(Number(v).toFixed(2))} · ${(((entry?.payload as DonutSlice)?.share ?? 0) * 100).toFixed(1)}%`,
-                  String(name),
-                ]}
+                formatter={(_v, name, entry) => {
+                  const slice = entry?.payload as DonutSlice | undefined;
+                  return [
+                    `${formatRub(slice?.amount ?? '0')} · ${((slice?.share ?? 0) * 100).toFixed(1)}%`,
+                    String(name),
+                  ];
+                }}
                 contentStyle={{
                   borderRadius: 6,
                   border: '1px solid hsl(var(--border))',
@@ -106,7 +123,7 @@ export function CategoryDonut({
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
               {totalLabel}
             </span>
-            <Money value={total.toFixed(2)} className="max-w-[7.5rem] text-center text-base font-semibold leading-tight" />
+            <Money value={total} className="max-w-[7.5rem] text-center text-base font-semibold leading-tight" />
           </div>
         </div>
 
@@ -123,7 +140,7 @@ export function CategoryDonut({
               <span className="shrink-0 tabular-nums text-muted-foreground">
                 {(s.share * 100).toFixed(1)}%
               </span>
-              <Money value={s.value.toFixed(2)} className="w-[110px] shrink-0 text-right" />
+              <Money value={s.amount} className="w-[110px] shrink-0 text-right" />
             </li>
           ))}
         </ul>

@@ -1,3 +1,24 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@/components/ui/Sheet",
+            "message": "Шторок нет: формы и панели — ui/Modal (docs/ui-standard.md)."
+          },
+          {
+            "name": "@/components/ui/Dialog",
+            "message": "Dialog удалён: ui/Modal с dirty и ModalClose."
+          },
+          {
+            "name": "@/components/reports/PeriodPicker",
+            "message": "Период отчёта — components/reports/ReportPeriodFields поверх ui/PeriodSelect."
+          }
+        ]
+      }
+    ]
+  }
 }

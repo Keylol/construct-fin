@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Combobox } from '@/components/ui/Combobox';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import {
   Modal,
   ModalBody,
@@ -850,8 +851,7 @@ export function OrderFormModal({
                       />
                     </div>
                     <div className="w-24">
-                      <Input
-                        inputMode="decimal"
+                      <MoneyInput
                         value={it.unitPrice}
                         onChange={(e) => patchItem(i, { unitPrice: e.target.value })}
                         placeholder="Цена прод."
@@ -859,8 +859,7 @@ export function OrderFormModal({
                       />
                     </div>
                     <div className="w-24">
-                      <Input
-                        inputMode="decimal"
+                      <MoneyInput
                         value={it.unitCost ?? ''}
                         onChange={(e) => patchItem(i, { unitCost: e.target.value })}
                         placeholder="Закуп. цена"
@@ -1049,8 +1048,7 @@ export function OrderFormModal({
                   Итог заказа для распределения
                   {specTotal && ` · из спецификации ${formatRub(specTotal)}`}
                 </span>
-                <Input
-                  inputMode="decimal"
+                <MoneyInput
                   value={allocTotal}
                   onChange={(e) => setAllocTotal(e.target.value)}
                   placeholder="напр. 461468"
@@ -1063,9 +1061,8 @@ export function OrderFormModal({
           </div>
 
           <FormField label="Скидка (₽)" htmlFor="o-discount">
-            <Input
+            <MoneyInput
               id="o-discount"
-              inputMode="decimal"
               value={discount}
               onChange={(e) => setDiscount(e.target.value)}
               placeholder="0"
@@ -1174,11 +1171,10 @@ export function OrderFormModal({
                     </div>
                     <div className="flex items-end gap-2">
                       <div className="w-32">
-                        <Input
-                          inputMode="decimal"
+                        <MoneyInput
                           value={prepayAmount}
                           onChange={(e) => setPrepayAmount(e.target.value)}
-                          placeholder="Сумма, ₽"
+                          placeholder="Сумма"
                           aria-label="Сумма предоплаты"
                         />
                       </div>
@@ -1213,15 +1209,14 @@ export function OrderFormModal({
                           }
                           className="w-[150px]"
                         />
-                        <Input
-                          inputMode="decimal"
+                        <MoneyInput
                           value={r.amount}
                           onChange={(e) =>
                             setScheduleRows((arr) =>
                               arr.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
                             )
                           }
-                          placeholder="Сумма, ₽"
+                          placeholder="Сумма"
                           className="flex-1"
                         />
                         <Button
