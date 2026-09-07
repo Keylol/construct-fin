@@ -7,7 +7,8 @@ import { cn } from '@/lib/cn';
 import { ChevronDown, SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
 import { readStored, writeStored } from '@/lib/storage';
-import { NAV_GROUPS, type NavGroup, type NavItem } from './nav-items';
+import { navGroupsFor, type NavGroup, type NavItem } from './nav-items';
+import { useRole } from '@/hooks/useRole';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { InboxNavBadge } from './InboxNavBadge';
 import { PlanningNavBadge } from './PlanningNavBadge';
@@ -147,9 +148,10 @@ export function NavList({
   expandAll?: boolean;
 }) {
   const pathname = usePathname();
+  const { role } = useRole();
   return (
     <>
-      {NAV_GROUPS.map((group, gi) => (
+      {navGroupsFor(role).map((group, gi) => (
         <NavGroupBlock
           key={`${group.label ?? 'main'}-${gi}`}
           group={group}

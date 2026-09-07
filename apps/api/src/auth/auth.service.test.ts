@@ -11,11 +11,12 @@ vi.mock('./telegram-verify', () => ({
 }));
 
 // Лёгкие моки Nest-зависимостей: проверяем только allowlist-гейт пароля (Фаза 2 п.11).
-function makeService(opts: { allowedIds: bigint[]; passwordHash?: string }) {
+function makeService(opts: { allowedIds: bigint[]; passwordHash?: string; operatorHash?: string }) {
   const config = {
     get: (key: string) => {
       if (key === 'TELEGRAM_ALLOWED_IDS') return opts.allowedIds;
       if (key === 'AUTH_PASSWORD_HASH') return opts.passwordHash;
+      if (key === 'OPERATOR_PASSWORD_HASH') return opts.operatorHash;
       if (key === 'TELEGRAM_BOT_TOKEN') return 'test-bot-token';
       return undefined;
     },
@@ -23,14 +24,21 @@ function makeService(opts: { allowedIds: bigint[]; passwordHash?: string }) {
   const jwt = { signAsync: vi.fn(async () => 'signed.jwt.token') };
   const prisma = {
     user: {
-      upsert: vi.fn(async () => ({
-        id: 'user-1',
-        telegramId: 1n,
+      // Эхо telegramId из where: владелец → user-1/1n, оператор → user-2/2n.
+      upsert: vi.fn(async ({ where }: { where: { telegramId: bigint } }) => ({
+        id: where.telegramId === 2n ? 'user-2' : 'user-1',
+        telegramId: where.telegramId,
         username: null,
-        firstName: 'Admin',
+        firstName: where.telegramId === 2n ? 'Оператор' : 'Admin',
         lastName: null,
         photoUrl: null,
       })),
+    },
+    workspace: {
+      findMany: vi.fn(async () => [{ id: 'ws-a' }, { id: 'ws-b' }]),
+    },
+    workspaceMember: {
+      upsert: vi.fn(async () => ({})),
     },
   };
    
@@ -81,6 +89,56 @@ describe('AuthService.loginViaPassword — allowlist gate (Фаза 2 п.11)', (
     const warn = vi.spyOn((service as any).logger, 'warn');
     await service.loginViaPassword(PASSWORD);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('OPEN'));
+  });
+});
+
+describe('AuthService.loginViaPassword — второй пароль оператора', () => {
+  const OWNER = 'owner-pass';
+  const OPERATOR = 'operator-pass';
+  let ownerHash: string;
+  let operatorHash: string;
+
+  beforeEach(async () => {
+    ownerHash = await bcrypt.hash(OWNER, 4);
+    operatorHash = await bcrypt.hash(OPERATOR, 4);
+  });
+
+  it('пароль оператора → пользователь tg=2 и членство MEMBER во всех живых пространствах', async () => {
+    const { service, prisma } = makeService({ allowedIds: [], passwordHash: ownerHash, operatorHash });
+    const res = await service.loginViaPassword(OPERATOR);
+    expect(res.user.telegramId).toBe('2');
+    expect(prisma.workspaceMember.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.workspaceMember.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: { workspaceId: 'ws-a', userId: 'user-2', role: 'MEMBER' },
+        update: {},
+      }),
+    );
+  });
+
+  it('пароль владельца при заданном операторском — владелец (tg=1), членства не трогает', async () => {
+    const { service, prisma } = makeService({ allowedIds: [], passwordHash: ownerHash, operatorHash });
+    const res = await service.loginViaPassword(OWNER);
+    expect(res.user.telegramId).toBe('1');
+    expect(prisma.workspaceMember.upsert).not.toHaveBeenCalled();
+  });
+
+  it('работает и без пароля владельца: только операторский хэш', async () => {
+    const { service } = makeService({ allowedIds: [], operatorHash });
+    const res = await service.loginViaPassword(OPERATOR);
+    expect(res.user.telegramId).toBe('2');
+  });
+
+  it('чужой пароль → 401', async () => {
+    const { service } = makeService({ allowedIds: [], passwordHash: ownerHash, operatorHash });
+    await expect(service.loginViaPassword('nope')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('оператор проходит allowlist по синтетическому id=2', async () => {
+    const closed = makeService({ allowedIds: [1n], passwordHash: ownerHash, operatorHash });
+    await expect(closed.service.loginViaPassword(OPERATOR)).rejects.toBeInstanceOf(ForbiddenException);
+    const open = makeService({ allowedIds: [1n, 2n], passwordHash: ownerHash, operatorHash });
+    await expect(open.service.loginViaPassword(OPERATOR)).resolves.toMatchObject({ token: 'signed.jwt.token' });
   });
 });
 

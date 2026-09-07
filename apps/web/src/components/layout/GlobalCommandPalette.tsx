@@ -7,7 +7,8 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/CommandPalette';
-import { NAV_ITEMS } from '@/components/layout/nav-items';
+import { navGroupsFor } from '@/components/layout/nav-items';
+import { useRole } from '@/hooks/useRole';
 import { CREATE_ACTIONS } from '@/components/layout/CreateMenu';
 
 
@@ -27,8 +28,6 @@ const HINTS: Record<string, string> = {
   '/reports/rules': 'Подсказки категорий/контрагентов',
 };
 
-/** Единый источник — NAV_GROUPS/NAV_ITEMS (nav-items.ts), палитра не отстаёт от меню. */
-const QUICK_NAV = NAV_ITEMS.map((n) => ({ ...n, hint: HINTS[n.href] }));
 
 /** Клавиша в подсказке — не кнопка: нажимать её нечем, это обозначение. */
 function Key({ children }: { children: ReactNode }) {
@@ -41,6 +40,11 @@ function Key({ children }: { children: ReactNode }) {
 
 export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPaletteProps) {
   const router = useRouter();
+  const { role } = useRole();
+  // Единый источник — nav-items.ts с фильтром по роли: палитра не отстаёт от меню.
+  const quickNav = navGroupsFor(role)
+    .flatMap((g) => g.items)
+    .map((n) => ({ ...n, hint: HINTS[n.href] }));
 
   // Cmd/Ctrl+K shortcut — only when nothing else is editing/listening.
   useEffect(() => {
@@ -99,7 +103,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPalett
       </CommandGroup>
 
       <CommandGroup heading="Навигация">
-        {QUICK_NAV.map((n) => {
+        {quickNav.map((n) => {
           const Icon = n.icon;
           return (
             <CommandItem key={n.href} value={`${n.label} ${n.hint ?? ''}`} onSelect={() => go(n.href)}>

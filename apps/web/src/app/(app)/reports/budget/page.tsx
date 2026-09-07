@@ -5,6 +5,7 @@ import { formatRub } from '@construct/shared';
 import { ChevronLeft, ChevronRight, Plus, Tag, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -351,6 +352,7 @@ function BudgetDialog({
   const [amount, setAmount] = useState(editing?.amount ?? '');
   const [note, setNote] = useState(editing?.note ?? '');
   const [confirmDel, setConfirmDel] = useState(false);
+  const { canDelete } = useRole();
 
   // Категории без уже заданного бюджета (при создании); расходы вперёд.
   const options = useMemo<ComboboxOption[]>(() => {
@@ -420,8 +422,8 @@ function BudgetDialog({
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно" />
           </FormField>
         </ModalBody>
-        <ModalFooter className={cn(editing && 'sm:justify-between')}>
-          {editing && (
+        <ModalFooter className={cn(editing && canDelete && 'sm:justify-between')}>
+          {editing && canDelete && (
             <Button variant="destructive" onClick={() => setConfirmDel(true)}>
               <Trash2 className="h-4 w-4" /> Удалить
             </Button>

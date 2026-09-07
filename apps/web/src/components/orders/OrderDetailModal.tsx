@@ -9,6 +9,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
@@ -158,6 +159,7 @@ export function OrderDetailModal({
   const cancel = useCancelOrder(wsId);
   const reopen = useReopenOrder(wsId);
   const removeOrder = useDeleteOrder(wsId);
+  const { canDelete } = useRole();
   // Дата отгрузки спрашивается при закрытии: по ней признаётся выручка и
   // датируется себестоимость. Для заказа, который заносят задним числом,
   // «сегодня» увело бы обе суммы в текущий месяц.
@@ -576,9 +578,10 @@ export function OrderDetailModal({
                         // себестоимость (COGS) управляется отменой заказа.
                         // Разрешено на любом статусе (коррекция ошибки).
                         const deletable =
-                          t.kind === 'ORDER_PAYMENT' ||
-                          t.kind === 'ORDER_REFUND' ||
-                          t.kind === 'VARIABLE_COST';
+                          canDelete &&
+                          (t.kind === 'ORDER_PAYMENT' ||
+                            t.kind === 'ORDER_REFUND' ||
+                            t.kind === 'VARIABLE_COST');
                         return (
                           <div
                             key={t.id}
@@ -679,14 +682,16 @@ export function OrderDetailModal({
                         <span className="text-xs text-muted-foreground tabular-nums">
                           {(a.size / 1024).toFixed(0)} KB
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteAtt(a.id)}
-                          aria-label="Удалить чек"
-                          className="text-destructive transition-colors hover:opacity-80"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAtt(a.id)}
+                            aria-label="Удалить чек"
+                            className="text-destructive transition-colors hover:opacity-80"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                     <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary">
@@ -740,21 +745,26 @@ export function OrderDetailModal({
 
           {order && order.status !== 'CANCELLED' && (
             <ModalFooter className="flex-wrap">
-              <Button
-                variant="destructive"
-                onClick={() => setConfirmCancel(true)}
-                className="sm:mr-auto"
-              >
-                Отменить
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setConfirmDelete(true)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-                Удалить
-              </Button>
+              {/* Отмена и удаление — только владельцу (docs/roles.md); сервер проверяет сам. */}
+              {canDelete && (
+                <>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setConfirmCancel(true)}
+                    className="sm:mr-auto"
+                  >
+                    Отменить
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setConfirmDelete(true)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Удалить
+                  </Button>
+                </>
+              )}
               {order.status === 'DONE' ? (
                 <Button
                   variant="secondary"
@@ -796,14 +806,16 @@ export function OrderDetailModal({
               >
                 {reopen.isPending ? 'Возвращаем в работу…' : 'Вернуть в работу'}
               </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setConfirmDelete(true)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-                Удалить
-              </Button>
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Удалить
+                </Button>
+              )}
             </ModalFooter>
           )}
         </ModalContent>

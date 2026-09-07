@@ -15,6 +15,7 @@ import {
 import type { Counterparty } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { useRole } from '@/hooks/useRole';
 import { Input } from '@/components/ui/Input';
 import { SearchField } from '@/components/ui/SearchField';
 import { FilterField } from '@/components/ui/FilterField';
@@ -227,6 +228,7 @@ function SupplierForm({
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const { canDelete } = useRole();
 
   useEffect(() => {
     if (initial) {
@@ -331,7 +333,7 @@ function SupplierForm({
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>
           <ModalFooter>
-            {initial && (
+            {initial && canDelete && (
               <Button
                 type="button"
                 variant="destructive"

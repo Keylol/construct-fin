@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/jwt.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/auth.service';
 import { WorkspaceGuard, type WorkspaceContext } from '../common/workspace.guard';
+import { Destructive } from '../common/role-policy';
 import { CurrentWorkspace } from '../common/current-workspace.decorator';
 import { ZodPipe } from '../common/zod-pipe';
 import { PlanningService } from './planning.service';
@@ -126,6 +127,8 @@ export class PlanningController {
   ) {
     return this.planning.payPlanned(ws.workspaceId, user.sub, id, body);
   }
+
+  @Destructive()
 
   @Post('planned/:id/revert')
   revertPlanned(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {

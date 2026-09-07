@@ -45,6 +45,8 @@ Login Widget (HMAC-SHA256)    initData (HMAC-SHA256, WebAppData)
 
 Allowlist: `TELEGRAM_ALLOWED_IDS` в `.env`. Пустой = открытая регистрация (только для dev).
 
+Парольный вход — два пароля (владелец `AUTH_PASSWORD_HASH`, оператор `OPERATOR_PASSWORD_HASH`), роли и что закрыто оператору — `docs/roles.md`.
+
 ## Дизайн (web)
 
 iOS-glass:
