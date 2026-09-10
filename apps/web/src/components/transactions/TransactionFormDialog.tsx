@@ -48,6 +48,11 @@ interface Props {
 export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Props) {
   const isEdit = !!transactionId;
   const existing = useTransaction(wsId, transactionId);
+  // Окно правки открывается мгновенно, а операция приезжает запросом: секунду
+  // поля пустые, дата сегодняшняя, категория «без категории». «Удалить» при
+  // этом активна — и нажатие сносит операцию, которую человек ещё не увидел.
+  // Пока данных нет, «Удалить» и «Сохранить» заблокированы.
+  const notReady = isEdit && !existing.data;
   const accounts = useAccounts(wsId);
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
@@ -523,6 +528,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
               <Button
                 type="button"
                 variant="destructive"
+                disabled={notReady}
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
               >
@@ -535,8 +541,8 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             </Button>
             <Button
               type="submit"
-              loading={create.isPending || update.isPending}
-              disabled={!amount.trim() || !accountId}
+              loading={create.isPending || update.isPending || notReady}
+              disabled={notReady || !amount.trim() || !accountId}
             >
               Сохранить
             </Button>
