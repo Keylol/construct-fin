@@ -1,11 +1,10 @@
 'use client';
 
 import { useMemo, type RefObject } from 'react';
-import { RotateCcw, X } from '@/components/ui/icons';
+import { X } from '@/components/ui/icons';
 import { Select } from '@/components/ui/Select';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
-import { Button } from '@/components/ui/Button';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { FilterField } from '@/components/ui/FilterField';
 import { SearchField } from '@/components/ui/SearchField';
 import { DateRangeFields, PeriodSelect } from '@/components/ui/PeriodSelect';
@@ -184,15 +183,7 @@ export function TransactionFilters({
         </FilterField>
       )}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onChange({ period: 'this-month', range: rangeForAny('this-month') })}
-        className="self-end"
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-        Сброс
-      </Button>
+      <FilterReset onClick={() => onChange({ period: 'this-month', range: rangeForAny('this-month') })} />
     </FilterBar>
   );
 }

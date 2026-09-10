@@ -2,15 +2,14 @@
 
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { BarChart3, RotateCcw } from '@/components/ui/icons';
+import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { D } from '@construct/shared';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { FilterField } from '@/components/ui/FilterField';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -135,15 +134,7 @@ function MarginReportView() {
             <option value="by-client">По клиентам</option>
           </Select>
         </FilterField>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setFilters({ ...reportPeriod(DEFAULT_PERIOD), ...EXTRAS })}
-          className="self-end"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters({ ...reportPeriod(DEFAULT_PERIOD), ...EXTRAS })} />
       </FilterBar>
 
       <div className="space-y-4 px-6 py-4">

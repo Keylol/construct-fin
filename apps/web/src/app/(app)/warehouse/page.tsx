@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { Plus, Package, X, Trash2, ShoppingCart, RotateCcw } from '@/components/ui/icons';
+import { Plus, Package, X, Trash2, ShoppingCart } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { parseAmountInput } from '@construct/shared';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -33,7 +33,7 @@ import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   Modal,
@@ -237,10 +237,7 @@ function WarehouseView() {
             />
           </FilterField>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
 
       <div className="bg-card">

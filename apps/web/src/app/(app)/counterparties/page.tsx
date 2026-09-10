@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { Plus, Users, X, Trash2, RotateCcw } from '@/components/ui/icons';
+import { Plus, Users, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -24,7 +24,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   Modal,
@@ -126,10 +126,7 @@ function CounterpartiesView() {
           </FilterField>
         </div>
         <ViewToggle view={view} onChange={changeView} />
-        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
 
       {view === 'tiles' ? (

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import { ChevronDown, SidePanelClose, SidePanelOpen } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/Tooltip';
 import { readStored, writeStored } from '@/lib/storage';
 import { navGroupsFor, type NavGroup, type NavItem } from './nav-items';
 import { useRole } from '@/hooks/useRole';
@@ -19,7 +20,9 @@ const MORE_OPEN_KEY = 'cf.sidebar.more';
 const COLLAPSED_KEY = 'cf.sidebar.collapsed';
 
 /** Строка навигации: та же высота и скругление, что у кнопок size="sm". */
-const ROW = 'relative flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-sm transition-colors';
+const ROW =
+  'relative flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-sm transition-colors ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 
 /**
  * Раскрыта ли редкая группа. По умолчанию свёрнута, но открывается сама, если
@@ -92,17 +95,11 @@ export function Sidebar(_props: SidebarProps) {
           </RailLabel>
         </div>
 
-        {/* Пространство: всегда в DOM (высота стабильна), в свёрнутом виде —
-            невидимо и недоступно для клика/фокуса. */}
-        <div
-          aria-hidden={collapsed}
-          className={cn(
-            'shrink-0 border-b border-border p-3',
-            'transition-opacity duration-150 motion-reduce:transition-none',
-            collapsed && 'invisible pointer-events-none opacity-0',
-          )}
-        >
-          <WorkspaceSwitcher />
+        {/* Пространство: в панели — кнопка с именем, в рейке — квадрат с
+            инициалами на оси иконок (то же меню, та же высота строки — раньше
+            в рейке здесь оставалась пустая дыра высотой в блок). */}
+        <div className={cn('shrink-0 border-b border-border p-3', collapsed && 'px-3.5')}>
+          <WorkspaceSwitcher variant={collapsed ? 'rail' : 'panel'} />
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3">
@@ -111,21 +108,23 @@ export function Sidebar(_props: SidebarProps) {
 
         {/* Кнопка свернуть/развернуть — единственный способ менять ширину */}
         <div className="shrink-0 border-t border-border p-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggle}
-            title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
-            aria-expanded={!collapsed}
-            className="w-full justify-start gap-2.5 px-2.5 text-muted-foreground"
-          >
-            {collapsed ? (
-              <SidePanelOpen className="h-4 w-4 shrink-0" aria-hidden />
-            ) : (
-              <SidePanelClose className="h-4 w-4 shrink-0" aria-hidden />
-            )}
-            <RailLabel collapsed={collapsed}>{collapsed ? 'Развернуть' : 'Свернуть'}</RailLabel>
-          </Button>
+          <RailTooltip label="Развернуть меню" enabled={collapsed}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggle}
+              aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+              aria-expanded={!collapsed}
+              className="w-full justify-start gap-2.5 px-2.5 text-muted-foreground"
+            >
+              {collapsed ? (
+                <SidePanelOpen className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <SidePanelClose className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              <RailLabel collapsed={collapsed}>{collapsed ? 'Развернуть' : 'Свернуть'}</RailLabel>
+            </Button>
+          </RailTooltip>
         </div>
       </div>
     </aside>
@@ -238,6 +237,28 @@ function NavGroupBlock({
   );
 }
 
+/**
+ * Подсказка справа от пункта в свёрнутой рейке — тот же `Tooltip`, что и в
+ * остальном приложении, вместо медленного нативного `title`.
+ */
+function RailTooltip({
+  label,
+  enabled,
+  children,
+}: {
+  label: string;
+  enabled?: boolean;
+  children: React.ReactElement;
+}) {
+  if (!enabled) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function RailLabel({
   collapsed,
   className,
@@ -280,33 +301,37 @@ function NavLink({
     !(item.href === '/reports' && pathname?.startsWith('/reports/rules'));
   const active = exact || child;
   const Icon = item.icon;
+  const link = (
+    <Link
+      href={item.href as Parameters<typeof Link>[0]['href']}
+      onClick={onNavigate}
+      className={cn(
+        ROW,
+        active
+          ? 'bg-accent font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-r before:bg-primary'
+          : 'text-foreground/75 hover:bg-secondary hover:text-foreground',
+      )}
+    >
+      <Icon
+        className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')}
+        aria-hidden
+      />
+      {railCollapsed !== undefined ? (
+        <RailLabel collapsed={railCollapsed} className="truncate">
+          {item.label}
+        </RailLabel>
+      ) : (
+        <span className="truncate">{item.label}</span>
+      )}
+      {item.href === '/inbox' && <InboxNavBadge collapsed={railCollapsed} />}
+      {item.href === '/planning' && <PlanningNavBadge collapsed={railCollapsed} />}
+    </Link>
+  );
   return (
     <li>
-      <Link
-        href={item.href as Parameters<typeof Link>[0]['href']}
-        onClick={onNavigate}
-        title={railCollapsed ? item.label : undefined}
-        className={cn(
-          ROW,
-          active
-            ? 'bg-accent font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-r before:bg-primary'
-            : 'text-foreground/75 hover:bg-secondary hover:text-foreground',
-        )}
-      >
-        <Icon
-          className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')}
-          aria-hidden
-        />
-        {railCollapsed !== undefined ? (
-          <RailLabel collapsed={railCollapsed} className="truncate">
-            {item.label}
-          </RailLabel>
-        ) : (
-          <span className="truncate">{item.label}</span>
-        )}
-        {item.href === '/inbox' && <InboxNavBadge collapsed={railCollapsed} />}
-        {item.href === '/planning' && <PlanningNavBadge collapsed={railCollapsed} />}
-      </Link>
+      <RailTooltip label={item.label} enabled={railCollapsed === true}>
+        {link}
+      </RailTooltip>
     </li>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useMemo, useRef } from 'react';
-import { Inbox as InboxIcon, Sparkles, RotateCcw } from '@/components/ui/icons';
+import { Inbox as InboxIcon, Sparkles } from '@/components/ui/icons';
 import { LoadMore } from '@/components/ui/LoadMore';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { SearchField } from '@/components/ui/SearchField';
 import { FilterField } from '@/components/ui/FilterField';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -185,15 +185,7 @@ function InboxView() {
               ))}
           </Select>
         </FilterField>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })}
-          className="self-end"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })} />
       </FilterBar>
 
       <div className="px-6 py-4">

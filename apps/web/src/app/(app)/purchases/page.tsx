@@ -7,7 +7,7 @@ import { ShoppingCart, RotateCcw, Plus, X, Receipt } from '@/components/ui/icons
 import { Money } from '@/components/ui/Money';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { FilterField } from '@/components/ui/FilterField';
 import { SearchField } from '@/components/ui/SearchField';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
@@ -197,10 +197,7 @@ function PurchasesView() {
           value={filters.period as AnyPeriod}
           onChange={(period) => setFilters({ ...filters, period })}
         />
-        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
 
       <div className="bg-card">

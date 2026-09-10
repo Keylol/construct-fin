@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Truck, X, Trash2, Pencil, RotateCcw } from '@/components/ui/icons';
+import { Plus, Truck, X, Trash2, Pencil } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -24,7 +24,7 @@ import { StatusDot } from '@/components/ui/StatusDot';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   Modal,
@@ -146,10 +146,7 @@ function SuppliersView() {
             />
           </FilterField>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
       <div className="bg-card">
         <DataTable

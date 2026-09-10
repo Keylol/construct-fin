@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, ClipboardList, Receipt, Menu as MenuIcon, Plus, type LucideIcon } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
+import { Button } from '@/components/ui/Button';
 import { Modal, ModalBody, ModalContent, ModalHeader, ModalTitle } from '@/components/ui/Modal';
 import { NavList } from './Sidebar';
 import { CreateMenu } from './CreateMenu';
@@ -39,6 +40,7 @@ export function BottomTabBar() {
         href={t.href as Parameters<typeof Link>[0]['href']}
         className={cn(
           'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           active ? 'text-primary' : 'text-muted-foreground',
         )}
       >
@@ -64,17 +66,13 @@ export function BottomTabBar() {
             side="top"
             align="center"
             trigger={
-              <button
-                type="button"
+              <Button
+                size="icon"
                 aria-label="Создать"
-                className={cn(
-                  '-mt-5 flex h-12 w-12 items-center justify-center rounded-full',
-                  'bg-primary text-primary-foreground shadow-lg',
-                  'transition-transform active:scale-95 motion-reduce:transition-none',
-                )}
+                className="-mt-5 h-12 w-12 rounded-full shadow-lg active:scale-95 [&_svg]:size-6"
               >
-                <Plus className="h-6 w-6" />
-              </button>
+                <Plus />
+              </Button>
             }
           />
         </div>
@@ -86,6 +84,7 @@ export function BottomTabBar() {
           onClick={() => setMoreOpen(true)}
           className={cn(
             'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             !knownActive ? 'text-primary' : 'text-muted-foreground',
           )}
         >

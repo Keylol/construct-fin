@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadMore } from '@/components/ui/LoadMore';
 import { type Column, DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { SearchField } from '@/components/ui/SearchField';
 import { FilterField } from '@/components/ui/FilterField';
 import { Money } from '@/components/ui/Money';
@@ -17,7 +17,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
-import { ClipboardList, Plus, X, RotateCcw } from '@/components/ui/icons';
+import { ClipboardList, Plus, X } from '@/components/ui/icons';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -286,10 +286,7 @@ function OrdersView() {
             </button>
           </FilterField>
         )}
-        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULTS)} className="self-end">
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
         <ViewToggle view={view} onChange={changeView} />
       </FilterBar>
 
