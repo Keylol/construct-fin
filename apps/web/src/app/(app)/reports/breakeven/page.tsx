@@ -2,14 +2,12 @@
 
 import { Suspense } from 'react';
 import { D, formatRub } from '@construct/shared';
-import { RotateCcw } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { FilterBar } from '@/components/ui/FilterBar';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakevenReport } from '@/hooks/useReports';
@@ -49,15 +47,7 @@ function BreakevenView() {
     <>
       <FilterBar>
         <ReportPeriodFields value={filters} onChange={(p) => setFilters({ ...filters, ...p })} />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setFilters(reportPeriod(DEFAULT_PERIOD))}
-          className="self-end"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Сброс
-        </Button>
+        <FilterReset onClick={() => setFilters(reportPeriod(DEFAULT_PERIOD))} />
       </FilterBar>
 
       <div className="space-y-6 px-6 py-6">

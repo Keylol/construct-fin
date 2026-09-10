@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from '@/components/ui/icons';
+import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 
 /**
@@ -59,7 +60,7 @@ export function Modal({ dirty, onOpenChange, children, ...props }: ModalProps) {
 /**
  * Вопрос «закрыть без сохранения?» — вложенное окно поверх формы. Свой, а не
  * ConfirmDialog: тот построен на ModalContent из этого же файла, и импорт
- * друг друга замкнул бы модули в кольцо.
+ * друг друга замкнул бы модули в кольцо. Кнопки — общий Button.
  */
 function DiscardPrompt({
   open,
@@ -78,21 +79,12 @@ function DiscardPrompt({
           <ModalDescription>Введённое в этом окне пропадёт.</ModalDescription>
         </ModalHeader>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onKeep}
-            className="inline-flex h-9 items-center justify-center rounded-sm border border-input bg-background px-4 text-sm font-medium hover:bg-secondary"
-          >
+          <Button type="button" variant="secondary" onClick={onKeep}>
             Вернуться
-          </button>
-          <button
-            type="button"
-            onClick={onDiscard}
-            autoFocus
-            className="inline-flex h-9 items-center justify-center rounded-sm bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
-          >
+          </Button>
+          <Button type="button" variant="destructive" onClick={onDiscard} autoFocus>
             Закрыть
-          </button>
+          </Button>
         </ModalFooter>
       </ModalContent>
     </DialogPrimitive.Root>

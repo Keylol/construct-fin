@@ -12,6 +12,7 @@ import { NAV_ITEMS } from './nav-items';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTotalCash } from '@/hooks/useTotalCash';
 import { CreateMenu } from './CreateMenu';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 interface HeaderProps {
   onCommandOpen: () => void;
@@ -41,7 +42,8 @@ function HeaderCash() {
           href="/accounts"
           title={hasBank ? 'По данным банков (где есть API) — открыть счета' : 'Денежные средства на счетах — открыть'}
         >
-          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {/* Подпись — только на широком экране: на планшете шапке тесно. */}
+          <span className="hidden text-[10px] font-medium uppercase tracking-wide text-muted-foreground lg:inline">
             {hasBank ? 'По банку' : 'Денежные средства'}
           </span>
           <Money value={total} className="font-semibold" />
@@ -50,7 +52,7 @@ function HeaderCash() {
       {unresolvedCount > 0 && (
         <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
           <Link href="/inbox" title="Строки выписки, которые ещё не проведены — открыть «Входящие»">
-            не разобрано
+            <span className="hidden lg:inline">не разобрано</span>
             <CountBadge count={unresolvedCount} tone="warning" />
           </Link>
         </Button>
@@ -82,40 +84,44 @@ export function Header({ onCommandOpen }: HeaderProps) {
         'sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background px-4 sm:px-6',
       )}
     >
-      {/* Мобильное меню живёт в нижнем таб-баре («Ещё») — гамбургер не нужен. */}
-
-      {!showBreadcrumbs && <div className="min-w-0 flex-1" />}
-      {showBreadcrumbs && (
-        <nav aria-label="Хлебные крошки" className="min-w-0 flex-1">
-          <ol className="flex items-center gap-1 text-sm">
-            {breadcrumbs.map((c, i) => {
-              const isLast = i === breadcrumbs.length - 1;
-              return (
-                <li key={`${c.href ?? c.label}-${i}`} className="flex min-w-0 items-center gap-1">
-                  {c.href && !isLast ? (
-                    <Link
-                      href={c.href as Parameters<typeof Link>[0]['href']}
-                      className="truncate text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {c.label}
-                    </Link>
-                  ) : (
-                    <span
-                      className={cn(
-                        'truncate',
-                        isLast ? 'font-medium text-foreground' : 'text-muted-foreground',
-                      )}
-                    >
-                      {c.label}
-                    </span>
-                  )}
-                  {!isLast && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
-      )}
+      {/* Слева: на телефоне и планшете без панели — пространство (и выход),
+          на десктопе — крошки пути из нескольких сегментов. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="min-w-0 md:hidden">
+          <WorkspaceSwitcher variant="bar" />
+        </div>
+        {showBreadcrumbs && (
+          <nav aria-label="Хлебные крошки" className="hidden min-w-0 md:block">
+            <ol className="flex items-center gap-1 text-sm">
+              {breadcrumbs.map((c, i) => {
+                const isLast = i === breadcrumbs.length - 1;
+                return (
+                  <li key={`${c.href ?? c.label}-${i}`} className="flex min-w-0 items-center gap-1">
+                    {c.href && !isLast ? (
+                      <Link
+                        href={c.href as Parameters<typeof Link>[0]['href']}
+                        className="truncate text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {c.label}
+                      </Link>
+                    ) : (
+                      <span
+                        className={cn(
+                          'truncate',
+                          isLast ? 'font-medium text-foreground' : 'text-muted-foreground',
+                        )}
+                      >
+                        {c.label}
+                      </span>
+                    )}
+                    {!isLast && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+        )}
+      </div>
 
       <HeaderCash />
 
@@ -123,9 +129,9 @@ export function Header({ onCommandOpen }: HeaderProps) {
       <div className="hidden md:block">
         <CreateMenu
           trigger={
-            <Button size="sm" className="gap-1">
+            <Button size="sm" className="gap-1" aria-label="Создать">
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Создать</span>
+              <span className="hidden lg:inline">Создать</span>
               <ChevronDown className="h-3.5 w-3.5 opacity-80" />
             </Button>
           }
@@ -141,8 +147,8 @@ export function Header({ onCommandOpen }: HeaderProps) {
         className="gap-2 font-normal text-muted-foreground"
       >
         <Search className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Поиск</span>
-        <kbd className="hidden rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground sm:inline">
+        <span className="hidden lg:inline">Поиск</span>
+        <kbd className="hidden rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground lg:inline">
           {isMac ? '⌘K' : 'Ctrl+K'}
         </kbd>
       </Button>
