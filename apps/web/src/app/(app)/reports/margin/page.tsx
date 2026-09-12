@@ -14,7 +14,6 @@ import { FilterField } from '@/components/ui/FilterField';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { Select } from '@/components/ui/Select';
-import { MarginTopBar } from '@/components/reports/MarginTopBar';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useMarginReport } from '@/hooks/useTradeReports';
@@ -155,14 +154,6 @@ function MarginReportView() {
               </>
             )}
           </KpiRow>
-        )}
-
-        {/* Топ-10 по валовой прибыли: что реально кормит бизнес. */}
-        {rows.length > 0 && (
-          <MarginTopBar
-            rows={rows}
-            title={isProduct ? 'Топ товаров по валовой прибыли' : 'Топ клиентов по валовой прибыли'}
-          />
         )}
 
         {query.data && (

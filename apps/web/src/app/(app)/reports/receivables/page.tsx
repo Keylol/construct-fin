@@ -15,7 +15,6 @@ import { FilterField } from '@/components/ui/FilterField';
 import { Input } from '@/components/ui/Input';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
-import { AgingStack } from '@/components/reports/AgingStack';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useReceivables } from '@/hooks/useTradeReports';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
@@ -175,9 +174,6 @@ function ReceivablesReportView() {
             )}
           </KpiRow>
         )}
-
-        {/* Давность долгов по клиентам — стек 0–30/30–60/60+ (топ-10). */}
-        {data && <AgingStack clients={data.clients} />}
 
         {data && (
           <Card className="overflow-hidden !p-0">

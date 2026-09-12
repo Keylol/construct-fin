@@ -15,11 +15,9 @@ import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
-import { CategoryDonut, donutKey, donutSlices } from '@/components/reports/CategoryDonut';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
-import { CHART_OTHER } from '@/lib/chart';
 import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
 import { txDrilldownHref } from '@/lib/tx-filters';
 import type { BreakdownRow } from '@/lib/types';
@@ -53,20 +51,8 @@ function CategoriesReportView() {
 
   const rows = query.data?.rows ?? [];
   const period = query.data?.period;
-  // Цвет сектора ↔ маркер строки: один источник (donutSlices, фиксированный порядок).
-  const sliceColorByKey = new Map(donutSlices(rows).map((s) => [s.key, s.color]));
   const total = toMoneyString(rows.reduce((acc, r) => add(acc, r.total), D(0)));
 
-  const marker = (r: BreakdownRow) => (
-    <span
-      className="mr-2 inline-block h-2.5 w-2.5 translate-y-px rounded-[3px]"
-      style={{
-        // Мелкие категории свёрнуты в сектор «Прочее» — тот же серый.
-        background: sliceColorByKey.get(donutKey(r)) ?? CHART_OTHER,
-      }}
-      aria-hidden
-    />
-  );
   const name = (r: BreakdownRow) =>
     r.id !== null ? (
       <Link
@@ -86,26 +72,10 @@ function CategoriesReportView() {
       r.name
     );
 
-  // Доля — полосой прямо в строке (дублирует donut числами: мелкие категории
-  // читаются, а цветной маркер связывает строку с сектором).
+  // Структура читается по колонке «Доля» — без кольца и полос (решение 10.09:
+  // графики только в ОПиУ и ОДДС).
   const columns: Column<BreakdownRow>[] = [
-    {
-      key: 'name',
-      header: 'Категория',
-      cell: (r) => (
-        <div>
-          {marker(r)}
-          {name(r)}
-          <div className="mt-1.5 h-1 w-full max-w-[360px] overflow-hidden rounded-full bg-border/50">
-            <div
-              className="h-full rounded-full bg-primary/70"
-              // Доля честная (от 100%); минимум 1% — чтобы мелкие были видны.
-              style={{ width: `${Math.max(r.share * 100, 1)}%` }}
-            />
-          </div>
-        </div>
-      ),
-    },
+    { key: 'name', header: 'Категория', cell: name, className: 'w-full max-w-0' },
     { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
     {
       key: 'total',
@@ -125,10 +95,7 @@ function CategoriesReportView() {
   const card = (r: BreakdownRow) => (
     <div className="flex items-baseline justify-between gap-3">
       <div className="min-w-0">
-        <div className="truncate font-medium">
-          {marker(r)}
-          {name(r)}
-        </div>
+        <div className="truncate font-medium">{name(r)}</div>
         <div className="text-xs text-muted-foreground">
           {r.count} оп. · {(r.share * 100).toFixed(1)}%
         </div>
@@ -174,27 +141,12 @@ function CategoriesReportView() {
           </Card>
         )}
 
-        {/* Структура периода: donut топ-7 + «Прочее», легенда с суммами. */}
-        {query.data && rows.length > 0 && (
-          <CategoryDonut
-            rows={rows}
-            title={
-              type === 'INCOME'
-                ? 'Структура доходов'
-                : type === 'EXPENSE'
-                  ? 'Структура расходов'
-                  : 'Структура оборота'
-            }
-            totalLabel={type === 'INCOME' ? 'Доходы' : type === 'EXPENSE' ? 'Расходы' : 'Оборот'}
-          />
-        )}
-
         {query.data && rows.length > 0 && (
           <Card className="overflow-hidden !p-0">
             <DataTable
               data={rows}
               columns={columns}
-              rowKey={donutKey}
+              rowKey={(r) => r.id ?? `none:${r.name}`}
               mobileCards={card}
               footer={{ name: 'Итого', total: <Money value={total} /> }}
             />
