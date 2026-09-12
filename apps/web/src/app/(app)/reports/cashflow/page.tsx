@@ -6,6 +6,7 @@ import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { D, add, toMoneyString } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -184,13 +185,15 @@ function CashflowReportView() {
         {query.data && (
           <div className="grid gap-3 md:grid-cols-2">
             {query.data.series.map((s) => (
-              <Card key={s.accountId ?? 'none'} className="overflow-hidden !p-0">
-                <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
-                  <h3 className="font-medium">{s.accountName ?? 'Без счёта'}</h3>
-                  <span className="text-xs text-muted-foreground">
+              <SectionCard
+                key={s.accountId ?? 'none'}
+                title={s.accountName ?? 'Без счёта'}
+                aside={
+                  <>
                     Остаток на начало: <Money value={s.openingBalance} />
-                  </span>
-                </header>
+                  </>
+                }
+              >
                 <DataTable
                   data={s.points}
                   columns={pointColumns(s)}
@@ -198,7 +201,7 @@ function CashflowReportView() {
                   mobileCards={pointCard}
                   empty={<p className="px-4 text-sm text-muted-foreground">Нет движений за период.</p>}
                 />
-              </Card>
+              </SectionCard>
             ))}
           </div>
         )}

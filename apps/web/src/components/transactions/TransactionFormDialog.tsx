@@ -30,7 +30,6 @@ import { Input } from '@/components/ui/Input';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
-import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
@@ -434,9 +433,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                 clearLabel="— Без категории —"
               />
               {selectedCat?.isFixedCost && (
-                <Badge variant="outline" className="mt-1">
-                  Постоянные расходы
-                </Badge>
+                <p className="mt-1 text-xs text-muted-foreground">Постоянные расходы</p>
               )}
             </FormField>
 

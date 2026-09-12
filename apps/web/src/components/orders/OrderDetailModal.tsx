@@ -9,6 +9,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { useRole } from '@/hooks/useRole';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
@@ -459,15 +460,11 @@ export function OrderDetailModal({
                     </div>
                     {/* F3: сторонняя рассрочка — gross. Полная сумма выручкой
                         закрывает дебиторку, комиссия банка отдельным расходом. */}
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={payInstallment}
-                        onChange={(e) => setPayInstallment(e.target.checked)}
-                        className="h-4 w-4 rounded border-input accent-primary"
-                      />
-                      Рассрочка (сторонняя)
-                    </label>
+                    <Checkbox
+                      label="Рассрочка (сторонняя)"
+                      checked={payInstallment}
+                      onChange={(e) => setPayInstallment(e.target.checked)}
+                    />
                     {payInstallment && (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -512,7 +509,7 @@ export function OrderDetailModal({
                   {order.schedule ? (
                     <div className="space-y-1.5">
                       {!order.schedule.summary.matchesTotal && (
-                        <p className="text-xs text-amber-600">
+                        <p className="text-xs text-warning">
                           Сумма графика {formatRub(order.schedule.summary.planned)} не сходится
                           с итогом заказа {formatRub(order.totalAmount)}.
                         </p>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
+import { FilterField } from '@/components/ui/FilterField';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /**
  * Плитка — единая карточка сущности для всех «плиточных» экранов: заказы,
@@ -94,27 +96,18 @@ export function ViewToggle({
   label?: string;
 }) {
   return (
-    <label className="flex flex-col text-xs text-muted-foreground">
-      <span className="pb-1">{label}</span>
-      <div className="flex h-9 items-center rounded-sm border border-input bg-background p-0.5">
-        {(['list', 'tiles'] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => onChange(v)}
-            aria-pressed={view === v}
-            className={cn(
-              'h-full rounded-sm px-3 text-sm transition-colors',
-              view === v
-                ? 'bg-secondary font-medium text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {v === 'list' ? 'Список' : 'Плитки'}
-          </button>
-        ))}
-      </div>
-    </label>
+    <FilterField label={label}>
+      <SegmentedControl
+        ariaLabel={label}
+        size="md"
+        value={view}
+        onChange={onChange}
+        options={[
+          { value: 'list', label: 'Список' },
+          { value: 'tiles', label: 'Плитки' },
+        ]}
+      />
+    </FilterField>
   );
 }
 

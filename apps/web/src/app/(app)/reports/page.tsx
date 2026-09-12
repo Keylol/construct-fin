@@ -6,6 +6,7 @@ import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { D, formatRub, sub, toMoneyString } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -300,22 +301,16 @@ function PnlReportView() {
           />
         )}
 
+        {/* IJ9: базис отчёта — по реализации (деньги — в ОДДС) */}
         {!reportEmpty && totals && groups.length > 0 && (
-          <Card className="overflow-hidden !p-0">
-            <div className="flex items-baseline justify-between border-b border-border px-4 py-2">
-              <span className="text-sm font-medium">По группам</span>
-              {/* IJ9: базис отчёта — по реализации (деньги — в ОДДС) */}
-              <span className="text-xs text-muted-foreground">
-                выручка и себестоимость — по дате закрытия заказа
-              </span>
-            </div>
+          <SectionCard title="По группам" aside="выручка и себестоимость — по дате закрытия заказа">
             <DataTable
               data={groups}
               columns={groupColumns}
               rowKey={(b) => b.bucket}
               mobileCards={groupCard}
             />
-          </Card>
+          </SectionCard>
         )}
 
         {!reportEmpty && query.data && query.data.primary.buckets.length > 0 && (

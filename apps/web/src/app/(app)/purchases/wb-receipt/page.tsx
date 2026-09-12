@@ -11,6 +11,7 @@ import { useRole } from '@/hooks/useRole';
 import { Card } from '@/components/ui/Card';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { Input } from '@/components/ui/Input';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -35,7 +36,6 @@ import type {
   WbReceiptPreview,
 } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
-import { cn } from '@/lib/cn';
 
 /** Локальная строка разметки поверх позиции (все поля редактируемы оператором). */
 type UiLine = {
@@ -642,23 +642,15 @@ function LineRow({
 
       {/* Назначение */}
       <div className="flex flex-col gap-2">
-        <div className="flex overflow-hidden rounded-md border border-border">
-          {(Object.keys(TARGET_LABELS) as WbLineTarget[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onChange({ ...line, target: t })}
-              className={cn(
-                'px-2.5 py-1.5 text-xs transition-colors',
-                line.target === t
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-card text-muted-foreground hover:bg-secondary',
-              )}
-            >
-              {TARGET_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          ariaLabel="Назначение строки"
+          value={line.target}
+          onChange={(t) => onChange({ ...line, target: t })}
+          options={(Object.keys(TARGET_LABELS) as WbLineTarget[]).map((t) => ({
+            value: t,
+            label: TARGET_LABELS[t],
+          }))}
+        />
 
         {line.target === 'WAREHOUSE' && (
           <WarehousePicker

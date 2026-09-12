@@ -5,6 +5,7 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { KpiRow } from '@/components/ui/KpiRow';
 import { Button } from '@/components/ui/Button';
 import { Plus, Wallet } from '@/components/ui/icons';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
@@ -67,11 +68,9 @@ function PageSkeleton() {
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-9 w-28" />
       </div>
-      <div className="grid gap-3 px-6 py-4 sm:grid-cols-3">
-        <Skeleton className="h-[88px]" />
-        <Skeleton className="h-[88px]" />
-        <Skeleton className="h-[88px]" />
-      </div>
+      <KpiRow loading count={3} className="px-6 py-4">
+        {null}
+      </KpiRow>
       <div className="space-y-2 px-6 py-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-full" />

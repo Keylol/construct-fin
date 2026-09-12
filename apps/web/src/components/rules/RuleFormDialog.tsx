@@ -14,6 +14,7 @@ import type {
   RulePreview,
 } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
@@ -355,15 +356,7 @@ export function RuleFormDialog({
               )}
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="h-4 w-4 rounded border-input accent-primary"
-              />
-              Активно
-            </label>
+            <Checkbox label="Активно" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
 
             {error && <p className="text-sm text-destructive">{error}</p>}
           </ModalBody>

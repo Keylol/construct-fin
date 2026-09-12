@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, Check, History, Upload } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -410,17 +411,11 @@ function PreviewStage({
       </Card>
 
       <Card className="space-y-3">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            checked={skipDuplicates}
-            onChange={(e) => onToggleSkipDuplicates(e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-primary"
-          />
-          <span className="text-sm">
-            Пропустить дубликаты ({preview.stats.duplicates})
-          </span>
-        </label>
+        <Checkbox
+          label={`Пропустить дубликаты (${preview.stats.duplicates})`}
+          checked={skipDuplicates}
+          onChange={(e) => onToggleSkipDuplicates(e.target.checked)}
+        />
         <div className="text-sm">
           К импорту: <span className="font-semibold">{willImport}</span>{' '}
           {plural(willImport, 'операция', 'операции', 'операций')}

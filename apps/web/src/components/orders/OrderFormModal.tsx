@@ -885,7 +885,7 @@ export function OrderFormModal({
                     </p>
                   )}
                   {!it.warehouseItemId && it.unitCost && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-warning">
                       Эта сумма уже попадёт в прибыль как себестоимость при закрытии заказа.
                       Не заводите её повторно отдельной расходной операцией — будет двойной учёт.
                     </p>
@@ -1248,12 +1248,12 @@ export function OrderFormModal({
                   {/* Σ плана vs итог — предупреждение, а не блокировка. */}
                   <div className="flex justify-between border-t border-border pt-2 text-sm">
                     <span className="text-muted-foreground">План (предоплата + остаток)</span>
-                    <span className={cn('tabular-nums', !planMatchesTotal && 'text-amber-600')}>
+                    <span className={cn('tabular-nums', !planMatchesTotal && 'text-warning')}>
                       {formatRub(toMoneyString(planTotal))} из {formatRub(toMoneyString(total))}
                     </span>
                   </div>
                   {!planMatchesTotal && planTotal.gt(0) && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-warning">
                       План не сходится с итогом заказа — проверьте суммы (можно сохранить как есть).
                     </p>
                   )}

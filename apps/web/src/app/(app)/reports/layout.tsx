@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { cn } from '@/lib/cn';
+import { NavTabs } from '@/components/ui/NavTabs';
 import { useRole } from '@/hooks/useRole';
 
 const TABS = [
@@ -31,31 +30,7 @@ export default function ReportsLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <PageHeader title={active ? active.label : 'Отчёты'} />
-      <nav
-        aria-label="Разделы отчётов"
-        className="border-b border-border bg-background"
-      >
-        <ul className="flex flex-wrap items-center gap-6 px-6">
-          {tabs.map((t) => {
-            const active = pathname === t.href;
-            return (
-              <li key={t.href}>
-                <Link
-                  href={t.href}
-                  className={cn(
-                    'inline-flex h-10 items-center border-b-2 px-1 text-sm transition-colors',
-                    active
-                      ? 'border-primary font-medium text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {t.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <NavTabs items={[...TABS]} ariaLabel="Разделы отчётов" />
       <div>{children}</div>
     </>
   );

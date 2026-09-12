@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { D, formatRub } from '@construct/shared';
 import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -124,10 +125,7 @@ function BreakevenView() {
             )}
 
             {/* Состав формулы */}
-            <Card className="!p-0 overflow-hidden">
-              <header className="border-b border-border px-4 py-3">
-                <h3 className="font-medium">Составляющие расчёта</h3>
-              </header>
+            <SectionCard title="Составляющие расчёта">
               <div className="divide-y divide-border/60 text-sm">
                 <FormulaRow label="Выручка (по закрытым заказам)" value={r.revenue} />
                 <FormulaRow
@@ -154,7 +152,7 @@ function BreakevenView() {
                   negative
                 />
               </div>
-            </Card>
+            </SectionCard>
 
             <p className="text-xs text-muted-foreground">
               Методология ОПиУ: выручка и себестоимость — по дате закрытия заказа, возвраты
