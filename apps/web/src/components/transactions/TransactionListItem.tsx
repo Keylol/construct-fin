@@ -1,8 +1,8 @@
 'use client';
 
 import type { Transaction, Account, Category, Counterparty } from '@/lib/types';
-import { formatRub } from '@construct/shared';
 import { cn } from '@/lib/cn';
+import { Money } from '@/components/ui/Money';
 
 export function TransactionListItem({
   tx,
@@ -53,7 +53,7 @@ export function TransactionListItem({
         )}
       >
         {isIncome ? '+' : '−'}
-        {formatRub(tx.amount, 2)}
+        <Money value={tx.amount} tone="plain" />
       </div>
     </button>
   );

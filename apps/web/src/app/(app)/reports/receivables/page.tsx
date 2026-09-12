@@ -115,7 +115,7 @@ function ReceivablesReportView() {
           <Money value={c.due} className="font-medium" />
           {c.overdueByPlan !== '0.00' && (
             <div className="text-xs font-normal text-destructive">
-              просрочено {formatRub(c.overdueByPlan)}
+              просрочено <Money value={c.overdueByPlan} tone="plain" />
             </div>
           )}
         </>
@@ -224,12 +224,12 @@ function OrdersList({ orders }: { orders: ReceivableOrder[] }) {
           <span className="flex items-baseline gap-3 tabular-nums text-muted-foreground">
             {o.overdueByPlan && o.overdueByPlan !== '0.00' && (
               <span className="text-destructive">
-                просрочено {formatRub(o.overdueByPlan)}
+                просрочено <Money value={o.overdueByPlan} tone="plain" />
                 {o.nextDueDate ? ` (срок ${formatDate(o.nextDueDate)})` : ''}
               </span>
             )}
             <span>
-              оплачено {formatRub(o.paid)} из {formatRub(o.total)}
+              оплачено <Money value={o.paid} tone="plain" /> из <Money value={o.total} tone="plain" />
             </span>
             <Money value={o.due} tone="plain" className={cn('text-sm', BUCKET_TONE[o.bucket])} />
           </span>

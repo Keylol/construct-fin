@@ -35,7 +35,7 @@ import {
   writeSavedPeriod,
 } from '@/lib/tx-filters';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
-import { D, add, sub, toMoneyString, formatRub } from '@construct/shared';
+import { D, add, sub, toMoneyString } from '@construct/shared';
 import { cn } from '@/lib/cn';
 import type { Transaction } from '@/lib/types';
 import { formatDate, formatDayLabel } from '@/lib/dates';
@@ -213,7 +213,7 @@ function TransactionsView() {
           )}
         >
           {t.type === 'INCOME' ? '+' : '−'}
-          {formatRub(t.amount, 2)}
+          <Money value={t.amount} tone="plain" />
         </span>
       ),
       className: 'w-[140px]',
@@ -323,7 +323,7 @@ function TransactionsView() {
                   )}
                 >
                   {t.type === 'INCOME' ? '+' : '−'}
-                  {formatRub(t.amount, 2)}
+                  <Money value={t.amount} tone="plain" />
                 </div>
               </div>
             );

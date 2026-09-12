@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useMemo, useState } from 'react';
-import { formatRub } from '@construct/shared';
 import { ChevronLeft, ChevronRight, Plus, Tag, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { Button } from '@/components/ui/Button';
@@ -278,7 +277,7 @@ function BudgetSection({
         </div>
         <div className="shrink-0 text-right">
           <Money value={row.fact} className={cn('font-semibold', row.over && 'text-destructive')} />
-          <div className="text-xs text-muted-foreground">из {formatRub(row.amount)}</div>
+          <div className="text-xs text-muted-foreground">из <Money value={row.amount} tone="plain" /></div>
         </div>
       </div>
       <UsageBar row={row} />

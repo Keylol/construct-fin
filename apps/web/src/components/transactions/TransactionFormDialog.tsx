@@ -33,9 +33,9 @@ import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { QuickCreateCounterpartyDialog } from '@/components/counterparties/QuickCreateCounterpartyDialog';
-import { cn } from '@/lib/cn';
 import { toLocalDateInput, fromLocalDateInput } from '@/lib/periods';
 import { parseAmountInput } from '@construct/shared';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 interface Props {
   wsId: string;
@@ -324,14 +324,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                       ))}
                     </ul>
                   </div>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => setSuggestDismissed(true)}
                     aria-label="Скрыть подсказку"
-                    className="text-muted-foreground transition-colors hover:opacity-80"
+                    className="text-muted-foreground"
                   >
                     <X className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
                 <div className="flex justify-end">
                   <Button type="button" size="sm" variant="secondary" onClick={applySuggestion}>
@@ -340,42 +342,24 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              {/* C16: смена типа сбрасывает категорию — иначе в payload осталась бы
-                  stale-категория прежнего типа (расходная на доходе), которую
-                  бэкенд теперь отвергает 400. Список категорий и так фильтруется
-                  по type, но state categoryId нужно занулить явно. */}
-              <button
-                type="button"
-                onClick={() => {
-                  setType('EXPENSE');
-                  setCategoryId('');
-                }}
-                className={cn(
-                  'flex h-9 items-center justify-center rounded-md border text-sm font-medium transition-colors',
-                  type === 'EXPENSE'
-                    ? 'border-destructive bg-destructive text-destructive-foreground'
-                    : 'border-input bg-background text-foreground hover:bg-secondary',
-                )}
-              >
-                Расход
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setType('INCOME');
-                  setCategoryId('');
-                }}
-                className={cn(
-                  'flex h-9 items-center justify-center rounded-md border text-sm font-medium transition-colors',
-                  type === 'INCOME'
-                    ? 'border-success bg-success text-success-foreground'
-                    : 'border-input bg-background text-foreground hover:bg-secondary',
-                )}
-              >
-                Доход
-              </button>
-            </div>
+            {/* C16: смена типа сбрасывает категорию — иначе в payload осталась бы
+                stale-категория прежнего типа (расходная на доходе), которую
+                бэкенд теперь отвергает 400. Список категорий и так фильтруется
+                по type, но state categoryId нужно занулить явно. */}
+            <SegmentedControl
+              ariaLabel="Тип операции"
+              size="md"
+              fullWidth
+              value={type}
+              onChange={(t) => {
+                setType(t);
+                setCategoryId('');
+              }}
+              options={[
+                { value: 'EXPENSE', label: 'Расход', tone: 'destructive' },
+                { value: 'INCOME', label: 'Доход', tone: 'success' },
+              ]}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Сумма" htmlFor="tx-amount" required>
@@ -481,14 +465,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
                         {(a.size / 1024).toFixed(0)} KB
                       </span>
                       {canDelete && (
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           onClick={() => removeAtt.mutate({ id: a.id, txId: transactionId })}
                           aria-label="Удалить вложение"
-                          className="text-destructive transition-colors hover:opacity-80"
+                          className="text-destructive"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   ))}

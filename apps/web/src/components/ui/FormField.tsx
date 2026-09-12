@@ -7,6 +7,8 @@ interface FormFieldProps {
   hint?: string;
   error?: string;
   required?: boolean;
+  /** Плотный вариант для строк документа (позиции заказа, строки чека): подпись мельче и серее. */
+  compact?: boolean;
   className?: string;
   children: ReactNode;
 }
@@ -23,6 +25,7 @@ export function FormField({
   hint,
   error,
   required,
+  compact,
   className,
   children,
 }: FormFieldProps) {
@@ -44,10 +47,13 @@ export function FormField({
   }
 
   return (
-    <div className={cn('space-y-1.5', className)}>
+    <div className={cn(compact ? 'space-y-1' : 'space-y-1.5', className)}>
       <label
         htmlFor={fieldId}
-        className="block text-sm font-medium text-foreground"
+        className={cn(
+          'block font-medium',
+          compact ? 'text-xs text-muted-foreground' : 'text-sm text-foreground',
+        )}
       >
         {label}
         {required && <span className="ml-0.5 text-destructive">*</span>}

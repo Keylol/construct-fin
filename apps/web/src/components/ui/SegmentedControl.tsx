@@ -10,6 +10,8 @@ export interface SegmentOption<T extends string> {
   icon?: LucideIcon;
   /** Подсказка (title) — когда сегмент только с иконкой. */
   title?: string;
+  /** Смысловой цвет текста активного сегмента: «Расход» красным, «Доход» зелёным. */
+  tone?: 'success' | 'destructive';
 }
 
 /**
@@ -25,6 +27,7 @@ export function SegmentedControl<T extends string>({
   options,
   ariaLabel,
   size = 'sm',
+  fullWidth,
   className,
 }: {
   value: T;
@@ -32,6 +35,8 @@ export function SegmentedControl<T extends string>({
   options: SegmentOption<T>[];
   ariaLabel: string;
   size?: 'sm' | 'md';
+  /** Растянуть на ширину контейнера, сегменты поровну (тип операции в форме). */
+  fullWidth?: boolean;
   className?: string;
 }) {
   const move = (delta: number) => {
@@ -55,6 +60,7 @@ export function SegmentedControl<T extends string>({
       className={cn(
         'inline-flex shrink-0 items-center gap-0.5 rounded-md border border-input bg-card p-0.5',
         size === 'sm' ? 'h-8' : 'h-9',
+        fullWidth && 'flex w-full',
         className,
       )}
     >
@@ -73,8 +79,16 @@ export function SegmentedControl<T extends string>({
             className={cn(
               'inline-flex h-full items-center gap-1.5 rounded-sm px-2.5 text-sm transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              fullWidth && 'flex-1 justify-center',
               active
-                ? 'bg-secondary font-medium text-foreground'
+                ? cn(
+                    'bg-secondary font-medium',
+                    o.tone === 'success'
+                      ? 'text-success'
+                      : o.tone === 'destructive'
+                        ? 'text-destructive'
+                        : 'text-foreground',
+                  )
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >

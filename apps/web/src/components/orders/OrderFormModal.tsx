@@ -30,6 +30,7 @@ import { formatDate } from '@/lib/dates';
 import { fromLocalDateInput, toLocalDateInput } from '@/lib/periods';
 import type { Order } from '@/lib/types';
 import { D, add, allocateSalePrices, findClient, formatRub, mul, normalizePhone, parseAmountInput, parseOrderDraftText, planCostApplication, sub, toMoneyString } from '@construct/shared';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 export function OrderFormModal({
   wsId,
@@ -734,13 +735,14 @@ export function OrderFormModal({
               createLabel={(q) => `Создать клиента «${q}»`}
             />
             {specClient && !clientId && clients.data && (
-              <button
-                type="button"
+              <Button
+                variant="link"
+                size="sm"
                 onClick={() => setCreateClientQuery(specClient)}
-                className="mt-1.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+                className="mt-1.5 text-xs"
               >
                 Завести клиента «{specClient}» с телефоном из спецификации
-              </button>
+              </Button>
             )}
           </FormField>
           <FormField label="Телефон — номер заказа" htmlFor="o-phone">
@@ -832,12 +834,16 @@ export function OrderFormModal({
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  {/* Подписи колонок — общим рядом над строками (на узком экране
+                      он скрыт, там подписью служит placeholder); aria-label — для
+                      читалки в обоих случаях. */}
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <Input
                         value={it.name}
                         onChange={(e) => patchItem(i, { name: e.target.value })}
                         placeholder="Наименование"
+                        aria-label="Наименование"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
@@ -847,6 +853,7 @@ export function OrderFormModal({
                         value={it.qty}
                         onChange={(e) => patchItem(i, { qty: e.target.value })}
                         placeholder="Кол."
+                        aria-label="Количество"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
@@ -855,6 +862,7 @@ export function OrderFormModal({
                         value={it.unitPrice}
                         onChange={(e) => patchItem(i, { unitPrice: e.target.value })}
                         placeholder="Цена прод."
+                        aria-label="Цена продажи"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
@@ -863,12 +871,15 @@ export function OrderFormModal({
                         value={it.unitCost ?? ''}
                         onChange={(e) => patchItem(i, { unitCost: e.target.value })}
                         placeholder="Закуп. цена"
+                        aria-label="Закупочная цена"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                     {/* Сумма строки qty×цена — только чтение, видно вклад позиции. */}
-                    <div className="flex h-10 w-24 items-center justify-end text-sm tabular-nums sm:h-9">
-                      {lineSum.gt(0) ? formatRub(toMoneyString(lineSum)) : (
+                    <div className="flex h-10 w-24 items-center justify-end text-sm sm:h-9">
+                      {lineSum.gt(0) ? (
+                        <Money value={toMoneyString(lineSum)} />
+                      ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </div>
@@ -880,7 +891,7 @@ export function OrderFormModal({
                   )}
                   {wh && !it.unitCost && (
                     <p className="text-xs text-muted-foreground">
-                      Себестоимость со склада {formatRub(wh.avgCost)} · спишется при
+                      Себестоимость со склада <Money value={wh.avgCost} tone="plain" /> · спишется при
                       закрытии. Или впишите закупочную цену вручную.
                     </p>
                   )}
@@ -1020,7 +1031,7 @@ export function OrderFormModal({
                   <p key={`${m.name}-${i}`} className="text-muted-foreground">
                     <span className="text-foreground">{m.name}</span> →{' '}
                     {Number(m.qty) > 1 ? `${m.qty} × ` : ''}
-                    {formatRub(m.cost)}
+                    <Money value={m.cost} tone="plain" />
                     {m.applied ? '' : ' (оставлена своя цена)'}{' '}
                     <span className="opacity-70">({m.why})</span>
                   </p>
@@ -1032,7 +1043,7 @@ export function OrderFormModal({
                     </p>
                     {costsReport.unmatchedLines.map((l, i) => (
                       <p key={`${l.name}-${i}`} className="text-muted-foreground">
-                        {formatRub(l.price)} · {l.name}
+                        <Money value={l.price} tone="plain" /> · {l.name}
                       </p>
                     ))}
                   </div>
@@ -1091,7 +1102,7 @@ export function OrderFormModal({
                 вскрывалось только в отчёте за месяц. */}
             {specTotal && !D(specTotal).eq(total) && (
               <div className="flex justify-between text-warning">
-                <span>Расходится с итогом спецификации ({formatRub(specTotal)})</span>
+                <span>Расходится с итогом спецификации (<Money value={specTotal} tone="plain" />)</span>
                 <span className="tabular-nums">
                   {D(total).gt(D(specTotal)) ? '+' : '−'}
                   {formatRub(toMoneyString(D(total).minus(D(specTotal)).abs()))}
@@ -1103,7 +1114,7 @@ export function OrderFormModal({
                 <span>Валовая прибыль (план)</span>
                 <span className="tabular-nums">
                   {costIsEstimate ? '≈ ' : ''}
-                  {formatRub(toMoneyString(estEarnings))}
+                  <Money value={toMoneyString(estEarnings)} tone="plain" />
                 </span>
               </div>
             )}
@@ -1115,34 +1126,24 @@ export function OrderFormModal({
             <div className="space-y-3">
               <div className="text-sm font-medium">Оплата</div>
               <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    ['none', 'Без оплаты'],
-                    ['full', 'Оплата сразу 100%'],
-                    ['schedule', 'Свой график'],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => {
-                      setPayMode(mode);
-                      setPayError(null);
-                      // При переходе в «Свой график» — одна пустая строка остатка.
-                      if (mode === 'schedule' && scheduleRows.length === 0) {
-                        setScheduleRows([{ dueDate: '', amount: '' }]);
-                      }
-                    }}
-                    className={cn(
-                      'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                      payMode === mode
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-input bg-background text-foreground hover:bg-secondary',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <SegmentedControl
+                  ariaLabel="Оплата"
+                  size="md"
+                  value={payMode}
+                  onChange={(mode) => {
+                    setPayMode(mode);
+                    setPayError(null);
+                    // При переходе в «Свой график» — одна пустая строка остатка.
+                    if (mode === 'schedule' && scheduleRows.length === 0) {
+                      setScheduleRows([{ dueDate: '', amount: '' }]);
+                    }
+                  }}
+                  options={[
+                    { value: 'none', label: 'Без оплаты' },
+                    { value: 'full', label: 'Оплата сразу 100%' },
+                    { value: 'schedule', label: 'Свой график' },
+                  ]}
+                />
               </div>
 
               {payMode === 'full' && (
@@ -1158,7 +1159,7 @@ export function OrderFormModal({
                     />
                   </FormField>
                   <p className="text-xs text-muted-foreground">
-                    Запишем платёж на всю сумму {formatRub(toMoneyString(total))} сегодня.
+                    Запишем платёж на всю сумму <Money value={toMoneyString(total)} tone="plain" /> сегодня.
                   </p>
                 </div>
               )}
@@ -1249,7 +1250,7 @@ export function OrderFormModal({
                   <div className="flex justify-between border-t border-border pt-2 text-sm">
                     <span className="text-muted-foreground">План (предоплата + остаток)</span>
                     <span className={cn('tabular-nums', !planMatchesTotal && 'text-warning')}>
-                      {formatRub(toMoneyString(planTotal))} из {formatRub(toMoneyString(total))}
+                      <Money value={toMoneyString(planTotal)} tone="plain" /> из <Money value={toMoneyString(total)} tone="plain" />
                     </span>
                   </div>
                   {!planMatchesTotal && planTotal.gt(0) && (

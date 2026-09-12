@@ -80,13 +80,13 @@ export function ForecastCard({ wsId }: { wsId: string }) {
             <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
               Без ожидаемых оплат клиентов остаток уйдёт в минус{' '}
               <b>{formatDate(gapPessimistic)}</b> — прогноз держится на поступлениях по
-              графикам заказов ({formatRub(f.totals.in)}).
+              графикам заказов (<Money value={f.totals.in} tone="plain" />).
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               На горизонте {f.horizonDays} дней остаток в минус не уходит: старт{' '}
               <b className="num text-foreground"><Money value={f.opening} /></b>, оттоки{' '}
-              {formatRub(f.totals.out)}, ожидаемые поступления {formatRub(f.totals.in)}.
+              <Money value={f.totals.out} tone="plain" />, ожидаемые поступления <Money value={f.totals.in} tone="plain" />.
             </p>
           )}
 
@@ -148,7 +148,7 @@ export function ForecastCard({ wsId }: { wsId: string }) {
 
           {Number(f.overdueExpectedIn) > 0 && (
             <p className={cn('text-xs text-muted-foreground')}>
-              Просроченные ожидания от клиентов {formatRub(f.overdueExpectedIn)} в прогноз не
+              Просроченные ожидания от клиентов <Money value={f.overdueExpectedIn} tone="plain" /> в прогноз не
               включены — на них нельзя опираться, работайте с дебиторской задолженностью.
             </p>
           )}

@@ -17,7 +17,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
-import { ClipboardList, Plus, X } from '@/components/ui/icons';
+import { ClipboardList, Plus } from '@/components/ui/icons';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -29,6 +29,7 @@ import type { Order, OrderStatus } from '@/lib/types';
 import { D, add, toMoneyString } from '@construct/shared';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
+import { Chip } from '@/components/ui/Chip';
 
 const DEFAULTS = { q: '', status: '', client: '', closedFrom: '', closedTo: '' };
 const FILTERS = flatCodec(DEFAULTS);
@@ -176,18 +177,19 @@ function OrdersView() {
             <StatusDot tone="destructive" label="Просрочен" />
           )}
           {canCloseOrder(o) && (
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               title="Оплачен полностью — закрыть заказ"
               onClick={(e) => {
                 e.stopPropagation();
                 setClosingId(o.id);
                 orderUrl.open(o.id);
               }}
-              className="underline-offset-2 hover:underline"
+              className="font-normal"
             >
               <StatusDot tone="primary" label="можно закрыть" />
-            </button>
+            </Button>
           )}
         </div>
       ),
@@ -259,31 +261,21 @@ function OrdersView() {
         {/* Чип клиента — приходит переходом с его плитки, здесь его можно только снять. */}
         {clientFilter && (
           <FilterField label="Клиент">
-            <button
-              type="button"
-              onClick={() => setFilters({ ...filters, client: '' })}
+            <Chip
+              label={orderRows[0]?.client?.name ?? 'Выбранный клиент'}
+              onRemove={() => setFilters({ ...filters, client: '' })}
               title="Показать заказы всех клиентов"
-              className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
-            >
-              {orderRows[0]?.client?.name ?? 'Выбранный клиент'}
-              <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            </button>
+            />
           </FilterField>
         )}
         {/* IJ9: чип периода закрытия — приходит только drill-down'ом из ОПиУ */}
         {closedRange && (
           <FilterField label="Закрыты в периоде">
-            <button
-              type="button"
-              onClick={clearClosedRange}
+            <Chip
+              label={`${closedRange.from ? formatDate(closedRange.from) : '…'} — ${closedRange.to ? formatDate(closedRange.to) : '…'}`}
+              onRemove={clearClosedRange}
               title="Снять фильтр периода закрытия"
-              className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
-            >
-              {closedRange.from ? formatDate(closedRange.from) : '…'}
-              {' — '}
-              {closedRange.to ? formatDate(closedRange.to) : '…'}
-              <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            </button>
+            />
           </FilterField>
         )}
         <FilterReset onClick={() => setFilters(DEFAULTS)} />
@@ -404,17 +396,18 @@ function OrdersView() {
                   className="text-xs"
                 />
                 {canCloseOrder(o) && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="link"
+                    size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
                       setClosingId(o.id);
                       orderUrl.open(o.id);
                     }}
-                    className="underline-offset-2 hover:underline"
+                    className="font-normal"
                   >
                     <StatusDot tone="primary" label="можно закрыть" className="text-xs" />
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

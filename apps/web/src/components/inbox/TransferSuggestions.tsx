@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toaster';
 import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
+import { Money } from '@/components/ui/Money';
 
 /**
  * «Похоже на перевод»: расход на одном счёте и приход на другом, которые
@@ -53,18 +54,18 @@ export function TransferSuggestions({ wsId }: { wsId: string }) {
             Похоже на перевод между своими счетами
             {c.confidence === 'with_fee' && (
               <span className="text-xs font-normal text-muted-foreground">
-                — суммы разошлись на {formatRub(c.fee, 2)}, спишем как комиссию
+                — суммы разошлись на <Money value={c.fee} tone="plain" />, спишем как комиссию
               </span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>
-              <span className="text-destructive">−{formatRub(c.out.amount, 2)}</span> ·{' '}
+              <span className="text-destructive">−<Money value={c.out.amount} tone="plain" /></span> ·{' '}
               {c.out.account.name} · {formatDate(c.out.date)}
             </span>
             <ArrowRight className="h-3 w-3" />
             <span>
-              <span className="text-success">+{formatRub(c.in.amount, 2)}</span> ·{' '}
+              <span className="text-success">+<Money value={c.in.amount} tone="plain" /></span> ·{' '}
               {c.in.account.name} · {formatDate(c.in.date)}
             </span>
           </div>

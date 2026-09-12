@@ -142,7 +142,7 @@ export function AttachOrderModal({
         <ModalBody className="space-y-4">
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
             Поступление{' '}
-            <span className="font-semibold text-success">+{formatRub(line.amount, 2)}</span>{' '}
+            <span className="font-semibold text-success">+<Money value={line.amount} tone="plain" /></span>{' '}
             от {formatDate(line.date)}
             {line.counterpartyName ? ` · ${line.counterpartyName}` : ''}
           </div>
@@ -179,7 +179,7 @@ export function AttachOrderModal({
           {overpay && (
             <div className="space-y-1 rounded-md border border-warning/40 bg-warning/10 p-3">
               <p className="text-sm font-semibold text-foreground">
-                Будет переплата {formatRub(overpay, 2)}
+                Будет переплата <Money value={overpay} tone="plain" />
               </p>
               <p className="text-xs text-muted-foreground">
                 Строка больше остатка по заказу. Обычно это платёж другого клиента или другого
@@ -207,7 +207,7 @@ export function AttachOrderModal({
                 галкой в заказ зачтётся{' '}
                 <span className="font-semibold text-foreground"><Money value={remaining} /></span>, а
                 разница пройдёт расходом «Комиссия рассрочки» — заказ закроется, на счёт сядет ровно{' '}
-                {formatRub(line.amount, 2)}. Без галки заказ останется недоплаченным.
+                <Money value={line.amount} tone="plain" />. Без галки заказ останется недоплаченным.
               </p>
             </div>
           )}

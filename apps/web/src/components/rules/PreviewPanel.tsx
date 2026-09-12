@@ -1,8 +1,8 @@
 'use client';
 
 import type { RulePreview } from '@/lib/types';
-import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
+import { Money } from '@/components/ui/Money';
 
 /** Охват черновика по загруженной выписке: сколько зацепит и что именно. */
 export function PreviewPanel({ preview }: { preview: RulePreview }) {
@@ -36,7 +36,7 @@ export function PreviewPanel({ preview }: { preview: RulePreview }) {
             {preview.samples.map((s) => (
               <li key={s.id} className="truncate">
                 {formatDate(s.date)} · {s.direction === 'INCOME' ? '+' : '−'}
-                {formatRub(s.amount, 2)} ·{' '}
+                <Money value={s.amount} tone="plain" /> ·{' '}
                 {s.description?.trim() || s.counterpartyName || 'без назначения'}
               </li>
             ))}

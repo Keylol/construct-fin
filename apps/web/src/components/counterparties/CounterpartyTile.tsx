@@ -5,6 +5,7 @@ import { StatusStamp } from '@/components/ui/StatusStamp';
 import { Tile } from '@/components/ui/Tile';
 import { formatDate } from '@/lib/dates';
 import type { Counterparty } from '@/lib/types';
+import { Money } from '@/components/ui/Money';
 
 /**
  * Контрагент в плиточном виде: та же анатомия, что у заказа (см. ui/Tile), но
@@ -46,7 +47,7 @@ export function CounterpartyTile({
       primary={s ? formatRub(s.ordersTotal) : undefined}
       accent={
         debt && debt.gt(0) ? (
-          <span className="text-destructive">долг {formatRub(s!.debt)}</span>
+          <span className="text-destructive">долг <Money value={s!.debt} tone="plain" /></span>
         ) : undefined
       }
       onClick={onClick}

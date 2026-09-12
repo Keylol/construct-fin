@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, type RefObject } from 'react';
-import { X } from '@/components/ui/icons';
 import { Select } from '@/components/ui/Select';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
@@ -11,6 +10,7 @@ import { DateRangeFields, PeriodSelect } from '@/components/ui/PeriodSelect';
 import { BUCKET_LABEL } from '@/lib/buckets';
 import type { ReportBucket, TxType, Account, Category, Counterparty } from '@/lib/types';
 import { type AnyPeriod, type DateRange, rangeForAny } from '@/lib/periods';
+import { Chip } from '@/components/ui/Chip';
 
 export interface ActiveFilters {
   period: AnyPeriod;
@@ -171,15 +171,11 @@ export function TransactionFilters({
           drill-down'ом из отчёта, здесь его можно лишь увидеть и снять. */}
       {active.bucket && (
         <FilterField label="Группа ОПиУ">
-          <button
-            type="button"
-            onClick={() => onChange({ ...active, bucket: undefined })}
+          <Chip
+            label={BUCKET_LABEL[active.bucket]}
+            onRemove={() => onChange({ ...active, bucket: undefined })}
             title="Снять фильтр группы"
-            className="flex h-9 items-center gap-1.5 rounded-sm border border-input bg-secondary px-2.5 text-sm text-foreground transition-colors hover:bg-secondary/70"
-          >
-            {BUCKET_LABEL[active.bucket]}
-            <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-          </button>
+          />
         </FilterField>
       )}
 

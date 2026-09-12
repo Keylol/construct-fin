@@ -36,6 +36,7 @@ import type {
   WbReceiptPreview,
 } from '@/lib/types';
 import { formatDate } from '@/lib/dates';
+import { FormField } from '@/components/ui/FormField';
 
 /** Локальная строка разметки поверх позиции (все поля редактируемы оператором). */
 type UiLine = {
@@ -486,7 +487,7 @@ function Wizard({ wsId }: { wsId: string }) {
                           checked={linkTxId === c.id}
                           onChange={() => setLinkTxId(c.id)}
                         />
-                        <span className="tabular-nums">−{formatRub(c.amount, 2)}</span>
+                        <span className="tabular-nums">−<Money value={c.amount} tone="plain" /></span>
                         <span className="text-muted-foreground">
                           {formatDate(c.date)}
                           {c.description ? ` · ${c.description.slice(0, 60)}` : ''}
@@ -534,7 +535,7 @@ function Wizard({ wsId }: { wsId: string }) {
               </span>
               {totalsDiffer && (
                 <span className="text-sm text-warning">
-                  ≠ распознанный итог {formatRub(recognizedTotal!, 2)} — проверьте состав
+                  ≠ распознанный итог <Money value={recognizedTotal!} tone="plain" /> — проверьте состав
                 </span>
               )}
               <Button onClick={doCommit} disabled={!canCommit}>
@@ -615,29 +616,26 @@ function LineRow({
       </div>
 
       <div className="flex items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Кол-во</span>
+        <FormField label="Кол-во" compact>
           <Input
             value={line.qty}
             inputMode="decimal"
             onChange={(e) => onChange({ ...line, qty: e.target.value })}
             className="h-9 w-[72px] text-right tabular-nums"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Цена</span>
+        </FormField>
+        <FormField label="Цена" compact>
           <MoneyInput
             value={line.unitPrice}
             onChange={(e) => onChange({ ...line, unitPrice: e.target.value })}
-            className="h-9 w-[100px] text-right tabular-nums"
+            className="h-9 w-[120px] text-right"
           />
-        </label>
-        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Σ</span>
-          <div className="flex h-9 items-center whitespace-nowrap text-sm tabular-nums">
+        </FormField>
+        <FormField label="Сумма" compact>
+          <div className="flex h-9 items-center whitespace-nowrap text-sm">
             <Money value={lineTotal} />
           </div>
-        </div>
+        </FormField>
       </div>
 
       {/* Назначение */}

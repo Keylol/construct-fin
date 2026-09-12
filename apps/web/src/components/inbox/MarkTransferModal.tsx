@@ -15,8 +15,8 @@ import {
   ModalHeader,
   ModalTitle,
 } from '@/components/ui/Modal';
-import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
+import { Money } from '@/components/ui/Money';
 
 /**
  * Перевод на счёт, выписку которого банк не отдаёт: карты физлиц (ВБ) второй
@@ -77,7 +77,7 @@ export function MarkTransferModal({
           <div className="rounded-md bg-secondary/40 p-3 text-sm">
             <span className={isOut ? 'font-semibold text-destructive' : 'font-semibold text-success'}>
               {isOut ? '−' : '+'}
-              {formatRub(line.amount, 2)}
+              <Money value={line.amount} tone="plain" />
             </span>{' '}
             от {formatDate(line.date)} · {line.account.name}
           </div>
