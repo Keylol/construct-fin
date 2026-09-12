@@ -155,6 +155,43 @@ services:
       - backups:/backups
     networks: [internal]
 
+  # Бэкап uploads (чеки, вложения заказов и операций): pg_dump их не видит,
+  # а без них история документов невосстановима. Раз в сутки tar.gz в тот же
+  # том `backups` рядом с дампами (/backups/uploads), ротация по дням.
+  # Скрипт собирается при старте контейнера — деплой синкает только compose,
+  # отдельный файл до VPS не доехал бы. `$$` — экранирование для compose.
+  # Достать: docker cp construct-v6-uploads-backup-1:/backups/uploads <local>
+  # Восстановить: docker run --rm -v construct-v6_uploads:/data/uploads
+  #   -v construct-v6_backups:/backups alpine tar -xzf /backups/uploads/uploads-<дата>.tar.gz -C /data
+  uploads-backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 64m
+    # Сети не нужны вовсе: только два тома.
+    network_mode: none
+    environment:
+      KEEP_DAYS: ${UPLOADS_BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - uploads:/data/uploads:ro
+      - backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /usr/local/bin/backup-uploads <<'SH'
+        #!/bin/sh
+        set -eu
+        mkdir -p /backups/uploads
+        stamp=$$(date +%Y-%m-%d)
+        tar -czf /backups/uploads/uploads-$$stamp.tar.gz -C /data uploads
+        find /backups/uploads -name 'uploads-*.tar.gz' -mtime +$${KEEP_DAYS:-14} -delete
+        echo "uploads backup: $$(du -h /backups/uploads/uploads-$$stamp.tar.gz | cut -f1) $$(date -Iseconds)"
+        SH
+        chmod +x /usr/local/bin/backup-uploads
+        /usr/local/bin/backup-uploads
+        echo "17 4 * * * /usr/local/bin/backup-uploads" > /etc/crontabs/root
+        exec crond -f -l 8
+
 networks:
   internal:
     driver: bridge

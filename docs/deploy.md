@@ -76,3 +76,18 @@ ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
 ```
 
 Миграции v6 в большинстве случаев необратимы — откат БД отдельной задачей через `prisma migrate resolve`.
+
+## Бэкап uploads и внешний мониторинг (12.09.2026)
+
+- **uploads** (чеки, вложения) — сервис `uploads-backup` в compose: раз в
+  сутки (04:17) `tar.gz` в том `backups` (`/backups/uploads/uploads-<дата>.tar.gz`),
+  ротация `UPLOADS_BACKUP_KEEP_DAYS` (по умолчанию 14). Деплой снимает снимок
+  и перед миграцией (не блокирующий). Достать вместе с дампами:
+  `docker cp construct-v6-uploads-backup-1:/backups <local>`. Восстановить:
+  `docker run --rm -v construct-v6_uploads:/data/uploads -v construct-v6_backups:/backups alpine tar -xzf /backups/uploads/uploads-<дата>.tar.gz -C /data`.
+  Off-site копии по-прежнему нет — оба тома на том же диске VPS.
+- **Внешний мониторинг** — `.github/workflows/uptime.yml`: раз в 15 минут
+  GitHub дёргает `/api/v1/health`; при падении одно сообщение в Telegram
+  владельцу, при восстановлении — второе. Провал деплоя тоже пишет в Telegram.
+  Нужны секрет `TELEGRAM_BOT_TOKEN` и переменная репо `ALERT_TELEGRAM_CHAT_ID`;
+  проверка канала — ручной запуск workflow с галкой «test».
