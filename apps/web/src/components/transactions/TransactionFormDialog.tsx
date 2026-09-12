@@ -93,11 +93,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
       setCategoryId(existing.data.categoryId ?? '');
       setCounterpartyId(existing.data.counterpartyId ?? '');
       setDescription(existing.data.description ?? '');
-    } else if (!isEdit) {
+    } else {
+      // Операция ещё не приехала — либо это создание, либо правка другой
+      // операции. Поля чистим в обоих случаях: без этого окно секунду
+      // показывает сумму, дату и описание ПРЕДЫДУЩЕЙ операции, и выглядит это
+      // достоверно. Поймано на проде: при разборе дублей форма показывала
+      // 70 000 от 1 июня, держа возврат 4 751 от 20 августа.
       setType('EXPENSE');
       setAmount('');
       setDate(toLocalDateInput(new Date()));
-      setAccountId(accounts.data?.[0]?.id ?? '');
+      setAccountId(isEdit ? '' : (accounts.data?.[0]?.id ?? ''));
       setCategoryId('');
       setCounterpartyId('');
       setDescription('');
@@ -106,7 +111,9 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
     setSuggestion(null);
     setSuggestDismissed(false);
     lastSigRef.current = '';
-  }, [open, existing.data, isEdit, accounts.data]);
+    // transactionId в зависимостях обязателен: без него переход на другую
+    // операцию не перезапускал эффект, и состояние оставалось от прошлой.
+  }, [open, transactionId, existing.data, isEdit, accounts.data]);
 
   // Подсказки движка правил — только при создании (в режиме правки не навязываем
   // перезапись). Debounced: ждём паузу в наборе, затем POST /rules/suggest.
