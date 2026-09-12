@@ -25,9 +25,19 @@ export function NavTabs({
   className?: string;
 }) {
   const pathname = usePathname();
+  // На телефоне — одна лента со скроллом (десять вкладок иначе занимают
+  // полэкрана), на десктопе — перенос строк: там ширины хватает на две.
   return (
-    <nav aria-label={ariaLabel} className={cn('border-b border-border bg-background', className)}>
-      <ul className={cn(TAB_LIST_CLASS, 'flex h-auto min-h-10 w-full flex-wrap border-0 px-6')}>
+    <nav
+      aria-label={ariaLabel}
+      className={cn('overflow-x-auto border-b border-border bg-background [scrollbar-width:none]', className)}
+    >
+      <ul
+        className={cn(
+          TAB_LIST_CLASS,
+          'flex h-auto min-h-10 w-max min-w-full flex-nowrap border-0 px-4 sm:w-full sm:flex-wrap sm:px-6',
+        )}
+      >
         {items.map((t) => {
           const active = pathname === t.href;
           return (

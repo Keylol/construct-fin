@@ -837,8 +837,10 @@ export function OrderFormModal({
                   {/* Подписи колонок — общим рядом над строками (на узком экране
                       он скрыт, там подписью служит placeholder); aria-label — для
                       читалки в обоих случаях. */}
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
+                  {/* На телефоне ряд переносится: название во всю ширину, числа
+                      второй строкой поровну — иначе поля сжимались до 26px. */}
+                  <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
+                    <div className="basis-full sm:basis-auto sm:flex-1">
                       <Input
                         value={it.name}
                         onChange={(e) => patchItem(i, { name: e.target.value })}
@@ -847,7 +849,7 @@ export function OrderFormModal({
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
-                    <div className="w-16">
+                    <div className="w-16 flex-1 sm:flex-none">
                       <Input
                         inputMode="decimal"
                         value={it.qty}
@@ -857,26 +859,26 @@ export function OrderFormModal({
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
-                    <div className="w-24">
+                    <div className="w-24 flex-1 sm:flex-none">
                       <MoneyInput
                         value={it.unitPrice}
                         onChange={(e) => patchItem(i, { unitPrice: e.target.value })}
-                        placeholder="Цена прод."
+                        placeholder="Цена"
                         aria-label="Цена продажи"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
-                    <div className="w-24">
+                    <div className="w-24 flex-1 sm:flex-none">
                       <MoneyInput
                         value={it.unitCost ?? ''}
                         onChange={(e) => patchItem(i, { unitCost: e.target.value })}
-                        placeholder="Закуп. цена"
+                        placeholder="Закуп."
                         aria-label="Закупочная цена"
                         aria-invalid={rowError ? true : undefined}
                       />
                     </div>
                     {/* Сумма строки qty×цена — только чтение, видно вклад позиции. */}
-                    <div className="flex h-10 w-24 items-center justify-end text-sm sm:h-9">
+                    <div className="flex h-10 w-24 flex-1 items-center justify-end text-sm sm:h-9 sm:flex-none">
                       {lineSum.gt(0) ? (
                         <Money value={toMoneyString(lineSum)} />
                       ) : (
