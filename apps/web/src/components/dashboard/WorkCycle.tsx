@@ -44,7 +44,7 @@ export function WorkCycle() {
   return (
     <section>
       <h2 className="mb-3 text-base font-semibold tracking-tight">Порядок работы</h2>
-      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {STEPS.map((s) => (
           <li key={s.n}>
             <Link

@@ -323,7 +323,7 @@ function Steps({ stage }: { stage: Stage }) {
   ];
   const order = items.findIndex((i) => i.key === stage);
   return (
-    <ol className="flex items-center gap-2">
+    <ol className="flex flex-wrap items-center gap-2">
       {items.map((it, i) => {
         const isActive = i === order;
         const isDone = i < order;
