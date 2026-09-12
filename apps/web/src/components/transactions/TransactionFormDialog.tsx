@@ -47,6 +47,11 @@ interface Props {
 export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Props) {
   const isEdit = !!transactionId;
   const existing = useTransaction(wsId, transactionId);
+  // Окно правки открывается мгновенно, а операция приезжает запросом: секунду
+  // поля пустые, дата сегодняшняя, категория «без категории». «Удалить» при
+  // этом активна — и нажатие сносит операцию, которую человек ещё не увидел.
+  // Пока данных нет, «Удалить» и «Сохранить» заблокированы.
+  const notReady = isEdit && !existing.data;
   const accounts = useAccounts(wsId);
   const incomeCats = useCategories(wsId, 'INCOME');
   const expenseCats = useCategories(wsId, 'EXPENSE');
@@ -87,11 +92,16 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
       setCategoryId(existing.data.categoryId ?? '');
       setCounterpartyId(existing.data.counterpartyId ?? '');
       setDescription(existing.data.description ?? '');
-    } else if (!isEdit) {
+    } else {
+      // Операция ещё не приехала — либо это создание, либо правка другой
+      // операции. Поля чистим в обоих случаях: без этого окно секунду
+      // показывает сумму, дату и описание ПРЕДЫДУЩЕЙ операции, и выглядит это
+      // достоверно. Поймано на проде: при разборе дублей форма показывала
+      // 70 000 от 1 июня, держа возврат 4 751 от 20 августа.
       setType('EXPENSE');
       setAmount('');
       setDate(toLocalDateInput(new Date()));
-      setAccountId(accounts.data?.[0]?.id ?? '');
+      setAccountId(isEdit ? '' : (accounts.data?.[0]?.id ?? ''));
       setCategoryId('');
       setCounterpartyId('');
       setDescription('');
@@ -100,7 +110,9 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
     setSuggestion(null);
     setSuggestDismissed(false);
     lastSigRef.current = '';
-  }, [open, existing.data, isEdit, accounts.data]);
+    // transactionId в зависимостях обязателен: без него переход на другую
+    // операцию не перезапускал эффект, и состояние оставалось от прошлой.
+  }, [open, transactionId, existing.data, isEdit, accounts.data]);
 
   // Подсказки движка правил — только при создании (в режиме правки не навязываем
   // перезапись). Debounced: ждём паузу в наборе, затем POST /rules/suggest.
@@ -506,6 +518,7 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
               <Button
                 type="button"
                 variant="destructive"
+                disabled={notReady}
                 onClick={() => setConfirmDel(true)}
                 className="sm:mr-auto"
               >
@@ -518,8 +531,8 @@ export function TransactionFormDialog({ wsId, open, transactionId, onClose }: Pr
             </Button>
             <Button
               type="submit"
-              loading={create.isPending || update.isPending}
-              disabled={!amount.trim() || !accountId}
+              loading={create.isPending || update.isPending || notReady}
+              disabled={notReady || !amount.trim() || !accountId}
             >
               Сохранить
             </Button>
