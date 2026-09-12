@@ -10,7 +10,7 @@ import { useCounterparties } from '@/hooks/useCounterparties';
 import { useOrders } from '@/hooks/useOrders';
 import { useMarginReport, useReceivables } from '@/hooks/useTradeReports';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -185,15 +185,16 @@ export default function ClientCardPage() {
         )}
 
         {/* Заказы клиента: строка открывает окно заказа на экране заказов. */}
-        <Card className="overflow-hidden !p-0">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="text-sm font-semibold">Заказы</div>
+        <SectionCard
+          title="Заказы"
+          aside={
             <Button asChild variant="ghost" size="sm">
               <Link href="/orders">
                 Все заказы <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
-          </div>
+          }
+        >
           <DataTable
             data={orders}
             columns={ORDER_COLUMNS}
@@ -213,7 +214,7 @@ export default function ClientCardPage() {
             }
             mobileCards={orderCard}
           />
-        </Card>
+        </SectionCard>
       </div>
     </>
   );

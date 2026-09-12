@@ -6,6 +6,14 @@ import { cn } from '@/lib/cn';
 
 export const Tabs = TabsPrimitive.Root;
 
+/** Классы полосы вкладок и одной вкладки — общие для Tabs (состояние) и NavTabs (ссылки). */
+export const TAB_LIST_CLASS = 'inline-flex h-10 items-center gap-6 border-b border-border';
+export const TAB_CLASS =
+  'relative -mb-px inline-flex h-10 items-center whitespace-nowrap border-b-2 border-transparent ' +
+  'px-1 text-sm font-medium text-muted-foreground transition-colors ' +
+  'hover:text-foreground focus-visible:outline-none focus-visible:text-foreground';
+export const TAB_ACTIVE_CLASS = 'border-primary text-foreground';
+
 export const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
@@ -13,10 +21,7 @@ export const TabsList = React.forwardRef<
   return (
     <TabsPrimitive.List
       ref={ref}
-      className={cn(
-        'inline-flex h-10 items-center gap-6 border-b border-border',
-        className,
-      )}
+      className={cn(TAB_LIST_CLASS, className)}
       {...props}
     />
   );
@@ -30,9 +35,7 @@ export const TabsTrigger = React.forwardRef<
     <TabsPrimitive.Trigger
       ref={ref}
       className={cn(
-        'relative -mb-px inline-flex h-10 items-center whitespace-nowrap border-b-2 border-transparent',
-        'px-1 text-sm font-medium text-muted-foreground transition-colors',
-        'hover:text-foreground focus-visible:outline-none focus-visible:text-foreground',
+        TAB_CLASS,
         'data-[state=active]:border-primary data-[state=active]:text-foreground',
         'disabled:pointer-events-none disabled:opacity-50',
         className,

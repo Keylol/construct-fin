@@ -20,7 +20,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Badge } from '@/components/ui/Badge';
+import { StatusDot } from '@/components/ui/StatusDot';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -237,19 +237,13 @@ function CategoryNode({
             shrink-0 обязателен — иначе длинная подпись группы («Себестоимость
             проданного») сжимает соседнее название категории до нуля. На узких
             экранах группу прячем: название важнее, а группа видна в карточке. */}
-        <Badge variant="muted" className="hidden shrink-0 sm:inline-flex">
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
           {BUCKET_LABEL[node.bucket]}
-        </Badge>
+        </span>
         {node.isFixedCost && (
-          <Badge variant="outline" className="shrink-0">
-            Постоянная
-          </Badge>
+          <span className="shrink-0 text-xs text-muted-foreground">· постоянная</span>
         )}
-        {node.isArchived && (
-          <Badge variant="muted" className="shrink-0">
-            В архиве
-          </Badge>
-        )}
+        {node.isArchived && <StatusDot tone="muted" label="в архиве" className="shrink-0 text-xs" />}
         {depth === 0 && (
           <button
             type="button"

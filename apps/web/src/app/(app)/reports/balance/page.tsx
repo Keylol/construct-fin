@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Money } from '@/components/ui/Money';
 import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -55,11 +56,10 @@ export default function BalancePage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             {/* Активы */}
-            <Card className="!p-0 overflow-hidden">
-              <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
-                <h3 className="font-medium">Активы</h3>
-                <Money value={b.assets.total} className="text-sm font-semibold" />
-              </header>
+            <SectionCard
+              title="Активы"
+              aside={<Money value={b.assets.total} className="text-sm font-semibold text-foreground" />}
+            >
               <div className="divide-y divide-border/60">
                 <BalanceRow
                   label="Денежные средства"
@@ -78,15 +78,14 @@ export default function BalancePage() {
                 />
                 <BalanceRow label="Запасы" value={b.assets.inventory} href="/warehouse" />
               </div>
-            </Card>
+            </SectionCard>
 
             {/* Обязательства + капитал */}
             <div className="space-y-4">
-              <Card className="!p-0 overflow-hidden">
-                <header className="flex items-baseline justify-between border-b border-border px-4 py-3">
-                  <h3 className="font-medium">Обязательства</h3>
-                  <Money value={b.liabilities.total} className="text-sm font-semibold" />
-                </header>
+              <SectionCard
+                title="Обязательства"
+                aside={<Money value={b.liabilities.total} className="text-sm font-semibold text-foreground" />}
+              >
                 <div className="divide-y divide-border/60">
                   <BalanceRow
                     label="Авансы клиентов"
@@ -100,7 +99,7 @@ export default function BalancePage() {
                     href="/tax"
                   />
                 </div>
-              </Card>
+              </SectionCard>
 
               <Card className="!p-0 overflow-hidden">
                 <header className="flex items-baseline justify-between px-4 py-3">

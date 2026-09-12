@@ -9,7 +9,7 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCounterparties } from '@/hooks/useCounterparties';
 import { usePurchases } from '@/hooks/usePurchases';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -146,8 +146,7 @@ export default function SupplierCardPage() {
         </KpiRow>
 
         {/* Закупки поставщика: строка открывает окно закупки на экране закупок. */}
-        <Card className="overflow-hidden !p-0">
-          <div className="border-b border-border px-4 py-3 text-sm font-semibold">Закупки</div>
+        <SectionCard title="Закупки">
           <DataTable
             data={purchases}
             columns={PURCHASE_COLUMNS}
@@ -168,7 +167,7 @@ export default function SupplierCardPage() {
             mobileCards={purchaseCard}
             footer={purchases.length > 0 ? { note: 'Итого', total: <Money value={total} /> } : undefined}
           />
-        </Card>
+        </SectionCard>
       </div>
     </>
   );

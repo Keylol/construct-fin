@@ -177,7 +177,7 @@ export function ScheduleModal({
             <Row label="Сумма графика" value={<Money value={toMoneyString(planned)} />} />
             <Row label="Итог заказа" value={<Money value={order.totalAmount} />} />
             {!matches && planned.gt(0) && (
-              <p className="text-xs text-amber-600">
+              <p className="text-xs text-warning">
                 Суммы не сходятся — график сохранится, но карточка будет предупреждать.
               </p>
             )}

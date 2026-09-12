@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { formatRub } from '@construct/shared';
-import { Card } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { CHART_SEMANTIC } from '@/lib/chart';
 import { MONTH_NAMES } from '@/lib/labels';
 
@@ -96,12 +96,16 @@ export function FlowChart({
   ];
 
   return (
-    <Card className="overflow-hidden !p-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium">{title}</span>
-        {caption && <span className="text-xs text-muted-foreground">{caption}</span>}
-        {/* Легенда — текстом в токенах текста, цвет несёт только метка. */}
-        <ul className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <SectionCard
+      title={
+        <>
+          {title}
+          {caption && <span className="ml-2 font-normal text-muted-foreground">{caption}</span>}
+        </>
+      }
+      aside={
+        // Легенда — текстом в токенах текста, цвет несёт только метка.
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {series.map((s) => (
             <li key={s.key} className="flex items-center gap-1.5">
               <LegendSwatch kind={s.kind} color={s.color} />
@@ -109,7 +113,8 @@ export function FlowChart({
             </li>
           ))}
         </ul>
-      </div>
+      }
+    >
       <div className="h-72 w-full px-2 pb-2 pt-3">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }} barGap={2} barCategoryGap="28%">
@@ -180,6 +185,6 @@ export function FlowChart({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-    </Card>
+    </SectionCard>
   );
 }

@@ -8,6 +8,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useAttachOrderInbox } from '@/hooks/useInbox';
 import type { InboxLine, Order } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
 import {
@@ -185,29 +186,21 @@ export function AttachOrderModal({
                 заказа — проверьте назначение и сумму. Если деньги действительно пришли сверх
                 остатка (аванс на следующий заказ), подтвердите.
               </p>
-              <label className="flex items-start gap-2 pt-1 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={overpayOk}
-                  onChange={(e) => setOverpayOk(e.target.checked)}
-                />
-                <span>Всё верно, привязать с переплатой</span>
-              </label>
+              <Checkbox
+                label="Всё верно, привязать с переплатой"
+                checked={overpayOk}
+                onChange={(e) => setOverpayOk(e.target.checked)}
+              />
             </div>
           )}
 
           {canInstallment && remaining && shortfall && (
             <div className="space-y-1 rounded-md border border-border p-3">
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={installment}
-                  onChange={(e) => setInstallment(e.target.checked)}
-                />
-                <span>Кредит или рассрочка</span>
-              </label>
+              <Checkbox
+                label="Кредит или рассрочка"
+                checked={installment}
+                onChange={(e) => setInstallment(e.target.checked)}
+              />
               <p className="text-xs text-muted-foreground">
                 Строка меньше остатка заказа на{' '}
                 <span className="font-semibold text-foreground"><Money value={shortfall} /></span>. С
