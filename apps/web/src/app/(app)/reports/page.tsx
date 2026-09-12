@@ -2,16 +2,6 @@
 
 import { Suspense } from 'react';
 import Link from 'next/link';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { D, formatRub, sub, toMoneyString } from '@construct/shared';
@@ -25,26 +15,18 @@ import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { Select } from '@/components/ui/Select';
 import { ExportButtons } from '@/components/reports/ExportButtons';
-import { PnlWaterfall } from '@/components/reports/PnlWaterfall';
+import { FlowChart, type FlowPoint } from '@/components/reports/FlowChart';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { usePnlReport } from '@/hooks/useReports';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { BUCKET_LABEL } from '@/lib/buckets';
-import { CHART_SEMANTIC } from '@/lib/chart';
 import { cn } from '@/lib/cn';
 import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
 import { txDrilldownHref } from '@/lib/tx-filters';
 import type { BucketBreakdown, CompareMode, PnlBucket } from '@/lib/types';
 
 type LinkHref = Parameters<typeof Link>[0]['href'];
-
-const CHART_COLORS = {
-  income: CHART_SEMANTIC.income,
-  expense: CHART_SEMANTIC.expense,
-  incomeCmp: CHART_SEMANTIC.incomeMuted,
-  expenseCmp: CHART_SEMANTIC.expenseMuted,
-};
 
 const DEFAULT_PERIOD = 'this-year';
 const EXTRAS = { groupBy: 'month', compare: 'none' };
@@ -73,21 +55,25 @@ function PnlReportView() {
 
   if (!wsId) return null;
 
-  // Для recharts — числа; деньги в таблицах и плитках остаются строками.
-  const data =
-    query.data?.primary.buckets.map((b, i) => ({
+  const points: FlowPoint[] =
+    query.data?.primary.buckets.map((b) => ({
       label: b.label,
-      Доходы: Number(b.income),
-      Расходы: -Number(b.expense),
-      cmpDoxod: query.data?.comparison
-        ? Number(query.data.comparison.buckets[i]?.income ?? 0)
-        : undefined,
-      cmpRashod: query.data?.comparison
-        ? -Number(query.data.comparison.buckets[i]?.expense ?? 0)
-        : undefined,
+      income: b.income,
+      expense: b.expense,
+      line: b.net,
     })) ?? [];
 
   const totals = query.data?.primary.totals;
+  // Сравнение живёт в плитках, а не на графике: «± к прошлому периоду».
+  const cmp = compareWith !== 'none' ? query.data?.comparison?.totals : undefined;
+  const cmpLabel = compareWith === 'yoy' ? 'к прошлому году' : 'к пред. периоду';
+  const delta = (cur: string, prev: string | undefined) => {
+    if (prev === undefined) return undefined;
+    const d = sub(cur, prev);
+    const sign = d.gt(0) ? '+' : d.lt(0) ? '−' : '';
+    const pct = D(prev).isZero() ? null : d.div(D(prev)).mul(100).abs().toFixed(0);
+    return `${sign}${formatRub(toMoneyString(d.abs()))}${pct !== null ? ` (${sign}${pct} %)` : ''} ${cmpLabel}`;
+  };
   // Отчёт загружен, но пуст: все итоги нулевые и в разбивке по группам нет
   // ни одной строки с суммами — вместо голых нулей показываем EmptyState.
   const reportEmpty =
@@ -258,12 +244,23 @@ function PnlReportView() {
             <KpiRow loading={query.isLoading} count={3} className="stagger">
               {totals && (
                 <>
-                  <KpiCard label="Операционные доходы" value={<Money value={totals.income} />} tone="positive" />
-                  <KpiCard label="Операционные расходы" value={<Money value={totals.expense} />} tone="negative" />
+                  <KpiCard
+                    label="Операционные доходы"
+                    value={<Money value={totals.income} />}
+                    tone="positive"
+                    hint={delta(totals.income, cmp?.income)}
+                  />
+                  <KpiCard
+                    label="Операционные расходы"
+                    value={<Money value={totals.expense} />}
+                    tone="negative"
+                    hint={delta(totals.expense, cmp?.expense)}
+                  />
                   <KpiCard
                     label="Чистая прибыль"
                     value={<Money value={totals.net} />}
                     tone={D(totals.net).gte(0) ? 'positive' : 'negative'}
+                    hint={delta(totals.net, cmp?.net)}
                   />
                 </>
               )}
@@ -291,59 +288,16 @@ function PnlReportView() {
           </Card>
         )}
 
-        {/* Водопад: из чего сложилась чистая прибыль периода. */}
-        {!reportEmpty && totals && <PnlWaterfall totals={totals} />}
-
-        {!reportEmpty && data.length > 0 && (
-          <Card className="!p-3">
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="label"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(v) =>
-                      new Intl.NumberFormat('ru-RU').format(Number(v))
-                    }
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <Tooltip
-                    formatter={(v) => formatRub(Math.abs(Number(v)))}
-                    contentStyle={{
-                      borderRadius: 6,
-                      border: '1px solid hsl(var(--border))',
-                      background: 'hsl(var(--card))',
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Доходы" fill={CHART_COLORS.income} radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="Расходы" fill={CHART_COLORS.expense} radius={[2, 2, 0, 0]} />
-                  {compareWith !== 'none' && (
-                    <>
-                      <Bar
-                        dataKey="cmpDoxod"
-                        name="Доходы (сравн.)"
-                        fill={CHART_COLORS.incomeCmp}
-                        radius={[2, 2, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="cmpRashod"
-                        name="Расходы (сравн.)"
-                        fill={CHART_COLORS.expenseCmp}
-                        radius={[2, 2, 0, 0]}
-                      />
-                    </>
-                  )}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+        {/* Один график: доход и расход по периодам, линия — чистая прибыль. */}
+        {!reportEmpty && (
+          <FlowChart
+            points={points}
+            title="Доходы, расходы и прибыль"
+            caption={groupBy === 'quarter' ? 'по кварталам' : 'по месяцам'}
+            incomeLabel="Доходы"
+            expenseLabel="Расходы"
+            lineLabel="Чистая прибыль"
+          />
         )}
 
         {!reportEmpty && totals && groups.length > 0 && (

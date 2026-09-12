@@ -2,19 +2,9 @@
 
 import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { D, formatRub } from '@construct/shared';
+import { D, add, toMoneyString } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -25,11 +15,11 @@ import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
+import { FlowChart, type FlowPoint } from '@/components/reports/FlowChart';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useCashflowReport } from '@/hooks/useReports';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
-import { CHART_PALETTE as COLORS } from '@/lib/chart';
 import { reportCodec, reportPeriod, toPeriodParams } from '@/lib/report-filters';
 import { txDrilldownHref } from '@/lib/tx-filters';
 import type { CashflowPoint, CashflowSeries } from '@/lib/types';
@@ -58,21 +48,29 @@ function CashflowReportView() {
   const accounts = useAccounts(wsId);
   const query = useCashflowReport(wsId, periodParams, accountId);
 
-  const chartData = useMemo(() => {
+  // Один график на все счета: приход и расход за период суммой, линия —
+  // общий остаток (по выбранному счёту — его остаток). Суммы — Decimal.
+  const points = useMemo<FlowPoint[]>(() => {
     if (!query.data) return [];
-    const labels = new Set<string>();
-    for (const s of query.data.series) for (const p of s.points) labels.add(p.label);
-    const sorted = Array.from(labels).sort();
-    return sorted.map((label) => {
-      const row: Record<string, string | number> = { label };
-      for (const s of query.data!.series) {
-        const point = s.points.find((p) => p.label === label);
-        // Ключ ряда — accountId (одинаковые имена счетов не должны схлопываться);
-        // подпись в легенде задаёт проп name у <Line>.
-        row[s.accountId ?? 'none'] = point ? Number(point.balance) : 0;
+    const byLabel = new Map<string, { income: ReturnType<typeof D>; expense: ReturnType<typeof D>; line: ReturnType<typeof D> }>();
+    for (const s of query.data.series) {
+      for (const p of s.points) {
+        const acc = byLabel.get(p.label) ?? { income: D(0), expense: D(0), line: D(0) };
+        byLabel.set(p.label, {
+          income: add(acc.income, p.inflow),
+          expense: add(acc.expense, p.outflow),
+          line: add(acc.line, p.balance),
+        });
       }
-      return row;
-    });
+    }
+    return [...byLabel.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, v]) => ({
+        label,
+        income: toMoneyString(v.income),
+        expense: toMoneyString(v.expense),
+        line: toMoneyString(v.line),
+      }));
   }, [query.data]);
 
   if (!wsId) return null;
@@ -174,50 +172,14 @@ function CashflowReportView() {
             </Card>
           )}
 
-        {chartData.length > 0 && (
-          <Card className="!p-3">
-            <div className="h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="label"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(v) =>
-                      new Intl.NumberFormat('ru-RU').format(Number(v))
-                    }
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <Tooltip
-                    formatter={(v) => formatRub(Number(v))}
-                    contentStyle={{
-                      borderRadius: 6,
-                      border: '1px solid hsl(var(--border))',
-                      background: 'hsl(var(--card))',
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12 }} />
-                  {query.data?.series.map((s, i) => (
-                    <Line
-                      key={s.accountId ?? i}
-                      type="monotone"
-                      dataKey={s.accountId ?? 'none'}
-                      name={s.accountName ?? 'Без счёта'}
-                      stroke={COLORS[i % COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
+        <FlowChart
+          points={points}
+          title="Движение денег"
+          caption={accountId ? 'по выбранному счёту' : 'по всем счетам'}
+          incomeLabel="Поступления"
+          expenseLabel="Выплаты"
+          lineLabel="Остаток на конец периода"
+        />
 
         {query.data && (
           <div className="grid gap-3 md:grid-cols-2">
