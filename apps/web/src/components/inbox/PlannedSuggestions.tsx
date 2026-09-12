@@ -6,8 +6,8 @@ import { usePlannedSuggestions, usePayPlannedFromLine } from '@/hooks/useInbox';
 import type { PlannedLineSuggestion } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toaster';
-import { formatRub } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
+import { Money } from '@/components/ui/Money';
 
 /**
  * «Похоже на ожидаемый платёж»: списание из банка совпало по сумме и сроку с
@@ -52,7 +52,7 @@ export function PlannedSuggestions({ wsId }: { wsId: string }) {
             </span>
           </div>
           <div className="text-xs text-muted-foreground">
-            <span className="text-destructive">−{formatRub(s.line.amount, 2)}</span> ·{' '}
+            <span className="text-destructive">−<Money value={s.line.amount} tone="plain" /></span> ·{' '}
             {s.line.account.name} · {formatDate(s.line.date)}
             {s.line.description && ` · ${s.line.description}`}
           </div>

@@ -206,14 +206,17 @@ function CategoryNode({
         )}
         style={{ paddingLeft: 12 + depth * 24 }}
       >
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={(e) => {
             e.stopPropagation();
             if (hasChildren) setExpanded((v) => !v);
           }}
           aria-label={hasChildren ? (expanded ? 'Свернуть' : 'Развернуть') : undefined}
-          className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground"
+          tabIndex={hasChildren ? 0 : -1}
+          className="h-5 w-5 text-muted-foreground"
         >
           {hasChildren ? (
             expanded ? (
@@ -224,7 +227,7 @@ function CategoryNode({
           ) : (
             <span className="block h-1 w-1 rounded-full bg-border" />
           )}
-        </button>
+        </Button>
         <button
           type="button"
           className="min-w-0 flex-1 cursor-pointer truncate text-left"
@@ -245,16 +248,17 @@ function CategoryNode({
         )}
         {node.isArchived && <StatusDot tone="muted" label="в архиве" className="shrink-0 text-xs" />}
         {depth === 0 && (
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               onAddChild(node.id);
             }}
-            className="ml-2 inline-flex items-center gap-1 text-xs text-primary opacity-0 transition-opacity hover:underline group-hover:opacity-100 focus:opacity-100"
+            className="ml-2 gap-1 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
           >
             <Plus className="h-3 w-3" /> подкатегория
-          </button>
+          </Button>
         )}
       </li>
       {hasChildren && expanded &&

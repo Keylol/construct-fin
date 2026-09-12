@@ -510,8 +510,8 @@ export function OrderDetailModal({
                     <div className="space-y-1.5">
                       {!order.schedule.summary.matchesTotal && (
                         <p className="text-xs text-warning">
-                          Сумма графика {formatRub(order.schedule.summary.planned)} не сходится
-                          с итогом заказа {formatRub(order.totalAmount)}.
+                          Сумма графика <Money value={order.schedule.summary.planned} tone="plain" /> не сходится
+                          с итогом заказа <Money value={order.totalAmount} tone="plain" />.
                         </p>
                       )}
                       <div className="overflow-hidden rounded-md border border-border">
@@ -598,14 +598,16 @@ export function OrderDetailModal({
                                 <Money value={t.amount} tone="plain" />
                               </span>
                               {deletable && (
-                                <button
+                                <Button
                                   type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
                                   onClick={() => setConfirmDeletePayment(t.id)}
                                   aria-label="Удалить операцию"
-                                  className="text-muted-foreground transition-colors hover:text-destructive"
+                                  className="text-muted-foreground hover:text-destructive"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                </Button>
                               )}
                             </div>
                           </div>
@@ -680,14 +682,16 @@ export function OrderDetailModal({
                           {(a.size / 1024).toFixed(0)} KB
                         </span>
                         {canDelete && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => setConfirmDeleteAtt(a.id)}
                             aria-label="Удалить чек"
-                            className="text-destructive transition-colors hover:opacity-80"
+                            className="text-destructive"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </div>
                     ))}
@@ -872,13 +876,13 @@ export function OrderDetailModal({
             <div className="space-y-2">
               <p>
                 {order.number}
-                {order.client ? ` · ${order.client.name}` : ''} на {formatRub(order.totalAmount)}{' '}
+                {order.client ? ` · ${order.client.name}` : ''} на <Money value={order.totalAmount} tone="plain" />{' '}
                 исчезнет из списков и отчётов. Отменить удаление из приложения нельзя.
               </p>
               <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
                 {payments.length > 0 && (
                   <li>
-                    сторнируются оплаты: {payments.length} на {formatRub(order.paidAmount)} — деньги
+                    сторнируются оплаты: {payments.length} на <Money value={order.paidAmount} tone="plain" /> — деньги
                     уйдут и с остатка счёта;
                   </li>
                 )}

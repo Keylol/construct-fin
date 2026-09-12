@@ -1,10 +1,11 @@
 'use client';
 
-import { formatRub, formatPhone, sub, toMoneyString, D } from '@construct/shared';
+import { formatPhone, sub, toMoneyString, D } from '@construct/shared';
 import { StatusStamp } from '@/components/ui/StatusStamp';
 import { Money } from '@/components/ui/Money';
 import { Tile } from '@/components/ui/Tile';
 import type { Order, OrderStatus, OrderPaymentState } from '@/lib/types';
+import { Button } from '@/components/ui/Button';
 
 /** Тон штампа — тот же набор, что у списка заказов (решение №15/№3). */
 type StatusTone = 'success' | 'warning' | 'destructive' | 'muted' | 'primary';
@@ -58,8 +59,9 @@ export function OrderTile({
             label={labels.payLabel[order.paymentStatus]}
           />
           {closable && onRequestClose && (
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               title="Оплачен полностью — закрыть заказ"
               // Плитка сама открывает карточку: без остановки всплытия клик по
               // штампу означал бы то же самое, что клик мимо него.
@@ -67,9 +69,10 @@ export function OrderTile({
                 e.stopPropagation();
                 onRequestClose();
               }}
+              className="font-normal"
             >
               <StatusStamp tone="primary" label="можно закрыть" />
-            </button>
+            </Button>
           )}
         </>
       }
@@ -77,9 +80,9 @@ export function OrderTile({
       primary={<Money value={order.totalAmount} />}
       accent={
         hasDebt ? (
-          <span className="text-destructive">долг {formatRub(debt)}</span>
+          <span className="text-destructive">долг <Money value={debt} tone="plain" /></span>
         ) : marginKnown ? (
-          <span className="text-success">+{formatRub(margin.margin)}</span>
+          <span className="text-success">+<Money value={margin.margin} tone="plain" /></span>
         ) : undefined
       }
       onClick={onClick}
@@ -114,7 +117,7 @@ export function OrderGroupTile({
       primary={<Money value={toMoneyString(total)} />}
       accent={
         debt.gt(0) ? (
-          <span className="text-destructive">долг {formatRub(toMoneyString(debt))}</span>
+          <span className="text-destructive">долг <Money value={toMoneyString(debt)} tone="plain" /></span>
         ) : undefined
       }
       selected={expanded}

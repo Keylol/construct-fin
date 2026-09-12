@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toaster';
 import { formatDate } from '@/lib/dates';
 import type { Order } from '@/lib/types';
+import { Money } from '@/components/ui/Money';
 
 /** Сколько кандидатов показываем: дальше первых строк список уже не читают. */
 const VISIBLE = 8;
@@ -74,7 +75,7 @@ export function FindPaymentPanel({
     <div className="space-y-2 rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">Кандидаты на оплату</span>
-        <span className="text-xs text-muted-foreground">остаток {formatRub(remaining)}</span>
+        <span className="text-xs text-muted-foreground">остаток <Money value={remaining} tone="plain" /></span>
       </div>
 
       {loading ? (
@@ -97,7 +98,7 @@ export function FindPaymentPanel({
               <li key={line.id} className="space-y-1 rounded-md bg-secondary/40 p-2.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-semibold tabular-nums text-success">
-                    +{formatRub(line.amount)}
+                    +<Money value={line.amount} tone="plain" />
                   </span>
                   <span className="text-xs text-muted-foreground">{formatDate(line.date)}</span>
                 </div>
@@ -109,7 +110,7 @@ export function FindPaymentPanel({
                 )}
                 <p className="text-xs text-primary">{reasons.join(' · ')}</p>
                 {overpay && (
-                  <p className="text-xs text-warning">переплата {formatRub(overpay)}</p>
+                  <p className="text-xs text-warning">переплата <Money value={overpay} tone="plain" /></p>
                 )}
                 <Button
                   size="sm"

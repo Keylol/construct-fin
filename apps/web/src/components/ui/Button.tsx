@@ -25,6 +25,8 @@ const buttonVariants = cva(
         md: 'h-9 px-4 text-sm',
         lg: 'h-10 px-6 text-sm',
         icon: 'h-9 w-9 p-0',
+        // Иконка в строке (удалить вложение, скрыть подсказку): не выше текста рядом.
+        'icon-sm': 'h-7 w-7 p-0 [&_svg]:size-3.5',
       },
     },
     defaultVariants: { variant: 'primary', size: 'md' },

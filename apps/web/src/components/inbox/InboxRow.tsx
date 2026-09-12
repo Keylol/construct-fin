@@ -7,12 +7,13 @@ import type { InboxLine } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { toast } from '@/components/ui/Toaster';
-import { formatRub, rankOrderCandidates, sub, toMoneyString } from '@construct/shared';
+import { rankOrderCandidates, sub, toMoneyString } from '@construct/shared';
 import { formatDate } from '@/lib/dates';
 import { cn } from '@/lib/cn';
 import { useOrders } from '@/hooks/useOrders';
 import { AttachOrderModal } from './AttachOrderModal';
 import { MarkTransferModal } from './MarkTransferModal';
+import { Money } from '@/components/ui/Money';
 
 const AUSN_LABELS: Record<string, string> = {
   INCOME: 'АУСН: доход',
@@ -112,7 +113,7 @@ export function InboxRow({
               )}
             >
               {isIncome ? '+' : '−'}
-              {formatRub(line.amount, 2)}
+              <Money value={line.amount} tone="plain" />
             </span>
             <span className="truncate text-sm font-medium text-foreground">{title}</span>
           </div>

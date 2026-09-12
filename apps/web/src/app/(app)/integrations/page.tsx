@@ -378,13 +378,14 @@ function BackfillNote({
     );
   }
   return (
-    <button
-      type="button"
+    <Button
+      variant="link"
+      size="sm"
       onClick={open}
-      className="mt-0.5 text-xs text-muted-foreground underline decoration-dotted hover:text-foreground"
+      className="mt-0.5 text-xs font-normal text-muted-foreground underline decoration-dotted hover:text-foreground"
     >
       {current ? `Выписка с ${formatDate(current)}` : 'Выписка с момента подключения'}
-    </button>
+    </Button>
   );
 }
 
