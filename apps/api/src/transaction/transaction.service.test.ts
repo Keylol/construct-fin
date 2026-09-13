@@ -156,6 +156,35 @@ describe('TransactionService.summary — исключение ног перев�
   });
 });
 
+describe('TransactionService.list — границы периода как в summary (M8)', () => {
+  function buildListService() {
+    const findManyCalls: Array<Record<string, unknown>> = [];
+    const prisma = {
+      transaction: {
+        findMany: vi.fn().mockImplementation((args: { where: Record<string, unknown> }) => {
+          findManyCalls.push(args.where);
+          return Promise.resolve([]);
+        }),
+      },
+    };
+    const audit = { record: vi.fn() };
+    return { service: new TransactionService(prisma as never, audit as never), findManyCalls };
+  }
+
+  it('диапазон «С = По» покрывает сутки целиком, а не одну точку', async () => {
+    const { service, findManyCalls } = buildListService();
+    // Так фронт шлёт дату из поля: полдень дня в UTC+5 (fromLocalDateInput).
+    await service.list('ws1', {
+      from: '2026-06-05T07:00:00.000Z',
+      to: '2026-06-05T07:00:00.000Z',
+      limit: 50,
+    } as never);
+    const date = findManyCalls[0]!.date as { gte: Date; lte: Date };
+    expect(date.gte.toISOString()).toBe('2026-06-04T19:00:00.000Z');
+    expect(date.lte.toISOString()).toBe('2026-06-05T18:59:59.999Z');
+  });
+});
+
 describe('TransactionService.softDelete — блокировка системных (п.16)', () => {
   it('отказывает в удалении системной транзакции', async () => {
     const { service, prisma, audit } = buildService(makeTx({ kind: 'ORDER_PAYMENT' }));
