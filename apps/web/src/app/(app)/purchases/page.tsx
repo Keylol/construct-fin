@@ -181,7 +181,6 @@ function PurchasesView() {
           <KpiCard label="Закупок" value={String(rows.length)} />
         </KpiRow>
       </div>
-
       <FilterBar>
         <div className="min-w-[220px] max-w-md flex-1">
           <FilterField label="Поиск">
@@ -199,6 +198,7 @@ function PurchasesView() {
         />
         <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
+
 
       <div className="bg-card">
         <DataTable

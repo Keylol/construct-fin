@@ -3,7 +3,6 @@
 import { useMemo, useState, Suspense, useRef } from 'react';
 import { Plus, Filter, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
-import { StatusDot } from '@/components/ui/StatusDot';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -168,14 +167,14 @@ function RulesView() {
     {
       key: 'active',
       header: 'Статус',
+      // Один контрол: флажок и есть статус, точка рядом дублировала его.
       cell: (r) => (
-        <span className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <span onClick={(e) => e.stopPropagation()}>
           <Checkbox
             checked={r.isActive}
             onChange={(e) => updateMut.mutate({ id: r.id, isActive: e.target.checked })}
-            aria-label={r.isActive ? 'Поставить на паузу' : 'Включить'}
+            label={r.isActive ? 'Активно' : 'Пауза'}
           />
-          <StatusDot tone={r.isActive ? 'success' : 'muted'} label={r.isActive ? 'Активно' : 'Пауза'} />
         </span>
       ),
       className: 'w-[140px]',
@@ -211,18 +210,6 @@ function RulesView() {
 
   return (
     <>
-      {/* Заголовок «Правила» уже рисует reports/layout (вкладки отчётов) — здесь
-          только пояснение и действие, чтобы не было двух заголовков подряд. */}
-      <div className="border-b border-border bg-background px-6 py-4">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Правило срабатывает, когда выполнены <strong>все</strong> его условия, и подставляет
-          категорию, контрагента или счёт. При ручном вводе это подсказка — вы подтверждаете
-          её сами. <strong>Строку из банка правило проводит сразу</strong>: результат — во
-          «Входящих» на вкладке «Проведено правилами», там же его можно отменить. Правило с
-          большим приоритетом применяется первым.
-        </p>
-      </div>
-
       <FilterBar>
         <div className="min-w-[240px] max-w-md flex-1">
           <FilterField label="Поиск">

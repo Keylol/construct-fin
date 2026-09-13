@@ -115,11 +115,14 @@ function AccountsView() {
     {
       key: 'name',
       header: 'Название',
+      // w-full + max-w-0: имя и заметка режутся многоточием, а семь числовых
+      // колонок помещаются без горизонтальной прокрутки (как «Описание» в операциях).
+      className: 'w-full max-w-0',
       cell: (a) => (
         <div className="min-w-0">
           <div className="truncate font-medium text-foreground">{a.name}</div>
           {a.note && (
-            <div className="truncate text-xs text-muted-foreground">{a.note}</div>
+            <div className="truncate text-xs text-muted-foreground" title={a.note}>{a.note}</div>
           )}
         </div>
       ),

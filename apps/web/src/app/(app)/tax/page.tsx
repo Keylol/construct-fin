@@ -170,22 +170,6 @@ export default function TaxPage() {
       />
       {/* Налог считается по годам — это его единица отчётности, а не произвольный
           период. Выглядеть выбор обязан как везде: FilterField + Select. */}
-      <FilterBar>
-        <FilterField label="Год">
-          <Select
-            value={String(year)}
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="h-9 w-[150px]"
-          >
-            {YEARS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-      </FilterBar>
-
       <div className="px-6 py-4">
         <KpiRow loading={report.isLoading} count={3}>
           {rep && (
@@ -202,6 +186,22 @@ export default function TaxPage() {
           )}
         </KpiRow>
       </div>
+      <FilterBar>
+        <FilterField label="Год">
+          <Select
+            value={String(year)}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="h-9 w-[150px]"
+          >
+            {YEARS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+      </FilterBar>
+
 
       <div className="bg-card">
         <DataTable

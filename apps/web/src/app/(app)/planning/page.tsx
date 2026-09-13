@@ -113,6 +113,28 @@ function PlanningView() {
         }
       />
 
+      <div className="px-6 py-4">
+        <KpiRow loading={upcoming.isLoading || recurring.isLoading}>
+          <KpiCard
+            label="Просрочено"
+            value={<Money value={up?.overdueSum ?? '0'} />}
+            tone={(up?.overdueCount ?? 0) > 0 ? 'negative' : 'neutral'}
+            hint={`${up?.overdueCount ?? 0} ${plural(up?.overdueCount ?? 0, 'платёж', 'платежа', 'платежей')}`}
+          />
+          <KpiCard
+            label="Скоро"
+            value={<Money value={up?.soonSum ?? '0'} />}
+            tone={(up?.soonCount ?? 0) > 0 ? 'warning' : 'neutral'}
+            hint={`${up?.soonCount ?? 0} ${plural(up?.soonCount ?? 0, 'платёж', 'платежа', 'платежей')} в ближайшие дни`}
+          />
+          <KpiCard
+            label="Регулярных"
+            value={String(recurring.data?.length ?? 0)}
+            hint={plural(recurring.data?.length ?? 0, 'правило', 'правила', 'правил')}
+          />
+        </KpiRow>
+      </div>
+
       <FilterBar>
         {/* Здесь период смотрит ВПЕРЁД — горизонт прогноза и ближайших платежей,
             а не «период назад» из отчётов. Оболочка та же, набор значений свой. */}
@@ -133,27 +155,9 @@ function PlanningView() {
       </FilterBar>
 
       <div className="space-y-6 px-6 py-4">
-
         {/* Прогноз остатка: кассовый разрыв виден заранее. */}
         <ForecastCard wsId={current.id} days={days} />
 
-        {/* Сводка «горит» */}
-        {up && (up.overdueCount > 0 || up.soonCount > 0) && (
-          <KpiRow count={2}>
-            <KpiCard
-              label="Просрочено"
-              value={<Money value={up.overdueSum} tone="plain" />}
-              tone="negative"
-              hint={`${up.overdueCount} ${plural(up.overdueCount, 'платёж', 'платежа', 'платежей')}`}
-            />
-            <KpiCard
-              label="Скоро"
-              value={<Money value={up.soonSum} tone="plain" />}
-              tone="warning"
-              hint={`${up.soonCount} ${plural(up.soonCount, 'платёж', 'платежа', 'платежей')}`}
-            />
-          </KpiRow>
-        )}
 
         {/* Ближайшие платежи */}
         <section className="space-y-2">
