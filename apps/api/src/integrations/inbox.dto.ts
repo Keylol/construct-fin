@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { searchParam } from '../common/text-search';
 
 const cuid = z.string().min(1).max(64);
 
@@ -13,7 +14,7 @@ export const ListInboxSchema = z.object({
    * ищут прежде всего по сумме («вот этот платёж на 66 019»), а сумма хранится
    * Decimal — по ней текстом не найти.
    */
-  q: z.string().trim().max(100).optional(),
+  q: searchParam,
   /** Только приходы или только расходы. */
   direction: z.enum(['INCOME', 'EXPENSE']).optional(),
   /** Счёт, на который пришла строка (у строки он через подключение). */

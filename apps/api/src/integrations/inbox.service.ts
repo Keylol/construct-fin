@@ -12,9 +12,11 @@ import { TransferService } from '../transfer/transfer.service';
 import { PlanningService } from '../planning/planning.service';
 import { applyRules, type RuleDef } from '../rule/engine';
 import { computeRowHash } from '../common/import-hash';
+import { findSearchIds } from '../common/text-search';
+import { inboxSearchSpec } from './inbox.search';
 import { matchTransferPairs } from './transfer-match';
 import { matchPlannedPayments } from './planned-match';
-import { parseAcquiringFee } from '@construct/shared';
+import { parseAcquiringFee, parseSearchQuery } from '@construct/shared';
 import { add, sub } from '../common/money';
 import type {
   AttachOrderDto,
@@ -54,7 +56,11 @@ export class InboxService {
    * использует: он показывает, сколько строк вообще осталось разобрать, и не
    * должен меняться от того, что человек сейчас ищет.
    */
-  private listWhere(workspaceId: string, query: ListInboxQuery): Prisma.BankStatementLineWhereInput {
+  private listWhere(
+    workspaceId: string,
+    query: ListInboxQuery,
+    searchIds: string[] | null,
+  ): Prisma.BankStatementLineWhereInput {
     const where: Prisma.BankStatementLineWhereInput = { workspaceId, status: query.status };
 
     if (query.direction) where.direction = query.direction;
@@ -67,29 +73,21 @@ export class InboxService {
       };
     }
 
-    if (query.q) {
-      const q = query.q;
-      const or: Prisma.BankStatementLineWhereInput[] = [
-        { description: { contains: q, mode: 'insensitive' } },
-        { counterpartyName: { contains: q, mode: 'insensitive' } },
-        { counterpartyInn: { contains: q } },
-      ];
-      // Сумму ищут чаще всего («платёж на 66 019»), но она Decimal — текстовый
-      // contains по ней не работает. Разбираем запрос как число, терпя пробелы
-      // и запятую: ровно так сумму видно в интерфейсе и копируют из выписки.
-      const asNumber = Number(q.replace(/\s| /g, '').replace(',', '.'));
-      if (Number.isFinite(asNumber) && asNumber > 0) {
-        or.push({ amount: new Prisma.Decimal(asNumber) });
-      }
-      where.OR = or;
-    }
+    if (searchIds) where.id = { in: searchIds };
     return where;
   }
 
   /** Список строк выбранного статуса (по умолчанию NEW), курсор-пагинация. */
   async list(workspaceId: string, query: ListInboxQuery) {
+    // Поиск — общими правилами (common/text-search.ts): назначение, контрагент,
+    // ИНН и сумма в том виде, в каком её видно и копируют из выписки
+    // («66 019», «66019,00», «66 019 ₽»).
+    const search = parseSearchQuery(query.q);
+    const searchIds = search
+      ? await findSearchIds(this.prisma, inboxSearchSpec(workspaceId), search)
+      : null;
     const items = await this.prisma.bankStatementLine.findMany({
-      where: this.listWhere(workspaceId, query),
+      where: this.listWhere(workspaceId, query, searchIds),
       include: {
         connection: {
           select: { provider: true, account: { select: { id: true, name: true } } },

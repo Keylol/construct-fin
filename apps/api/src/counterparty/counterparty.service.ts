@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { parseSearchQuery } from '@construct/shared';
+import { findSearchIds } from '../common/text-search';
+import { counterpartySearchSpec } from './counterparty.search';
 import type {
   CreateCounterpartyDto,
   UpdateCounterpartyDto,
@@ -22,9 +25,29 @@ export class CounterpartyService {
    */
   async list(workspaceId: string, query: ListCounterpartiesQuery) {
     const rows = await this.listRows(workspaceId, query);
+    return this.withSummaries(workspaceId, rows);
+  }
+
+  /**
+   * Одна карточка по id — в том числе архивная. Карточки клиента и поставщика
+   * искали себя в списке, а он ограничен и без архива: архивный клиент
+   * открывался как «не найден».
+   */
+  async get(workspaceId: string, id: string) {
+    const row = await this.prisma.counterparty.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+    });
+    if (!row) throw new NotFoundException('Counterparty not found');
+    const [withSummary] = await this.withSummaries(workspaceId, [row]);
+    return withSummary!;
+  }
+
+  private async withSummaries<T extends { id: string }>(workspaceId: string, rows: T[]) {
+    if (rows.length === 0) return [];
+    const clientIds = rows.map((r) => r.id);
     const grouped = await this.prisma.order.groupBy({
       by: ['clientId'],
-      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { not: null } },
+      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { in: clientIds } },
       _count: { _all: true },
       _sum: { totalAmount: true, paidAmount: true },
       _max: { createdAt: true },
@@ -33,7 +56,7 @@ export class CounterpartyService {
     // Последний заказ каждого клиента: с плитки проваливаются сразу в него,
     // когда заказ единственный — лишний экран между кликом и делом не нужен.
     const lastOrders = await this.prisma.order.findMany({
-      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { not: null } },
+      where: { workspaceId, deletedAt: null, status: { not: 'CANCELLED' }, clientId: { in: clientIds } },
       select: { id: true, clientId: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -59,24 +82,24 @@ export class CounterpartyService {
     });
   }
 
-  private listRows(workspaceId: string, query: ListCounterpartiesQuery) {
+  private async listRows(workspaceId: string, query: ListCounterpartiesQuery) {
+    // Поиск — общими правилами (common/text-search.ts): имя, контакт, заметка,
+    // ИНН, источник, должность; телефон и ИНН — по цифрам.
+    const search = parseSearchQuery(query.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, counterpartySearchSpec(workspaceId), search)
+      : null;
     return this.prisma.counterparty.findMany({
       where: {
         workspaceId,
         deletedAt: null,
         ...(query.includeArchived ? {} : { isArchived: false }),
         ...(query.role ? { role: query.role } : {}),
-        ...(query.search
-          ? {
-              OR: [
-                { name: { contains: query.search, mode: 'insensitive' } },
-                { contact: { contains: query.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        ...(ids ? { id: { in: ids } } : {}),
       },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
-      take: 200,
+      // Список питает и выпадающие списки форм: в 200 справочник уже упирался.
+      take: 1000,
     });
   }
 

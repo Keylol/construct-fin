@@ -3,6 +3,9 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TxClient } from '../common/unit-of-work';
 import { businessYear } from '../reports/period';
+import { parseSearchQuery } from '@construct/shared';
+import { findSearchIds } from '../common/text-search';
+import { orderSearchSpec } from './order.search';
 
 /**
  * Репозиторий заказов. Инкапсулирует все запросы к таблицам Order/OrderItem.
@@ -38,6 +41,12 @@ export class OrderRepository {
     },
   ) {
     const limit = opts.limit ?? 100;
+    // Поиск — общими правилами (common/text-search.ts): номер, название,
+    // описание, клиент, телефон (набранный с 8 тоже), позиции и суммы.
+    const search = parseSearchQuery(opts.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, orderSearchSpec(workspaceId), search)
+      : null;
     const rows = await this.prisma.order.findMany({
       where: {
         workspaceId,
@@ -53,16 +62,7 @@ export class OrderRepository {
               },
             }
           : {}),
-        ...(opts.search
-          ? {
-              OR: [
-                { number: { contains: opts.search, mode: 'insensitive' } },
-                { title: { contains: opts.search, mode: 'insensitive' } },
-                // Телефон ищут как набирают — по цифрам, без плюса и скобок.
-                { phone: { contains: opts.search.replace(/\D/g, '') || opts.search } },
-              ],
-            }
-          : {}),
+        ...(ids ? { id: { in: ids } } : {}),
       },
       include: {
         client: { select: { id: true, name: true } },

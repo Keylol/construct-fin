@@ -3,6 +3,9 @@ import { Prisma } from '@prisma/client';
 import type { StockMovementType, StockLotSource, LotConsumptionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TxClient } from '../common/unit-of-work';
+import { parseSearchQuery } from '@construct/shared';
+import { findSearchIds } from '../common/text-search';
+import { warehouseSearchSpec } from './warehouse.search';
 
 @Injectable()
 export class WarehouseRepository {
@@ -12,20 +15,18 @@ export class WarehouseRepository {
     return tx ?? this.prisma;
   }
 
-  list(workspaceId: string, opts: { search?: string; includeArchived?: boolean }) {
+  async list(workspaceId: string, opts: { search?: string; includeArchived?: boolean }) {
+    // Поиск — общими правилами (common/text-search.ts): название, артикул, цвет, заметка.
+    const search = parseSearchQuery(opts.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, warehouseSearchSpec(workspaceId), search)
+      : null;
     return this.prisma.warehouseItem.findMany({
       where: {
         workspaceId,
         deletedAt: null,
         ...(opts.includeArchived ? {} : { isArchived: false }),
-        ...(opts.search
-          ? {
-              OR: [
-                { name: { contains: opts.search, mode: 'insensitive' } },
-                { sku: { contains: opts.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        ...(ids ? { id: { in: ids } } : {}),
       },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
       take: 300,

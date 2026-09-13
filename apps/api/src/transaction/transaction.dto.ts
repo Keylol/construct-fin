@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { searchParam } from '../common/text-search';
 
 const TxTypeEnum = z.enum(['INCOME', 'EXPENSE']);
 
@@ -114,7 +115,7 @@ export const ListTransactionsQuerySchema = z
     bucket: BucketEnum.optional(),
     minAmount: moneyString.optional(),
     maxAmount: moneyString.optional(),
-    search: z.string().trim().min(1).optional(),
+    search: searchParam,
     cursor: cuid.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })

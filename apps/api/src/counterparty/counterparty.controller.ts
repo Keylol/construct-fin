@@ -38,6 +38,11 @@ export class CounterpartyController {
     return this.service.list(ws.workspaceId, query);
   }
 
+  @Get(':id')
+  get(@CurrentWorkspace() ws: WorkspaceContext, @Param('id') id: string) {
+    return this.service.get(ws.workspaceId, id);
+  }
+
   @Post()
   create(
     @CurrentWorkspace() ws: WorkspaceContext,

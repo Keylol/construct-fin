@@ -4,6 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
 import { startOfDay, endOfDay } from '../reports/period';
+import { parseSearchQuery } from '@construct/shared';
+import { findSearchIds } from '../common/text-search';
+import { transactionSearchSpec } from './transaction.search';
 import { isKindAllowedForType } from './transaction.dto';
 import type {
   CreateTransactionDto,
@@ -108,22 +111,30 @@ export class TransactionService {
   ) {}
 
   async list(workspaceId: string, query: ListTransactionsQuery) {
-    const where: Prisma.TransactionWhereInput = {
-      workspaceId,
-      deletedAt: null,
-      // Границы периода — как в summary() (R5/M8): сутки в поясе бизнеса (UTC+5),
-      // from → начало, to → конец (inclusive lte). Фронт шлёт полдень выбранного
-      // дня (fromLocalDateInput), и сырой new Date(to) отрезал вторую половину
-      // последнего дня, а диапазон «С = По» давал пустой список при непустых
-      // плитках сверху, которые считает summary().
-      ...(query.from || query.to
+    // Поиск — общими правилами (common/text-search.ts): описание, контрагент,
+    // статья, счёт, заказ, строка выписки, телефон, ИНН и сумма в любом виде.
+    const search = parseSearchQuery(query.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, transactionSearchSpec(workspaceId), search)
+      : null;
+
+    // Границы периода — как в summary() (R5/M8): сутки в поясе бизнеса (UTC+5),
+    // from → начало, to → конец (inclusive lte). Фронт шлёт полдень выбранного
+    // дня (fromLocalDateInput), и сырой new Date(to) отрезал вторую половину
+    // последнего дня, а диапазон «С = По» давал пустой список при непустых
+    // плитках сверху, которые считает summary().
+    const period: Prisma.TransactionWhereInput =
+      query.from || query.to
         ? {
             date: {
               ...(query.from ? { gte: startOfDay(new Date(query.from)) } : {}),
               ...(query.to ? { lte: endOfDay(new Date(query.to)) } : {}),
             },
           }
-        : {}),
+        : {};
+    const filters: Prisma.TransactionWhereInput = {
+      workspaceId,
+      deletedAt: null,
       ...(query.accountId ? { accountId: query.accountId } : {}),
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.counterpartyId ? { counterpartyId: query.counterpartyId } : {}),
@@ -139,14 +150,12 @@ export class TransactionService {
             },
           }
         : {}),
-      ...(query.search
-        ? { description: { contains: query.search, mode: 'insensitive' } }
-        : {}),
+      ...(ids ? { id: { in: ids } } : {}),
     };
 
     const limit = query.limit;
     const items = await this.prisma.transaction.findMany({
-      where,
+      where: { ...filters, ...period },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
@@ -158,7 +167,26 @@ export class TransactionService {
     return {
       items: page.map(this.serialize),
       nextCursor: hasMore && last ? last.id : null,
+      outsideCount: await this.countOutsidePeriod(filters, query, ids),
     };
+  }
+
+  /**
+   * «Ещё N за другие даты»: сколько операций подходит под поиск и фильтры, но
+   * лежит вне выбранного периода. Считается только при поиске с заданным
+   * периодом и на первой странице — иначе подсказке нечего сказать (null).
+   */
+  private async countOutsidePeriod(
+    filters: Prisma.TransactionWhereInput,
+    query: ListTransactionsQuery,
+    ids: string[] | null,
+  ): Promise<number | null> {
+    if (!ids || !(query.from || query.to) || query.cursor) return null;
+    if (ids.length === 0) return 0;
+    const outside: Prisma.TransactionWhereInput[] = [];
+    if (query.from) outside.push({ date: { lt: startOfDay(new Date(query.from)) } });
+    if (query.to) outside.push({ date: { gt: endOfDay(new Date(query.to)) } });
+    return this.prisma.transaction.count({ where: { ...filters, OR: outside } });
   }
 
   async getById(workspaceId: string, id: string) {
