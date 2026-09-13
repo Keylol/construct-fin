@@ -192,7 +192,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, orderSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     const rows = await this.prisma.order.findMany({
-      where: { id: { in: ids } },
+      where: { workspaceId, id: { in: ids } },
       select: {
         id: true,
         number: true,
@@ -234,7 +234,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, counterpartySearchSpec(workspaceId), search);
     if (ids.length === 0) return [];
     const rows = await this.prisma.counterparty.findMany({
-      where: { id: { in: ids }, ...(owner ? {} : { role: { not: 'OTHER' } }) },
+      where: { workspaceId, id: { in: ids }, ...(owner ? {} : { role: { not: 'OTHER' } }) },
       select: { id: true, name: true, role: true, contact: true, inn: true, isArchived: true },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
     });
@@ -253,6 +253,7 @@ export class SearchService {
     if (ids.length === 0) return null;
     // Себестоимость проводит система, а у перевода две половины — хватит исходящей.
     const where: Prisma.TransactionWhereInput = {
+      workspaceId,
       id: { in: ids },
       kind: { notIn: ['COGS', 'TRANSFER_IN'] },
     };
@@ -307,7 +308,11 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, inboxSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     // Отклонённые строки «Входящие» не показывают — и здесь они не нужны.
-    const where: Prisma.BankStatementLineWhereInput = { id: { in: ids }, status: { not: 'DISMISSED' } };
+    const where: Prisma.BankStatementLineWhereInput = {
+      workspaceId,
+      id: { in: ids },
+      status: { not: 'DISMISSED' },
+    };
     const [byStatus, rows] = await Promise.all([
       this.prisma.bankStatementLine.groupBy({ by: ['status'], where, _count: { _all: true } }),
       this.prisma.bankStatementLine.findMany({
@@ -353,7 +358,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, purchaseSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     const rows = await this.prisma.purchase.findMany({
-      where: { id: { in: ids } },
+      where: { workspaceId, id: { in: ids } },
       select: {
         id: true,
         note: true,
@@ -386,7 +391,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, warehouseSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     const rows = await this.prisma.warehouseItem.findMany({
-      where: { id: { in: ids } },
+      where: { workspaceId, id: { in: ids } },
       select: { id: true, name: true, sku: true, qty: true, unit: true, isArchived: true },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
       take: limit,
@@ -406,7 +411,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, accountSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     const rows = await this.prisma.account.findMany({
-      where: { id: { in: ids } },
+      where: { workspaceId, id: { in: ids } },
       select: { id: true, name: true, isArchived: true },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
       take: limit,
@@ -422,7 +427,7 @@ export class SearchService {
     const ids = await findSearchIds(this.prisma, categorySearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
     const rows = await this.prisma.category.findMany({
-      where: { id: { in: ids } },
+      where: { workspaceId, id: { in: ids } },
       select: { id: true, name: true, kind: true, isArchived: true },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
       take: limit,
