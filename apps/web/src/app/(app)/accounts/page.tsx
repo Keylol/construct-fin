@@ -43,7 +43,10 @@ import { useListHotkeys } from '@/hooks/useListHotkeys';
 export default function AccountsPage() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const accounts = useAccounts(wsId);
+  // Архивные тоже: страница уже помечает их «В архиве» и не считает в итог, но
+  // без includeArchived архивный счёт не попадал в список — открыть, вернуть из
+  // архива или удалить его было негде.
+  const accounts = useAccounts(wsId, true);
   // Текущие остатки (начальный + все движения) — считает бэкенд через ОДДС.
   const balances = useAccountBalances(wsId);
   const [editing, setEditing] = useState<Account | null>(null);
