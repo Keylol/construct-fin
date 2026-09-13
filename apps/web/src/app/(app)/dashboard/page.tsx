@@ -9,6 +9,7 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useHealthChecks } from '@/hooks/useHealthChecks';
 import { WorkQueue } from '@/components/dashboard/WorkQueue';
 import { WorkCycle } from '@/components/dashboard/WorkCycle';
+import { DashboardSearch } from '@/components/dashboard/DashboardSearch';
 import { useTransactions, useTransactionSummary } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useCategories } from '@/hooks/useCategories';
@@ -102,7 +103,10 @@ export default function DashboardPage() {
       <PageHeader title="Главная" description="Сводка за текущий месяц" />
 
       <div className="space-y-6 px-6 py-6">
-        {/* Рабочая очередь идёт первой: сначала доделать учёт, потом смотреть цифры. */}
+        {/* Поиск по всем разделам: на Главную часто приходят, чтобы что-то найти. */}
+        <DashboardSearch />
+
+        {/* Рабочая очередь — сразу под поиском: сначала доделать учёт, потом смотреть цифры. */}
         <WorkQueue checks={attention} loading={healthLoading} />
 
         {/* Круг работы: что за чем делать. Ниже очереди — сначала срочное, потом порядок. */}

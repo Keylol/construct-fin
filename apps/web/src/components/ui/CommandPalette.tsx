@@ -17,6 +17,9 @@ export interface CommandDialogProps extends React.ComponentProps<typeof CommandP
   placeholder?: string;
   /** Подсказка внизу окна — например, список клавиш экрана. */
   footer?: React.ReactNode;
+  /** Текст поля — когда поиск ведёт вызывающий (запросы к серверу), а не фильтр cmdk. */
+  inputValue?: string;
+  onInputValueChange?: (value: string) => void;
 }
 
 export function CommandPalette({
@@ -25,6 +28,8 @@ export function CommandPalette({
   placeholder = 'Что вы ищете? Cmd+K',
   emptyLabel = 'Ничего не найдено',
   footer,
+  inputValue,
+  onInputValueChange,
   children,
   ...props
 }: CommandDialogProps) {
@@ -50,6 +55,8 @@ export function CommandPalette({
             <div className="flex items-center border-b border-border px-3">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <CommandPrimitive.Input
+                value={inputValue}
+                onValueChange={onInputValueChange}
                 placeholder={placeholder}
                 className={cn(
                   'flex h-11 w-full bg-transparent px-3 text-sm outline-none',

@@ -35,13 +35,14 @@ export function useListHotkeys({
       // Открытое окно или палитра команд забирают клавиатуру себе.
       if (document.querySelector('[role="dialog"]')) return;
 
-      if (e.key === '/' && searchRef?.current) {
+      // По e.code: на русской раскладке та же клавиша даёт «.», а не «/».
+      if ((e.code === 'Slash' || e.key === '/') && !e.shiftKey && searchRef?.current) {
         e.preventDefault();
         searchRef.current.focus();
         searchRef.current.select();
         return;
       }
-      if ((e.key === 'n' || e.key === 'т' || e.key === 'N' || e.key === 'Т') && onNew) {
+      if ((e.code === 'KeyN' || e.key === 'n' || e.key === 'т' || e.key === 'N' || e.key === 'Т') && onNew) {
         e.preventDefault();
         onNew();
       }

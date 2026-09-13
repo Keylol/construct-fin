@@ -233,7 +233,7 @@ function WarehouseView() {
               ref={searchRef}
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Поиск по названию или артикулу"
+              placeholder="Название, артикул, цвет или заметка"
             />
           </FilterField>
         </div>
@@ -251,16 +251,29 @@ function WarehouseView() {
           error={items.error}
           onRetry={() => void items.refetch()}
           empty={
-            <EmptyState
-              icon={Package}
-              title="Склад пуст"
-              hint="Добавьте позицию вручную или сделайте закупку — остаток и себестоимость посчитаются автоматически."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Добавить позицию
-                </Button>
-              }
-            />
+            filters.q.trim() ? (
+              <EmptyState
+                icon={Package}
+                title={`Ничего не найдено по запросу «${filters.q.trim()}»`}
+                hint="Позиция ищется по названию, артикулу, цвету и заметке."
+                action={
+                  <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
+                    Сбросить поиск
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Package}
+                title="Склад пуст"
+                hint="Добавьте позицию вручную или сделайте закупку — остаток и себестоимость посчитаются автоматически."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> Добавить позицию
+                  </Button>
+                }
+              />
+            )
           }
           mobileCards={(i) => (
             <div className="flex items-start justify-between gap-3">

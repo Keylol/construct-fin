@@ -173,7 +173,7 @@ function ClientsView() {
               ref={searchRef}
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Поиск по имени или контакту"
+              placeholder="Имя, телефон, ИНН или заметка"
             />
           </FilterField>
         </div>
@@ -209,16 +209,33 @@ function ClientsView() {
           error={list.error}
           onRetry={() => list.refetch()}
           empty={
-            <EmptyState
-              icon={UserRound}
-              title="Пока нет клиентов"
-              hint="Добавьте клиента, чтобы привязывать к нему заказы и видеть выручку."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Добавить
-                </Button>
-              }
-            />
+            filters.q.trim() ? (
+              <EmptyState
+                icon={UserRound}
+                title={`Ничего не найдено по запросу «${filters.q.trim()}»`}
+                hint={
+                  filters.archived
+                    ? 'Клиент ищется по имени, телефону, ИНН и заметке.'
+                    : 'Клиент ищется по имени, телефону, ИНН и заметке. Архивные не показаны.'
+                }
+                action={
+                  <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
+                    Сбросить поиск
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={UserRound}
+                title="Пока нет клиентов"
+                hint="Добавьте клиента, чтобы привязывать к нему заказы и видеть выручку."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> Добавить
+                  </Button>
+                }
+              />
+            )
           }
           mobileCards={(c) => (
             <div className="flex items-start justify-between gap-2">
