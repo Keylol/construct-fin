@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { NavTabs } from '@/components/ui/NavTabs';
 import { useRole } from '@/hooks/useRole';
+import { isPathHidden } from '@/components/layout/nav-items';
 
 const TABS = [
   { href: '/reports', label: 'ОПиУ' },
@@ -28,8 +29,11 @@ const TABS = [
 export default function ReportsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { ownerSections } = useRole();
-  // «Правила» — технический раздел, оператору не показываем (docs/roles.md).
-  const tabs = TABS.filter((t) => !('ownerOnly' in t) || ownerSections);
+  // «Правила» — технический раздел, оператору не показываем (docs/roles.md);
+  // скрытые разделы (HIDDEN_SECTIONS в nav-items.ts) не показываем никому.
+  // Вкладки рисуются из этого же отфильтрованного списка: раньше сюда шёл весь
+  // TABS, и оператор видел «Правила», которые открывались экраном «недоступно».
+  const tabs = TABS.filter((t) => !isPathHidden(t.href) && (!('ownerOnly' in t) || ownerSections));
   // Заголовок — имя открытого отчёта, а не слово «Отчёты»: раздел уже назван
   // в крошках сверху, а вкладок десять и на них легко потерять, где ты.
   const active = tabs.find((t) => t.href === pathname);
@@ -39,7 +43,7 @@ export default function ReportsLayout({ children }: { children: ReactNode }) {
         title={active ? active.label : 'Отчёты'}
         description={active && 'description' in active ? active.description : undefined}
       />
-      <NavTabs items={[...TABS]} ariaLabel="Разделы отчётов" />
+      <NavTabs items={tabs} ariaLabel="Разделы отчётов" />
       <div>{children}</div>
     </>
   );

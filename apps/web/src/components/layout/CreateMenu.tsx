@@ -11,11 +11,13 @@ import {
   FileText,
   type LucideIcon,
 } from '@/components/ui/icons';
+import { isPathHidden } from './nav-items';
 
 /**
  * Глобальное «+ Создать»: открывает форму создания на нужном экране через
  * ?new=1 (экраны читают его на маунте). Один список для шапки (десктоп),
- * центральной кнопки таб-бара (телефон) и палитры — источник здесь.
+ * центральной кнопки таб-бара (телефон) и палитры — источник здесь. Формы
+ * скрытых разделов (HIDDEN_SECTIONS) сюда не попадают.
  */
 export const CREATE_ACTIONS: { label: string; href: string; icon: LucideIcon; hint?: string }[] = [
   { label: 'Заказ', href: '/orders?new=1', icon: ClipboardList },
@@ -23,7 +25,7 @@ export const CREATE_ACTIONS: { label: string; href: string; icon: LucideIcon; hi
   { label: 'Закупка', href: '/purchases?new=1', icon: ShoppingCart },
   { label: 'Клиент', href: '/clients?new=1', icon: UserRound },
   { label: 'Разобрать чек', href: '/purchases/wb-receipt', icon: FileText, hint: 'PDF WB, ДНС, ОТ' },
-];
+].filter((a) => !isPathHidden(a.href));
 
 export function CreateMenu({
   trigger,

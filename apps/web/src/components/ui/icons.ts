@@ -47,6 +47,7 @@ export {
   Upload,
   User as UserRound,
   UserMultiple as Users,
+  ViewOff,
   Wallet,
   Logout as LogOut,
   Locked,

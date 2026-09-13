@@ -9,14 +9,16 @@ import { Button } from '@/components/ui/Button';
 import { Modal, ModalBody, ModalContent, ModalHeader, ModalTitle } from '@/components/ui/Modal';
 import { NavList } from './Sidebar';
 import { CreateMenu } from './CreateMenu';
+import { isPathHidden } from './nav-items';
 
+// Скрытый раздел (HIDDEN_SECTIONS) не должен остаться вкладкой внизу.
 const TABS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: '/dashboard', label: 'Главная', icon: Home },
   { href: '/orders', label: 'Заказы', icon: ClipboardList },
-];
+].filter((t) => !isPathHidden(t.href));
 const TABS_RIGHT: { href: string; label: string; icon: LucideIcon }[] = [
   { href: '/transactions', label: 'Операции', icon: Receipt },
-];
+].filter((t) => !isPathHidden(t.href));
 
 /**
  * Нижний таб-бар Mini App (решение №22 блица): навигация одним пальцем на
