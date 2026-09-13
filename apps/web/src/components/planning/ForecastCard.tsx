@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -15,8 +15,6 @@ import {
 import { formatRub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
-import { Select } from '@/components/ui/Select';
-import { FilterField } from '@/components/ui/FilterField';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useForecast } from '@/hooks/usePlanning';
 import { formatDate } from '@/lib/dates';
@@ -28,8 +26,7 @@ import { cn } from '@/lib/cn';
  * заказов) и «только оттоки» (пессимистичная). Первый день в минусе —
  * предупреждение о кассовом разрыве заранее.
  */
-export function ForecastCard({ wsId }: { wsId: string }) {
-  const [days, setDays] = useState(60);
+export function ForecastCard({ wsId, days }: { wsId: string; days: number }) {
   const query = useForecast(wsId, days);
 
   const f = query.data;
@@ -48,23 +45,9 @@ export function ForecastCard({ wsId }: { wsId: string }) {
 
   return (
     <section className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">Прогноз остатка</h2>
-        {/* Здесь период смотрит ВПЕРЁД — это горизонт прогноза, а не «период
-            назад» из отчётов. Оболочка та же, набор значений свой. */}
-        <FilterField label="Горизонт">
-          <Select
-            value={String(days)}
-            onChange={(e) => setDays(Number(e.target.value))}
-            className="h-9 w-[170px]"
-          >
-            <option value="30">30 дней</option>
-            <option value="60">60 дней</option>
-            <option value="90">90 дней</option>
-            <option value="180">180 дней</option>
-          </Select>
-        </FilterField>
-      </div>
+      {/* Горизонт выбирается в полосе фильтров экрана — один на прогноз и
+          ближайшие платежи. */}
+      <h2 className="text-sm font-semibold text-foreground">Прогноз остатка ({days} дней)</h2>
 
       {query.isLoading || !f ? (
         <Skeleton className="h-64" />

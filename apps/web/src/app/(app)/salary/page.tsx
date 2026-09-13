@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Suspense, useRef } from 'react';
 import { D, add, toMoneyString } from '@construct/shared';
 import { Pencil, Plus, Repeat, Users } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
@@ -52,17 +52,38 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { StatusDot } from '@/components/ui/StatusDot';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 
 /**
  * Раздел «Зарплата»: сотрудники (Counterparty role=EMPLOYEE) + зарплатные
  * выплаты (PlannedPayment txKind=SALARY — разовые и из регулярной зарплаты).
  * Выплаты попадают и в общий платёжный календарь «Платежи».
  */
+const DEFAULTS = { q: '', archived: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function SalaryPage() {
+  return (
+    <Suspense>
+      <SalaryView />
+    </Suspense>
+  );
+}
+
+function SalaryView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
 
-  const employees = useCounterparties(wsId, undefined, false, 'EMPLOYEE');
+  // Поиск по сотрудникам и «показывать уволенных» — в адресе, как в справочниках.
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const employees = useCounterparties(wsId, undefined, filters.archived, 'EMPLOYEE');
   // upcoming материализует регулярку на бэке — без него выплаты из свежего
   // графика появились бы только после захода в «Платежи». Зарплатные — фильтром.
   const upcoming = useUpcoming(wsId, 60);
@@ -115,9 +136,14 @@ export default function SalaryPage() {
     [plannedSalary],
   );
 
+  useListHotkeys({ searchRef, onNew: () => setPlannedDialog({ editing: null }) });
+
   if (!current) return null;
 
-  const employeeRows = employees.data ?? [];
+  const q = filters.q.trim().toLowerCase();
+  const employeeRows = (employees.data ?? []).filter(
+    (e) => !q || e.name.toLowerCase().includes(q) || (e.position ?? '').toLowerCase().includes(q),
+  );
 
   const editPlanned = (p: PlannedPayment) =>
     p.source !== 'RECURRING' ? () => setPlannedDialog({ editing: p }) : undefined;
@@ -232,6 +258,26 @@ export default function SalaryPage() {
           </div>
         }
       />
+
+      <FilterBar>
+        <div className="min-w-[240px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Имя или должность"
+            />
+          </FilterField>
+        </div>
+        <Checkbox
+          label="Показывать уволенных"
+          checked={filters.archived}
+          onChange={(e) => setFilters({ ...filters, archived: e.target.checked })}
+          className="self-center"
+        />
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+      </FilterBar>
 
       <div className="space-y-6 px-6 py-4">
 

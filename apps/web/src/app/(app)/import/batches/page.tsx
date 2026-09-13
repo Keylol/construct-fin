@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { Upload, History, RotateCcw } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -15,13 +15,45 @@ import type { ImportBatch } from '@/lib/types';
 import { formatDateTime } from '@/lib/dates';
 import { plural } from '@/lib/plural';
 import { IMPORT_SOURCE_LABEL } from '@/lib/labels';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
+import { Select } from '@/components/ui/Select';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 
+const DEFAULTS = { q: '', source: '', cancelled: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function ImportBatchesPage() {
+  return (
+    <Suspense>
+      <ImportBatchesView />
+    </Suspense>
+  );
+}
+
+function ImportBatchesView() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const batches = useImportBatches(wsId);
   const revert = useRevertImportBatch(wsId ?? '');
   const [confirmRevert, setConfirmRevert] = useState<ImportBatch | null>(null);
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef });
+  const rows = useMemo(() => {
+    const q = filters.q.trim().toLowerCase();
+    return (batches.data ?? []).filter(
+      (b) =>
+        (filters.cancelled || !b.deletedAt) &&
+        (!filters.source || b.source === filters.source) &&
+        (!q || b.filename.toLowerCase().includes(q)),
+    );
+  }, [batches.data, filters.q, filters.source, filters.cancelled]);
 
   if (!wsId) return null;
 
@@ -112,9 +144,42 @@ export default function ImportBatchesPage() {
         }
       />
 
-      <div className="bg-card border-t border-border">
+      <FilterBar>
+        <div className="min-w-[240px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Имя файла"
+            />
+          </FilterField>
+        </div>
+        <FilterField label="Источник">
+          <Select
+            value={filters.source}
+            onChange={(e) => setFilters({ ...filters, source: e.target.value })}
+            className="h-9 w-[180px]"
+          >
+            <option value="">Все источники</option>
+            {Object.entries(IMPORT_SOURCE_LABEL).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <Checkbox
+          label="Показывать отменённые"
+          checked={filters.cancelled}
+          onChange={(e) => setFilters({ ...filters, cancelled: e.target.checked })}
+          className="self-center"
+        />
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+      </FilterBar>
+      <div className="bg-card">
         <DataTable
-          data={batches.data ?? []}
+          data={rows}
           columns={columns}
           rowKey={(b) => b.id}
           loading={batches.isLoading}

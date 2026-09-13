@@ -35,6 +35,8 @@ import { FormField } from '@/components/ui/FormField';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterField } from '@/components/ui/FilterField';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { KpiCard } from '@/components/ui/KpiCard';
 
 const STATUS_META: Record<
   TaxMonthRow['status'],
@@ -183,6 +185,23 @@ export default function TaxPage() {
           </Select>
         </FilterField>
       </FilterBar>
+
+      <div className="px-6 py-4">
+        <KpiRow loading={report.isLoading} count={3}>
+          {rep && (
+            <>
+              <KpiCard label={`Начислено за ${year}`} value={<Money value={rep.totals.taxDue} />} />
+              <KpiCard label="Уплачено" value={<Money value={rep.totals.taxPaid} />} tone="positive" />
+              <KpiCard
+                label="Осталось уплатить"
+                value={<Money value={toMoneyString(sub(rep.totals.taxDue, rep.totals.taxPaid))} />}
+                tone={D(rep.totals.taxDue).gt(rep.totals.taxPaid) ? 'negative' : 'neutral'}
+                hint="по всем месяцам года"
+              />
+            </>
+          )}
+        </KpiRow>
+      </div>
 
       <div className="bg-card">
         <DataTable
