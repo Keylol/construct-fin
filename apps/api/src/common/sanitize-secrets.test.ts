@@ -76,7 +76,7 @@ describe('sanitizeSecrets', () => {
   });
 
   it('не портит обычные сообщения и короткие идентификаторы', () => {
-    const msg = 'Счёт не найден в этом пространстве (id=cmptgzym2000211t46ddz82zo)';
+    const msg = 'Счёт не найден в этой организации (id=cmptgzym2000211t46ddz82zo)';
     expect(sanitizeSecrets(msg)).toBe(msg);
   });
 

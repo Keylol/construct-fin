@@ -15,9 +15,9 @@ export class OwnerGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
     const ws = req.workspace;
-    if (!ws) throw new ForbiddenException('Нет контекста пространства');
+    if (!ws) throw new ForbiddenException('Нет контекста организации');
     if (ws.role !== 'OWNER') {
-      throw new ForbiddenException('Управление интеграциями доступно только владельцу пространства');
+      throw new ForbiddenException('Управление интеграциями доступно только владельцу');
     }
     return true;
   }

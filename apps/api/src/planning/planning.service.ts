@@ -293,7 +293,7 @@ export class PlanningService {
         where: { id: dto.transactionId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!existingTx) throw new NotFoundException('Операция не найдена в этом пространстве');
+      if (!existingTx) throw new NotFoundException('Операция не найдена в этой организации');
       const taken = await this.prisma.plannedPayment.findFirst({
         where: { matchedTransactionId: dto.transactionId, deletedAt: null, id: { not: id } },
         select: { id: true },
@@ -308,7 +308,7 @@ export class PlanningService {
       where: { id: dto.accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+    if (!acc) throw new NotFoundException('Счёт не найден в этой организации');
     const date = dto.date ? new Date(dto.date) : new Date();
     assertNotFuture(date, 'Дата оплаты');
     const amount = dto.amount !== undefined ? money(dto.amount) : plan.amount;
@@ -502,21 +502,21 @@ export class PlanningService {
         where: { id: dto.accountId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!a) throw new BadRequestException('Счёт не найден в этом пространстве');
+      if (!a) throw new BadRequestException('Счёт не найден в этой организации');
     }
     if (dto.categoryId) {
       const c = await this.prisma.category.findFirst({
         where: { id: dto.categoryId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!c) throw new BadRequestException('Категория не найдена в этом пространстве');
+      if (!c) throw new BadRequestException('Категория не найдена в этой организации');
     }
     if (dto.counterpartyId) {
       const cp = await this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!cp) throw new BadRequestException('Контрагент не найден в этом пространстве');
+      if (!cp) throw new BadRequestException('Контрагент не найден в этой организации');
     }
   }
 

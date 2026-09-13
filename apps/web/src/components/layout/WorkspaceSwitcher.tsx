@@ -11,7 +11,7 @@ import { useRole } from '@/hooks/useRole';
 import { api } from '@/lib/api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
-/** Инициалы пространства для узких мест: «ИП Каменский» → «ИК». */
+/** Инициалы организации для узких мест: «ИП Каменский» → «ИК». */
 export function workspaceInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   const letters = (words.length >= 2 ? [words[0]!, words[1]!] : [name]).map((w) => w[0] ?? '');
@@ -19,14 +19,15 @@ export function workspaceInitials(name: string): string {
 }
 
 /**
- * Пространство (один бизнес): кнопка с именем и меню — список пространств с
- * галочкой на текущем, «Новое пространство» (владельцу) и «Выйти». Одно меню
+ * Организация (один бизнес): кнопка с именем и меню — список организаций с
+ * галочкой на текущей, «Новая организация» (владельцу) и «Выйти». Одно меню
  * в трёх местах, отличается только кнопка:
- *   panel — развёрнутая боковая панель: подпись + имя в две строки;
+ *   panel — развёрнутая боковая панель: только имя, без подписи над ним
+ *           (подпись «Пространство» владелец попросил убрать 13.09);
  *   rail  — свёрнутая рейка: квадрат с инициалами и подсказкой справа;
  *   bar   — шапка на телефоне: инициалы + имя, вместо отсутствующей панели.
- * Раньше в рейке на месте пространства оставалась пустая дыра, а на телефоне
- * сменить пространство или выйти было негде.
+ * Раньше в рейке на месте организации оставалась пустая дыра, а на телефоне
+ * сменить организацию или выйти было негде.
  */
 export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | 'rail' | 'bar' }) {
   const { current, workspaces, select } = useCurrentWorkspace();
@@ -45,7 +46,7 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
     }
   };
 
-  const name = current?.name ?? 'Нет пространств';
+  const name = current?.name ?? 'Нет организаций';
   const initials = current ? workspaceInitials(current.name) : '·';
 
   const trigger =
@@ -57,7 +58,7 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
               variant="secondary"
               size="icon"
               className="h-8 w-8 font-semibold tracking-wide"
-              aria-label={`Пространство: ${name}`}
+              aria-label={`Организация: ${name}`}
             >
               {initials}
             </Button>
@@ -67,7 +68,12 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
       </Tooltip>
     ) : variant === 'bar' ? (
       <MenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="min-w-0 gap-2 px-1.5" aria-label="Пространство">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="min-w-0 gap-2 px-1.5"
+          aria-label={`Организация: ${name}`}
+        >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-primary text-[11px] font-semibold text-primary-foreground">
             {initials}
           </span>
@@ -81,14 +87,9 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
           variant="secondary"
           size="sm"
           className="w-full justify-between gap-2 px-2.5"
-          aria-label="Пространство"
+          aria-label={`Организация: ${name}`}
         >
-          <span className="min-w-0 truncate text-left">
-            <span className="block text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground">
-              Пространство
-            </span>
-            <span className="block truncate leading-tight">{name}</span>
-          </span>
+          <span className="min-w-0 truncate text-left">{name}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </Button>
       </MenuTrigger>
@@ -101,7 +102,7 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
         <MenuContent
           align="start"
           className={cn(variant === 'panel' && 'w-[var(--radix-popover-trigger-width)]', 'min-w-[220px]')}
-          label="Пространство"
+          label="Организация"
         >
           {list.map((w) => (
             <MenuItem
@@ -117,7 +118,7 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
             </MenuItem>
           ))}
           {list.length > 0 && <MenuSeparator />}
-          {/* Пространства заводит владелец; оператор входит в существующие. */}
+          {/* Организации заводит владелец; оператор входит в существующие. */}
           {ownerSections && (
             <MenuItem
               icon={Plus}
@@ -127,7 +128,7 @@ export function WorkspaceSwitcher({ variant = 'panel' }: { variant?: 'panel' | '
                 setCreating(true);
               }}
             >
-              Новое пространство
+              Новая организация
             </MenuItem>
           )}
           <MenuItem icon={LogOut} value="__logout" hint={roleLabel} onSelect={() => void logout()}>

@@ -30,7 +30,7 @@ export function deniedForRole(role: Role, method: string, destructive: boolean):
     return MUTATING_METHODS.has(m) ? 'Ваша роль — только просмотр' : null;
   }
   if (m === 'DELETE' || destructive) {
-    return 'Удаление и отмена доступны только владельцу пространства';
+    return 'Удаление и отмена доступны только владельцу';
   }
   return null;
 }

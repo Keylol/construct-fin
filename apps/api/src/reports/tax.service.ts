@@ -212,7 +212,7 @@ export class TaxService {
       where: { id: input.accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+    if (!acc) throw new NotFoundException('Счёт не найден в этой организации');
 
     const date = input.date ? new Date(input.date) : new Date();
     assertNotFuture(date, 'Дата уплаты налога');
@@ -252,7 +252,7 @@ export class TaxService {
       data: { ausnMark },
     });
     if (res.count === 0) {
-      throw new NotFoundException('Операция не найдена, удалена или из другого пространства');
+      throw new NotFoundException('Операция не найдена, удалена или из другой организации');
     }
     return { ok: true };
   }

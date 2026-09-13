@@ -180,7 +180,7 @@ export class WbReceiptService {
         where: { id: { in: [...new Set(itemIds)] }, workspaceId, deletedAt: null },
       });
       if (found !== new Set(itemIds).size) {
-        throw new BadRequestException('Товар склада не найден в этом пространстве');
+        throw new BadRequestException('Товар склада не найден в этой организации');
       }
     }
 
@@ -558,6 +558,6 @@ export class WbReceiptService {
       where: { id: accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+    if (!acc) throw new NotFoundException('Счёт не найден в этой организации');
   }
 }
