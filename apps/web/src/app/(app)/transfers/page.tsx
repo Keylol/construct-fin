@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { Plus, ArrowLeftRight, X, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
@@ -21,7 +21,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { fromLocalDateInput, todayInput } from '@/lib/periods';
+import { fromLocalDateInput, rangeForAny, todayInput, type AnyPeriod } from '@/lib/periods';
 import {
   Modal,
   ModalBody,
@@ -33,8 +33,30 @@ import {
 } from '@/components/ui/Modal';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { MoneyInput } from '@/components/ui/MoneyInput';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { KpiCard } from '@/components/ui/KpiCard';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import { D, add, toMoneyString } from '@construct/shared';
+import { plural } from '@/lib/plural';
 
+// Период и счёт — в адресе; по умолчанию «всё время»: переводов немного.
+const DEFAULTS = { period: 'all', accountId: '' };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function TransfersPage() {
+  return (
+    <Suspense>
+      <TransfersView />
+    </Suspense>
+  );
+}
+
+function TransfersView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const transfers = useTransfers(wsId);
@@ -50,6 +72,19 @@ export default function TransfersPage() {
     for (const a of accounts.data ?? []) m.set(a.id, a.name);
     return m;
   }, [accounts.data]);
+
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const rows = useMemo(() => {
+    const range = rangeForAny(filters.period as AnyPeriod);
+    return (transfers.data ?? []).filter(
+      (t) =>
+        (!range.from || t.date >= range.from) &&
+        (!range.to || t.date <= range.to) &&
+        (!filters.accountId || t.fromAccountId === filters.accountId || t.toAccountId === filters.accountId),
+    );
+  }, [transfers.data, filters.period, filters.accountId]);
+  const sumAmount = toMoneyString(rows.reduce((acc, t) => add(acc, t.amount), D(0)));
+  const sumFee = toMoneyString(rows.reduce((acc, t) => add(acc, t.fee), D(0)));
 
   if (!current) return null;
 
@@ -124,14 +159,46 @@ export default function TransfersPage() {
           </Button>
         }
       />
-      <div className="bg-card border-t border-border">
+      <FilterBar>
+        <PeriodSelect
+          value={filters.period as AnyPeriod}
+          onChange={(period) => setFilters({ ...filters, period })}
+        />
+        <FilterField label="Счёт">
+          <Select
+            value={filters.accountId}
+            onChange={(e) => setFilters({ ...filters, accountId: e.target.value })}
+            className="h-9 w-[180px]"
+          >
+            <option value="">Все счета</option>
+            {(accounts.data ?? []).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+      </FilterBar>
+      <div className="px-6 py-4">
+        <KpiRow loading={transfers.isLoading} count={2}>
+          <KpiCard
+            label="Переведено"
+            value={<Money value={sumAmount} />}
+            hint={`${rows.length} ${plural(rows.length, 'перевод', 'перевода', 'переводов')}`}
+          />
+          <KpiCard label="Комиссии" value={<Money value={sumFee} />} tone={D(sumFee).gt(0) ? 'negative' : 'neutral'} />
+        </KpiRow>
+      </div>
+      <div className="bg-card">
         <DataTable
-          data={transfers.data ?? []}
+          data={rows}
           columns={columns}
           rowKey={(t) => t.id}
           loading={transfers.isLoading}
           error={transfers.error}
           onRetry={() => transfers.refetch()}
+          footer={rows.length > 0 ? { route: 'Итого', amount: <Money value={sumAmount} />, fee: <Money value={sumFee} /> } : undefined}
           empty={
             <EmptyState
               icon={ArrowLeftRight}

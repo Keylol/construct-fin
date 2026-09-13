@@ -49,6 +49,7 @@ import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { KpiRow } from '@/components/ui/KpiRow';
 
 const DEFAULTS = { q: '' };
 const FILTERS = flatCodec(DEFAULTS);
@@ -200,7 +201,7 @@ function WarehouseView() {
       />
 
       <div className="px-6 py-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KpiRow loading={items.isLoading} count={3}>
           <KpiCard
             label="Позиций"
             value={items.data ? String(items.data.length) : '—'}
@@ -223,7 +224,7 @@ function WarehouseView() {
                 : 'neutral'
             }
           />
-        </div>
+        </KpiRow>
       </div>
 
       <FilterBar>

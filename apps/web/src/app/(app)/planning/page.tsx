@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { Calendar, Repeat, Plus } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
@@ -28,11 +28,32 @@ import { DataTable } from '@/components/ui/DataTable';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { KpiRow } from '@/components/ui/KpiRow';
 import { plural } from '@/lib/plural';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { Select } from '@/components/ui/Select';
 
+// Горизонт (дней вперёд) — один на прогноз и «Ближайшие платежи», живёт в адресе.
+const HORIZONS = [30, 60, 90, 180] as const;
+const DEFAULTS = { days: '60' };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function PlanningPage() {
+  return (
+    <Suspense>
+      <PlanningView />
+    </Suspense>
+  );
+}
+
+function PlanningView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const upcoming = useUpcoming(wsId, 60);
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const days = (HORIZONS as readonly number[]).includes(Number(filters.days)) ? Number(filters.days) : 60;
+  const upcoming = useUpcoming(wsId, days);
   const recurring = useRecurring(wsId);
   const paidList = usePlannedList(wsId, { status: 'PAID' });
 
@@ -92,10 +113,29 @@ export default function PlanningPage() {
         }
       />
 
+      <FilterBar>
+        {/* Здесь период смотрит ВПЕРЁД — горизонт прогноза и ближайших платежей,
+            а не «период назад» из отчётов. Оболочка та же, набор значений свой. */}
+        <FilterField label="Горизонт">
+          <Select
+            value={String(days)}
+            onChange={(e) => setFilters({ days: e.target.value })}
+            className="h-9 w-[170px]"
+          >
+            {HORIZONS.map((d) => (
+              <option key={d} value={d}>
+                {d} дней
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+      </FilterBar>
+
       <div className="space-y-6 px-6 py-4">
 
         {/* Прогноз остатка: кассовый разрыв виден заранее. */}
-        <ForecastCard wsId={current.id} />
+        <ForecastCard wsId={current.id} days={days} />
 
         {/* Сводка «горит» */}
         {up && (up.overdueCount > 0 || up.soonCount > 0) && (

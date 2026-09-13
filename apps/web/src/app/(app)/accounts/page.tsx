@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import Link from 'next/link';
 import { Plus, Wallet, X, Trash2 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
@@ -39,8 +39,27 @@ import { ACCOUNT_TYPE_LABEL } from '@/lib/labels';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { KpiRow } from '@/components/ui/KpiRow';
+import { KpiCard } from '@/components/ui/KpiCard';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
 
+const DEFAULTS = { q: '', archived: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function AccountsPage() {
+  return (
+    <Suspense>
+      <AccountsView />
+    </Suspense>
+  );
+}
+
+function AccountsView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
   const accounts = useAccounts(wsId);
@@ -48,8 +67,16 @@ export default function AccountsPage() {
   const balances = useAccountBalances(wsId);
   const [editing, setEditing] = useState<Account | null>(null);
   const [creating, setCreating] = useState(false);
-  // «n» — новый счёт: список короткий, поиска нет.
-  useListHotkeys({ onNew: () => setCreating(true) });
+  // Поиск и архив — в адресе, как у остальных справочников.
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating(true) });
+  const q = filters.q.trim().toLowerCase();
+  const rows = (accounts.data ?? []).filter(
+    (a) =>
+      (filters.archived || !a.isArchived) &&
+      (!q || a.name.toLowerCase().includes(q) || (a.note ?? '').toLowerCase().includes(q)),
+  );
 
   // Итоги по активным счетам (Decimal, не number): «по банку ?? по учёту» —
   // главное число, рядом — сколько строк ждёт разбора и «по учёту» целиком.
@@ -218,46 +245,67 @@ export default function AccountsPage() {
           </Button>
         }
       />
-      {totals != null && (
-        <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border bg-card px-6 py-4">
-          <div>
-            <div className="text-sm text-muted-foreground">
-              {totals.hasBank
-                ? 'Денежные средства по банку (активные счета)'
-                : 'Итого денежных средств (активные счета)'}
-            </div>
-            {/* Display-цифра (решение №7): главная сумма экрана видна через комнату. */}
-            <Money value={totals.total} className="text-3xl font-semibold sm:text-4xl" />
-          </div>
-          {totals.hasBank && (
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">По учёту</dt>
-              <dd className="text-right"><Money value={totals.ledger} /></dd>
-              <dt className="text-muted-foreground">
-                Не разобрано
-                {totals.unresolvedCount > 0 && (
-                  <span className="ml-1 text-xs">
-                    ({totals.unresolvedCount}{' '}
-                    {plural(totals.unresolvedCount, 'строка', 'строки', 'строк')})
-                  </span>
-                )}
-              </dt>
-              <dd className="text-right">
-                {totals.unresolvedCount > 0 ? (
-                  <Link href="/inbox" className="hover:underline">
+      {/* Итоги — плитками, как везде: по банку (где банк отдаёт остаток),
+          по учёту и очередь разбора. */}
+      <div className="px-6 py-4">
+        <KpiRow loading={accounts.isLoading || balances.isLoading} count={totals?.hasBank ? 3 : 2}>
+          {totals && (
+            <>
+              <KpiCard
+                label={totals.hasBank ? 'Денежные средства по банку' : 'Денежные средства'}
+                value={<Money value={totals.total} />}
+                hint="активные счета"
+              />
+              {totals.hasBank && (
+                <KpiCard
+                  label="По учёту"
+                  value={<Money value={totals.ledger} />}
+                  hint="начальный остаток + проводки"
+                />
+              )}
+              <KpiCard
+                label="Не разобрано"
+                value={
+                  totals.unresolvedCount > 0 ? (
                     <Money value={totals.unresolvedNet} />
-                  </Link>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </dd>
-            </dl>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )
+                }
+                tone={totals.unresolvedCount > 0 ? 'warning' : 'neutral'}
+                hint={
+                  totals.unresolvedCount > 0
+                    ? `${totals.unresolvedCount} ${plural(totals.unresolvedCount, 'строка', 'строки', 'строк')} во «Входящих»`
+                    : 'очередь пуста'
+                }
+                href={totals.unresolvedCount > 0 ? '/inbox' : undefined}
+              />
+            </>
           )}
+        </KpiRow>
+      </div>
+      <FilterBar>
+        <div className="min-w-[240px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Название или заметка"
+            />
+          </FilterField>
         </div>
-      )}
-      <div className="bg-card border-t border-border">
+        <Checkbox
+          label="Показывать архив"
+          checked={filters.archived}
+          onChange={(e) => setFilters({ ...filters, archived: e.target.checked })}
+          className="self-center"
+        />
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+      </FilterBar>
+      <div className="bg-card">
         <DataTable
-          data={accounts.data ?? []}
+          data={rows}
           columns={columns}
           rowKey={(a) => a.id}
           onRowClick={(a) => setEditing(a)}
@@ -265,16 +313,24 @@ export default function AccountsPage() {
           error={accounts.error}
           onRetry={() => void accounts.refetch()}
           empty={
-            <EmptyState
-              icon={Wallet}
-              title="Пока нет счетов"
-              hint="Добавьте первый счёт — наличные или счёт в банке."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Добавить счёт
-                </Button>
-              }
-            />
+            (accounts.data?.length ?? 0) > 0 ? (
+              <EmptyState
+                icon={Wallet}
+                title="Ничего не найдено"
+                hint="Поменяйте запрос или включите архив."
+              />
+            ) : (
+              <EmptyState
+                icon={Wallet}
+                title="Пока нет счетов"
+                hint="Добавьте первый счёт — наличные или счёт в банке."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> Добавить счёт
+                  </Button>
+                }
+              />
+            )
           }
           mobileCards={(a) => (
             <div className="flex items-start justify-between gap-3">

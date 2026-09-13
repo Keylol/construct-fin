@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Suspense, useRef } from 'react';
 import { Plus, Filter, Trash2, Pencil } from '@/components/ui/icons';
 import { Button } from '@/components/ui/Button';
 import { StatusDot } from '@/components/ui/StatusDot';
@@ -17,11 +17,30 @@ import type { Rule, RuleAction, RuleCondition } from '@/lib/types';
 import { RuleFormDialog } from '@/components/rules/RuleFormDialog';
 import { APPLIES_TO_LABELS } from '@/components/rules/dictionaries';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
 
+const DEFAULTS = { q: '', inactive: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function RulesPage() {
+  return (
+    <Suspense>
+      <RulesView />
+    </Suspense>
+  );
+}
+
+function RulesView() {
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
   const rules = useRules(wsId);
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const searchRef = useRef<HTMLInputElement>(null);
   const categories = useCategories(wsId);
   const counterparties = useCounterparties(wsId);
   const accounts = useAccounts(wsId);
@@ -32,7 +51,7 @@ export default function RulesPage() {
   const [editing, setEditing] = useState<Rule | null>(null);
   const [open, setOpen] = useState(false);
   // «n» — новое правило.
-  useListHotkeys({ onNew: () => openCreate() });
+  useListHotkeys({ searchRef, onNew: () => openCreate() });
   const [delTarget, setDelTarget] = useState<Rule | null>(null);
 
   // Справочники id→имя для человекочитаемой сводки условий/действий в таблице.
@@ -185,11 +204,16 @@ export default function RulesPage() {
     },
   ];
 
+  const q = filters.q.trim().toLowerCase();
+  const rows = (rules.data ?? []).filter(
+    (r) => (filters.inactive || r.isActive) && (!q || r.name.toLowerCase().includes(q)),
+  );
+
   return (
     <>
       {/* Заголовок «Правила» уже рисует reports/layout (вкладки отчётов) — здесь
           только пояснение и действие, чтобы не было двух заголовков подряд. */}
-      <div className="flex flex-col gap-3 border-b border-border bg-background px-6 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <div className="border-b border-border bg-background px-6 py-4">
         <p className="max-w-3xl text-sm text-muted-foreground">
           Правило срабатывает, когда выполнены <strong>все</strong> его условия, и подставляет
           категорию, контрагента или счёт. При ручном вводе это подсказка — вы подтверждаете
@@ -197,14 +221,36 @@ export default function RulesPage() {
           «Входящих» на вкладке «Проведено правилами», там же его можно отменить. Правило с
           большим приоритетом применяется первым.
         </p>
-        <Button onClick={openCreate} className="shrink-0">
-          <Plus className="h-4 w-4" /> Новое правило
-        </Button>
       </div>
+
+      <FilterBar>
+        <div className="min-w-[240px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Название правила"
+            />
+          </FilterField>
+        </div>
+        <Checkbox
+          label="Показывать неактивные"
+          checked={filters.inactive}
+          onChange={(e) => setFilters({ ...filters, inactive: e.target.checked })}
+          className="self-center"
+        />
+        <FilterReset onClick={() => setFilters(DEFAULTS)} />
+        <div className="ml-auto self-end">
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Новое правило
+          </Button>
+        </div>
+      </FilterBar>
 
       <div className="bg-card">
         <DataTable
-          data={rules.data ?? []}
+          data={rows}
           columns={columns}
           rowKey={(r) => r.id}
           loading={rules.isLoading}

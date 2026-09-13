@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, useRef, useMemo } from 'react';
 import { Plus, Tag, ChevronRight, ChevronDown, X, Trash2 } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
@@ -38,6 +38,12 @@ import {
 } from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { useUrlFilters } from '@/hooks/useUrlFilters';
+import { flatCodec } from '@/lib/url-codec';
+import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
+import { FilterField } from '@/components/ui/FilterField';
+import { SearchField } from '@/components/ui/SearchField';
+import { useListHotkeys } from '@/hooks/useListHotkeys';
 
 /**
  * Группа решает, куда категория попадёт в ОПиУ. Пояснения даны через последствие
@@ -95,14 +101,48 @@ function bucketOptions(kind: CategoryKind, current: CategoryBucket): CategoryBuc
   return allowed.includes(current) ? allowed : [current, ...allowed];
 }
 
+const DEFAULTS = { kind: 'EXPENSE', q: '', archived: false };
+const FILTERS = flatCodec(DEFAULTS);
+
+/** Оставить ветки, где узел (или потомок) подходит под поиск; архив — по флагу. */
+function filterTree(nodes: CategoryTreeNode[], q: string, archived: boolean): CategoryTreeNode[] {
+  const out: CategoryTreeNode[] = [];
+  for (const n of nodes) {
+    if (!archived && n.isArchived) continue;
+    const children = filterTree(n.children, q, archived);
+    const self = !q || n.name.toLowerCase().includes(q);
+    if (self || children.length > 0) {
+      out.push({ ...n, children: self ? filterTree(n.children, '', archived) : children });
+    }
+  }
+  return out;
+}
+
+// useSearchParams требует Suspense-границу на уровне page (Next 14 App Router).
 export default function CategoriesPage() {
+  return (
+    <Suspense>
+      <CategoriesView />
+    </Suspense>
+  );
+}
+
+function CategoriesView() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const [kind, setKind] = useState<CategoryKind>('EXPENSE');
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const kind: CategoryKind = filters.kind === 'INCOME' ? 'INCOME' : 'EXPENSE';
+  const setKind = (k: CategoryKind) => setFilters({ ...filters, kind: k });
   const tree = useCategoryTree(wsId, kind);
   const flat = useCategories(wsId, kind);
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState<{ parentId: string | null } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useListHotkeys({ searchRef, onNew: () => setCreating({ parentId: null }) });
+  const visible = useMemo(
+    () => filterTree(tree.data ?? [], filters.q.trim().toLowerCase(), filters.archived),
+    [tree.data, filters.q, filters.archived],
+  );
 
   if (!current) return null;
 
@@ -118,7 +158,7 @@ export default function CategoriesPage() {
         }
       />
 
-      <div className="px-6 py-4">
+      <div className="px-6 pt-4">
         <Tabs value={kind} onValueChange={(v) => setKind(v as CategoryKind)}>
           <TabsList>
             <TabsTrigger value="EXPENSE">Расходы</TabsTrigger>
@@ -126,9 +166,28 @@ export default function CategoriesPage() {
           </TabsList>
         </Tabs>
       </div>
+      <FilterBar className="mt-4">
+        <div className="min-w-[240px] max-w-md flex-1">
+          <FilterField label="Поиск">
+            <SearchField
+              ref={searchRef}
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Название категории"
+            />
+          </FilterField>
+        </div>
+        <Checkbox
+          label="Показывать архив"
+          checked={filters.archived}
+          onChange={(e) => setFilters({ ...filters, archived: e.target.checked })}
+          className="self-center"
+        />
+        <FilterReset onClick={() => setFilters({ ...DEFAULTS, kind })} />
+      </FilterBar>
 
-      <div className="px-6 pb-6">
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="px-6 py-4">
+        <div className="overflow-hidden rounded-md border border-border bg-card">
           {tree.isError ? (
             <ErrorState error={tree.error} onRetry={() => tree.refetch()} />
           ) : tree.isLoading ? (
@@ -137,24 +196,28 @@ export default function CategoriesPage() {
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : !tree.data || tree.data.length === 0 ? (
-            <EmptyState
-              icon={Tag}
-              title={
-                kind === 'EXPENSE'
-                  ? 'Нет категорий расходов'
-                  : 'Нет категорий доходов'
-              }
-              hint="Создайте корневую категорию, потом добавьте подкатегории."
-              action={
-                <Button onClick={() => setCreating({ parentId: null })}>
-                  <Plus className="h-4 w-4" /> Добавить
-                </Button>
-              }
-            />
+          ) : visible.length === 0 ? (
+            (tree.data?.length ?? 0) > 0 ? (
+              <EmptyState icon={Tag} title="Ничего не найдено" hint="Поменяйте запрос или включите архив." />
+            ) : (
+              <EmptyState
+                icon={Tag}
+                title={
+                  kind === 'EXPENSE'
+                    ? 'Нет категорий расходов'
+                    : 'Нет категорий доходов'
+                }
+                hint="Создайте корневую категорию, потом добавьте подкатегории."
+                action={
+                  <Button onClick={() => setCreating({ parentId: null })}>
+                    <Plus className="h-4 w-4" /> Добавить
+                  </Button>
+                }
+              />
+            )
           ) : (
             <ul className="divide-y divide-border">
-              {tree.data.map((node) => (
+              {visible.map((node) => (
                 <CategoryNode
                   key={node.id}
                   node={node}
