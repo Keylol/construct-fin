@@ -111,11 +111,16 @@ export class TransactionService {
     const where: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
+      // Границы периода — как в summary() (R5/M8): сутки в поясе бизнеса (UTC+5),
+      // from → начало, to → конец (inclusive lte). Фронт шлёт полдень выбранного
+      // дня (fromLocalDateInput), и сырой new Date(to) отрезал вторую половину
+      // последнего дня, а диапазон «С = По» давал пустой список при непустых
+      // плитках сверху, которые считает summary().
       ...(query.from || query.to
         ? {
             date: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
+              ...(query.from ? { gte: startOfDay(new Date(query.from)) } : {}),
+              ...(query.to ? { lte: endOfDay(new Date(query.to)) } : {}),
             },
           }
         : {}),
