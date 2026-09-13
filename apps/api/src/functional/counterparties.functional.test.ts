@@ -143,6 +143,52 @@ describe('Функциональные мутации: контрагенты (c
     expect(row.deletedAt).not.toBeNull();
   });
 
+  // Удалённый контрагент пропадает из операций и заказов, а вернуть его из
+  // интерфейса нельзя. Со связями — только архив, как у счёта (M3).
+  it('DELETE /counterparties/:id → 400, если по контрагенту есть операции; запись жива', async () => {
+    const ws = seed.workspaceId;
+    const cp = await H.prisma.counterparty.create({
+      data: { workspaceId: ws, name: 'С операцией', role: 'SUPPLIER' },
+    });
+    await H.prisma.transaction.create({
+      data: {
+        workspaceId: ws,
+        accountId: seed.accountId,
+        counterpartyId: cp.id,
+        date: new Date(),
+        amount: '100.00',
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+    const res = await H.inject({
+      method: 'DELETE',
+      url: `/workspaces/${ws}/counterparties/${cp.id}`,
+      token,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ message: string }>().message).toMatch(/архив/i);
+    const row = await H.prisma.counterparty.findUniqueOrThrow({ where: { id: cp.id } });
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it('DELETE /counterparties/:id → 400, если у клиента есть заказы; запись жива', async () => {
+    const ws = seed.workspaceId;
+    const cp = await H.prisma.counterparty.create({
+      data: { workspaceId: ws, name: 'С заказом', role: 'CLIENT' },
+    });
+    await H.prisma.order.create({ data: { workspaceId: ws, number: 'T-1', clientId: cp.id } });
+    const res = await H.inject({
+      method: 'DELETE',
+      url: `/workspaces/${ws}/counterparties/${cp.id}`,
+      token,
+    });
+    expect(res.statusCode).toBe(400);
+    const row = await H.prisma.counterparty.findUniqueOrThrow({ where: { id: cp.id } });
+    expect(row.deletedAt).toBeNull();
+  });
+
   it('негатив: 401 без токена и 403 к чужому workspace', async () => {
     const ws = seed.workspaceId;
     const noAuth = await H.inject({

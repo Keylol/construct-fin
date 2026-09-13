@@ -400,7 +400,9 @@ describe('Транзакции: bucket-фильтр (drill-down из ОПиУ «
       categoryId: cat.id,
       description: 'налог-времянка',
     });
-    await h.categories.softDelete(seed.workspaceId, cat.id);
+    // Сервис больше не удаляет статью с операциями, но такие данные остались с
+    // прошлых версий: помечаем удалённой напрямую.
+    await h.prisma.category.update({ where: { id: cat.id }, data: { deletedAt: new Date() } });
 
     const variable = await h.transactions.list(seed.workspaceId, { bucket: 'VARIABLE', limit: 50 });
     expect(variable.items).toHaveLength(0);

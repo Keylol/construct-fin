@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseSearchQuery } from '@construct/shared';
@@ -150,6 +150,27 @@ export class CounterpartyService {
       where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Counterparty not found');
+    // Как M3 у счёта: удалённый контрагент пропадает из операций, заказов и
+    // платежей, а вернуть его из интерфейса нельзя. Со связями — только архив.
+    const live = { counterpartyId: id, workspaceId, deletedAt: null };
+    const [txs, orders, purchases, recurring, planned] = await Promise.all([
+      this.prisma.transaction.count({ where: live }),
+      this.prisma.order.count({ where: { clientId: id, workspaceId, deletedAt: null } }),
+      this.prisma.purchase.count({ where: { supplierId: id, workspaceId, deletedAt: null } }),
+      this.prisma.recurringPayment.count({ where: live }),
+      this.prisma.plannedPayment.count({ where: live }),
+    ]);
+    const links = [
+      txs > 0 && 'операции',
+      orders > 0 && 'заказы',
+      purchases > 0 && 'закупки',
+      recurring + planned > 0 && 'платежи',
+    ].filter(Boolean);
+    if (links.length > 0) {
+      throw new BadRequestException(
+        `Нельзя удалить: есть ${links.join(', ')}. Чтобы убрать из работы — отметьте «В архиве».`,
+      );
+    }
     await this.prisma.counterparty.update({
       where: { id },
       data: { deletedAt: new Date() },

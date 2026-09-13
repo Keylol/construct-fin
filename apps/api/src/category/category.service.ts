@@ -177,6 +177,26 @@ export class CategoryService {
         'Нельзя удалить категорию с активными подкатегориями. Сначала удалите или перенесите дочерние.',
       );
     }
+    // Операции удалённой статьи сводка молча относит к «без категории»
+    // (transaction.service summary), бюджет и платежи теряют статью. Со связями —
+    // только архив.
+    const live = { categoryId: id, workspaceId, deletedAt: null };
+    const [txs, recurring, planned, budgets] = await Promise.all([
+      this.prisma.transaction.count({ where: live }),
+      this.prisma.recurringPayment.count({ where: live }),
+      this.prisma.plannedPayment.count({ where: live }),
+      this.prisma.budget.count({ where: live }),
+    ]);
+    const links = [
+      txs > 0 && 'операции',
+      recurring + planned > 0 && 'платежи',
+      budgets > 0 && 'бюджет',
+    ].filter(Boolean);
+    if (links.length > 0) {
+      throw new BadRequestException(
+        `Нельзя удалить: есть ${links.join(', ')}. Чтобы убрать из работы — отметьте «В архиве».`,
+      );
+    }
     await this.prisma.category.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 }
