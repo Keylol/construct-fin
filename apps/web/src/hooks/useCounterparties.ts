@@ -70,6 +70,7 @@ export function useDeleteCounterparty(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/counterparties/${id}`),
+    meta: { inlineError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['counterparties', wsId] }),
   });
 }

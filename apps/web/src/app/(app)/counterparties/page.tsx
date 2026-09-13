@@ -25,7 +25,7 @@ import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteEntityDialog } from '@/components/ui/DeleteEntityDialog';
 import {
   Modal,
   ModalBody,
@@ -259,6 +259,12 @@ function CounterpartyForm({
     onClose();
   };
 
+  const onArchive = async () => {
+    if (!initial) return;
+    await update.mutateAsync({ id: initial.id, isArchived: true });
+    onClose();
+  };
+
   return (
     <>
       <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
@@ -338,14 +344,14 @@ function CounterpartyForm({
           </form>
         </ModalContent>
       </Modal>
-      <ConfirmDialog
+      <DeleteEntityDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Удалить «${initial?.name ?? ''}»?`}
-        description="Контрагент переместится в архив, привязки в операциях сохранятся."
-        confirmText="Удалить"
-        onConfirm={onDelete}
-        loading={del.isPending}
+        name={initial?.name ?? ''}
+        noun="Контрагент"
+        isArchived={initial?.isArchived ?? false}
+        onDelete={onDelete}
+        onArchive={onArchive}
       />
     </>
   );

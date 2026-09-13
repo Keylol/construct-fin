@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Modal,
   ModalContent,
@@ -41,13 +41,23 @@ export function ConfirmDialog({
   loading,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isBusy = loading ?? busy;
 
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
+
+  // Отказ сервера показываем в окне: без этого окно молча не закрывалось, и
+  // причину («нельзя удалить счёт с операциями») никто не видел.
   const handleConfirm = async () => {
     try {
       setBusy(true);
+      setError(null);
       await onConfirm();
       onOpenChange(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setBusy(false);
     }
@@ -59,6 +69,11 @@ export function ConfirmDialog({
         <ModalHeader>
           <ModalTitle>{title}</ModalTitle>
           {description && <ModalDescription>{description}</ModalDescription>}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
         </ModalHeader>
         <ModalFooter>
           <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={isBusy}>

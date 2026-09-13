@@ -40,6 +40,9 @@ export function getQueryClient(): QueryClient {
         // для ключевых действий (сохранение, удаление), исключая молчаливые авто-мутации.
         onError: (error, _vars, _ctx, mutation) => {
           hapticError();
+          // Окно само показывает причину отказа (DeleteEntityDialog) — второй
+          // тост «Не удалось сохранить» поверх него только путает.
+          if (mutation.options.meta?.inlineError) return;
           toast.error('Не удалось сохранить', {
             id: `mutation-error:${mutation.mutationId}`,
             description: errorMessage(error),
