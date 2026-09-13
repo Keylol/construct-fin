@@ -226,7 +226,6 @@ function WarehouseView() {
           />
         </KpiRow>
       </div>
-
       <FilterBar>
         <div className="min-w-[240px] max-w-md flex-1">
           <FilterField label="Поиск">
@@ -240,6 +239,7 @@ function WarehouseView() {
         </div>
         <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
+
 
       <div className="bg-card">
         <DataTable

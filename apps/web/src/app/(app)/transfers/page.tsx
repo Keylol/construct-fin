@@ -159,6 +159,17 @@ function TransfersView() {
           </Button>
         }
       />
+      <div className="px-6 py-4">
+        <KpiRow loading={transfers.isLoading} count={3}>
+          <KpiCard label="Переведено" value={<Money value={sumAmount} />} hint="за выбранный период" />
+          <KpiCard label="Комиссии" value={<Money value={sumFee} />} tone={D(sumFee).gt(0) ? 'negative' : 'neutral'} />
+          <KpiCard
+            label="Переводов"
+            value={String(rows.length)}
+            hint={plural(rows.length, 'перевод', 'перевода', 'переводов')}
+          />
+        </KpiRow>
+      </div>
       <FilterBar>
         <PeriodSelect
           value={filters.period as AnyPeriod}
@@ -180,16 +191,6 @@ function TransfersView() {
         </FilterField>
         <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
-      <div className="px-6 py-4">
-        <KpiRow loading={transfers.isLoading} count={2}>
-          <KpiCard
-            label="Переведено"
-            value={<Money value={sumAmount} />}
-            hint={`${rows.length} ${plural(rows.length, 'перевод', 'перевода', 'переводов')}`}
-          />
-          <KpiCard label="Комиссии" value={<Money value={sumFee} />} tone={D(sumFee).gt(0) ? 'negative' : 'neutral'} />
-        </KpiRow>
-      </div>
       <div className="bg-card">
         <DataTable
           data={rows}

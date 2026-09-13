@@ -144,6 +144,27 @@ export default function ReconciliationPage() {
         }
       />
 
+      {accountId && !report.isError && (
+        <div className="px-6 py-4">
+          <KpiRow loading={report.isLoading || !data}>
+            <KpiCard label="Расчётный остаток" value={<Money value={data?.computedBalance ?? '0'} />} />
+            <KpiCard
+              label="Последний факт"
+              value={data?.lastCheck ? <Money value={data.lastCheck.actualBalance} /> : '—'}
+              hint={data?.lastCheck ? `на ${formatDate(data.lastCheck.date)}` : 'снимков нет'}
+            />
+            <KpiCard
+              label="Расхождение (факт − расчёт)"
+              value={data?.lastCheck ? <Money value={data.lastCheck.discrepancy} /> : '—'}
+              tone={discrepancy === null || discrepancy === 0 ? 'neutral' : 'negative'}
+              hint={
+                discrepancy === null ? undefined : discrepancy === 0 ? 'сходится' : 'есть расхождение'
+              }
+            />
+          </KpiRow>
+        </div>
+      )}
+
       <FilterBar>
         <FilterField label="Счёт">
           <Select
@@ -181,22 +202,6 @@ export default function ReconciliationPage() {
           <ErrorState error={report.error} onRetry={() => report.refetch()} />
         ) : (
           <>
-            <KpiRow loading={report.isLoading || !data}>
-              <KpiCard label="Расчётный остаток" value={<Money value={data?.computedBalance ?? '0'} />} />
-              <KpiCard
-                label="Последний факт"
-                value={data?.lastCheck ? <Money value={data.lastCheck.actualBalance} /> : '—'}
-                hint={data?.lastCheck ? `на ${formatDate(data.lastCheck.date)}` : 'снимков нет'}
-              />
-              <KpiCard
-                label="Расхождение (факт − расчёт)"
-                value={data?.lastCheck ? <Money value={data.lastCheck.discrepancy} /> : '—'}
-                tone={discrepancy === null || discrepancy === 0 ? 'neutral' : 'negative'}
-                hint={
-                  discrepancy === null ? undefined : discrepancy === 0 ? 'сходится' : 'есть расхождение'
-                }
-              />
-            </KpiRow>
 
             <section className="space-y-2">
               <div className="flex items-baseline justify-between">

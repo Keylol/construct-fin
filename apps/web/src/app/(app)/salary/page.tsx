@@ -259,6 +259,19 @@ function SalaryView() {
         }
       />
 
+      <div className="px-6 py-4">
+        <KpiRow loading={employees.isLoading}>
+          <KpiCard label="Сотрудников" value={String(employeeRows.length)} />
+          <KpiCard
+            label="К выплате"
+            value={<Money value={plannedSum} />}
+            tone={D(plannedSum).gt(0) ? 'warning' : 'neutral'}
+            hint={`${plannedSalary.length} ${plural(plannedSalary.length, 'выплата', 'выплаты', 'выплат')}`}
+          />
+          <KpiCard label="Выплачено за месяц" value={<Money value={paidThisMonth} />} />
+        </KpiRow>
+      </div>
+
       <FilterBar>
         <div className="min-w-[240px] max-w-md flex-1">
           <FilterField label="Поиск">
@@ -280,19 +293,6 @@ function SalaryView() {
       </FilterBar>
 
       <div className="space-y-6 px-6 py-4">
-
-        {/* KPI */}
-        <KpiRow loading={employees.isLoading}>
-          <KpiCard label="Сотрудников" value={String(employeeRows.length)} />
-          <KpiCard
-            label="К выплате"
-            value={<Money value={plannedSum} />}
-            tone={Number(plannedSum) > 0 ? 'warning' : 'neutral'}
-            hint={`${plannedSalary.length} ${plural(plannedSalary.length, 'выплата', 'выплаты', 'выплат')}`}
-          />
-          <KpiCard label="Выплачено за месяц" value={<Money value={paidThisMonth} />} />
-        </KpiRow>
-
         {/* Сотрудники */}
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Сотрудники</h2>

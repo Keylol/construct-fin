@@ -16,7 +16,13 @@ const TABS = [
   { href: '/reports/breakeven', label: 'Безубыточность' },
   { href: '/reports/budget', label: 'Бюджет' },
   { href: '/reports/receivables', label: 'Дебиторская задолженность' },
-  { href: '/reports/rules', label: 'Правила', ownerOnly: true },
+  {
+    href: '/reports/rules',
+    label: 'Правила',
+    ownerOnly: true,
+    description:
+      'Правило срабатывает, когда выполнены все его условия, и подставляет категорию, контрагента или счёт. Строку из банка правило проводит сразу — результат во «Входящих» на вкладке «Проведено правилами», там же его можно отменить. Правило с большим приоритетом применяется первым.',
+  },
 ] as const;
 
 export default function ReportsLayout({ children }: { children: ReactNode }) {
@@ -29,7 +35,10 @@ export default function ReportsLayout({ children }: { children: ReactNode }) {
   const active = tabs.find((t) => t.href === pathname);
   return (
     <>
-      <PageHeader title={active ? active.label : 'Отчёты'} />
+      <PageHeader
+        title={active ? active.label : 'Отчёты'}
+        description={active && 'description' in active ? active.description : undefined}
+      />
       <NavTabs items={[...TABS]} ariaLabel="Разделы отчётов" />
       <div>{children}</div>
     </>
