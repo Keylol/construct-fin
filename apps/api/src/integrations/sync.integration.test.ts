@@ -149,6 +149,56 @@ describe('SyncService.syncConnection', () => {
     expect(inbox).toBe(3);
   });
 
+  it('одинаковые строки под правилом: проведены обе, ни одна не потеряна молча', async () => {
+    // Две одинаковые операции одного дня под разными документами. Вторая
+    // авто-проводка упиралась в уникальный отпечаток, синк принимал конфликт за
+    // «строка уже загружена» — и строка не доезжала даже во «Входящие».
+    const cat = await h.categories.create(seed.workspaceId, {
+      name: 'Банковские услуги',
+      kind: 'EXPENSE',
+      isFixedCost: false,
+      bucket: 'VARIABLE',
+    });
+    await h.prisma.rule.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        name: 'Комиссия → Банковские услуги',
+        appliesTo: 'BOTH',
+        conditions: [{ type: 'DESCRIPTION_CONTAINS', value: 'комиссия' }],
+        actions: [{ type: 'SET_CATEGORY', categoryId: cat.id }],
+      },
+    });
+    const commission = {
+      date: new Date('2026-08-16T10:00:00.000Z'),
+      amount: '49.00',
+      direction: 'EXPENSE' as const,
+      description: 'Комиссия за перевод по СБП',
+    };
+    const twins = new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never);
+    twins.register('ALFA', {
+      provider: 'ALFA',
+      fetchStatement: () =>
+        Promise.resolve({
+          lines: [
+            { externalId: 'doc-1', ...commission },
+            { externalId: 'doc-2', ...commission },
+          ],
+          nextCursor: 'done',
+        }),
+    });
+
+    const conn = await makeConnection();
+    const res = await buildSync(twins).syncConnection(conn.id);
+
+    expect(res).toMatchObject({ fetched: 2, created: 2, autoPosted: 2 });
+    const lines = await h.prisma.bankStatementLine.findMany({
+      where: { connectionId: conn.id },
+      select: { status: true, transaction: { select: { importHash: true } } },
+    });
+    expect(lines.map((l) => l.status)).toEqual(['AUTO_POSTED', 'AUTO_POSTED']);
+    expect(new Set(lines.map((l) => l.transaction?.importHash)).size).toBe(2);
+  });
+
   it('параллельный синк одного подключения не дублирует и не роняет в ERROR (гонка P2002)', async () => {
     const conn = await makeConnection();
     // Два одновременных синка (ручной клик + cron) — второй ловит P2002 построчно.

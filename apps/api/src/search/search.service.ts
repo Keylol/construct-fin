@@ -307,12 +307,9 @@ export class SearchService {
   ): Promise<GlobalSearchGroup | null> {
     const ids = await findSearchIds(this.prisma, inboxSearchSpec(workspaceId), search);
     if (ids.length === 0) return null;
-    // Отклонённые строки «Входящие» не показывают — и здесь они не нужны.
-    const where: Prisma.BankStatementLineWhereInput = {
-      workspaceId,
-      id: { in: ids },
-      status: { not: 'DISMISSED' },
-    };
+    // Отмеченные «не учитывать» тоже ищем: у них своя вкладка во «Входящих», а
+    // строку, отмеченную по ошибке, иначе не найти ничем.
+    const where: Prisma.BankStatementLineWhereInput = { workspaceId, id: { in: ids } };
     const [byStatus, rows] = await Promise.all([
       this.prisma.bankStatementLine.groupBy({ by: ['status'], where, _count: { _all: true } }),
       this.prisma.bankStatementLine.findMany({

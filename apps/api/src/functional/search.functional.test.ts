@@ -3,8 +3,8 @@
  * Главной находят записи во всех разделах одним запросом.
  *
  * Проверяем группы и лимит, роли (оператору не показываем счета, статьи и прочих
- * контрагентов — как в меню), и что служебное (себестоимость, отклонённые строки
- * выписки) и чужая организация в выдачу не попадают.
+ * контрагентов — как в меню), что себестоимость и чужая организация в выдачу не
+ * попадают, а строка выписки, отмеченная «не учитывать», находится.
  *
  * Диапазон telegramId: 2810000n+ (не пересекается с другими сьютами).
  */
@@ -127,8 +127,17 @@ describe('Общий поиск', () => {
     expect(keys(await search('семенов', operatorToken))).toEqual(['clients']);
   });
 
-  it('себестоимость, отклонённые строки выписки и чужая организация в выдачу не попадают', async () => {
+  it('себестоимость и чужая организация в выдачу не попадают', async () => {
     await tx('Себестоимость: Семёнов', 'COGS');
+    const other = await seedBase(H.prisma, tg + 60000n);
+    await H.prisma.counterparty.create({
+      data: { workspaceId: other.workspaceId, name: 'Семёнов из чужой организации', role: 'CLIENT' },
+    });
+
+    expect((await search('семенов')).groups).toEqual([]);
+  });
+
+  it('строка выписки, отмеченная «не учитывать», находится — иначе ошибочную отметку не найти', async () => {
     const connection = await H.prisma.integrationConnection.create({
       data: {
         workspaceId: seed.workspaceId,
@@ -149,11 +158,9 @@ describe('Общий поиск', () => {
         status: 'DISMISSED',
       },
     });
-    const other = await seedBase(H.prisma, tg + 60000n);
-    await H.prisma.counterparty.create({
-      data: { workspaceId: other.workspaceId, name: 'Семёнов из чужой организации', role: 'CLIENT' },
-    });
 
-    expect((await search('семенов')).groups).toEqual([]);
+    const body = await search('семенов');
+    expect(keys(body)).toEqual(['inbox']);
+    expect(body.groups[0]).toMatchObject({ total: 1, byStatus: { DISMISSED: 1 } });
   });
 });

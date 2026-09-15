@@ -319,4 +319,110 @@ describe('Входящие (Inbox): полный цикл разбора (Ф1-C2
     const again = await H.inject({ method: 'POST', url: `${inbox()}/${line.id}/dismiss`, token });
     expect(again.statusCode).toBe(400);
   });
+
+  it('«не учитывать» обратимо: строка видна на своей вкладке и возвращается на разбор, в том числе оператором', async () => {
+    // Живой случай: приход клиента по ошибке ушёл в «не учитывать», а вернуть
+    // его было нечем — undo требовал созданной проводки, вкладки у таких строк
+    // не было, и деньги выпадали из учёта насовсем.
+    const connId = await seedInbox();
+    const line = await lineByExt(connId, 'fake-1');
+    await H.inject({ method: 'POST', url: `${inbox()}/${line.id}/dismiss`, token });
+
+    const dismissed = await H.inject({ method: 'GET', url: `${inbox()}?status=DISMISSED`, token });
+    expect(dismissed.json<{ items: Array<{ id: string }> }>().items.map((i) => i.id)).toEqual([
+      line.id,
+    ]);
+
+    const operatorTg = tg + 50000n;
+    const operator = await H.prisma.user.create({
+      data: { telegramId: operatorTg, firstName: 'Оператор' },
+    });
+    await seedMember(H.prisma, ws(), operator.id, Role.MEMBER);
+    const operatorToken = await H.jwtFor(operator.id, operatorTg);
+
+    const restore = await H.inject({
+      method: 'POST',
+      url: `${inbox()}/${line.id}/undo`,
+      token: operatorToken,
+    });
+    expect(restore.statusCode).toBe(200);
+    const back = await H.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: line.id } });
+    expect(back.status).toBe('NEW');
+    expect(back.transactionId).toBeNull();
+    const count = await H.inject({ method: 'GET', url: `${inbox()}/count`, token });
+    expect(count.json<{ count: number }>().count).toBe(4);
+
+    // Строка снова на разборе — отменять больше нечего.
+    const again = await H.inject({ method: 'POST', url: `${inbox()}/${line.id}/undo`, token });
+    expect(again.statusCode).toBe(400);
+  });
+
+  it('одинаковые строки выписки проводятся обе: у второй отпечаток с номером повтора', async () => {
+    // Банк отдал одну и ту же по содержимому операцию двумя документами (возврат,
+    // проведённый дважды). Отпечаток у проводок уникален, и вторую строку
+    // провести было нельзя — 409.
+    const connId = await seedInbox();
+    const first = await lineByExt(connId, 'fake-3');
+    const twin = await H.prisma.bankStatementLine.create({
+      data: {
+        workspaceId: first.workspaceId,
+        connectionId: first.connectionId,
+        externalId: 'fake-3-twin',
+        date: first.date,
+        amount: first.amount,
+        direction: first.direction,
+        counterpartyName: first.counterpartyName,
+        description: first.description,
+        ausnMark: first.ausnMark,
+      },
+    });
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws(), name: 'Аренда', kind: 'EXPENSE', bucket: 'FIXED' },
+    });
+
+    for (const line of [first, twin]) {
+      const res = await H.inject({
+        method: 'POST',
+        url: `${inbox()}/${line.id}/categorize`,
+        token,
+        payload: { categoryId: cat.id },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    const txs = await H.prisma.transaction.findMany({
+      where: { workspaceId: ws(), categoryId: cat.id, deletedAt: null },
+      select: { importHash: true },
+    });
+    expect(txs).toHaveLength(2);
+    expect(new Set(txs.map((t) => t.importHash)).size).toBe(2);
+  });
+
+  it('операция, загруженная раньше без строки выписки, не задваивается: 409 с объяснением', async () => {
+    // Проводка с тем же отпечатком, но без строки — та же операция, пришедшая
+    // раньше (файлом или прежним подключением банка). Имитируем: проводим строку
+    // и отвязываем её, проводка остаётся.
+    const connId = await seedInbox();
+    const line = await lineByExt(connId, 'fake-3');
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws(), name: 'Аренда', kind: 'EXPENSE', bucket: 'FIXED' },
+    });
+    const url = `${inbox()}/${line.id}/categorize`;
+    const first = await H.inject({ method: 'POST', url, token, payload: { categoryId: cat.id } });
+    expect(first.statusCode).toBe(200);
+    await H.prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: { status: 'NEW', transactionId: null },
+    });
+
+    const res = await H.inject({ method: 'POST', url, token, payload: { categoryId: cat.id } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ message: string }>().message).toContain('уже есть в учёте');
+    const after = await H.prisma.bankStatementLine.findUniqueOrThrow({ where: { id: line.id } });
+    expect(after.status).toBe('NEW');
+    const txCount = await H.prisma.transaction.count({
+      where: { workspaceId: ws(), categoryId: cat.id, deletedAt: null },
+    });
+    expect(txCount).toBe(1);
+  });
 });

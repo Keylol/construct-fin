@@ -13,7 +13,8 @@ import type {
 import { BalanceAnchorService } from '../account/balance-anchor.service';
 import { money } from '../common/money';
 import { applyRules, type RuleCondition, type RuleAction } from '../rule/engine';
-import { computeRowHash } from '../common/import-hash';
+import { computeRowHash, type RowHashInput } from '../common/import-hash';
+import { bankLineHash } from './bank-line-hash';
 import { sanitizeSecrets, sanitizeSecretsDeep } from '../common/sanitize-secrets';
 import { deserializeTlsCredential } from './tls-credential';
 
@@ -362,8 +363,9 @@ export class SyncService {
             // без неё авто-проведённые строки выпадали из расчёта налога.
             ausnMark: line.ausnMark,
             // Отпечаток — чтобы CSV-выгрузка того же периода, импортированная
-            // позже, увидела эту операцию своим механизмом дедупа.
-            importHash: this.rowHash(conn, line),
+            // позже, увидела эту операцию своим механизмом дедупа. У строки-
+            // близнеца он с номером повтора (см. bankLineHash).
+            importHash: await bankLineHash(tx, this.hashInput(conn, line)),
             createdById: conn.createdById,
           },
           select: { id: true },
@@ -459,9 +461,12 @@ export class SyncService {
     return { id: best.id, counterpartyId: best.counterpartyId, ausnMark: best.ausnMark };
   }
 
-  /** Отпечаток строки выписки в той же форме, что считает CSV-импорт. */
-  private rowHash(conn: { workspaceId: string; accountId: string }, line: RawBankLine): string {
-    return computeRowHash({
+  /** Содержимое строки выписки для отпечатка — в той же форме, что считает CSV-импорт. */
+  private hashInput(
+    conn: { workspaceId: string; accountId: string },
+    line: RawBankLine,
+  ): RowHashInput {
+    return {
       workspaceId: conn.workspaceId,
       accountId: conn.accountId,
       date: line.date,
@@ -469,7 +474,12 @@ export class SyncService {
       type: line.direction,
       counterpartyName: line.counterpartyName ?? null,
       description: line.description ?? null,
-    });
+    };
+  }
+
+  /** Отпечаток строки выписки в той же форме, что считает CSV-импорт. */
+  private rowHash(conn: { workspaceId: string; accountId: string }, line: RawBankLine): string {
+    return computeRowHash(this.hashInput(conn, line));
   }
 
   /**
