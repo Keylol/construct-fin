@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { searchParam } from '../common/text-search';
 
 export const CreateWarehouseItemSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -26,7 +27,7 @@ export const UpdateWarehouseItemSchema = z.object({
 export type UpdateWarehouseItemDto = z.infer<typeof UpdateWarehouseItemSchema>;
 
 export const ListWarehouseQuerySchema = z.object({
-  search: z.string().trim().min(1).optional(),
+  search: searchParam,
   includeArchived: z
     .union([z.boolean(), z.string()])
     .optional()

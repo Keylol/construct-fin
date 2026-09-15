@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { searchParam } from '../common/text-search';
 
 const RoleEnum = z.enum(['CLIENT', 'SUPPLIER', 'EMPLOYEE', 'OTHER']);
 const MoneyString = z
@@ -34,7 +35,7 @@ export const UpdateCounterpartySchema = z.object({
 export type UpdateCounterpartyDto = z.infer<typeof UpdateCounterpartySchema>;
 
 export const ListCounterpartiesQuerySchema = z.object({
-  search: z.string().trim().min(1).optional(),
+  search: searchParam,
   role: RoleEnum.optional(),
   includeArchived: z
     .union([z.boolean(), z.string()])

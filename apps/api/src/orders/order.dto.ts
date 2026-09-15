@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizePhone } from '@construct/shared';
+import { searchParam } from '../common/text-search';
 
 /**
  * Телефон клиента — видимый номер заказа (решение владельца 29.08). Принимаем
@@ -71,8 +72,8 @@ export type UpdateOrderDto = z.infer<typeof UpdateOrderSchema>;
 export const ListOrdersQuerySchema = z.object({
   status: z.enum(['OPEN', 'DONE', 'CANCELLED']).optional(),
   clientId: z.string().cuid().optional(),
-  /// Ищет по номеру, названию и телефону (цифры номера, как их набирают).
-  search: z.string().max(100).optional(),
+  /// Номер, название, описание, клиент, телефон, позиции и суммы (order.search.ts).
+  search: searchParam,
   // IJ9 (drill-down «Выручка» из ОПиУ): период по дате ЗАКРЫТИЯ заказа.
   // ISO-даты; заказы без closedAt (OPEN/CANCELLED) фильтром отсеиваются.
   closedFrom: z

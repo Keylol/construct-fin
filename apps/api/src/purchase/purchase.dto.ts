@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { searchParam } from '../common/text-search';
 
 // #11: регэкспы допускают «0»/«0.00». Закупка нулевого кол-ва или по нулевой
 // цене бессмысленна (порча WAVG/себестоимости), поэтому требуем строго > 0.
@@ -27,7 +28,14 @@ export const CreatePurchaseSchema = z.object({
 });
 export type CreatePurchaseDto = z.infer<typeof CreatePurchaseSchema>;
 
+const isoDate = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'invalid ISO date');
+
 export const ListPurchasesQuerySchema = z.object({
   supplierId: z.string().cuid().optional(),
+  /** Поставщик, комментарий, позиции и суммы (purchase.search.ts). */
+  search: searchParam,
+  /** Период по дате закупки. */
+  from: isoDate.optional(),
+  to: isoDate.optional(),
 });
 export type ListPurchasesQuery = z.infer<typeof ListPurchasesQuerySchema>;

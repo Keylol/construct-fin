@@ -5,7 +5,10 @@ import { UnitOfWork } from '../common/unit-of-work';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { AuditService } from '../audit/audit.service';
 import { add, mul, money } from '../common/money';
-import { assertNotFuture } from '../reports/period';
+import { assertNotFuture, endOfDay, startOfDay } from '../reports/period';
+import { parseSearchQuery } from '@construct/shared';
+import { findSearchIds } from '../common/text-search';
+import { purchaseSearchSpec } from './purchase.search';
 import type { CreatePurchaseDto, ListPurchasesQuery } from './purchase.dto';
 
 @Injectable()
@@ -17,12 +20,31 @@ export class PurchaseService {
     private readonly audit: AuditService,
   ) {}
 
-  list(workspaceId: string, query: ListPurchasesQuery) {
+  async list(workspaceId: string, query: ListPurchasesQuery) {
+    // Поиск — общими правилами (common/text-search.ts): поставщик, комментарий,
+    // позиции и суммы. Раньше экран фильтровал 200 последних закупок у себя, и
+    // всё, что старше, не находилось.
+    const search = parseSearchQuery(query.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, purchaseSearchSpec(workspaceId), search)
+      : null;
     return this.prisma.purchase.findMany({
       where: {
         workspaceId,
         deletedAt: null,
         ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+        ...(ids ? { id: { in: ids } } : {}),
+        // Период — по дате закупки (дата её операции), сутки в поясе бизнеса.
+        ...(query.from || query.to
+          ? {
+              transaction: {
+                date: {
+                  ...(query.from ? { gte: startOfDay(new Date(query.from)) } : {}),
+                  ...(query.to ? { lte: endOfDay(new Date(query.to)) } : {}),
+                },
+              },
+            }
+          : {}),
       },
       include: {
         supplier: { select: { id: true, name: true } },
@@ -32,7 +54,7 @@ export class PurchaseService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: 500,
     });
   }
 
