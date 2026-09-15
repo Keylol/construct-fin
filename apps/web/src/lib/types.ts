@@ -116,16 +116,32 @@ export interface CounterpartySummary {
   lastOrderId: string | null;
 }
 
+export type WarehouseSection =
+  | 'CASE'
+  | 'MOTHERBOARD'
+  | 'PSU'
+  | 'GPU'
+  | 'RAM'
+  | 'CPU'
+  | 'COOLING'
+  | 'STORAGE'
+  | 'FANS'
+  | 'OTHER';
+
 export interface WarehouseItem {
   id: string;
   sku: string | null;
   name: string;
   /** Цвет комплектующего — свободный текст, на учёт не влияет. */
   color: string | null;
+  /** Раздел склада; null — заведена до разделов. */
+  section: WarehouseSection | null;
   unit: string;
   qty: string;
   avgCost: string;
   defaultSupplierId: string | null;
+  /** Есть в списке склада (GET /warehouse), в карточке позиции может не прийти. */
+  defaultSupplier?: { id: string; name: string } | null;
   note: string | null;
   isArchived: boolean;
   createdAt: string;
