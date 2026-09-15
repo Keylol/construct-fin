@@ -3,12 +3,13 @@
 import { useRef } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
-import type { OpenLotView, WarehouseItem } from '@/lib/types';
+import type { OpenLotView, WarehouseItem, WarehouseSection } from '@/lib/types';
 
 export interface CreateWarehouseItemInput {
   name: string;
   sku?: string;
   color?: string | null;
+  section?: WarehouseSection | null;
   unit?: string;
   openingQty?: string;
   openingCost?: string;
@@ -20,6 +21,7 @@ export interface UpdateWarehouseItemInput {
   name?: string;
   sku?: string | null;
   color?: string | null;
+  section?: WarehouseSection | null;
   unit?: string;
   defaultSupplierId?: string | null;
   note?: string | null;

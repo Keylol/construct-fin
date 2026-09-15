@@ -30,6 +30,8 @@ export class WarehouseRepository {
       },
       orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
       take: 300,
+      // Колонка «Поставщик» на экране склада — только имя, без карточки контрагента.
+      include: { defaultSupplier: { select: { id: true, name: true } } },
     });
   }
 

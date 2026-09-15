@@ -21,7 +21,7 @@ import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { parseQty } from '@/lib/qty';
 import { formatDate } from '@/lib/dates';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import type { OpenLotView, WarehouseItem } from '@/lib/types';
+import type { OpenLotView, WarehouseItem, WarehouseSection } from '@/lib/types';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { useRole } from '@/hooks/useRole';
@@ -50,8 +50,19 @@ import { flatCodec } from '@/lib/url-codec';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { KpiRow } from '@/components/ui/KpiRow';
+import { Select } from '@/components/ui/Select';
+import { useCounterparties } from '@/hooks/useCounterparties';
+import { cn } from '@/lib/cn';
+import {
+  NO_SECTION,
+  WAREHOUSE_SECTIONS,
+  isWarehouseSection,
+  sectionLabel,
+  sectionRank,
+} from '@/lib/warehouse-sections';
 
-const DEFAULTS = { q: '' };
+// section — ключ раздела (CASE, GPU…) или NONE; пусто — все разделы.
+const DEFAULTS = { q: '', section: '' };
 const FILTERS = flatCodec(DEFAULTS);
 
 // F5: открытые партии — «что лежит и откуда» (поставщик/счёт закупки).
@@ -110,6 +121,39 @@ export default function WarehousePage() {
   );
 }
 
+/** Чип раздела — переключатель фильтра; активный залит. Высота как у полей FilterBar. */
+function SectionChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex h-9 items-center gap-1.5 rounded-sm border px-2.5 text-sm transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-input bg-background text-foreground hover:bg-secondary',
+      )}
+    >
+      {label}
+      <span className={cn('text-xs tabular-nums', active ? 'opacity-80' : 'text-muted-foreground')}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function lineValue(qty: string, avg: string): number {
   return (Number(qty) || 0) * (Number(avg) || 0);
 }
@@ -131,10 +175,28 @@ function WarehouseView() {
 
   if (!current) return null;
 
+  // Разделы как в складской таблице: группы в порядке WAREHOUSE_SECTIONS,
+  // внутри — по названию. Чипы сверху сужают список до одного раздела.
+  const all = items.data ?? [];
+  const sectionCounts = new Map<string, number>();
+  for (const i of all) {
+    const k = i.section ?? NO_SECTION;
+    sectionCounts.set(k, (sectionCounts.get(k) ?? 0) + 1);
+  }
+  const visible = all
+    .filter((i) => !filters.section || (i.section ?? NO_SECTION) === filters.section)
+    .sort(
+      (a, b) =>
+        sectionRank(a.section) - sectionRank(b.section) || a.name.localeCompare(b.name, 'ru'),
+    );
+  const chipKeys = [...WAREHOUSE_SECTIONS.map((s): string => s.value), NO_SECTION].filter(
+    (k) => (sectionCounts.get(k) ?? 0) > 0,
+  );
+
   const columns: Column<WarehouseItem>[] = [
     {
       key: 'name',
-      header: 'Позиция',
+      header: 'Наименование',
       cell: (i) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{i.name}</div>
@@ -175,6 +237,16 @@ function WarehouseView() {
       align: 'right',
       cell: (i) => <Money value={lineValue(i.qty, i.avgCost)} className="font-medium" />,
       className: 'w-[140px]',
+    },
+    {
+      key: 'supplier',
+      header: 'Поставщик',
+      cell: (i) => (
+        <span className="truncate text-sm text-muted-foreground">
+          {i.defaultSupplier?.name ?? '—'}
+        </span>
+      ),
+      className: 'w-[180px]',
     },
     {
       key: 'status',
@@ -237,28 +309,70 @@ function WarehouseView() {
             />
           </FilterField>
         </div>
+        {chipKeys.length > 0 && (
+          <FilterField label="Раздел">
+            <div className="flex flex-wrap gap-1.5">
+              <SectionChip
+                label="Все"
+                count={all.length}
+                active={!filters.section}
+                onClick={() => setFilters({ ...filters, section: '' })}
+              />
+              {chipKeys.map((k) => (
+                <SectionChip
+                  key={k}
+                  label={sectionLabel(k)}
+                  count={sectionCounts.get(k) ?? 0}
+                  active={filters.section === k}
+                  onClick={() =>
+                    setFilters({ ...filters, section: filters.section === k ? '' : k })
+                  }
+                />
+              ))}
+            </div>
+          </FilterField>
+        )}
         <FilterReset onClick={() => setFilters(DEFAULTS)} />
       </FilterBar>
 
 
       <div className="bg-card">
         <DataTable
-          data={items.data ?? []}
+          data={visible}
           columns={columns}
           rowKey={(i) => i.id}
           onRowClick={(i) => setEditing(i)}
+          groupBy={(i) => i.section ?? NO_SECTION}
+          renderGroupHeader={(key, rows) => (
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="uppercase tracking-wide text-foreground">
+                {sectionLabel(key)}
+                <span className="ml-2 normal-case tracking-normal text-muted-foreground">
+                  {rows.reduce((s, r) => s + (Number(r.qty) || 0), 0)} шт
+                </span>
+              </span>
+              <Money
+                value={rows.reduce((s, r) => s + lineValue(r.qty, r.avgCost), 0)}
+                tone="plain"
+              />
+            </div>
+          )}
           loading={items.isLoading}
           error={items.error}
           onRetry={() => void items.refetch()}
           empty={
-            filters.q.trim() ? (
+            filters.q.trim() || filters.section ? (
               <EmptyState
                 icon={Package}
-                title={`Ничего не найдено по запросу «${filters.q.trim()}»`}
+                title={
+                  filters.q.trim()
+                    ? `Ничего не найдено по запросу «${filters.q.trim()}»`
+                    : `В разделе «${sectionLabel(filters.section)}» пусто`
+                }
                 hint="Позиция ищется по названию, артикулу, цвету и заметке."
                 action={
-                  <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
-                    Сбросить поиск
+                  <Button variant="secondary" onClick={() => setFilters(DEFAULTS)}>
+                    Сбросить фильтры
                   </Button>
                 }
               />
@@ -280,7 +394,8 @@ function WarehouseView() {
               <div className="min-w-0">
                 <div className="truncate font-medium">{i.name}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {Number(i.qty)} {i.unit} · <Money value={i.avgCost} tone="plain" />
+                  {sectionLabel(i.section ?? NO_SECTION)} · {Number(i.qty)} {i.unit} ·{' '}
+                  <Money value={i.avgCost} tone="plain" />
                 </div>
               </div>
               <div className="shrink-0 text-right">
@@ -296,6 +411,7 @@ function WarehouseView() {
         wsId={current.id}
         open={creating || !!editing}
         initial={editing}
+        defaultSection={isWarehouseSection(filters.section) ? filters.section : null}
         onClose={() => {
           setCreating(false);
           setEditing(null);
@@ -310,11 +426,14 @@ function WarehouseItemForm({
   wsId,
   open,
   initial,
+  defaultSection,
   onClose,
 }: {
   wsId: string;
   open: boolean;
   initial: WarehouseItem | null;
+  /** Раздел новой позиции — из активного чипа раздела. */
+  defaultSection: WarehouseSection | null;
   onClose: () => void;
 }) {
   const create = useCreateWarehouseItem(wsId);
@@ -331,6 +450,13 @@ function WarehouseItemForm({
   const [setCostReason, setSetCostReason] = useState('');
   const [sku, setSku] = useState('');
   const [color, setColor] = useState('');
+  const [section, setSection] = useState<WarehouseSection | ''>('');
+  const [supplierId, setSupplierId] = useState('');
+  const suppliers = useCounterparties(open ? wsId : null, undefined, false, 'SUPPLIER');
+  // Раздел по умолчанию читаем только в момент открытия формы: смена чипа
+  // не должна сбрасывать уже введённое в открытой форме.
+  const defaultSectionRef = useRef(defaultSection);
+  defaultSectionRef.current = defaultSection;
   const [unit, setUnit] = useState('шт');
   const [openingQty, setOpeningQty] = useState('');
   const [openingCost, setOpeningCost] = useState('');
@@ -349,6 +475,8 @@ function WarehouseItemForm({
       setName(initial.name);
       setSku(initial.sku ?? '');
       setColor(initial.color ?? '');
+      setSection(initial.section ?? '');
+      setSupplierId(initial.defaultSupplierId ?? '');
       setUnit(initial.unit);
       setIsArchived(initial.isArchived);
       setAdjustQty(String(Number(initial.qty)));
@@ -356,6 +484,8 @@ function WarehouseItemForm({
       setName('');
       setSku('');
       setColor('');
+      setSection(defaultSectionRef.current ?? '');
+      setSupplierId('');
       setUnit('шт');
       setOpeningQty('');
       setOpeningCost('');
@@ -373,6 +503,8 @@ function WarehouseItemForm({
     ? name !== initial.name ||
       sku !== (initial.sku ?? '') ||
       color !== (initial.color ?? '') ||
+      section !== (initial.section ?? '') ||
+      supplierId !== (initial.defaultSupplierId ?? '') ||
       unit !== initial.unit ||
       isArchived !== initial.isArchived ||
       adjustQty !== String(Number(initial.qty))
@@ -387,6 +519,8 @@ function WarehouseItemForm({
           name: name.trim(),
           sku: sku.trim() || null,
           color: color.trim() || null,
+          section: section || null,
+          defaultSupplierId: supplierId || null,
           unit: unit.trim() || 'шт',
           isArchived,
         });
@@ -400,6 +534,8 @@ function WarehouseItemForm({
           name: name.trim(),
           sku: sku.trim() || undefined,
           color: color.trim() || undefined,
+          section: section || null,
+          defaultSupplierId: supplierId || null,
           unit: unit.trim() || undefined,
           openingQty: openingQty ? parseQty(openingQty) ?? undefined : undefined,
           openingCost: openingCost ? parseAmountInput(openingCost) ?? undefined : undefined,
@@ -493,6 +629,38 @@ function WarehouseItemForm({
               </FormField>
               <FormField label="Ед. изм." htmlFor="w-unit">
                 <Input id="w-unit" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="шт" />
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Раздел" htmlFor="w-section">
+                <Select
+                  id="w-section"
+                  value={section}
+                  onChange={(e) =>
+                    setSection(isWarehouseSection(e.target.value) ? e.target.value : '')
+                  }
+                >
+                  <option value="">— Без раздела —</option>
+                  {WAREHOUSE_SECTIONS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label="Поставщик" htmlFor="w-supplier">
+                <Select
+                  id="w-supplier"
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                >
+                  <option value="">— Не указан —</option>
+                  {(suppliers.data ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
               </FormField>
             </div>
             <FormField label="Цвет" htmlFor="w-color" hint="Свободный текст, на учёт не влияет">
