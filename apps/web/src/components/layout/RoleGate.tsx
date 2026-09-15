@@ -24,7 +24,7 @@ export function RoleGate({ role, children }: { role: Role; children: ReactNode }
       <EmptyState
         icon={Locked}
         title="Раздел недоступен"
-        hint="Технические разделы и настройки справочников открыты только владельцу пространства."
+        hint="Технические разделы и настройки справочников открыты только владельцу."
         action={
           <Button asChild variant="secondary">
             <Link href="/dashboard">На главную</Link>

@@ -179,7 +179,7 @@ export class BudgetService {
       where: { id: dto.categoryId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!cat) throw new BadRequestException('Категория не найдена в этом пространстве');
+    if (!cat) throw new BadRequestException('Категория не найдена в этой организации');
     try {
       return await this.prisma.budget.create({
         data: {

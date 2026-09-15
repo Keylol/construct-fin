@@ -931,7 +931,7 @@ export class OrderService {
         where: { id: clientId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!client) throw new BadRequestException('Клиент не найден в этом пространстве');
+      if (!client) throw new BadRequestException('Клиент не найден в этой организации');
     }
     const ids = [...new Set(warehouseItemIds.filter((x): x is string => !!x))];
     if (ids.length) {
@@ -940,7 +940,7 @@ export class OrderService {
         select: { id: true },
       });
       if (found.length !== ids.length) {
-        throw new BadRequestException('Складская позиция не найдена в этом пространстве');
+        throw new BadRequestException('Складская позиция не найдена в этой организации');
       }
     }
   }

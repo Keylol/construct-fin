@@ -154,7 +154,7 @@ export class InboxService {
       where: { id: dto.categoryId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!category) throw new BadRequestException('Категория не найдена в этом пространстве');
+    if (!category) throw new BadRequestException('Категория не найдена в этой организации');
     if (dto.counterpartyId) await this.assertCounterparty(workspaceId, dto.counterpartyId);
 
     await this.prisma.$transaction(async (tx) => {
@@ -972,6 +972,6 @@ export class InboxService {
       where: { id: counterpartyId, workspaceId },
       select: { id: true },
     });
-    if (!cp) throw new BadRequestException('Контрагент не найден в этом пространстве');
+    if (!cp) throw new BadRequestException('Контрагент не найден в этой организации');
   }
 }

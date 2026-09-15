@@ -211,13 +211,13 @@ export class PurchaseService {
       where: { id: accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!acc) throw new NotFoundException('Счёт не найден в этом пространстве');
+    if (!acc) throw new NotFoundException('Счёт не найден в этой организации');
     if (supplierId) {
       const sup = await this.prisma.counterparty.findFirst({
         where: { id: supplierId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!sup) throw new NotFoundException('Поставщик не найден в этом пространстве');
+      if (!sup) throw new NotFoundException('Поставщик не найден в этой организации');
     }
   }
 }

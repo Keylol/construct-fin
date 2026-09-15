@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 
-/** Форма нового пространства — та же, что открывается из меню и с пустого экрана. */
+/** Форма новой организации — та же, что открывается из меню и с пустого экрана. */
 export function CreateWorkspaceModal({
   open,
   onOpenChange,
@@ -52,7 +52,7 @@ export function CreateWorkspaceModal({
           }}
         >
           <ModalHeader>
-            <ModalTitle>Новое пространство</ModalTitle>
+            <ModalTitle>Новая организация</ModalTitle>
           </ModalHeader>
           <ModalBody className="space-y-4">
             <FormField label="Название" htmlFor="ws-name" required>

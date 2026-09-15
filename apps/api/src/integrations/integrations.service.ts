@@ -298,7 +298,7 @@ export class IntegrationsService {
       where: { id: accountId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!account) throw new BadRequestException('Счёт не найден в этом пространстве');
+    if (!account) throw new BadRequestException('Счёт не найден в этой организации');
   }
 
   private async assertOwned(workspaceId: string, id: string) {
