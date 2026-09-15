@@ -26,7 +26,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FormField } from '@/components/ui/FormField';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteEntityDialog } from '@/components/ui/DeleteEntityDialog';
 import {
   Modal,
   ModalBody,
@@ -425,6 +425,12 @@ function CategoryForm({
     onClose();
   };
 
+  const onArchive = async () => {
+    if (!initial) return;
+    await update.mutateAsync({ id: initial.id, isArchived: true });
+    onClose();
+  };
+
   return (
     <>
       <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
@@ -530,14 +536,14 @@ function CategoryForm({
           </form>
         </ModalContent>
       </Modal>
-      <ConfirmDialog
+      <DeleteEntityDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Архивировать «${initial?.name ?? ''}»?`}
-        description="Категория переместится в архив, связи с операциями сохранятся."
-        confirmText="В архив"
-        onConfirm={onDelete}
-        loading={del.isPending}
+        name={initial?.name ?? ''}
+        noun="Категория"
+        isArchived={initial?.isArchived ?? false}
+        onDelete={onDelete}
+        onArchive={onArchive}
       />
     </>
   );

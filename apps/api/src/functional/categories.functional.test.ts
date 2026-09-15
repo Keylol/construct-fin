@@ -135,6 +135,54 @@ describe('Функциональные мутации: категории (categ
     expect(row.deletedAt).not.toBeNull();
   });
 
+  // Операции удалённой статьи сводка молча относит к «без категории». Со
+  // связями — только архив.
+  it('DELETE /categories/:id → 400, если по статье есть операции; запись жива', async () => {
+    const ws = seed.workspaceId;
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws, name: 'С операцией', kind: 'EXPENSE' },
+    });
+    await H.prisma.transaction.create({
+      data: {
+        workspaceId: ws,
+        accountId: seed.accountId,
+        categoryId: cat.id,
+        date: new Date(),
+        amount: '100.00',
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        createdById: seed.userId,
+      },
+    });
+    const res = await H.inject({
+      method: 'DELETE',
+      url: `/workspaces/${ws}/categories/${cat.id}`,
+      token,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ message: string }>().message).toMatch(/архив/i);
+    const row = await H.prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it('DELETE /categories/:id → 400, если по статье есть бюджет; запись жива', async () => {
+    const ws = seed.workspaceId;
+    const cat = await H.prisma.category.create({
+      data: { workspaceId: ws, name: 'С бюджетом', kind: 'EXPENSE' },
+    });
+    await H.prisma.budget.create({
+      data: { workspaceId: ws, categoryId: cat.id, amount: '5000.00', createdById: seed.userId },
+    });
+    const res = await H.inject({
+      method: 'DELETE',
+      url: `/workspaces/${ws}/categories/${cat.id}`,
+      token,
+    });
+    expect(res.statusCode).toBe(400);
+    const row = await H.prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+    expect(row.deletedAt).toBeNull();
+  });
+
   // Возврат выручки — расход в группе REVENUE. ОПиУ считает выручку как нетто
   // (доход бакета минус его расход), поэтому такая категория УМЕНЬШАЕТ выручку,
   // а не попадает в неё. Прежний запрет делал «Возврат выручки» нередактируемым.

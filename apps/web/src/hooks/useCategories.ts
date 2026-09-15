@@ -67,6 +67,7 @@ export function useDeleteCategory(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/categories/${id}`),
+    meta: { inlineError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', wsId] }),
   });
 }

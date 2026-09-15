@@ -29,7 +29,7 @@ import { TileGrid, ViewToggle, useTileView } from '@/components/ui/Tile';
 import { CounterpartyTile } from '@/components/counterparties/CounterpartyTile';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteEntityDialog } from '@/components/ui/DeleteEntityDialog';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
 
@@ -360,6 +360,12 @@ function ClientForm({
     onClose();
   };
 
+  const onArchive = async () => {
+    if (!initial) return;
+    await update.mutateAsync({ id: initial.id, isArchived: true });
+    onClose();
+  };
+
   return (
     <>
       <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
@@ -448,14 +454,14 @@ function ClientForm({
           </form>
         </ModalContent>
       </Modal>
-      <ConfirmDialog
+      <DeleteEntityDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Архивировать «${initial?.name ?? ''}»?`}
-        description="Клиент переместится в архив, его заказы сохранятся."
-        confirmText="В архив"
-        onConfirm={onDelete}
-        loading={del.isPending}
+        name={initial?.name ?? ''}
+        noun="Клиент"
+        isArchived={initial?.isArchived ?? false}
+        onDelete={onDelete}
+        onArchive={onArchive}
       />
     </>
   );

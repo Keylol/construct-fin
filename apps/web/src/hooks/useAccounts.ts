@@ -64,6 +64,7 @@ export function useDeleteAccount(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del(`/workspaces/${wsId}/accounts/${id}`),
+    meta: { inlineError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['accounts', wsId] }),
   });
 }

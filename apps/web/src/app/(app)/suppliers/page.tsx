@@ -25,7 +25,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { FilterBar, FilterReset } from '@/components/ui/FilterBar';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteEntityDialog } from '@/components/ui/DeleteEntityDialog';
 import {
   Modal,
   ModalBody,
@@ -286,6 +286,12 @@ function SupplierForm({
     onClose();
   };
 
+  const onArchive = async () => {
+    if (!initial) return;
+    await update.mutateAsync({ id: initial.id, isArchived: true });
+    onClose();
+  };
+
   return (
     <>
       <Modal open={open} onOpenChange={(o) => !o && onClose()} dirty={dirty}>
@@ -356,14 +362,14 @@ function SupplierForm({
           </form>
         </ModalContent>
       </Modal>
-      <ConfirmDialog
+      <DeleteEntityDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
-        title={`Архивировать «${initial?.name ?? ''}»?`}
-        description="Поставщик переместится в архив, его закупки сохранятся."
-        confirmText="В архив"
-        onConfirm={onDelete}
-        loading={del.isPending}
+        name={initial?.name ?? ''}
+        noun="Поставщик"
+        isArchived={initial?.isArchived ?? false}
+        onDelete={onDelete}
+        onArchive={onArchive}
       />
     </>
   );
