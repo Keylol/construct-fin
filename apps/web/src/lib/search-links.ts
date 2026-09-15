@@ -51,7 +51,7 @@ const INBOX_STATUS: Record<BankLineStatus, string> = {
   NEW: 'не разобрано',
   AUTO_POSTED: 'проведено правилами',
   RESOLVED: 'обработано',
-  DISMISSED: 'отклонено',
+  DISMISSED: 'не учитывается',
 };
 
 /** Раньше этой даты учёта нет — «за всё время» для операций контрагента. */
@@ -180,7 +180,9 @@ function describeGroup(
       if (!visible('/inbox')) return null;
       const byStatus = group.byStatus;
       const tab =
-        (['NEW', 'AUTO_POSTED', 'RESOLVED'] as const).find((s) => (byStatus[s] ?? 0) > 0) ?? 'NEW';
+        (['NEW', 'AUTO_POSTED', 'RESOLVED', 'DISMISSED'] as const).find(
+          (s) => (byStatus[s] ?? 0) > 0,
+        ) ?? 'NEW';
       return {
         key: group.key,
         heading: 'Входящие',
