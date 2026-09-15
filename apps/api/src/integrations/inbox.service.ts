@@ -11,8 +11,9 @@ import { RuleService } from '../rule/rule.service';
 import { TransferService } from '../transfer/transfer.service';
 import { PlanningService } from '../planning/planning.service';
 import { applyRules, type RuleDef } from '../rule/engine';
-import { computeRowHash } from '../common/import-hash';
+import type { RowHashInput } from '../common/import-hash';
 import { findSearchIds } from '../common/text-search';
+import { bankLineHash } from './bank-line-hash';
 import { inboxSearchSpec } from './inbox.search';
 import { matchTransferPairs } from './transfer-match';
 import { matchPlannedPayments } from './planned-match';
@@ -38,8 +39,9 @@ const TRANSFER_SCAN_LIMIT = 500;
  * Inbox; закрыты только настройки интеграций/ключи).
  *
  * Действия оператора превращают строку в проводку/оплату заказа или помечают
- * «не учитывать». Обратимо: undo снимает авто/ручную проводку и возвращает
- * строку в Inbox (кроме оплат заказа — те отменяются в карточке заказа).
+ * «не учитывать». Обратимо: undo снимает авто/ручную проводку или отметку
+ * «не учитывать» и возвращает строку в Inbox (кроме оплат заказа — те
+ * отменяются в карточке заказа).
  */
 @Injectable()
 export class InboxService {
@@ -145,6 +147,48 @@ export class InboxService {
     return new Map(rules.map((r) => [r.id, r.name]));
   }
 
+  /** Содержимое строки для отпечатка проводки — в той же форме, что считает CSV-импорт. */
+  private hashInput(
+    workspaceId: string,
+    line: {
+      date: Date;
+      amount: Prisma.Decimal;
+      direction: 'INCOME' | 'EXPENSE';
+      counterpartyName: string | null;
+      description: string | null;
+      connection: { accountId: string };
+    },
+  ): RowHashInput {
+    return {
+      workspaceId,
+      accountId: line.connection.accountId,
+      date: line.date,
+      amount: line.amount.toString(),
+      type: line.direction,
+      counterpartyName: line.counterpartyName,
+      description: line.description,
+    };
+  }
+
+  /**
+   * Проводку из строки не дал создать занятый отпечаток. Если он у операции без
+   * строки выписки — это та же операция, загруженная раньше (файлом или прежним
+   * подключением банка), и уникальность не дала её задвоить. Общий ответ «Запись
+   * уже существует» не говорит, что с этим делать, поэтому объясняем. Иначе
+   * отпечаток занял параллельный разбор этой же строки.
+   */
+  private async hashClash(workspaceId: string, importHash: string): Promise<ConflictException> {
+    const loadedBefore = await this.prisma.transaction.findFirst({
+      where: { workspaceId, importHash, deletedAt: null, bankLine: { is: null } },
+      select: { id: true },
+    });
+    return new ConflictException(
+      loadedBefore
+        ? 'Эта операция уже есть в учёте — её загрузили раньше. Удалите её в «Операциях» и проведите строку заново или отметьте строку «не учитывать».'
+        : 'Строка уже обработана другим действием',
+    );
+  }
+
   /** Разобрать строку → проводка с категорией. */
   async categorize(workspaceId: string, userId: string, lineId: string, dto: CategorizeDto) {
     const line = await this.loadNew(workspaceId, lineId);
@@ -155,47 +199,48 @@ export class InboxService {
     if (!category) throw new BadRequestException('Категория не найдена в этой организации');
     if (dto.counterpartyId) await this.assertCounterparty(workspaceId, dto.counterpartyId);
 
-    await this.prisma.$transaction(async (tx) => {
-      const transaction = await tx.transaction.create({
-        data: {
-          workspaceId,
-          accountId: line.connection.accountId,
-          date: line.date,
-          amount: line.amount,
-          type: line.direction,
-          kind: 'OTHER',
-          categoryId: dto.categoryId,
-          counterpartyId: dto.counterpartyId ?? null,
-          description: dto.description ?? line.description,
-          // Ф4: переносим АУСН-маркировку банка на проводку (приоритетна в базе
-          // налога; оператор может переопределить позже через PATCH).
-          ausnMark: line.ausnMark,
-          // Отпечаток строки — чтобы CSV-выгрузка того же периода, загруженная
-          // позже, распознала эту операцию как уже существующую.
-          importHash: computeRowHash({
+    // Отпечаток строки — чтобы CSV-выгрузка того же периода, загруженная позже,
+    // распознала эту операцию как уже существующую. У строки-близнеца он с
+    // номером повтора (см. bankLineHash).
+    const importHash = await bankLineHash(this.prisma, this.hashInput(workspaceId, line));
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const transaction = await tx.transaction.create({
+          data: {
             workspaceId,
             accountId: line.connection.accountId,
             date: line.date,
-            amount: line.amount.toString(),
+            amount: line.amount,
             type: line.direction,
-            counterpartyName: line.counterpartyName,
-            description: line.description,
-          }),
-          createdById: userId,
-        },
-        select: { id: true },
+            kind: 'OTHER',
+            categoryId: dto.categoryId,
+            counterpartyId: dto.counterpartyId ?? null,
+            description: dto.description ?? line.description,
+            // Ф4: переносим АУСН-маркировку банка на проводку (приоритетна в базе
+            // налога; оператор может переопределить позже через PATCH).
+            ausnMark: line.ausnMark,
+            importHash,
+            createdById: userId,
+          },
+          select: { id: true },
+        });
+        // Compare-and-swap статуса: обновляем строку, только пока она NEW.
+        // Параллельный разбор (двойной клик) не создаст вторую проводку — под
+        // локом строки второй updateMany увидит уже RESOLVED и вернёт 0 → откат.
+        const claim = await tx.bankStatementLine.updateMany({
+          where: { id: line.id, status: 'NEW' },
+          data: { status: 'RESOLVED', transactionId: transaction.id, suggestedCategoryId: dto.categoryId },
+        });
+        if (claim.count === 0) {
+          throw new ConflictException('Строка уже обработана другим действием');
+        }
       });
-      // Compare-and-swap статуса: обновляем строку, только пока она NEW.
-      // Параллельный разбор (двойной клик) не создаст вторую проводку — под
-      // локом строки второй updateMany увидит уже RESOLVED и вернёт 0 → откат.
-      const claim = await tx.bankStatementLine.updateMany({
-        where: { id: line.id, status: 'NEW' },
-        data: { status: 'RESOLVED', transactionId: transaction.id, suggestedCategoryId: dto.categoryId },
-      });
-      if (claim.count === 0) {
-        throw new ConflictException('Строка уже обработана другим действием');
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw await this.hashClash(workspaceId, importHash);
       }
-    });
+      throw e;
+    }
     return { ok: true };
   }
 
@@ -373,13 +418,26 @@ export class InboxService {
     return { ok: true };
   }
 
-  /** Отменить разбор: снять созданную проводку, вернуть строку в Inbox. */
+  /** Отменить разбор: снять созданную проводку или отметку «не учитывать», вернуть строку в Inbox. */
   async undo(workspaceId: string, lineId: string) {
     const line = await this.prisma.bankStatementLine.findFirst({
       where: { id: lineId, workspaceId },
       include: { transaction: { select: { id: true, kind: true, deletedAt: true } } },
     });
     if (!line) throw new NotFoundException('Строка не найдена');
+    // «Не учитывать» проводки не создаёт — отменить можно только саму отметку.
+    // Без этого строку, отмеченную по ошибке, было не вернуть ничем, и деньги
+    // выпадали из учёта насовсем.
+    if (line.status === 'DISMISSED') {
+      const claim = await this.prisma.bankStatementLine.updateMany({
+        where: { id: line.id, status: 'DISMISSED' },
+        data: { status: 'NEW' },
+      });
+      if (claim.count === 0) {
+        throw new ConflictException('Строка уже обработана другим действием');
+      }
+      return { ok: true };
+    }
     if (!line.transaction) {
       throw new BadRequestException('У строки нет созданной проводки — отменять нечего');
     }
@@ -890,43 +948,43 @@ export class InboxService {
     }
 
     // Проводка из строки + захват строки — атомарно (паттерн categorize).
+    const importHash = await bankLineHash(this.prisma, this.hashInput(workspaceId, line));
     let transactionId: string | null = null;
-    await this.prisma.$transaction(async (tx) => {
-      const created = await tx.transaction.create({
-        data: {
-          workspaceId,
-          accountId: line.connection.accountId,
-          date: line.date,
-          // Суммой правды остаётся банк: план мог устареть, деньги — нет.
-          amount: line.amount,
-          type: 'EXPENSE',
-          kind: plan.txKind,
-          categoryId: plan.categoryId,
-          counterpartyId: plan.counterpartyId,
-          description: line.description ?? plan.title,
-          ausnMark: line.ausnMark,
-          importHash: computeRowHash({
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const created = await tx.transaction.create({
+          data: {
             workspaceId,
             accountId: line.connection.accountId,
             date: line.date,
-            amount: line.amount.toString(),
-            type: line.direction,
-            counterpartyName: line.counterpartyName,
-            description: line.description,
-          }),
-          createdById: userId,
-        },
-        select: { id: true },
+            // Суммой правды остаётся банк: план мог устареть, деньги — нет.
+            amount: line.amount,
+            type: 'EXPENSE',
+            kind: plan.txKind,
+            categoryId: plan.categoryId,
+            counterpartyId: plan.counterpartyId,
+            description: line.description ?? plan.title,
+            ausnMark: line.ausnMark,
+            importHash,
+            createdById: userId,
+          },
+          select: { id: true },
+        });
+        const claim = await tx.bankStatementLine.updateMany({
+          where: { id: line.id, status: 'NEW' },
+          data: { status: 'RESOLVED', transactionId: created.id },
+        });
+        if (claim.count === 0) {
+          throw new ConflictException('Строка уже обработана другим действием');
+        }
+        transactionId = created.id;
       });
-      const claim = await tx.bankStatementLine.updateMany({
-        where: { id: line.id, status: 'NEW' },
-        data: { status: 'RESOLVED', transactionId: created.id },
-      });
-      if (claim.count === 0) {
-        throw new ConflictException('Строка уже обработана другим действием');
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw await this.hashClash(workspaceId, importHash);
       }
-      transactionId = created.id;
-    });
+      throw e;
+    }
 
     try {
       // Закрытие плана — существующим механизмом привязки (CAS + защита от
