@@ -131,6 +131,70 @@ describe('Функциональные мутации: склад (warehouse)', 
     expect(row.avgCost.toString()).toBe('0');
   });
 
+  it('POST /warehouse с разделом → раздел в БД; PATCH меняет и снимает раздел', async () => {
+    const ws = seed.workspaceId;
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/warehouse`,
+      token,
+      payload: { name: 'PALIT RTX 5070Ti', section: 'GPU', openingQty: '2', openingCost: '116948' },
+    });
+    expect(res.statusCode).toBe(201);
+    const id = res.json<{ id: string }>().id;
+    expect((await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id } })).section).toBe('GPU');
+
+    const moved = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/warehouse/${id}`,
+      token,
+      payload: { section: 'RAM' },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect((await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id } })).section).toBe('RAM');
+
+    const cleared = await H.inject({
+      method: 'PATCH',
+      url: `/workspaces/${ws}/warehouse/${id}`,
+      token,
+      payload: { section: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    const row = await H.prisma.warehouseItem.findUniqueOrThrow({ where: { id } });
+    expect(row.section).toBeNull();
+    // Раздел — только группировка: остаток и себестоимость не тронуты.
+    expect(row.qty.toString()).toBe('2');
+    expect(row.avgCost.toString()).toBe('116948');
+  });
+
+  it('POST /warehouse → 400 на неизвестном разделе, запись не создаётся', async () => {
+    const ws = seed.workspaceId;
+    const before = await H.prisma.warehouseItem.count({ where: { workspaceId: ws } });
+    const res = await H.inject({
+      method: 'POST',
+      url: `/workspaces/${ws}/warehouse`,
+      token,
+      payload: { name: 'Корпус', section: 'КОРПУСА' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(await H.prisma.warehouseItem.count({ where: { workspaceId: ws } })).toBe(before);
+  });
+
+  it('GET /warehouse → в списке раздел и имя поставщика по умолчанию', async () => {
+    const ws = seed.workspaceId;
+    const supplier = await H.prisma.counterparty.create({
+      data: { workspaceId: ws, name: 'ДНС', role: 'SUPPLIER' },
+    });
+    await H.prisma.warehouseItem.create({
+      data: { workspaceId: ws, name: 'ASROCK B850 PRO RS', section: 'MOTHERBOARD', defaultSupplierId: supplier.id },
+    });
+    const res = await H.inject({ method: 'GET', url: `/workspaces/${ws}/warehouse`, token });
+    expect(res.statusCode).toBe(200);
+    const row = res.json<Array<{ name: string; section: string | null; defaultSupplier: { name: string } | null }>>()
+      .find((r) => r.name === 'ASROCK B850 PRO RS');
+    expect(row?.section).toBe('MOTHERBOARD');
+    expect(row?.defaultSupplier?.name).toBe('ДНС');
+  });
+
   it('DELETE /warehouse/:id → 200 и помечает запись soft-deleted (deletedAt)', async () => {
     const ws = seed.workspaceId;
     const item = await H.prisma.warehouseItem.create({

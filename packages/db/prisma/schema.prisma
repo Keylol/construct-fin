@@ -450,6 +450,21 @@ model OrderReturn {
 //   2. SUPPLIER_RETURN: newAvg = (oldTotalCost - refundAmount) / (oldQty - returnQty)
 // При продаже (списании при DONE) и возврате от клиента avgCost НЕ меняется.
 
+/// Раздел склада — как в складской таблице владельца (корпуса, платы, БП…).
+/// На учёт не влияет, только группировка и фильтр на экране «Склад».
+enum WarehouseSection {
+  CASE
+  MOTHERBOARD
+  PSU
+  GPU
+  RAM
+  CPU
+  COOLING
+  STORAGE
+  FANS
+  OTHER
+}
+
 model WarehouseItem {
   id                String   @id @default(cuid())
   workspaceId       String
@@ -458,6 +473,8 @@ model WarehouseItem {
   name              String
   /// Цвет комплектующего — свободный текст (решение #1). На учёт не влияет.
   color             String?
+  /// Раздел склада; null — позиция заведена до разделов («Без раздела»).
+  section           WarehouseSection?
   /// Единица измерения: «шт», «кг», «ч», «м».
   unit              String   @default("шт")
   /// DERIVED-КЭШ остатка. Истина — StockLot: qty == Σ open lot.qtyRemaining.
