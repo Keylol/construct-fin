@@ -86,15 +86,39 @@ export const NAV_GROUPS: NavGroup[] = [
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 /**
- * Меню для роли: оператору не показываем разделы `ownerOnly`. Один фильтр на
- * боковую панель, окно «Ещё», палитру и вкладки отчётов — чтобы раздел не
- * пропадал в одном месте и оставался в другом.
+ * Временно скрытые разделы (решение владельца 13.09.2026). Их нет в меню, в окне
+ * «Разделы», в палитре, во вкладках отчётов, в таб-баре и в меню «Создать», а
+ * прямой адрес отвечает «Раздел скрыт» (RoleGate) — для всех ролей. API, данные и
+ * крон не тронуты: вернуть раздел — убрать адрес из списка. Пункты из NAV_GROUPS
+ * не удаляются — на них держатся `isPathOwnerOnly` и крошки. Прежде чем скрыть
+ * новый раздел, найдите grep'ом по адресу ссылки на него с других экранов
+ * (плитки Главной, «Сделать сейчас», отчёты) и уберите эти переходы.
+ */
+export const HIDDEN_SECTIONS: readonly string[] = [
+  '/health',
+  '/counterparties',
+  '/suppliers',
+  '/reports/budget',
+  '/reports/counterparties',
+];
+
+/** Адрес ведёт в скрытый раздел: сам раздел, вложенный путь или ссылка с параметрами. */
+export function isPathHidden(href: string): boolean {
+  const path = href.split(/[?#]/)[0] ?? href;
+  return HIDDEN_SECTIONS.some((h) => path === h || path.startsWith(`${h}/`));
+}
+
+/**
+ * Меню для роли: оператору не показываем разделы `ownerOnly`, скрытые разделы —
+ * никому. Один фильтр на боковую панель, окно «Ещё», палитру и вкладки отчётов —
+ * чтобы раздел не пропадал в одном месте и оставался в другом.
  */
 export function navGroupsFor(role: Role | null | undefined): NavGroup[] {
-  if (isOwnerLike(role)) return NAV_GROUPS;
-  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.ownerOnly) })).filter(
-    (g) => g.items.length > 0,
-  );
+  const owner = isOwnerLike(role);
+  return NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !isPathHidden(i.href) && (owner || !i.ownerOnly)),
+  })).filter((g) => g.items.length > 0);
 }
 
 /** Адрес закрыт для роли: экран `ownerOnly` или его вложенный путь. */
