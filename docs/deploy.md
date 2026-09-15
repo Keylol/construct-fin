@@ -3,16 +3,32 @@
 ## Production топология
 
 ```
-miniapp.aleksandrantropov.online  →  VPS 195.133.1.13  →  nginx :443
-                                                            ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
-                                                            └ /         → 127.0.0.1:3000 (web контейнер)
-                                                          docker compose stack at /srv/construct-v6:
-                                                            ├ postgres:16-alpine (volume pgdata)
-                                                            ├ api (ghcr.io/keylol/construct-v6-api:latest)
-                                                            └ web (ghcr.io/keylol/construct-v6-web:latest)
+miniapp.aleksandrantropov.online      ⇘
+                                        VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
+constructfin.aleksandrantropov.ru     ⇗   ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
+                                           └ /         → 127.0.0.1:3000 (web контейнер)
+                                         docker compose stack at /srv/construct-v6:
+                                           ├ postgres:16-alpine (volume pgdata)
+                                           ├ api (ghcr.io/keylol/construct-v6-api:latest)
+                                           └ web (ghcr.io/keylol/construct-v6-web:latest)
 ```
 
-LE-сертификат `/etc/letsencrypt/live/constructpc.aleksandrantropov.ru/` имеет `miniapp.aleksandrantropov.online` в SAN (срок до 2026-08-02) — переиспользуется без отдельного выпуска. После 2026-07 — `certbot renew` подхватит автоматически.
+Оба адреса ведут на один и тот же стек контейнеров — разные `server_name` в nginx, разные сертификаты, разные DNS. Один деплой обновляет оба.
+
+## Два адреса
+
+С 15.09.2026 у прода два входа, оба поддерживаются:
+
+| Адрес | DNS / защита | Сертификат | Файл nginx |
+|---|---|---|---|
+| `miniapp.aleksandrantropov.online` | Cloudflare (проксирован) | `/etc/letsencrypt/live/miniapp.aleksandrantropov.online/`, до 04.11.2026 | `deploy/nginx/construct-v6.conf` |
+| `constructfin.aleksandrantropov.ru` | reg.ru NS, без прокси — A-запись прямо на `195.133.1.13` | `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/`, до 14.12.2026 | `deploy/nginx/constructfin.conf` |
+
+**Зачем второй.** Часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет» на некоторых устройствах/сетях. `constructfin` идёт напрямую на российский сервер в обход Cloudflare и служит запасным входом для таких случаев. `miniapp` остаётся основным (защита и кэш Cloudflare для всех, кого не блокируют).
+
+**Оба сертификата — Let's Encrypt через certbot** (`authenticator=nginx` для miniapp, `authenticator=webroot` для constructfin — challenge на порту 80 идёт даже после появления редиректа на https). Продление — общий `certbot.timer`, `deploy-hook`/`renew_hook` = `systemctl reload nginx`. Проверить сроки: `certbot certificates`.
+
+Кука `construct_jwt` привязана к хосту — вход на одном адресе не переносится на другой, логиниться заново.
 
 ## Деплой
 
@@ -53,6 +69,7 @@ ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'docker exec construct-v6-postgres
 - **`pnpm deploy` кладёт содержимое api напрямую в `/app`**, а не `/app/apps/api`. CMD в [deploy/api.Dockerfile](../deploy/api.Dockerfile) — `node dist/main.js`, не `node apps/api/dist/main.js`.
 - **VPS 961 МБ RAM + 2 ГБ swap.** Билд Next.js на VPS впритык — CI на GitHub runners делает его быстрее и без OOM-рисков.
 - **15 ГБ диск.** `docker system prune -af` перед каждым релизом не нужен — CI делает `docker image prune -f` для висящих слоёв.
+- **Правки `deploy/nginx/*.conf` не деплоятся автоматически** (в отличие от compose) — `/etc/nginx/sites-available/` на VPS раскладывается вручную: `scp` нужного файла → `nginx -t` → `systemctl reload nginx`. Правь оба файла (`construct-v6.conf`, `constructfin.conf`) синхронно с VPS, иначе репо и прод расходятся.
 
 ## Секреты репозитория (Settings → Secrets and variables → Actions)
 
