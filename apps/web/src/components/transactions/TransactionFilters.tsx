@@ -89,7 +89,7 @@ export function TransactionFilters({
             ref={searchRef}
             value={active.search ?? ''}
             onChange={(e) => onChange({ ...active, search: e.target.value || undefined })}
-            placeholder="Описание, контрагент…"
+            placeholder="Описание, контрагент, статья или сумма"
           />
         </FilterField>
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, newIdempotencyKey } from '@/lib/api';
 import type { Purchase } from '@/lib/types';
 
@@ -19,15 +19,42 @@ export interface CreatePurchaseInput {
   lines: PurchaseLineInput[];
 }
 
-export function usePurchases(wsId: string | null, supplierId?: string) {
+export interface PurchaseListFilters {
+  /** Поставщик, позиция, комментарий или сумма — ищет сервер (docs/search.md). */
+  search?: string;
+  /** Период по дате закупки, ISO. */
+  from?: string;
+  to?: string;
+}
+
+export function usePurchases(
+  wsId: string | null,
+  supplierId?: string,
+  filters: PurchaseListFilters = {},
+) {
+  const search = filters.search?.trim() || undefined;
   return useQuery({
-    queryKey: ['purchases', wsId, { supplierId }],
+    queryKey: ['purchases', wsId, { supplierId, search, from: filters.from, to: filters.to }],
     queryFn: () => {
       const p = new URLSearchParams();
       if (supplierId) p.set('supplierId', supplierId);
+      if (search) p.set('search', search);
+      if (filters.from) p.set('from', filters.from);
+      if (filters.to) p.set('to', filters.to);
       return api.get<Purchase[]>(`/workspaces/${wsId}/purchases?${p.toString()}`);
     },
     enabled: !!wsId,
+    // Смена поиска не «моргает» пустой таблицей — держим прошлые данные.
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Одна закупка по id — когда её нет в текущем списке (открыли из общего поиска). */
+export function usePurchase(wsId: string | null, id: string | null) {
+  return useQuery({
+    queryKey: ['purchases', wsId, 'one', id],
+    queryFn: () => api.get<Purchase>(`/workspaces/${wsId}/purchases/${id}`),
+    enabled: !!wsId && !!id,
   });
 }
 

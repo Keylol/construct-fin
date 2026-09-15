@@ -29,7 +29,8 @@ import { toast } from '@/components/ui/Toaster';
 import { PurchaseModal } from '@/components/purchases/PurchaseModal';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
-import { usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { usePurchase, usePurchases, useVoidPurchase } from '@/hooks/usePurchases';
 import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useUrlDialog } from '@/hooks/useUrlDialog';
 import type { Purchase } from '@/lib/types';
@@ -59,38 +60,34 @@ function PurchasesView() {
   const router = useRouter();
   const ws = useCurrentWorkspace();
   const wsId = ws.currentId;
-  const purchases = usePurchases(wsId);
+  // Поиск и период — на сервере, общими правилами (поставщик, позиция,
+  // комментарий, сумма). Раньше список фильтровался здесь, среди 200 последних
+  // закупок, и всё, что старше, не находилось. В адресе — как у остальных списков.
+  const [filters, setFilters] = useUrlFilters(FILTERS);
+  const debouncedQ = useDebouncedValue(filters.q);
+  const range = useMemo(() => rangeForAny(filters.period as AnyPeriod), [filters.period]);
+  const purchases = usePurchases(wsId, undefined, {
+    search: debouncedQ,
+    from: range.from,
+    to: range.to,
+  });
   const voidPurchase = useVoidPurchase(wsId ?? '');
   const [confirmVoid, setConfirmVoid] = useState<Purchase | null>(null);
   const [creating, setCreating] = useState(false);
-  // Список приходит целиком — поиск и период считаем на клиенте, но держим их в
-  // адресе, как у остальных списков.
-  const [filters, setFilters] = useUrlFilters(FILTERS);
-  const range = useMemo(() => rangeForAny(filters.period as AnyPeriod), [filters.period]);
-  const rows = useMemo(() => {
-    const q = filters.q.trim().toLowerCase();
-    return (purchases.data ?? []).filter((p) => {
-      const date = p.transaction?.date ?? p.createdAt;
-      if (range.from && date < range.from) return false;
-      if (range.to && date > range.to) return false;
-      if (!q) return true;
-      const hay = `${p.supplier?.name ?? ''} ${p.note ?? ''} ${p.lines
-        .map((l) => l.warehouseItem?.name ?? '')
-        .join(' ')}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [purchases.data, filters.q, range]);
+  const rows = useMemo(() => purchases.data ?? [], [purchases.data]);
   const total = useMemo(
     () => toMoneyString(rows.reduce((acc, p) => add(acc, purchaseTotal(p)), D(0))),
     [rows],
   );
   const searchRef = useRef<HTMLInputElement>(null);
   useListHotkeys({ searchRef, onNew: () => setCreating(true) });
-  // Открытая закупка — в адресе (?purchase=<id>), как и заказ. Сам объект
-  // берём из уже загруженного списка: отдельного запроса на одну закупку
-  // во фронте нет, а список приходит целиком.
+  // Открытая закупка — в адресе (?purchase=<id>), как и заказ. Объект берём из
+  // списка, а если его там нет (открыли из общего поиска при другом фильтре) —
+  // отдельным запросом по id.
   const purchaseUrl = useUrlDialog('purchase');
-  const detail = (purchases.data ?? []).find((p) => p.id === purchaseUrl.value) ?? null;
+  const inList = rows.find((p) => p.id === purchaseUrl.value) ?? null;
+  const single = usePurchase(wsId, purchaseUrl.value && !inList ? purchaseUrl.value : null);
+  const detail = inList ?? (purchaseUrl.value ? (single.data ?? null) : null);
   // Глобальное «+ Создать» → ?new=1 открывает форму закупки.
   useCreateFromUrl(() => setCreating(true));
 
@@ -188,7 +185,7 @@ function PurchasesView() {
               ref={searchRef}
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Поставщик, позиция или комментарий"
+              placeholder="Поставщик, позиция, комментарий или сумма"
             />
           </FilterField>
         </div>
@@ -215,16 +212,33 @@ function PurchasesView() {
           error={purchases.error}
           onRetry={() => void purchases.refetch()}
           empty={
-            <EmptyState
-              icon={ShoppingCart}
-              title="Закупок пока нет"
-              hint="Проведите первую закупку — товар придёт на склад, деньги спишутся со счёта."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Закупка
-                </Button>
-              }
-            />
+            filters.q.trim() ? (
+              <EmptyState
+                icon={ShoppingCart}
+                title={`Ничего не найдено по запросу «${filters.q.trim()}»`}
+                hint={
+                  filters.period === 'all'
+                    ? 'Проверьте поставщика, позицию или сумму.'
+                    : 'Проверьте поставщика, позицию или сумму — или выберите период «Всё время».'
+                }
+                action={
+                  <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
+                    Сбросить поиск
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={ShoppingCart}
+                title="Закупок пока нет"
+                hint="Проведите первую закупку — товар придёт на склад, деньги спишутся со счёта."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> Закупка
+                  </Button>
+                }
+              />
+            )
           }
           mobileCards={(p) => (
             <div className="space-y-1" onClick={() => purchaseUrl.open(p.id)}>
@@ -254,7 +268,7 @@ function PurchasesView() {
         />
       </div>
 
-      {/* Состав закупки — данные уже в строке списка, запрос не нужен. */}
+      {/* Состав закупки — из строки списка или из запроса по id. */}
       <Modal open={detail !== null} onOpenChange={(o) => !o && purchaseUrl.close()}>
         <ModalContent size="lg" hideClose>
           <ModalHeader className="flex-row items-center justify-between gap-2 space-y-0">

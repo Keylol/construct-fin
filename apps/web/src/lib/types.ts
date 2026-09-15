@@ -350,6 +350,8 @@ export interface AttachmentSummary {
 export interface TransactionListPage {
   items: Transaction[];
   nextCursor: string | null;
+  /** При поиске с периодом — сколько найдено за другие даты (docs/search.md). */
+  outsideCount?: number | null;
 }
 
 export interface TransactionSummary {

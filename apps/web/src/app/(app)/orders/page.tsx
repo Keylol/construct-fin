@@ -231,7 +231,7 @@ function OrdersView() {
             ref={searchRef}
             value={search}
             onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-            placeholder="Номер, название или телефон"
+            placeholder="Телефон, номер, клиент, позиция или сумма"
             className="w-[240px]"
           />
         </FilterField>
@@ -286,6 +286,17 @@ function OrdersView() {
         <div className="space-y-4">
           {orders.isLoading ? (
             <p className="p-6 text-sm text-muted-foreground">Загрузка…</p>
+          ) : orderRows.length === 0 && search.trim() ? (
+            <EmptyState
+              icon={ClipboardList}
+              title={`Ничего не найдено по запросу «${search.trim()}»`}
+              hint="Заказ ищется по номеру, названию, клиенту, телефону, позициям и суммам. Проверьте и фильтры статуса и клиента."
+              action={
+                <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
+                  Сбросить поиск
+                </Button>
+              }
+            />
           ) : orderRows.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
@@ -361,16 +372,29 @@ function OrdersView() {
           error={orders.error}
           onRetry={() => orders.refetch()}
           empty={
-            <EmptyState
-              icon={ClipboardList}
-              title="Пока нет заказов"
-              hint="Создайте первый заказ: привяжите клиента, добавьте позиции и принимайте оплату."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Новый заказ
-                </Button>
-              }
-            />
+            search.trim() ? (
+              <EmptyState
+                icon={ClipboardList}
+                title={`Ничего не найдено по запросу «${search.trim()}»`}
+                hint="Заказ ищется по номеру, названию, клиенту, телефону, позициям и суммам. Проверьте и фильтры статуса и клиента."
+                action={
+                  <Button variant="secondary" onClick={() => setFilters({ ...filters, q: '' })}>
+                    Сбросить поиск
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={ClipboardList}
+                title="Пока нет заказов"
+                hint="Создайте первый заказ: привяжите клиента, добавьте позиции и принимайте оплату."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> Новый заказ
+                  </Button>
+                }
+              />
+            )
           }
           footer={{
             number: 'Итого по видимым',

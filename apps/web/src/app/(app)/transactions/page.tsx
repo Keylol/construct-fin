@@ -75,7 +75,7 @@ function TransactionsView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Фильтры живут в адресе (drill-down из отчётов, F5, ссылка коллеге).
+  // Фильтры и поиск живут в адресе (drill-down из отчётов, общий поиск, F5, ссылка коллеге).
   const [filters, setFiltersInUrl] = useUrlFilters(txFiltersCodec);
 
   const setFilters = useCallback(
@@ -92,10 +92,11 @@ function TransactionsView() {
   /**
    * Сохранённый период применяем после маунта: localStorage на сервере не
    * существует, а читать его в инициализаторе — рассинхрон гидратации.
-   * Drill-down с явными from/to главнее: там период задал отчёт.
+   * Drill-down с явными from/to и «Всё время» из общего поиска главнее: там
+   * период задал тот, кто прислал ссылку.
    */
   useEffect(() => {
-    if (searchParams.get('from') || searchParams.get('to')) return;
+    if (searchParams.get('from') || searchParams.get('to') || searchParams.get('period')) return;
     const saved = readSavedPeriod();
     if (!saved || saved === filters.period) return;
     setFiltersInUrl({ ...filters, period: saved, range: rangeForAny(saved) });
@@ -127,6 +128,15 @@ function TransactionsView() {
     () => txs.data?.pages.flatMap((p) => p.items) ?? [],
     [txs.data],
   );
+
+  // «Ещё за другие даты»: поиск ищет в выбранном периоде (решение владельца
+  // 13.09), а сервер на первой странице считает, сколько найдено вне его.
+  const outsideCount = txs.data?.pages[0]?.outsideCount ?? null;
+  const showAllDates = useCallback(() => {
+    // Не через setFilters: «показать за все даты» — шаг поиска, а не выбор
+    // периода, который стоит запомнить на следующий заход.
+    setFiltersInUrl({ ...filters, period: 'all', range: rangeForAny('all') });
+  }, [filters, setFiltersInUrl]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   // ?new=1 (из глобального «+ Создать») открывает форму создания сразу на маунте.
@@ -290,17 +300,43 @@ function TransactionsView() {
           error={txs.error}
           onRetry={() => txs.refetch()}
           empty={
-            <EmptyState
-              icon={ReceiptText}
-              title="За этот период нет операций"
-              hint="Добавьте первую операцию через кнопку «Добавить» выше."
-              action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" />
-                  Добавить операцию
-                </Button>
-              }
-            />
+            filters.search ? (
+              <EmptyState
+                icon={ReceiptText}
+                title={`Ничего не найдено по запросу «${filters.search}»`}
+                hint={
+                  outsideCount
+                    ? `За другие даты нашлось: ${outsideCount}.`
+                    : 'Проверьте слово или сумму — или сбросьте поиск.'
+                }
+                action={
+                  outsideCount ? (
+                    <Button variant="secondary" onClick={showAllDates}>
+                      Показать за все даты
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setFiltersInUrl({ ...filters, search: undefined })}
+                    >
+                      Сбросить поиск
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={ReceiptText}
+                title="За этот период нет операций"
+                hint="Добавьте первую операцию через кнопку «Добавить» выше."
+                action={
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" />
+                    Добавить операцию
+                  </Button>
+                }
+              />
+            )
           }
           mobileCards={(t) => {
             const cp = t.counterpartyId ? counterpartyById[t.counterpartyId] : undefined;
@@ -330,6 +366,14 @@ function TransactionsView() {
           }}
         />
         <LoadMore hasMore={txs.hasNextPage} loading={txs.isFetchingNextPage} onClick={() => void txs.fetchNextPage()} />
+        {filters.search && outsideCount && txRows.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-center gap-x-2 border-t border-border px-6 py-3 text-sm text-muted-foreground">
+            <span>Ещё за другие даты: {outsideCount}</span>
+            <Button variant="link" size="sm" onClick={showAllDates}>
+              показать
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <TransactionFormDialog
