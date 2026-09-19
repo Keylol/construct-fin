@@ -3,32 +3,47 @@
 ## Production топология
 
 ```
-miniapp.aleksandrantropov.online      ⇘
-                                        VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
-constructfin.aleksandrantropov.ru     ⇗   ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
-                                           └ /         → 127.0.0.1:3000 (web контейнер)
-                                         docker compose stack at /srv/construct-v6:
-                                           ├ postgres:16-alpine (volume pgdata)
-                                           ├ api (ghcr.io/keylol/construct-v6-api:latest)
-                                           └ web (ghcr.io/keylol/construct-v6-web:latest)
+constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
+                                      ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
+                                      └ /         → 127.0.0.1:3000 (web контейнер)
+                                    docker compose stack at /srv/construct-v6:
+                                      ├ postgres:16-alpine (volume pgdata)
+                                      ├ api (ghcr.io/keylol/construct-v6-api:latest)
+                                      └ web (ghcr.io/keylol/construct-v6-web:latest)
 ```
 
-Оба адреса ведут на один и тот же стек контейнеров — разные `server_name` в nginx, разные сертификаты, разные DNS. Один деплой обновляет оба.
+## Адрес прода
 
-## Два адреса
+Единственный адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `195.133.1.13`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
 
-С 15.09.2026 у прода два входа, оба поддерживаются:
+**Почему съехали с `miniapp.aleksandrantropov.online`.** Домен стоял за Cloudflare, а часть провайдеров РФ режет её диапазоны — симптом «с VPN заходит, без VPN нет». 19.09.2026 старый адрес снят целиком: nginx-конфиг удалён, `PUBLIC_ORIGIN` и Telegram Mini App переведены на новый адрес, DNS-запись удалена владельцем.
 
-| Адрес | DNS / защита | Сертификат | Файл nginx |
-|---|---|---|---|
-| `miniapp.aleksandrantropov.online` | Cloudflare (проксирован) | `/etc/letsencrypt/live/miniapp.aleksandrantropov.online/`, до 04.11.2026 | `deploy/nginx/construct-v6.conf` |
-| `constructfin.aleksandrantropov.ru` | reg.ru NS, без прокси — A-запись прямо на `195.133.1.13` | `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/`, до 14.12.2026 | `deploy/nginx/constructfin.conf` |
+### Как снимался старый адрес (для истории и для повторения на другом домене)
 
-**Зачем второй.** Часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет» на некоторых устройствах/сетях. `constructfin` идёт напрямую на российский сервер в обход Cloudflare и служит запасным входом для таких случаев. `miniapp` остаётся основным (защита и кэш Cloudflare для всех, кого не блокируют).
+```bash
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 '
+  cd /srv/construct-v6 &&
+  cp .env.production .env.production.bak-$(date +%F) &&
+  sed -i "s|^PUBLIC_ORIGIN=.*|PUBLIC_ORIGIN=https://constructfin.aleksandrantropov.ru|" .env.production &&
+  docker compose up -d --no-deps web api &&
+  rm -f /etc/nginx/sites-enabled/construct-v6.conf &&
+  nginx -t && systemctl reload nginx'
+```
 
-**Оба сертификата — Let's Encrypt через certbot** (`authenticator=nginx` для miniapp, `authenticator=webroot` для constructfin — challenge на порту 80 идёт даже после появления редиректа на https). Продление — общий `certbot.timer`, `deploy-hook`/`renew_hook` = `systemctl reload nginx`. Проверить сроки: `certbot certificates`.
+Затем — Mini App на новый адрес (бот берёт токен из `.env.production`):
 
-Кука `construct_jwt` привязана к хосту — вход на одном адресе не переносится на другой, логиниться заново.
+```bash
+ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 '
+  cd /srv/construct-v6 &&
+  TOKEN=$(grep -E "^TELEGRAM_BOT_TOKEN=" .env.production | cut -d= -f2-) &&
+  curl -s -X POST "https://api.telegram.org/bot$TOKEN/setChatMenuButton" \
+    -H "Content-Type: application/json" \
+    -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Construct\",\"web_app\":{\"url\":\"https://constructfin.aleksandrantropov.ru\"}}}"'
+```
+
+Руками у владельца остаётся: в BotFather `/setdomain` на новый адрес (Login Widget), удаление DNS-записи `miniapp` и смена URL в мониторинге. Сертификат старого домена можно оставить до истечения или снять `certbot delete --cert-name miniapp.aleksandrantropov.online`.
+
+Кука `construct_jwt` привязана к хосту: после переезда нужно войти заново.
 
 ## Деплой
 

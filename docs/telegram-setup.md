@@ -9,7 +9,7 @@
 | Token | **в доках не храним** (секрет) | прод: `/srv/construct-v6/.env.production` на VPS 195.133.1.13; CI: `gh secret list -R Keylol/construct-fin`; локально: `apps/api/.env`. Значения токена, попавшие в git-историю этого файла, считать скомпрометированными — при сомнении Revoke в BotFather |
 | Username | `ConstructFinance_bot` | `@BotFather → Bot Settings` |
 | Login Widget domain | `aleksandrantropov.ru` (вкл. поддомены `*.aleksandrantropov.ru`) | `@BotFather → Bot Settings → Domain` |
-| Mini App URL (Menu button) | `https://miniapp.aleksandrantropov.online` (v6 прод) | Бот устанавливает через `set_chat_menu_button` |
+| Mini App URL (Menu button) | `https://constructfin.aleksandrantropov.ru` (v6 прод) | Бот устанавливает через `set_chat_menu_button` |
 | Allowed Telegram IDs | `661916730, 932026723` | `.env` → `TELEGRAM_ALLOWED_IDS` |
 
 ## Сценарий A: локальная разработка v6
@@ -35,7 +35,7 @@ ngrok http 3000
 
 Когда хочется протестить v6 серьёзно, не ломая прод v5.2.1:
 
-1. Прод v6 живёт на **`miniapp.aleksandrantropov.online`** (VPS `195.133.1.13`; старый VPS 45.82.254.230 мёртв с ~2026-06-05 — хостер обанкротился).
+1. Прод v6 живёт на **`constructfin.aleksandrantropov.ru`** (VPS `195.133.1.13`; старый VPS 45.82.254.230 мёртв с ~2026-06-05 — хостер обанкротился).
 2. Прописываем nginx + Let's Encrypt для нового поддомена.
 3. В `@BotFather` домен уже `aleksandrantropov.ru` (с подстановочными поддоменами), ничего менять не надо.
 4. Открываем `https://v6.aleksandrantropov.ru/login` — Login Widget работает.

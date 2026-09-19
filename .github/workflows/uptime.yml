@@ -45,7 +45,7 @@ jobs:
           code=000
           for i in 1 2 3; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
-              https://miniapp.aleksandrantropov.online/api/v1/health || echo 000)
+              https://constructfin.aleksandrantropov.ru/api/v1/health || echo 000)
             [ "$code" = "200" ] && break
             sleep 20
           done
@@ -58,7 +58,7 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ vars.ALERT_TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=⛔ Construct не отвечает: /api/v1/health → ${{ steps.probe.outputs.code }} после трёх попыток.
-          https://miniapp.aleksandrantropov.online
+          https://constructfin.aleksandrantropov.ru
           Если сайт 522/таймаут и SSH молчит — сначала проверить оплату VPS." >/dev/null
 
       - name: Alert recovered

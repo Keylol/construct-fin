@@ -203,15 +203,11 @@ jobs:
 
       - name: Smoke-test external
         run: |
-          curl -fsS https://miniapp.aleksandrantropov.online/api/v1/health
+          # Единственный прод-адрес с 19.09.2026: miniapp.aleksandrantropov.online
+          # снят (Cloudflare резала часть провайдеров РФ), остался прямой вход.
+          curl -fsS https://constructfin.aleksandrantropov.ru/api/v1/health
           echo
-          curl -fsS -o /dev/null -w "login: %{http_code}\n" https://miniapp.aleksandrantropov.online/login
-          # Прямой адрес в обход Cloudflare (deploy/nginx/constructfin.conf, 15.09.2026) —
-          # тот же деплой, отдельный nginx server_name. Не блокирует деплой: миниапп уже
-          # проверен и откатан выше, здесь только предупреждение, если поднимется отдельно
-          # сама точка входа (nginx/сертификат на VPS, не код релиза).
-          curl -fsS https://constructfin.aleksandrantropov.ru/api/v1/health \
-            || echo "::warning::constructfin.aleksandrantropov.ru не ответил (health) — проверить nginx/сертификат на VPS, деплой это не блокирует"
+          curl -fsS -o /dev/null -w "login: %{http_code}\n" https://constructfin.aleksandrantropov.ru/login
 
       # Провал деплоя (в т.ч. откат) — сообщение владельцу: иначе о нём узнают
       # только из вкладки Actions. Токен — тот же бот, chat_id — переменная репо.
