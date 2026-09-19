@@ -36,10 +36,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="font-sans antialiased bg-background text-foreground">
-        <Script
-          src="https://telegram.org/js/telegram-web-app.js"
-          strategy="beforeInteractive"
-        />
+        {/* SDK Mini App отдаём со своего домена: telegram.org режут часть
+            провайдеров РФ, а beforeInteractive ждёт этот файл — при блокировке
+            гидрация не начиналась и на /login нельзя было ввести пароль.
+            Копия снята с https://telegram.org/js/telegram-web-app.js 19.09.2026. */}
+        <Script src="/vendor/telegram-web-app.js" strategy="beforeInteractive" />
         {children}
       </body>
     </html>
