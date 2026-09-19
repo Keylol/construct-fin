@@ -1,7 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import Script from 'next/script';
 import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 
 // Единая семья IBM Plex — строгий «бухгалтерский» регистр. Кириллица обязательна (RU UI).
@@ -36,11 +35,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="font-sans antialiased bg-background text-foreground">
-        {/* SDK Mini App отдаём со своего домена: telegram.org режут часть
-            провайдеров РФ, а beforeInteractive ждёт этот файл — при блокировке
-            гидрация не начиналась и на /login нельзя было ввести пароль.
-            Копия снята с https://telegram.org/js/telegram-web-app.js 19.09.2026. */}
-        <Script src="/vendor/telegram-web-app.js" strategy="beforeInteractive" />
         {children}
       </body>
     </html>
