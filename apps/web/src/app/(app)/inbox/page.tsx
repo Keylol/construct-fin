@@ -40,13 +40,38 @@ export default function InboxPage() {
   );
 }
 
-// Вкладки экрана; DISMISSED вкладки не имеет — подсказку для него не держим.
-const TAB_HINTS: Partial<Record<BankLineStatus, string>> = {
+const TABS: BankLineStatus[] = ['NEW', 'AUTO_POSTED', 'RESOLVED', 'DISMISSED'];
+
+const TAB_HINTS: Record<BankLineStatus, string> = {
   NEW: 'Операции из банка на обработку. Подтвердите категорию, привяжите поступление к заказу или отметьте «не учитывать».',
   AUTO_POSTED:
     'Операции, проведённые правилами без вашего участия. Проверьте и отмените, если правило ошиблось.',
   RESOLVED:
     'Обработанные строки, а также узнанные при загрузке — те, что совпали с операциями, внесёнными вами раньше. Отмена снимает только связь: сама операция остаётся.',
+  // Без этой вкладки отметка была необратимой: строка пропадала из «Входящих»,
+  // и деньги, отмеченные по ошибке, выпадали из учёта насовсем.
+  DISMISSED:
+    'Строки, отмеченные «не учитывать»: в операции и отчёты они не попали. Если отметили по ошибке — верните строку на разбор.',
+};
+
+// Пустая вкладка без поиска — у каждой своя причина.
+const EMPTY: Record<BankLineStatus, { title: string; hint: string }> = {
+  NEW: {
+    title: 'Всё обработано',
+    hint: 'Новые операции появятся здесь после синхронизации банка.',
+  },
+  AUTO_POSTED: {
+    title: 'Правила пока ничего не проводили',
+    hint: 'Как только правило распознает строку выписки, она появится здесь.',
+  },
+  RESOLVED: {
+    title: 'Обработанных строк пока нет',
+    hint: 'Здесь соберутся строки, которые вы провели или которые совпали с внесёнными ранее операциями.',
+  },
+  DISMISSED: {
+    title: 'Отмеченных строк нет',
+    hint: 'Здесь соберутся строки, отмеченные «не учитывать».',
+  },
 };
 
 function InboxView() {
@@ -55,9 +80,7 @@ function InboxView() {
   // Вкладка и фильтры — в адресе: строк за месяц под три сотни, и разрез
   // должен переживать F5 и уходить ссылкой.
   const [filters, setFilters] = useUrlFilters(FILTERS);
-  const tab = (['NEW', 'AUTO_POSTED', 'RESOLVED'] as string[]).includes(filters.tab)
-    ? (filters.tab as BankLineStatus)
-    : 'NEW';
+  const tab = (TABS as string[]).includes(filters.tab) ? (filters.tab as BankLineStatus) : 'NEW';
   const setTab = (t: BankLineStatus) => setFilters({ ...filters, tab: t });
   const search = filters.q;
   const direction = filters.direction as '' | 'INCOME' | 'EXPENSE';
@@ -126,7 +149,9 @@ function InboxView() {
       <div className="px-6 py-4">
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">{TAB_HINTS[tab]}</p>
 
-        <div className="mb-4">
+        {/* На телефоне четыре вкладки шире экрана — лента со скроллом, как у
+            вкладок отчётов (NavTabs), а не страница шире экрана. */}
+        <div className="mb-4 overflow-x-auto [scrollbar-width:none]">
           <Tabs value={tab} onValueChange={(v) => setTab(v as BankLineStatus)}>
             <TabsList>
               <TabsTrigger value="NEW">
@@ -139,6 +164,7 @@ function InboxView() {
               </TabsTrigger>
               <TabsTrigger value="AUTO_POSTED">Проведено правилами</TabsTrigger>
               <TabsTrigger value="RESOLVED">Обработано</TabsTrigger>
+              <TabsTrigger value="DISMISSED">Не учитываются</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -215,23 +241,7 @@ function InboxView() {
               hint="Попробуйте другую сумму или часть назначения — либо сбросьте фильтры."
             />
           ) : (
-            <EmptyState
-              icon={InboxIcon}
-              title={
-                tab === 'NEW'
-                  ? 'Всё обработано'
-                  : tab === 'AUTO_POSTED'
-                    ? 'Правила пока ничего не проводили'
-                    : 'Обработанных строк пока нет'
-              }
-              hint={
-                tab === 'NEW'
-                  ? 'Новые операции появятся здесь после синхронизации банка.'
-                  : tab === 'AUTO_POSTED'
-                    ? 'Как только правило распознает строку выписки, она появится здесь.'
-                    : 'Здесь соберутся строки, которые вы провели или которые совпали с внесёнными ранее операциями.'
-              }
-            />
+            <EmptyState icon={InboxIcon} title={EMPTY[tab].title} hint={EMPTY[tab].hint} />
           )
         ) : (
           <div className="space-y-2">

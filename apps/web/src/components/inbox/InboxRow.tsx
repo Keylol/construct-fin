@@ -65,9 +65,11 @@ export function InboxRow({
     ).slice(0, 2);
   }, [isIncome, openOrders.data, line.id, line.amount, line.description, line.counterpartyName]);
   const isAutoPosted = line.status === 'AUTO_POSTED';
-  // Разобранные строки (в т.ч. узнанные при загрузке) уже стали операциями —
-  // здесь только просмотр и отмена связи.
-  const isSettled = isAutoPosted || line.status === 'RESOLVED';
+  const isDismissed = line.status === 'DISMISSED';
+  // Разбирается только строка на разборе. Проведённые (в т.ч. узнанные при
+  // загрузке) уже стали операциями, отмеченные «не учитывать» — вне учёта:
+  // у них только просмотр и возврат на разбор.
+  const isPending = line.status === 'NEW';
   const title =
     line.description?.trim() || line.counterpartyName || (isIncome ? 'Поступление' : 'Расход');
 
@@ -93,9 +95,11 @@ export function InboxRow({
     undo.mutate(line.id, {
       onSuccess: () =>
         toast.success(
-          line.adopted
-            ? 'Связь снята: ваша операция осталась, строка вернулась на разбор'
-            : 'Проведение отменено, строка вернулась на разбор',
+          isDismissed
+            ? 'Строка вернулась на разбор'
+            : line.adopted
+              ? 'Связь снята: ваша операция осталась, строка вернулась на разбор'
+              : 'Проведение отменено, строка вернулась на разбор',
         ),
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Не удалось отменить'),
     });
@@ -128,12 +132,17 @@ export function InboxRow({
           </div>
         </div>
 
-        {isSettled ? (
-          // Строка уже стала операцией — здесь только ревизия. Для узнанной
-          // отмена снимает лишь связь, сама операция человека остаётся.
+        {!isPending ? (
+          // Строка уже стала операцией или отмечена «не учитывать» — здесь только
+          // ревизия. Для узнанной отмена снимает лишь связь, сама операция
+          // человека остаётся.
           <Button variant="secondary" size="sm" onClick={doUndo} disabled={undo.isPending}>
             <RotateCcw className="h-3.5 w-3.5" />
-            {line.adopted ? 'Отменить связь' : 'Отменить проведение'}
+            {isDismissed
+              ? 'Вернуть на разбор'
+              : line.adopted
+                ? 'Отменить связь'
+                : 'Отменить проведение'}
           </Button>
         ) : (
           <>
@@ -174,7 +183,7 @@ export function InboxRow({
         )}
       </div>
 
-      {!isSettled && suggestions.length > 0 && (
+      {isPending && suggestions.length > 0 && (
         <div className="mt-2 space-y-1 border-t border-border pt-2">
           {suggestions.map((s) => (
             <div key={s.order.id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -199,7 +208,7 @@ export function InboxRow({
         </div>
       )}
 
-      {isIncome && !isSettled && (
+      {isIncome && isPending && (
         <AttachOrderModal
           open={attachOpen}
           onClose={() => {
@@ -212,7 +221,7 @@ export function InboxRow({
         />
       )}
 
-      {!isSettled && (
+      {isPending && (
         <MarkTransferModal
           open={transferOpen}
           onClose={() => setTransferOpen(false)}
