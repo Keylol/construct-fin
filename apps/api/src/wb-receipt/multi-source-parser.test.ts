@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { detectAndParseReceipt } from './receipt-detect';
+import { parseOnlineTradeLines } from './onlinetrade-parser';
 
 const FIXTURES = resolve(__dirname, '../../../../fixtures/imports');
 const PRIVATE = resolve(FIXTURES, 'private');
@@ -59,6 +60,43 @@ describe('Мультиисточник (синтетика, всегда в CI)'
     const r = await detectAndParseReceipt(loadFix('wb-statement-synth.pdf'));
     expect(r.items).toHaveLength(0);
     expect(r.warnings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('ОНЛАЙН ТРЕЙД: имя-аббревиатура не выпадает из секции названий', () => {
+  // Регресс на находку с реальным заказом Шмакова: «СВО для процессора DeepCool
+  // LE360 PRO» — аббревиатура заглавными как первое слово. Признак начала имени
+  // требовал [заглавная][строчная], такая строка ему не отвечала: при пустом
+  // nameBuf она молча выбрасывалась (см. `continue` по !looksLikeStart), и
+  // следующее реальное имя занимало её место — цена «Блока питания» уезжала на
+  // позицию кулера, а последняя позиция заказа оставалась без имени вовсе
+  // («Позиция 3»). Юнит вместо PDF-фикстуры: parseOnlineTradeLines принимает
+  // lines напрямую, минимальный набор строк воспроизводит баг без файла.
+  it('название, начинающееся с аббревиатуры заглавными, попадает на свою позицию', () => {
+    const r = parseOnlineTradeLines([
+      'Заказ No90000001 от 01.09.2026',
+      'Код Товар Кол-во Цена Сумма ON-бонусов',
+      '19431311 шт.22 399 ₽22 399 ₽434',
+      '20000021 шт.6 049 ₽6 049 ₽100',
+      '30000031 шт.5 599 ₽5 599 ₽50',
+      'Статус заказа',
+      'Передан на сборку',
+      'схема проезда',
+      'Материнская плата ASUS ROG STRIX (B850-A)',
+      'СВО для процессора DeepCool LE360 PRO',
+      '(LE360PRO-BKAMMC)',
+      'Блок питания PHANTEKS Revolt X (P3-1000W)',
+      '34 047 ₽Итого:',
+      'onlinetrade.ru',
+    ]);
+    expect(r.items).toHaveLength(3);
+    expect(r.items[0]?.name).toBe('Материнская плата ASUS ROG STRIX (B850-A)');
+    // Была бы «Блок питания…» (имя следующей позиции) без фикса.
+    expect(r.items[1]?.name).toBe('СВО для процессора DeepCool LE360 PRO (LE360PRO-BKAMMC)');
+    expect(r.items[1]?.unitPrice).toBe('6049');
+    // Была бы «Позиция 3» без фикса — счётчик имён отставал от строк на одну.
+    expect(r.items[2]?.name).toBe('Блок питания PHANTEKS Revolt X (P3-1000W)');
+    expect(r.warnings).toEqual([]);
   });
 });
 
