@@ -95,7 +95,7 @@ export class AuthService {
   async loginViaPassword(password: string): Promise<{ token: string; user: UserProfile }> {
     const ownerHash = this.config.get('AUTH_PASSWORD_HASH', { infer: true });
     const operatorHash = this.config.get('OPERATOR_PASSWORD_HASH', { infer: true });
-    if (!ownerHash && !operatorHash) throw new UnauthorizedException('Password auth not configured');
+    if (!ownerHash && !operatorHash) throw new UnauthorizedException('Вход по паролю не настроен');
     const isOwner = !!ownerHash && (await bcrypt.compare(password, ownerHash));
     const isOperator = !isOwner && !!operatorHash && (await bcrypt.compare(password, operatorHash));
     if (!isOwner && !isOperator) throw new UnauthorizedException('Неверный пароль');
