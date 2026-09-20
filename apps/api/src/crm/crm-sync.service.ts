@@ -1,10 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../integrations/crypto.service';
 import { sanitizeSecrets } from '../common/sanitize-secrets';
-import { AmoClient, AMO_PAGE_LIMIT, type AmoCredentials } from './amo.client';
+import { AmoApiError, AmoClient, AMO_PAGE_LIMIT, type AmoCredentials } from './amo.client';
 import { mapLead, statusIndex } from './amo-map';
 import { resolveTriggerSort } from './crm-connection.service';
 
@@ -65,12 +65,20 @@ export class CrmSyncService {
     if (!conn) throw new NotFoundException('amoCRM не подключён');
     if (conn.status === 'DISABLED') return { fetched: 0, created: 0, updated: 0 };
 
-    const cred: AmoCredentials = {
-      subdomain: conn.subdomain,
-      token: this.crypto.decrypt(conn.credentialEnc),
-    };
     const result: CrmSyncResult = { fetched: 0, created: 0, updated: 0 };
     try {
+      // Расшифровка — внутри try: сменился мастер-ключ сервера → подключение
+      // должно встать в ERROR с понятным текстом, а не молча падать в кроне.
+      let token: string;
+      try {
+        token = this.crypto.decrypt(conn.credentialEnc);
+      } catch {
+        throw new AmoApiError(
+          0,
+          'Не удалось расшифровать токен amoCRM — мастер-ключ сервера изменился; вставьте токен заново в настройках',
+        );
+      }
+      const cred: AmoCredentials = { subdomain: conn.subdomain, token };
       const pipelines = await this.amo.pipelines(cred);
       const statuses = statusIndex(pipelines);
       const users = await this.amo.users(cred);
@@ -130,12 +138,17 @@ export class CrmSyncService {
       });
       return result;
     } catch (e) {
-      const message = sanitizeSecrets(e instanceof Error ? e.message : String(e));
+      // Наружу — только очищенный текст: ни сырого исключения, ни следов
+      // токена (sanitizeSecrets), ни технических деталей транспорта.
+      const message =
+        e instanceof AmoApiError
+          ? e.message
+          : `Синхронизация amoCRM не удалась: ${sanitizeSecrets(e instanceof Error ? e.message : String(e))}`;
       await this.prisma.crmConnection.update({
         where: { id: conn.id },
         data: { status: 'ERROR', lastSyncError: message },
       });
-      throw e;
+      throw new BadGatewayException(message);
     }
   }
 }
