@@ -46,12 +46,14 @@ describe('matchDealsToOrders', () => {
     expect(pairs[0]).toMatchObject({ reason: 'phone', confident: false });
   });
 
-  it('телефона нет ни у кого: сумма и имя (с «ё» и двойными пробелами) — пара без галочки', () => {
+  it('телефона нет ни у кого: сумма и имя (с «ё» и двойными пробелами) — пара с галочкой', () => {
+    // Владелец 20.09.2026 привязал все такие пары вручную и подтвердил: это те же
+    // продажи, просто в сделке не заполнен телефон. Поэтому отмечаются сразу.
     const pairs = matchDealsToOrders(
       [deal({ id: 'd1', phone: null, contactName: 'Алёна  Петрова', name: 'Алёна Петрова (С)' })],
       [order({ id: 'o1', phone: null, clientName: 'Алена Петрова' })],
     );
-    expect(pairs[0]).toMatchObject({ reason: 'name_and_sum', confident: false });
+    expect(pairs[0]).toMatchObject({ reason: 'name_and_sum', confident: true });
   });
 
   it('только сумма и близкая дата — самое слабое правило; далёкая дата пары не даёт', () => {
@@ -94,6 +96,101 @@ describe('matchDealsToOrders', () => {
     expect(pairs).toHaveLength(1);
     // Побеждает сделка с датой ближе к дате заказа.
     expect(pairs[0]!.dealId).toBe('d1');
+  });
+
+  it('ФИО с пометкой «(Р)» вплотную и копейки в заказе — та же продажа', () => {
+    // Случай с прода 20.09.2026: «Копылов Владимир Алексеевич(Р)» и заказ с копейками.
+    const pairs = matchDealsToOrders(
+      [
+        deal({
+          id: 'd1',
+          phone: null,
+          contactName: 'Virus',
+          name: 'Копылов Владимир Алексеевич(Р)',
+          price: '273666.00',
+        }),
+      ],
+      [
+        order({
+          id: 'o1',
+          phone: null,
+          clientName: 'Копылов Владимир Алексеевич',
+          totalAmount: '273666.84',
+        }),
+      ],
+    );
+    expect(pairs[0]).toMatchObject({ reason: 'name_and_sum', confident: true });
+  });
+
+  it('имя в середине названия сделки («В чате Константин/ Семёнова…»)', () => {
+    const pairs = matchDealsToOrders(
+      [
+        deal({
+          id: 'd1',
+          phone: null,
+          contactName: 'Mr.Legendus',
+          name: 'В чате Константин/ Семёнова Татьяна Викторовна(Р)',
+          price: '123884.00',
+        }),
+      ],
+      [
+        order({
+          id: 'o1',
+          phone: null,
+          clientName: 'Семёнова Татьяна Викторовна',
+          totalAmount: '123884.40',
+        }),
+      ],
+    );
+    expect(pairs[0]).toMatchObject({ reason: 'name_and_sum', confident: true });
+  });
+
+  it('имя сошлось, а сумма разошлась на тысячи — пара показывается без галочки', () => {
+    const pairs = matchDealsToOrders(
+      [
+        deal({
+          id: 'd1',
+          phone: null,
+          contactName: null,
+          name: 'Рябов Владимир Андреевич(Р)',
+          price: '357128.00',
+        }),
+      ],
+      [
+        order({
+          id: 'o1',
+          phone: null,
+          clientName: 'Рябов Владимир Андреевич',
+          totalAmount: '350128.65',
+        }),
+      ],
+    );
+    expect(pairs[0]).toMatchObject({ reason: 'name', confident: false });
+  });
+
+  it('одного имени без фамилии мало: «Александр» не склеивает чужие продажи', () => {
+    const pairs = matchDealsToOrders(
+      [
+        deal({
+          id: 'd1',
+          phone: null,
+          contactName: 'Александр',
+          name: 'Александр',
+          price: '99000.00',
+        }),
+      ],
+      [
+        order({
+          id: 'o1',
+          phone: null,
+          clientName: 'Александр',
+          totalAmount: '99000.00',
+          createdAt: new Date(2026, 8, 12),
+        }),
+      ],
+    );
+    // Совпали только сумма и близкая дата — самое слабое правило, без галочки.
+    expect(pairs[0]).toMatchObject({ reason: 'sum_and_date', confident: false });
   });
 
   it('ничего общего — пар нет', () => {

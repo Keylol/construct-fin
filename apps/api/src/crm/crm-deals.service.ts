@@ -200,7 +200,9 @@ export class CrmDealsService {
       where: { workspaceId, role: 'CLIENT', deletedAt: null, isArchived: false },
       select: { id: true, name: true, contact: true },
     });
-    const clientName = deal.contactName ?? deal.name;
+    // «Унжаков Антон Дмитриевич(?)» в справочнике — след менеджерской пометки из
+    // CRM. Скобки и хвост после «/» в имя клиента не переносим.
+    const clientName = cleanPersonName(deal.contactName) || cleanPersonName(deal.name) || deal.name;
     const found = findClient(clients, clientName, deal.phone);
     const client =
       found ??
@@ -606,6 +608,22 @@ export class CrmDealsService {
       suggestedOrders: suggestedOrders.map(serializeOrder),
     };
   }
+}
+
+/** Имя человека без скобочных пометок CRM и хвоста после «/». */
+function cleanPersonName(raw: string | null | undefined): string {
+  return (
+    (raw ?? '')
+      .split('/')
+      .map((part) =>
+        part
+          .replace(/\([^)]*\)/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+      .filter((part) => part.length >= 2)
+      .sort((a, b) => b.split(' ').length - a.split(' ').length)[0] ?? ''
+  );
 }
 
 function serializeOrder(o: OrderRow) {

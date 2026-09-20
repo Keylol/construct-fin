@@ -12,17 +12,30 @@ import { normalizeClientName } from '@construct/shared';
  */
 
 /** Почему пара предложена. Порядок = приоритет при разборе конфликтов. */
-export type MatchReason = 'phone_and_sum' | 'name_and_sum' | 'phone' | 'sum_and_date';
+export type MatchReason = 'phone_and_sum' | 'name_and_sum' | 'phone' | 'name' | 'sum_and_date';
 
 const PRIORITY: Record<MatchReason, number> = {
   phone_and_sum: 0,
   name_and_sum: 1,
   phone: 2,
-  sum_and_date: 3,
+  name: 3,
+  sum_and_date: 4,
 };
 
-/** Отмечены по умолчанию только совпадения телефона и суммы (решение владельца 20.09.2026). */
-export const CONFIDENT_REASONS: MatchReason[] = ['phone_and_sum'];
+/**
+ * Допуск при сравнении сумм — рубль. amo хранит бюджет целыми рублями, а заказ
+ * в учёте с копейками: «304 658» в CRM и «304 658,17» в заказе — одна и та же
+ * продажа. Без допуска 20.09.2026 девять сделок не нашли своих заказов, и
+ * «Завести заказ» по ним создало бы дубли.
+ */
+const MONEY_EPS = 1;
+
+/**
+ * Отмечены по умолчанию совпадения телефона и суммы, а также ФИО и суммы:
+ * второе на срезе прода давало ровно те же продажи (Новаков, Каменская,
+ * Бугаев…), просто в сделке не заполнен телефон.
+ */
+export const CONFIDENT_REASONS: MatchReason[] = ['phone_and_sum', 'name_and_sum'];
 
 /** Окно дат для слабого правила «та же сумма примерно в те же дни». */
 export const SUM_DATE_WINDOW_DAYS = 14;
@@ -55,24 +68,47 @@ export interface MatchPair {
 }
 
 const money = (v: string) => Number(v);
-const sameMoney = (a: string, b: string) => money(a) === money(b);
+const sameMoney = (a: string, b: string) => Math.abs(money(a) - money(b)) <= MONEY_EPS;
 const daysBetween = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) / 86_400_000;
 
-/** Имя контакта сделки против имени клиента заказа, с нормализацией «ё»/пробелов. */
+/**
+ * Куски названия сделки, в которых может прятаться ФИО. Менеджеры пишут
+ * «Габалова Елена Геннадиевна (Р)», «Копылов Владимир Алексеевич(Р)» (скобка
+ * вплотную) и «В чате Константин/ Семёнова Татьяна Викторовна(Р)» — имя в
+ * середине. Поэтому режем по «/», снимаем скобочные пометки и лишние знаки.
+ */
+function nameParts(raw: string | null | undefined): string[] {
+  return (raw ?? '')
+    .split('/')
+    .map((part) => normalizeClientName(part.replace(/\([^)]*\)/g, ' ').replace(/[«»"']/g, ' ')))
+    .filter((part) => part.length >= 4);
+}
+
+/**
+ * Имя клиента заказа против имён из сделки. Совпадением считаем не только
+ * равенство, но и вхождение одного в другое целыми словами: в CRM к ФИО
+ * дописывают пометки, в учёте их нет.
+ */
 function sameName(deal: MatchDeal, order: MatchOrder): boolean {
   const orderName = normalizeClientName(order.clientName);
-  if (!orderName) return false;
-  // У сделки имя человека бывает и в контакте, и в названии («Габалова Елена (Р)»).
-  const dealNames = [deal.contactName, deal.name].map(normalizeClientName).filter(Boolean);
-  return dealNames.some((n) => n === orderName || n.startsWith(`${orderName} `));
+  // Одного слова мало: «Александр» совпал бы с любым другим Александром.
+  if (!orderName || orderName.split(' ').length < 2) return false;
+  const candidates = [...nameParts(deal.contactName), ...nameParts(deal.name)];
+  return candidates.some(
+    (n) => n === orderName || n.startsWith(`${orderName} `) || n.includes(` ${orderName}`),
+  );
 }
 
 function reasonFor(deal: MatchDeal, order: MatchOrder): MatchReason | null {
   const phoneMatch = !!deal.phone && !!order.phone && deal.phone === order.phone;
   const sumMatch = sameMoney(deal.price, order.totalAmount);
+  const nameMatch = sameName(deal, order);
   if (phoneMatch && sumMatch) return 'phone_and_sum';
-  if (sumMatch && sameName(deal, order)) return 'name_and_sum';
+  if (sumMatch && nameMatch) return 'name_and_sum';
   if (phoneMatch) return 'phone';
+  // Имя сошлось, а сумма нет: бюджет в CRM не обновили после правки заказа.
+  // Пара показывается без галочки — решает человек.
+  if (nameMatch) return 'name';
   if (sumMatch && daysBetween(deal.remoteCreatedAt, order.createdAt) <= SUM_DATE_WINDOW_DAYS) {
     return 'sum_and_date';
   }
