@@ -98,10 +98,8 @@ export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
  */
 export const HIDDEN_SECTIONS: readonly string[] = [
   '/health',
-  '/counterparties',
   '/suppliers',
   '/reports/budget',
-  '/reports/counterparties',
 ];
 
 /** Адрес ведёт в скрытый раздел: сам раздел, вложенный путь или ссылка с параметрами. */
