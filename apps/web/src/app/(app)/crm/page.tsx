@@ -40,6 +40,7 @@ import { toast } from '@/components/ui/Toaster';
 import { ConnectCrmModal } from '@/components/crm/ConnectCrmModal';
 import { CrmSettingsModal } from '@/components/crm/CrmSettingsModal';
 import { LinkOrderModal } from '@/components/crm/LinkOrderModal';
+import { MatchOrdersModal } from '@/components/crm/MatchOrdersModal';
 
 // Вкладка, поиск и этап — в адресе: ссылку «ждут заказа» можно скинуть оператору.
 const DEFAULTS = { tab: 'waiting', q: '', statusId: '' };
@@ -103,6 +104,7 @@ function CrmView() {
   const [connecting, setConnecting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [linking, setLinking] = useState<CrmDeal | null>(null);
+  const [matching, setMatching] = useState(false);
   const [dismissing, setDismissing] = useState<CrmDeal | null>(null);
   const [unlinking, setUnlinking] = useState<CrmDeal | null>(null);
 
@@ -317,6 +319,9 @@ function CrmView() {
               <RotateCcw className="h-4 w-4" />
               Обновить
             </Button>
+            <Button variant="secondary" onClick={() => setMatching(true)}>
+              Сопоставить с заказами
+            </Button>
             {isOwner && (
               <Button variant="ghost" onClick={() => setSettingsOpen(true)}>
                 Настройки
@@ -459,6 +464,7 @@ function CrmView() {
 
       {modals}
       <LinkOrderModal wsId={wsId} deal={linking} onClose={() => setLinking(null)} />
+      <MatchOrdersModal wsId={wsId} open={matching} onClose={() => setMatching(false)} />
 
       <ConfirmDialog
         open={dismissing !== null}

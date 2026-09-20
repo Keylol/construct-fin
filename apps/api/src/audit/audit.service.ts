@@ -52,6 +52,7 @@ export type AuditAction =
   | 'crm.link'
   | 'crm.unlink'
   | 'crm.create-order'
+  | 'crm.client-enrich'
   | 'crm.dismiss';
 
 export interface AuditEntry {

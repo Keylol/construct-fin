@@ -21,10 +21,12 @@ import { CrmDealsService } from './crm-deals.service';
 import {
   CreateCrmConnectionSchema,
   LinkCrmDealSchema,
+  LinkCrmDealsBulkSchema,
   ListCrmDealsSchema,
   UpdateCrmConnectionSchema,
   type CreateCrmConnectionDto,
   type LinkCrmDealDto,
+  type LinkCrmDealsBulkDto,
   type ListCrmDealsQuery,
   type UpdateCrmConnectionDto,
 } from './crm.dto';
@@ -98,6 +100,18 @@ export class CrmController {
     return this.deals.stages(ws.workspaceId);
   }
 
+  /** Счётчик «ждут заказа» — бейдж в меню, дёргается с каждой страницы. */
+  @Get('deals/count')
+  waitingCount(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.deals.waitingCount(ws.workspaceId);
+  }
+
+  /** Предложения «сделка ↔ существующий заказ» для окна сопоставления. */
+  @Get('deals/match')
+  match(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.deals.matchSuggestions(ws.workspaceId);
+  }
+
   @Get('deals/summary')
   summary(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.deals.summary(ws.workspaceId);
@@ -119,6 +133,16 @@ export class CrmController {
     @Body(new ZodPipe(LinkCrmDealSchema)) body: LinkCrmDealDto,
   ) {
     return this.deals.link(ws.workspaceId, ws.userId, id, body.orderId);
+  }
+
+  /** Привязать отмеченные пары одним действием (окно «Сопоставить с заказами»). */
+  @Post('deals/link-bulk')
+  @HttpCode(200)
+  linkBulk(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Body(new ZodPipe(LinkCrmDealsBulkSchema)) body: LinkCrmDealsBulkDto,
+  ) {
+    return this.deals.linkBulk(ws.workspaceId, ws.userId, body.pairs);
   }
 
   @Post('deals/:id/unlink')

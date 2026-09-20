@@ -12,6 +12,7 @@ import { navGroupsFor, type NavGroup, type NavItem } from './nav-items';
 import { useRole } from '@/hooks/useRole';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { InboxNavBadge } from './InboxNavBadge';
+import { CrmNavBadge } from './CrmNavBadge';
 import { PlanningNavBadge } from './PlanningNavBadge';
 
 /** Ключ состояния свёрнутой группы «Ещё» — редкое не должно мешать ежедневному. */
@@ -324,6 +325,7 @@ function NavLink({
         <span className="truncate">{item.label}</span>
       )}
       {item.href === '/inbox' && <InboxNavBadge collapsed={railCollapsed} />}
+      {item.href === '/crm' && <CrmNavBadge collapsed={railCollapsed} />}
       {item.href === '/planning' && <PlanningNavBadge collapsed={railCollapsed} />}
     </Link>
   );

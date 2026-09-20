@@ -1231,6 +1231,41 @@ export interface CrmStage {
   waiting: boolean;
 }
 
+/** Почему пара «сделка ↔ заказ» предложена. */
+export type CrmMatchReason = 'phone_and_sum' | 'name_and_sum' | 'phone' | 'sum_and_date';
+
+export interface CrmMatchItem {
+  reason: CrmMatchReason;
+  /** Отмечено галочкой по умолчанию (телефон и сумма совпали). */
+  confident: boolean;
+  daysApart: number;
+  deal: {
+    id: string;
+    externalId: number;
+    url: string;
+    name: string;
+    price: string;
+    statusName: string;
+    isClosed: boolean;
+    contactName: string | null;
+    phone: string | null;
+    remoteCreatedAt: string;
+  };
+  order: CrmDealOrderRef & { clientName: string | null };
+}
+
+export interface CrmMatchResult {
+  items: CrmMatchItem[];
+  confidentCount: number;
+}
+
+export interface CrmLinkBulkResult {
+  linked: number;
+  skipped: number;
+  /** Карточек клиентов, которым дозаполнили телефон или источник. */
+  clientsPatched: number;
+}
+
 export interface CrmSyncResult {
   fetched: number;
   created: number;
