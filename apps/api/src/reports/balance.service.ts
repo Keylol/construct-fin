@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReceivablesService } from '../trade-reports/receivables.service';
 import { TaxService } from './tax.service';
 import { businessYear } from './period';
+import { NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
 
 /**
  * Управленческий баланс «на сейчас» — третий отчёт классической тройки
@@ -105,7 +106,7 @@ export class BalanceService {
     return total;
   }
 
-  /** Остатки активных счетов: openingBalance + Σ INCOME − Σ EXPENSE (как в сверке). */
+  /** Остатки активных счетов: openingBalance + Σ INCOME − Σ EXPENSE по денежным операциям (как в сверке). */
   private async cashByAccounts(workspaceId: string) {
     const accounts = await this.prisma.account.findMany({
       where: { workspaceId, deletedAt: null, isArchived: false },
@@ -119,6 +120,12 @@ export class BalanceService {
         workspaceId,
         deletedAt: null,
         accountId: { in: accounts.map((a) => a.id) },
+        // R2: касса — только реальные движения денег. Себестоимость услуг (COGS)
+        // и списания склада (WRITE_OFF) имеют accountId и type='EXPENSE', но
+        // деньги по ним не уходили — они уже ушли при закупке. Без этого фильтра
+        // баланс занижал «Денежные средства» на всю историю COGS и расходился
+        // с шапкой, сверкой и ОДДС (у которых фильтр есть).
+        kind: { notIn: NON_CASH_FOR_ACCOUNT },
       },
       _sum: { amount: true },
     });

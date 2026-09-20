@@ -953,12 +953,16 @@ enum ImportSource {
 /// для rule-движка). При ручном вводе и в превью импорта — подсказка, которую
 /// подтверждает человек; строку банковской выписки правило проводит СРАЗУ
 /// (BankStatementLine.status=AUTO_POSTED + appliedRuleId), откат — через Inbox.
+/// Режим mode=SUGGEST отменяет авто-проводку: правило только подставляет статью,
+/// строка остаётся на разборе (status=NEW + suggestedCategoryId). Нужен там, где
+/// один контрагент платится за разное — ДНС идёт и в сборки, и в офис.
 model Rule {
   id          String    @id @default(cuid())
   workspaceId String
   name        String
   priority    Int       @default(0)
   isActive    Boolean   @default(true)
+  mode        String    @default("POST") /// POST — проводит сразу | SUGGEST — только подсказывает
   appliesTo   String    @default("BOTH") /// IMPORT | MANUAL | BOTH
   conditions  Json /// RuleCondition[]
   actions     Json /// RuleAction[]

@@ -305,6 +305,9 @@ export class SyncService {
     let suggestedCategoryId: string | null = null;
     let suggestedCounterpartyId: string | null = null;
     let appliedRuleId: string | null = null;
+    // Правило в режиме подсказки статью подставляет, но проводку не создаёт:
+    // строка уходит на разбор с готовой статьёй.
+    let suggestOnly = false;
     try {
       const suggestion = applyRules(rules, {
         description: line.description,
@@ -320,6 +323,7 @@ export class SyncService {
       suggestedCategoryId = suggestion.categoryId ?? null;
       suggestedCounterpartyId = suggestion.counterpartyId ?? null;
       appliedRuleId = suggestion.categoryRuleId ?? null;
+      suggestOnly = suggestion.categorySuggestOnly === true;
       // Категория расхода не годится приходу и наоборот. Ручной ввод это
       // запрещает, а правило «Закупка ДНС» по слову «dns shop» ловило и возврат
       // денег от магазина: приход уезжал в «Закупку товара» и раздувал доход.
@@ -347,7 +351,7 @@ export class SyncService {
 
     // Строка + (при подсказке категории) авто-проводка — атомарно.
     return this.prisma.$transaction(async (tx) => {
-      if (suggestedCategoryId) {
+      if (suggestedCategoryId && !suggestOnly) {
         const transaction = await tx.transaction.create({
           data: {
             workspaceId: conn.workspaceId,
@@ -380,6 +384,8 @@ export class SyncService {
         });
         return 'AUTO_POSTED';
       }
+      // Сюда попадают и строки без правила, и строки правила в режиме подсказки:
+      // во втором случае статья уже подставлена, человеку остаётся подтвердить.
       await tx.bankStatementLine.create({
         data: this.lineData(conn, line, { status: 'NEW', suggestedCategoryId }),
       });
@@ -611,12 +617,20 @@ export class SyncService {
         deletedAt: null,
         appliesTo: { in: ['IMPORT', 'BOTH'] },
       },
-      select: { id: true, name: true, priority: true, conditions: true, actions: true },
+      select: {
+        id: true,
+        name: true,
+        priority: true,
+        mode: true,
+        conditions: true,
+        actions: true,
+      },
     });
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
       priority: r.priority,
+      mode: r.mode === 'SUGGEST' ? ('SUGGEST' as const) : ('POST' as const),
       conditions: r.conditions as unknown as RuleCondition[],
       actions: r.actions as unknown as RuleAction[],
     }));

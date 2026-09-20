@@ -10,12 +10,15 @@ import type {
   RuleCondition,
   RulePreview,
   RuleSuggestion,
+  RuleMode,
 } from '@/lib/types';
 
 export interface CreateRuleInput {
   name: string;
   priority?: number;
   isActive?: boolean;
+  /** POST — проводить строку сразу, SUGGEST — только подставить статью. */
+  mode?: RuleMode;
   appliesTo?: RuleAppliesTo;
   conditions: RuleCondition[];
   actions: RuleAction[];

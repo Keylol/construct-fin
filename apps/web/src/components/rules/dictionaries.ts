@@ -2,6 +2,7 @@ import type {
   RuleAction,
   RuleActionType,
   RuleAppliesTo,
+  RuleMode,
   RuleCondition,
   RuleConditionType,
 } from '@/lib/types';
@@ -21,6 +22,11 @@ export const ACTION_LABELS: Record<RuleActionType, string> = {
   SET_CATEGORY: 'Поставить категорию',
   SET_COUNTERPARTY: 'Поставить контрагента',
   SET_ACCOUNT: 'Поставить счёт',
+};
+
+export const MODE_LABELS: Record<RuleMode, string> = {
+  POST: 'Проводит сразу',
+  SUGGEST: 'Подсказывает',
 };
 
 export const APPLIES_TO_LABELS: Record<RuleAppliesTo, string> = {

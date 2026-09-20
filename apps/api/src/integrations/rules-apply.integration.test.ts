@@ -80,6 +80,20 @@ async function makeInnRule(categoryId: string, inn = '7701234567') {
   });
 }
 
+/** То же правило, но в режиме подсказки: статью подставляет, строку не проводит. */
+async function makeSuggestRule(categoryId: string, inn = '7701234567') {
+  return h.prisma.rule.create({
+    data: {
+      workspaceId: seed.workspaceId,
+      name: `ИНН ${inn} → подсказка`,
+      appliesTo: 'BOTH',
+      mode: 'SUGGEST',
+      conditions: [{ type: 'COUNTERPARTY_INN_IN', values: [inn] }],
+      actions: [{ type: 'SET_CATEGORY', categoryId }],
+    },
+  });
+}
+
 describe('правила по ИНН на синке', () => {
   it('ИНН из выписки доезжает до движка: строка проводится автоматически', async () => {
     const cat = await makeCategory();
@@ -297,7 +311,7 @@ describe('InboxService.applyRulesToPending', () => {
     await sync.syncConnection(conn.id);
 
     const res = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
-    expect(res).toEqual({ scanned: 0, posted: 0, skipped: 0, remaining: 0 });
+    expect(res).toEqual({ scanned: 0, posted: 0, suggested: 0, skipped: 0, remaining: 0 });
   });
 
   it('чужие строки не проводит', async () => {
@@ -379,5 +393,93 @@ describe('ревизия авто-проведённого', () => {
       where: { externalId: 'fake-1' },
     });
     expect(line.status).toBe('AUTO_POSTED'); // осталась проведённой
+  });
+});
+
+describe('правило в режиме подсказки', () => {
+  it('синк не проводит строку, но статью подставляет', async () => {
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+    const conn = await makeConnection();
+
+    const res = await sync.syncConnection(conn.id);
+
+    // Ни одной авто-проводки: решение за человеком.
+    expect(res.autoPosted).toBe(0);
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { externalId: 'fake-1' },
+    });
+    expect(line.status).toBe('NEW');
+    expect(line.transactionId).toBeNull();
+    expect(line.appliedRuleId).toBeNull();
+    // Но статья уже выбрана — провести можно одним нажатием.
+    expect(line.suggestedCategoryId).toBe(cat.id);
+    const txCount = await h.prisma.transaction.count({
+      where: { workspaceId: seed.workspaceId },
+    });
+    expect(txCount).toBe(0);
+  });
+
+  it('«Применить правила» тоже не проводит, а подсказывает', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id); // правил ещё нет → 4 строки в NEW
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+
+    const res = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    expect(res.posted).toBe(0);
+    expect(res.suggested).toBe(1);
+    expect(res.remaining).toBe(4); // все четыре остались на разборе
+
+    const line = await h.prisma.bankStatementLine.findFirstOrThrow({
+      where: { externalId: 'fake-1' },
+    });
+    expect(line.status).toBe('NEW');
+    expect(line.suggestedCategoryId).toBe(cat.id);
+  });
+
+  it('строка вне разбора подсказку не получает', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+
+    // Строку уже отметили «не учитывать» — правило её не касается.
+    await h.prisma.bankStatementLine.updateMany({
+      where: { externalId: 'fake-1' },
+      data: { status: 'DISMISSED' },
+    });
+
+    const res = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    expect(res.suggested).toBe(0);
+    expect(res.scanned).toBe(3); // DISMISSED в разбор не попадает
+    expect(res.skipped).toBe(3);
+  });
+
+  it('повторный прогон не задваивает счётчик подсказанных', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+
+    const first = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+    const second = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    // Второй раз статья уже стоит: строка та же, счётчик тот же, проводок нет.
+    expect(first.suggested).toBe(1);
+    expect(second.suggested).toBe(1);
+    expect(await h.prisma.transaction.count({ where: { workspaceId: seed.workspaceId } })).toBe(0);
+  });
+
+  it('правило без режима работает как раньше — проводит', async () => {
+    const cat = await makeCategory();
+    await makeInnRule(cat.id);
+    const conn = await makeConnection();
+
+    const res = await sync.syncConnection(conn.id);
+
+    expect(res.autoPosted).toBe(1);
   });
 });

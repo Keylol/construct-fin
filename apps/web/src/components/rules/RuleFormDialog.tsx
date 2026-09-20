@@ -10,6 +10,7 @@ import type {
   Rule,
   RuleAction,
   RuleAppliesTo,
+  RuleMode,
   RuleCondition,
   RulePreview,
 } from '@/lib/types';
@@ -56,6 +57,7 @@ export function RuleFormDialog({
 }) {
   const [name, setName] = useState('');
   const [appliesTo, setAppliesTo] = useState<RuleAppliesTo>('BOTH');
+  const [mode, setMode] = useState<RuleMode>('POST');
   const [priority, setPriority] = useState(0);
   const [isActive, setIsActive] = useState(true);
   const [conditions, setConditions] = useState<RuleCondition[]>([
@@ -101,6 +103,7 @@ export function RuleFormDialog({
     if (editing) {
       setName(editing.name);
       setAppliesTo(editing.appliesTo);
+      setMode(editing.mode ?? 'POST');
       setPriority(editing.priority);
       setIsActive(editing.isActive);
       // Копии, чтобы правки формы не мутировали кэш query.
@@ -109,6 +112,7 @@ export function RuleFormDialog({
     } else {
       setName('');
       setAppliesTo('BOTH');
+      setMode('POST');
       setPriority(0);
       setIsActive(true);
       setConditions([{ type: 'DESCRIPTION_CONTAINS', value: '' }]);
@@ -226,6 +230,7 @@ export function RuleFormDialog({
       await onSubmit({
         name: name.trim(),
         appliesTo,
+        mode,
         priority,
         isActive,
         conditions: normalizeConditions(),
@@ -284,6 +289,25 @@ export function RuleFormDialog({
                 />
               </FormField>
             </div>
+
+            <FormField
+              label="Что делать со строкой выписки"
+              htmlFor="rule-mode"
+              hint={
+                mode === 'POST'
+                  ? 'Строка проведётся сама и уедет из «Входящих».'
+                  : 'Строка останется на разборе с подставленной статьёй — вы проверите и проведёте.'
+              }
+            >
+              <Select
+                id="rule-mode"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as RuleMode)}
+              >
+                <option value="POST">Проводить сразу</option>
+                <option value="SUGGEST">Только подсказывать статью</option>
+              </Select>
+            </FormField>
 
             {/* ─── Условия (И) ─── */}
             <div className="space-y-2">

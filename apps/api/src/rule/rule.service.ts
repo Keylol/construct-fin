@@ -61,6 +61,7 @@ export class RuleService {
         name: input.name,
         priority: input.priority,
         isActive: input.isActive,
+        mode: input.mode,
         appliesTo: input.appliesTo,
         conditions: input.conditions as unknown as Prisma.InputJsonValue,
         actions: input.actions as unknown as Prisma.InputJsonValue,
@@ -86,6 +87,7 @@ export class RuleService {
         name: input.name ?? undefined,
         priority: input.priority ?? undefined,
         isActive: input.isActive ?? undefined,
+        mode: input.mode ?? undefined,
         appliesTo: input.appliesTo ?? undefined,
         conditions:
           input.conditions !== undefined
@@ -146,12 +148,20 @@ export class RuleService {
     const scope = source === 'IMPORT' ? ['IMPORT', 'BOTH'] : ['MANUAL', 'BOTH'];
     const rows = await this.prisma.rule.findMany({
       where: { workspaceId, deletedAt: null, isActive: true, appliesTo: { in: scope } },
-      select: { id: true, name: true, priority: true, conditions: true, actions: true },
+      select: {
+        id: true,
+        name: true,
+        priority: true,
+        mode: true,
+        conditions: true,
+        actions: true,
+      },
     });
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
       priority: r.priority,
+      mode: r.mode === 'SUGGEST' ? ('SUGGEST' as const) : ('POST' as const),
       conditions: r.conditions as unknown as RuleCondition[],
       actions: r.actions as unknown as RuleAction[],
     }));
