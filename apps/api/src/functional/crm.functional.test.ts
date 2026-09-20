@@ -312,9 +312,9 @@ describe('amoCRM: сопоставление с заказами', () => {
       clientId: client.id,
     });
     const res = await H.inject({ method: 'GET', url: `${base()}/deals/match`, token });
-    const items =
-      res.json<{ reason: string; confident: boolean; order: { id: string } }[]>().items ??
-      res.json<{ items: { reason: string; confident: boolean; order: { id: string } }[] }>().items;
+    const { items } = res.json<{
+      items: { reason: string; confident: boolean; order: { id: string } }[];
+    }>();
     const pair = items.find((i) => i.order.id === order.id);
     expect(pair).toMatchObject({ reason: 'name_and_sum', confident: true });
   });
