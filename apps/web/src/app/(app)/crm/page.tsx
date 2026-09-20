@@ -143,6 +143,30 @@ function CrmView() {
     });
   };
 
+  // Окна подключения и настроек рендерятся в ОБЕИХ ветках экрана одним и тем же
+  // элементом: после «Подключить» ветка меняется с «не подключено» на список, и
+  // если окно живёт только в первой, оно размонтируется раньше колбэка мутации
+  // (TanStack его тогда не вызывает) — настройки не открывались. Так было на
+  // проде 20.09.2026.
+  const modals = (
+    <>
+      <ConnectCrmModal
+        wsId={wsId}
+        open={connecting}
+        onClose={() => setConnecting(false)}
+        onConnected={() => setSettingsOpen(true)}
+      />
+      {conn && (
+        <CrmSettingsModal
+          wsId={wsId}
+          connection={conn}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+    </>
+  );
+
   // ───────────────────── не подключено ─────────────────────
   if (!connection.isLoading && !conn) {
     return (
@@ -167,20 +191,7 @@ function CrmView() {
             }
           />
         </div>
-        <ConnectCrmModal
-          wsId={wsId}
-          open={connecting}
-          onClose={() => setConnecting(false)}
-          onConnected={() => setSettingsOpen(true)}
-        />
-        {conn && (
-          <CrmSettingsModal
-            wsId={wsId}
-            connection={conn}
-            open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-          />
-        )}
+        {modals}
       </>
     );
   }
@@ -444,14 +455,7 @@ function CrmView() {
         />
       </div>
 
-      {conn && (
-        <CrmSettingsModal
-          wsId={wsId}
-          connection={conn}
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      {modals}
       <LinkOrderModal wsId={wsId} deal={linking} onClose={() => setLinking(null)} />
 
       <ConfirmDialog
