@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { matchDealsToOrders, type MatchDeal, type MatchOrder } from './crm-match';
+import {
+  matchDealsToOrders,
+  matchLinesToDeals,
+  type MatchDeal,
+  type MatchOrder,
+} from './crm-match';
 
 /**
  * Правила подбора «сделка ↔ заказ» на образцах с прода: телефон и сумма —
@@ -207,5 +212,49 @@ describe('matchDealsToOrders', () => {
       [order({ id: 'o1' })],
     );
     expect(pairs).toEqual([]);
+  });
+});
+
+describe('matchLinesToDeals — приход из банка и сделка', () => {
+  it('копейки банка против целых рублей amo — пара с разницей', () => {
+    // Донгак на проде: платёж 150 198,25 и сделка на 150 198.
+    const pairs = matchLinesToDeals(
+      [{ id: 'l1', amount: '150198.25', date: day(19) }],
+      [deal({ id: 'd1', price: '150198.00' })],
+    );
+    expect(pairs).toEqual([{ lineId: 'l1', dealId: 'd1', diff: 0.25 }]);
+  });
+
+  it('расхождение больше рубля парой не считается', () => {
+    const pairs = matchLinesToDeals(
+      [{ id: 'l1', amount: '150200.00', date: day(19) }],
+      [deal({ id: 'd1', price: '150198.00' })],
+    );
+    expect(pairs).toEqual([]);
+  });
+
+  it('две сделки на одну сумму: берётся ближайшая по дате к платежу', () => {
+    const pairs = matchLinesToDeals(
+      [{ id: 'l1', amount: '150198.25', date: day(19) }],
+      [
+        deal({ id: 'far', price: '150198.00', remoteCreatedAt: day(1) }),
+        deal({ id: 'near', price: '150198.00', remoteCreatedAt: day(18) }),
+      ],
+    );
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]!.dealId).toBe('near');
+  });
+
+  it('одна сделка — одна строка: доплата второй строкой не подхватывается', () => {
+    const pairs = matchLinesToDeals(
+      [
+        { id: 'l1', amount: '150198.25', date: day(19) },
+        { id: 'l2', amount: '150198.00', date: day(20) },
+      ],
+      [deal({ id: 'd1', price: '150198.00' })],
+    );
+    expect(pairs).toHaveLength(1);
+    // Точное совпадение выигрывает у копеечного.
+    expect(pairs[0]!.lineId).toBe('l2');
   });
 });

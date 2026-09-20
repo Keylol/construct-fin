@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import type {
   CrmConnection,
   CrmDeal,
+  CrmInboxSuggestion,
   CrmLinkBulkResult,
   CrmMatchResult,
   CrmDealsPage,
@@ -42,6 +43,19 @@ export function useCrmWaitingCount(wsId: string | null) {
     queryFn: () => api.get<{ count: number }>(`/workspaces/${wsId}/crm/deals/count`),
     enabled: !!wsId,
     refetchInterval: 60_000,
+  });
+}
+
+/**
+ * Подсказки для «Входящих»: приходы, сошедшиеся по сумме со сделками amo.
+ * Живут на экране «Входящих», поэтому запрос идёт вместе с ним.
+ */
+export function useCrmInboxSuggestions(wsId: string | null) {
+  return useQuery({
+    queryKey: [...crmKey(wsId), 'inbox-suggestions'],
+    queryFn: () =>
+      api.get<{ items: CrmInboxSuggestion[] }>(`/workspaces/${wsId}/crm/inbox-suggestions`),
+    enabled: !!wsId,
   });
 }
 

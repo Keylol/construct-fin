@@ -416,6 +416,85 @@ describe('amoCRM: сопоставление с заказами', () => {
   });
 });
 
+describe('amoCRM: подсказки во «Входящих»', () => {
+  /** Приход из банка на счёт пространства — как его кладёт синк выписки. */
+  async function seedLine(amount: string) {
+    const conn = await H.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'FILE',
+        accountId: seed.accountId,
+        createdById: seed.userId,
+      },
+    });
+    return H.prisma.bankStatementLine.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        connectionId: conn.id,
+        externalId: `line-${amount}`,
+        date: new Date(),
+        amount,
+        direction: 'INCOME',
+        status: 'NEW',
+        description: 'Возм. по согл. в СБП',
+      },
+    });
+  }
+
+  it('копейки банка против целых рублей amo: подсказка есть, разница показана', async () => {
+    await connect();
+    await sync();
+    // Сделка «ждёт заказа» на 150 198, платёж пришёл на 150 198,25.
+    const line = await seedLine('150198.25');
+    const res = await H.inject({ method: 'GET', url: `${base()}/inbox-suggestions`, token });
+    expect(res.statusCode).toBe(200);
+    const { items } = res.json<{
+      items: { diff: number; line: { id: string }; deal: { externalId: number }; order: unknown }[];
+    }>();
+    const hit = items.find((i) => i.line.id === line.id);
+    expect(hit).toBeTruthy();
+    expect(hit!.deal.externalId).toBe(FAKE_AMO.leads.waiting);
+    expect(hit!.diff).toBe(0.25);
+    expect(hit!.order).toBeNull();
+  });
+
+  it('расхождение больше рубля подсказкой не считается', async () => {
+    await connect();
+    await sync();
+    const line = await seedLine('150200.00');
+    const res = await H.inject({ method: 'GET', url: `${base()}/inbox-suggestions`, token });
+    const { items } = res.json<{ items: { line: { id: string } }[] }>();
+    expect(items.find((i) => i.line.id === line.id)).toBeUndefined();
+  });
+
+  it('у сделки уже есть заказ — подсказка несёт его, чтобы зачесть сразу', async () => {
+    await connect();
+    await sync();
+    const line = await seedLine('150198.25');
+    const deals = await H.inject({ method: 'GET', url: `${base()}/deals?tab=waiting`, token });
+    const dealId = deals.json<{ items: { id: string }[] }>().items[0]!.id;
+    const created = await H.inject({
+      method: 'POST',
+      url: `${base()}/deals/${dealId}/create-order`,
+      token,
+    });
+    const { orderNumber } = created.json<{ orderNumber: string }>();
+
+    const res = await H.inject({ method: 'GET', url: `${base()}/inbox-suggestions`, token });
+    const { items } = res.json<{
+      items: { line: { id: string }; order: { number: string } | null }[];
+    }>();
+    const hit = items.find((i) => i.line.id === line.id);
+    expect(hit?.order?.number).toBe(orderNumber);
+  });
+
+  it('без подключения подсказок нет', async () => {
+    await seedLine('150198.25');
+    const res = await H.inject({ method: 'GET', url: `${base()}/inbox-suggestions`, token });
+    expect(res.json<{ items: unknown[] }>().items).toEqual([]);
+  });
+});
+
 describe('amoCRM: сделка → заказ', () => {
   async function waitingDeal() {
     await connect();
