@@ -14,7 +14,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { useRules, useCreateRule, useUpdateRule, useDeleteRule } from '@/hooks/useRules';
 import type { Rule, RuleAction, RuleCondition } from '@/lib/types';
 import { RuleFormDialog } from '@/components/rules/RuleFormDialog';
-import { APPLIES_TO_LABELS } from '@/components/rules/dictionaries';
+import { APPLIES_TO_LABELS, MODE_LABELS } from '@/components/rules/dictionaries';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
@@ -135,6 +135,19 @@ function RulesView() {
           {r.actions.map(describeAction).join(', ')}
         </span>
       ),
+    },
+    {
+      // Режим виден в списке: «проводит сразу» и «подсказывает» — это разница
+      // между строкой, которая уедет из «Входящих» сама, и строкой, которую
+      // человек проверит. Открывать форму ради этого не нужно.
+      key: 'mode',
+      header: 'Режим',
+      cell: (r) => (
+        <span className={r.mode === 'SUGGEST' ? 'text-foreground' : 'text-muted-foreground'}>
+          {MODE_LABELS[r.mode ?? 'POST']}
+        </span>
+      ),
+      className: 'w-[130px]',
     },
     {
       key: 'appliesTo',
@@ -263,7 +276,8 @@ function RulesView() {
                 {r.conditions.map(describeCondition).join(' И ')}
               </div>
               <div className="text-xs text-muted-foreground">
-                {r.actions.map(describeAction).join(', ')} · {APPLIES_TO_LABELS[r.appliesTo]}
+                {r.actions.map(describeAction).join(', ')} · {MODE_LABELS[r.mode ?? 'POST']} ·{' '}
+                {APPLIES_TO_LABELS[r.appliesTo]}
                 {r.appliedCount > 0 && ` · провело: ${r.appliedCount}`}
               </div>
             </div>

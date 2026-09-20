@@ -120,12 +120,20 @@ function InboxView() {
     applyRules.mutate(undefined, {
       onSuccess: (res) => {
         const r = res as ApplyRulesResult;
-        if (r.posted === 0) {
+        const suggested = r.suggested ?? 0;
+        if (r.posted === 0 && suggested === 0) {
           toast.info('Ни одна строка не подошла под действующие правила');
+          return;
+        }
+        // Правила в режиме подсказки статью подставили, но проводить их человеку:
+        // без отдельного счётчика «Проведено 0» выглядело бы как отказ.
+        if (r.posted === 0) {
+          toast.success(`Статья подставлена у ${suggested} — проверьте и проведите`);
           return;
         }
         toast.success(
           `Проведено ${r.posted}, осталось на разборе ${r.remaining}` +
+            (suggested > 0 ? `, статья подставлена у ${suggested}` : '') +
             (r.remaining > 0 && r.scanned === r.posted + r.skipped && r.remaining > r.skipped
               ? ' — нажмите ещё раз, чтобы продолжить'
               : ''),

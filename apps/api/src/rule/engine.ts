@@ -11,6 +11,11 @@ import { D } from '../common/money';
  * так задумано мастер-планом «авто-проводки + Inbox остатка». Обратимость даёт
  * вкладка «Проведено правилами» во «Входящих» и откат (undo / undo-bulk).
  *
+ * Режим правила `mode` это переключает: 'SUGGEST' оставляет строку на разборе
+ * с подставленной статьёй. Один и тот же поставщик платится за разное — ДНС
+ * это и комплектующие в сборку, и мониторы в офис, — и такую строку должен
+ * разносить человек.
+ *
  * Условия и действия — из ФИКСИРОВАННОГО словаря (не произвольный код/DSL): это
  * держит фичу в Тир-1 безопасности (нельзя испортить деньги конфигом). Условия
  * комбинируются по И: правило срабатывает, только если ВСЕ его условия истинны.
@@ -30,10 +35,19 @@ export type RuleAction =
   | { type: 'SET_COUNTERPARTY'; counterpartyId: string }
   | { type: 'SET_ACCOUNT'; accountId: string };
 
+export type RuleMode = 'POST' | 'SUGGEST';
+
 export interface RuleDef {
   id: string;
   name: string;
   priority: number;
+  /**
+   * 'POST' — распознанная строка выписки проводится сразу (прежнее поведение).
+   * 'SUGGEST' — правило только подставляет статью, строка остаётся на разборе.
+   * Отсутствие поля читается как 'POST': правила, заведённые до этой настройки,
+   * не должны менять поведение молча.
+   */
+  mode?: RuleMode;
   conditions: RuleCondition[];
   actions: RuleAction[];
 }
@@ -67,6 +81,13 @@ export interface RuleSuggestion {
    * правила. `matchedRuleIds` для этого не годится — там все сработавшие.
    */
   categoryRuleId?: string;
+  /**
+   * Правило, давшее категорию, работает в режиме подсказки — значит проводить
+   * строку автоматически нельзя, её должен подтвердить человек. Смотреть надо
+   * именно на режим правила категории: остальные сработавшие правила
+   * подставляют контрагента и счёт и проводкой не распоряжаются.
+   */
+  categorySuggestOnly?: boolean;
   matchedRuleIds: string[];
 }
 
@@ -154,6 +175,7 @@ export function applyRules(rules: RuleDef[], ctx: RuleContext): RuleSuggestion {
           if (out.categoryId === undefined) {
             out.categoryId = action.categoryId;
             out.categoryRuleId = rule.id;
+            out.categorySuggestOnly = rule.mode === 'SUGGEST';
             used = true;
           }
           break;

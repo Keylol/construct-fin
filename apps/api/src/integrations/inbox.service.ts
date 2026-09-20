@@ -508,7 +508,7 @@ export class InboxService {
   async applyRulesToPending(workspaceId: string, userId: string) {
     const rules = await this.rules.loadActive(workspaceId, 'IMPORT');
     if (rules.length === 0) {
-      return { scanned: 0, posted: 0, skipped: 0, remaining: 0 };
+      return { scanned: 0, posted: 0, suggested: 0, skipped: 0, remaining: 0 };
     }
     const lines = await this.prisma.bankStatementLine.findMany({
       where: { workspaceId, status: 'NEW' },
@@ -523,6 +523,9 @@ export class InboxService {
 
     let posted = 0;
     let skipped = 0;
+    // Строки, которым правило только подставило статью: проводку по ним делает
+    // человек, но выбирать статью заново уже не нужно.
+    let suggested = 0;
     for (const line of lines) {
       const suggestion = applyRules(rules, {
         description: line.description,
@@ -544,6 +547,17 @@ export class InboxService {
         skipped++;
         continue;
       }
+      // Правило в режиме подсказки: статью запоминаем на строке, но не проводим.
+      if (suggestion.categorySuggestOnly) {
+        if (line.suggestedCategoryId !== categoryId) {
+          await this.prisma.bankStatementLine.updateMany({
+            where: { id: line.id, status: 'NEW' },
+            data: { suggestedCategoryId: categoryId },
+          });
+        }
+        suggested++;
+        continue;
+      }
       const counterpartyId =
         suggestion.counterpartyId && counterparties.has(suggestion.counterpartyId)
           ? suggestion.counterpartyId
@@ -560,7 +574,7 @@ export class InboxService {
     const remaining = await this.prisma.bankStatementLine.count({
       where: { workspaceId, status: 'NEW' },
     });
-    return { scanned: lines.length, posted, skipped, remaining };
+    return { scanned: lines.length, posted, suggested, skipped, remaining };
   }
 
   /** Провести одну строку по подсказке правила. false — строку увели параллельно. */

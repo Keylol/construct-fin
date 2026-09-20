@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, ClipboardList, RotateCcw, X } from '@/components/ui/icons';
 import { useCategorizeInbox, useDismissInbox, useUndoInbox } from '@/hooks/useInbox';
 import type { InboxLine } from '@/lib/types';
@@ -32,6 +32,18 @@ export function InboxRow({
   catOptions: ComboboxOption[];
 }) {
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId ?? '');
+  // Подсказка правила может приехать уже после того, как строка отрисована
+  // (кнопка «Применить правила» проставляет её у строк в режиме подсказки).
+  // Строка при этом не перемонтируется, поэтому подставляем статью вручную —
+  // но только если человек ещё не выбрал свою.
+  const lastSuggested = useRef(line.suggestedCategoryId ?? '');
+  useEffect(() => {
+    const next = line.suggestedCategoryId ?? '';
+    if (next === lastSuggested.current) return;
+    const untouched = categoryId === '' || categoryId === lastSuggested.current;
+    lastSuggested.current = next;
+    if (untouched && next) setCategoryId(next);
+  }, [line.suggestedCategoryId, categoryId]);
   const [attachOpen, setAttachOpen] = useState(false);
   // Заказ, выбранный по подсказке: модалка откроется уже с ним.
   const [suggestedOrderId, setSuggestedOrderId] = useState<string | undefined>();
@@ -128,6 +140,8 @@ export function InboxRow({
             {line.provider === 'FILE' && ' · из файла'}
             {line.ausnMark && ` · ${AUSN_LABELS[line.ausnMark]}`}
             {isAutoPosted && ` · правило: ${line.appliedRule?.name ?? 'удалено'}`}
+            {/* Статья пришла от правила в режиме подсказки: провести должен человек. */}
+            {isPending && line.suggestedCategoryId && ' · статья подсказана правилом'}
             {line.adopted && ' · узнана: совпала с вашей операцией'}
           </div>
         </div>

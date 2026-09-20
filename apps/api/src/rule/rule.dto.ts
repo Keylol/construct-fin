@@ -63,6 +63,11 @@ export const CreateRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),
   priority: z.number().int().min(0).max(1000).default(0),
   isActive: z.boolean().default(true),
+  // POST — строка выписки проводится сразу (прежнее поведение и умолчание),
+  // SUGGEST — правило только подставляет статью, строка остаётся на разборе.
+  // optional, а не default: поле молодое, умолчание держит БД, и правила,
+  // заведённые до него, читаются как POST без миграции данных.
+  mode: z.enum(['POST', 'SUGGEST']).optional(),
   appliesTo: z.enum(['IMPORT', 'MANUAL', 'BOTH']).default('BOTH'),
   // ≥1 условие — защита от «правила на всё» (движок такое тоже не применяет).
   conditions: z.array(RuleConditionSchema).min(1).max(10),

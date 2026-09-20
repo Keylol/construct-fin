@@ -466,12 +466,16 @@ export type RuleAction =
 
 export type RuleAppliesTo = 'IMPORT' | 'MANUAL' | 'BOTH';
 
+/** POST — строка выписки проводится сразу; SUGGEST — только подставляется статья. */
+export type RuleMode = 'POST' | 'SUGGEST';
+
 export interface Rule {
   id: string;
   workspaceId: string;
   name: string;
   priority: number;
   isActive: boolean;
+  mode: RuleMode;
   appliesTo: RuleAppliesTo;
   conditions: RuleCondition[];
   actions: RuleAction[];
@@ -513,6 +517,8 @@ export interface RulePreview {
 export interface ApplyRulesResult {
   scanned: number;
   posted: number;
+  /** Строки, которым правило подставило статью, не проводя их. */
+  suggested: number;
   skipped: number;
   remaining: number;
 }
