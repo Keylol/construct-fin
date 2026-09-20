@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Handshake, RotateCcw, Plus, ArrowRight, ViewOff } from '@/components/ui/icons';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import {
+  useCrmDiscrepancies,
   useCreateOrderFromDeal,
   useCrmConnection,
   useCrmDeals,
@@ -41,17 +42,26 @@ import { ConnectCrmModal } from '@/components/crm/ConnectCrmModal';
 import { CrmSettingsModal } from '@/components/crm/CrmSettingsModal';
 import { LinkOrderModal } from '@/components/crm/LinkOrderModal';
 import { MatchOrdersModal } from '@/components/crm/MatchOrdersModal';
+import { DiscrepancyList } from '@/components/crm/DiscrepancyList';
 
 // Вкладка, поиск и этап — в адресе: ссылку «ждут заказа» можно скинуть оператору.
 const DEFAULTS = { tab: 'waiting', q: '', statusId: '' };
 const FILTERS = flatCodec(DEFAULTS);
 
-const TAB_HINTS: Record<CrmDealsTab, string> = {
+/**
+ * Вкладки экрана: четыре вкладки списка сделок плюс «Расхождения» — она не
+ * фильтр сделок, а сверка обеих сторон, поэтому живёт только во фронте.
+ */
+type ScreenTab = CrmDealsTab | 'discrepancies';
+
+const TAB_HINTS: Record<ScreenTab, string> = {
   waiting:
     'Сделки на выбранных этапах воронки, ещё не заведённые в учёт. «Завести заказ» создаёт заказ с клиентом по телефону; «Привязать» — к уже существующему.',
   linked: 'Сделки, у которых есть заказ в учёте. Отвязать можно, если связь ошибочна.',
   all: 'Все открытые сделки наблюдаемой воронки, включая этапы, не отмеченные как «ждут заказа».',
   dismissed: 'Сделки, отмеченные «не учитывать»: тесты, дубли, отказы. Возврат — одной кнопкой.',
+  discrepancies:
+    'Что потерялось между amoCRM и учётом: продажа без заказа, закрытая сделка с недоплатой, закрытый заказ с открытой сделкой.',
 };
 
 const EMPTY: Record<CrmDealsTab, { title: string; hint: string }> = {
@@ -88,10 +98,17 @@ function CrmView() {
   const summary = useCrmSummary(wsId);
   const [filters, setFilters] = useUrlFilters(FILTERS);
   const tab = (
-    ['waiting', 'linked', 'all', 'dismissed'].includes(filters.tab) ? filters.tab : 'waiting'
-  ) as CrmDealsTab;
+    ['waiting', 'linked', 'all', 'dismissed', 'discrepancies'].includes(filters.tab)
+      ? filters.tab
+      : 'waiting'
+  ) as ScreenTab;
+  const dealsTab: CrmDealsTab = tab === 'discrepancies' ? 'waiting' : tab;
+  // Сверка — не список сделок: её данные тянет отдельная вкладка, а счётчик в
+  // заголовке нужен всегда, чтобы про расхождения не забывали.
+  const discrepancies = useCrmDiscrepancies(wsId);
+  const failingCount = (discrepancies.data?.checks ?? []).filter((c) => c.count > 0).length;
   const deals = useCrmDeals(wsId, {
-    tab,
+    tab: dealsTab,
     search: filters.q || undefined,
     statusId: filters.statusId || undefined,
   });
@@ -274,7 +291,7 @@ function CrmView() {
       cell: (d) => (
         <DealActions
           deal={d}
-          tab={tab}
+          tab={dealsTab}
           busy={createOrder.isPending || unlink.isPending || dismiss.isPending}
           onCreateOrder={() => runCreateOrder(d)}
           onLink={() => setLinking(d)}
@@ -372,95 +389,109 @@ function CrmView() {
               <TabsTrigger value="linked">Привязаны</TabsTrigger>
               <TabsTrigger value="all">Вся воронка</TabsTrigger>
               <TabsTrigger value="dismissed">Не учитываются</TabsTrigger>
+              <TabsTrigger value="discrepancies">
+                Расхождения
+                {failingCount > 0 && (
+                  <span className="ml-1.5 tabular-nums text-destructive">{failingCount}</span>
+                )}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
       </div>
 
-      <FilterBar>
-        <div className="min-w-[220px] max-w-md flex-1">
-          <FilterField label="Поиск">
-            <SearchField
-              ref={searchRef}
-              value={filters.q}
-              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Сделка, клиент, телефон или бюджет"
-            />
-          </FilterField>
+      {tab === 'discrepancies' ? (
+        <div className="px-6 pb-6">
+          <DiscrepancyList wsId={wsId} crmHref="/crm" />
         </div>
-        <FilterField label="Этап">
-          <Select
-            value={filters.statusId}
-            onChange={(e) => setFilters({ ...filters, statusId: e.target.value })}
-            className="h-9 w-[200px]"
-          >
-            <option value="">Все этапы</option>
-            {stages.map((st) => (
-              <option key={st.id} value={st.id}>
-                {st.name}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterReset onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })} />
-      </FilterBar>
-
-      <div className="bg-card">
-        <DataTable
-          data={items}
-          columns={columns}
-          rowKey={(d) => d.id}
-          loading={deals.isLoading}
-          error={deals.error}
-          onRetry={() => deals.refetch()}
-          hasMore={deals.hasNextPage}
-          loadingMore={deals.isFetchingNextPage}
-          onLoadMore={() => void deals.fetchNextPage()}
-          empty={
-            filtersActive ? (
-              <EmptyState
-                icon={Handshake}
-                title="Ничего не найдено"
-                hint="Попробуйте другое имя, телефон или сумму — либо сбросьте фильтры."
-              />
-            ) : (
-              <EmptyState icon={Handshake} title={EMPTY[tab].title} hint={EMPTY[tab].hint} />
-            )
-          }
-          mobileCards={(d) => (
-            <div className="space-y-1">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 font-medium">{d.name}</div>
-                <Money value={d.price} className="shrink-0" />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <StatusStamp
-                  tone={d.isClosed ? (d.isWon ? 'success' : 'muted') : 'primary'}
-                  label={d.statusName || '—'}
+      ) : (
+        <>
+          <FilterBar>
+            <div className="min-w-[220px] max-w-md flex-1">
+              <FilterField label="Поиск">
+                <SearchField
+                  ref={searchRef}
+                  value={filters.q}
+                  onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+                  placeholder="Сделка, клиент, телефон или бюджет"
                 />
-                <span>{formatDate(d.remoteUpdatedAt)}</span>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {d.contactName ?? '—'}
-                {d.phone ? ` · ${d.phone}` : ''}
-              </div>
-              <OrderCell deal={d} onLink={() => setLinking(d)} />
-              <div className="pt-1">
-                <DealActions
-                  deal={d}
-                  tab={tab}
-                  busy={createOrder.isPending || unlink.isPending || dismiss.isPending}
-                  onCreateOrder={() => runCreateOrder(d)}
-                  onLink={() => setLinking(d)}
-                  onUnlink={() => setUnlinking(d)}
-                  onDismiss={() => setDismissing(d)}
-                  onRestore={() => dismiss.mutate({ dealId: d.id, dismissed: false })}
-                />
-              </div>
+              </FilterField>
             </div>
-          )}
-        />
-      </div>
+            <FilterField label="Этап">
+              <Select
+                value={filters.statusId}
+                onChange={(e) => setFilters({ ...filters, statusId: e.target.value })}
+                className="h-9 w-[200px]"
+              >
+                <option value="">Все этапы</option>
+                {stages.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterReset onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })} />
+          </FilterBar>
+
+          <div className="bg-card">
+            <DataTable
+              data={items}
+              columns={columns}
+              rowKey={(d) => d.id}
+              loading={deals.isLoading}
+              error={deals.error}
+              onRetry={() => deals.refetch()}
+              hasMore={deals.hasNextPage}
+              loadingMore={deals.isFetchingNextPage}
+              onLoadMore={() => void deals.fetchNextPage()}
+              empty={
+                filtersActive ? (
+                  <EmptyState
+                    icon={Handshake}
+                    title="Ничего не найдено"
+                    hint="Попробуйте другое имя, телефон или сумму — либо сбросьте фильтры."
+                  />
+                ) : (
+                  <EmptyState icon={Handshake} title={EMPTY[tab].title} hint={EMPTY[tab].hint} />
+                )
+              }
+              mobileCards={(d) => (
+                <div className="space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 font-medium">{d.name}</div>
+                    <Money value={d.price} className="shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <StatusStamp
+                      tone={d.isClosed ? (d.isWon ? 'success' : 'muted') : 'primary'}
+                      label={d.statusName || '—'}
+                    />
+                    <span>{formatDate(d.remoteUpdatedAt)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {d.contactName ?? '—'}
+                    {d.phone ? ` · ${d.phone}` : ''}
+                  </div>
+                  <OrderCell deal={d} onLink={() => setLinking(d)} />
+                  <div className="pt-1">
+                    <DealActions
+                      deal={d}
+                      tab={tab}
+                      busy={createOrder.isPending || unlink.isPending || dismiss.isPending}
+                      onCreateOrder={() => runCreateOrder(d)}
+                      onLink={() => setLinking(d)}
+                      onUnlink={() => setUnlinking(d)}
+                      onDismiss={() => setDismissing(d)}
+                      onRestore={() => dismiss.mutate({ dealId: d.id, dismissed: false })}
+                    />
+                  </div>
+                </div>
+              )}
+            />
+          </div>
+        </>
+      )}
 
       {modals}
       <LinkOrderModal wsId={wsId} deal={linking} onClose={() => setLinking(null)} />

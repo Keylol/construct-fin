@@ -74,3 +74,12 @@ export const LinkCrmDealsBulkSchema = z.object({
     .max(500),
 });
 export type LinkCrmDealsBulkDto = z.infer<typeof LinkCrmDealsBulkSchema>;
+
+/**
+ * Горизонт расхождений в днях: 0 — «за всё время». Больше года смысла не имеет
+ * — в CRM лежит история, которую учёт этого приложения никогда не вёл.
+ */
+export const DiscrepancyQuerySchema = z.object({
+  sinceDays: z.coerce.number().int().min(0).max(730).default(90),
+});
+export type DiscrepancyQuery = z.infer<typeof DiscrepancyQuerySchema>;

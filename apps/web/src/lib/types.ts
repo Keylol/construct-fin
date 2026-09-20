@@ -1287,6 +1287,43 @@ export interface CrmInboxSuggestion {
   order: CrmDealOrderRef | null;
 }
 
+export type CrmDiscrepancyKey =
+  | 'won_without_order'
+  | 'won_unpaid'
+  | 'order_done_deal_open'
+  | 'sum_mismatch'
+  | 'order_without_deal'
+  | 'sync_stale';
+
+/** Одна потерянная связка: сделка, заказ или и то и другое. */
+export interface CrmDiscrepancyItem {
+  dealId?: string;
+  externalId?: number;
+  dealName?: string;
+  dealStatus?: string;
+  orderId?: string;
+  orderNumber?: string;
+  clientName?: string | null;
+  amount: string;
+  date: string;
+}
+
+export interface CrmDiscrepancyCheck {
+  key: CrmDiscrepancyKey;
+  title: string;
+  hint: string;
+  tone: 'destructive' | 'warning' | 'ok';
+  count: number;
+  sum: string;
+  items: CrmDiscrepancyItem[];
+}
+
+export interface CrmDiscrepancies {
+  checks: CrmDiscrepancyCheck[];
+  sinceDays: number;
+  since: string;
+}
+
 export interface CrmMatchResult {
   items: CrmMatchItem[];
   confidentCount: number;

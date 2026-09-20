@@ -18,15 +18,18 @@ import { ZodPipe } from '../common/zod-pipe';
 import { CrmConnectionService } from './crm-connection.service';
 import { CrmSyncService } from './crm-sync.service';
 import { CrmDealsService } from './crm-deals.service';
+import { CrmDiscrepancyService } from './crm-discrepancy.service';
 import {
   CreateCrmConnectionSchema,
   LinkCrmDealSchema,
   LinkCrmDealsBulkSchema,
+  DiscrepancyQuerySchema,
   ListCrmDealsSchema,
   UpdateCrmConnectionSchema,
   type CreateCrmConnectionDto,
   type LinkCrmDealDto,
   type LinkCrmDealsBulkDto,
+  type DiscrepancyQuery,
   type ListCrmDealsQuery,
   type UpdateCrmConnectionDto,
 } from './crm.dto';
@@ -43,6 +46,7 @@ export class CrmController {
     private readonly connections: CrmConnectionService,
     private readonly sync: CrmSyncService,
     private readonly deals: CrmDealsService,
+    private readonly discrepancy: CrmDiscrepancyService,
   ) {}
 
   // ───────────────────────── подключение ─────────────────────────
@@ -110,6 +114,18 @@ export class CrmController {
   @Get('inbox-suggestions')
   inboxSuggestions(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.deals.inboxSuggestions(ws.workspaceId);
+  }
+
+  /**
+   * Расхождения между CRM и учётом: что потерялось. Горизонт в днях —
+   * `sinceDays` (0 = за всё время).
+   */
+  @Get('discrepancies')
+  discrepancies(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(DiscrepancyQuerySchema)) query: DiscrepancyQuery,
+  ) {
+    return this.discrepancy.discrepancies(ws.workspaceId, query.sinceDays);
   }
 
   /** Предложения «сделка ↔ существующий заказ» для окна сопоставления. */

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { formatRub } from '@construct/shared';
 import { useAccounts, useAccountBalances } from '@/hooks/useAccounts';
 import { useInboxCount } from '@/hooks/useInbox';
+import { useCrmDiscrepancies } from '@/hooks/useCrm';
 import { useOrders } from '@/hooks/useOrders';
 import { useReceivables } from '@/hooks/useTradeReports';
 import { useWarehouse } from '@/hooks/useWarehouse';
@@ -44,6 +45,9 @@ export function useHealthChecks(wsId: string | null) {
   // Оплаченные, но не закрытые: выручка по ним ещё не признана (учёт по
   // реализации), поэтому месяц выглядит беднее, чем есть.
   const openOrders = useOrders(wsId, { status: 'OPEN', limit: 100 });
+  // Расхождения с amoCRM: продажа, закрытая в CRM, должна стать заказом с
+  // выручкой. Без этой строки о потере узнают только зайдя в раздел.
+  const crm = useCrmDiscrepancies(wsId);
 
   const isLoading =
     inboxCount.isLoading ||
@@ -51,7 +55,8 @@ export function useHealthChecks(wsId: string | null) {
     accounts.isLoading ||
     balances.isLoading ||
     warehouse.isLoading ||
-    openOrders.isLoading;
+    openOrders.isLoading ||
+    crm.isLoading;
 
   const checks = useMemo<HealthCheck[]>(() => {
     const out: HealthCheck[] = [];
@@ -135,6 +140,53 @@ export function useHealthChecks(wsId: string | null) {
       count: noCost.length,
     });
 
+    // 5. Расхождения с amoCRM одной строкой: детали и действия — в разделе.
+    const crmChecks = (crm.data?.checks ?? []).filter((c) => c.key !== 'sync_stale');
+    const crmFailing = crmChecks.filter((c) => c.count > 0);
+    const crmCount = crmFailing.reduce((acc, c) => acc + c.count, 0);
+    const lost = crmChecks.find((c) => c.key === 'won_without_order');
+    const unpaid = crmChecks.find((c) => c.key === 'won_unpaid');
+    const crmDetail = crmCount
+      ? [
+          lost?.count
+            ? `${lost.count} ${plural(lost.count, 'продажа', 'продажи', 'продаж')} без заказа на ${formatRub(lost.sum)}`
+            : '',
+          unpaid?.count
+            ? `${unpaid.count} закрыто в CRM с недоплатой ${formatRub(unpaid.sum)}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('; ') ||
+        `${crmCount} ${plural(crmCount, 'расхождение', 'расхождения', 'расхождений')}`
+      : 'Сделки и заказы сходятся';
+    out.push({
+      key: 'crm-discrepancies',
+      title: 'Расхождения с amoCRM',
+      detail: crmDetail,
+      // Непризнанная выручка и невидимый долг — красное; остальное жёлтое.
+      tone: crmFailing.some((c) => c.tone === 'destructive')
+        ? 'destructive'
+        : crmCount > 0
+          ? 'warning'
+          : 'ok',
+      href: '/crm?tab=discrepancies',
+      count: crmCount,
+    });
+
+    // 6. Молчащий синк: пока он стоит, проверки выше считают по старому снимку
+    //    и показывают «всё сошлось» просто потому, что новых данных нет.
+    const sync = (crm.data?.checks ?? []).find((c) => c.key === 'sync_stale');
+    if (sync) {
+      out.push({
+        key: 'crm-sync',
+        title: 'Синхронизация с amoCRM',
+        detail: sync.count > 0 ? sync.hint : 'Снимок сделок свежий',
+        tone: sync.count > 0 ? 'destructive' : 'ok',
+        href: '/crm',
+        count: sync.count,
+      });
+    }
+
     return out;
   }, [
     inboxCount.data,
@@ -143,6 +195,8 @@ export function useHealthChecks(wsId: string | null) {
     accounts.data,
     balances.data,
     warehouse.data,
+    ,
+    crm.data,
   ]);
 
   const failing = checks.filter((c) => c.tone !== 'ok');

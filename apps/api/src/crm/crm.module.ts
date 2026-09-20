@@ -13,6 +13,7 @@ import { AmoClient } from './amo.client';
 import { CrmConnectionService } from './crm-connection.service';
 import { CrmSyncService } from './crm-sync.service';
 import { CrmDealsService } from './crm-deals.service';
+import { CrmDiscrepancyService } from './crm-discrepancy.service';
 import { CrmController } from './crm.controller';
 
 /**
@@ -45,6 +46,7 @@ import { CrmController } from './crm.controller';
     CrmConnectionService,
     CrmSyncService,
     CrmDealsService,
+    CrmDiscrepancyService,
     WorkspaceGuard,
     OwnerGuard,
   ],
