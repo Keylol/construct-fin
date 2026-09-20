@@ -147,7 +147,7 @@ function CategoriesReportView() {
         {query.data && rows.length > 0 && (
           <ShareDonut
             points={rows}
-            title={type === 'INCOME' ? 'Откуда приходят деньги' : 'Куда уходят деньги'}
+            title={type === 'INCOME' ? 'Структура доходов' : 'Структура расходов'}
           />
         )}
 
