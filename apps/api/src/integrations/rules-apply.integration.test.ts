@@ -439,6 +439,40 @@ describe('правило в режиме подсказки', () => {
     expect(line.suggestedCategoryId).toBe(cat.id);
   });
 
+  it('строка вне разбора подсказку не получает', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+
+    // Строку уже отметили «не учитывать» — правило её не касается.
+    await h.prisma.bankStatementLine.updateMany({
+      where: { externalId: 'fake-1' },
+      data: { status: 'DISMISSED' },
+    });
+
+    const res = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    expect(res.suggested).toBe(0);
+    expect(res.scanned).toBe(3); // DISMISSED в разбор не попадает
+    expect(res.skipped).toBe(3);
+  });
+
+  it('повторный прогон не задваивает счётчик подсказанных', async () => {
+    const conn = await makeConnection();
+    await sync.syncConnection(conn.id);
+    const cat = await makeCategory();
+    await makeSuggestRule(cat.id);
+
+    const first = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+    const second = await inbox.applyRulesToPending(seed.workspaceId, seed.userId);
+
+    // Второй раз статья уже стоит: строка та же, счётчик тот же, проводок нет.
+    expect(first.suggested).toBe(1);
+    expect(second.suggested).toBe(1);
+    expect(await h.prisma.transaction.count({ where: { workspaceId: seed.workspaceId } })).toBe(0);
+  });
+
   it('правило без режима работает как раньше — проводит', async () => {
     const cat = await makeCategory();
     await makeInnRule(cat.id);

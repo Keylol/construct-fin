@@ -549,13 +549,19 @@ export class InboxService {
       }
       // Правило в режиме подсказки: статью запоминаем на строке, но не проводим.
       if (suggestion.categorySuggestOnly) {
-        if (line.suggestedCategoryId !== categoryId) {
-          await this.prisma.bankStatementLine.updateMany({
-            where: { id: line.id, status: 'NEW' },
-            data: { suggestedCategoryId: categoryId },
-          });
+        if (line.suggestedCategoryId === categoryId) {
+          suggested++;
+          continue;
         }
-        suggested++;
+        // Тот же CAS, что и при проведении: пока шла выборка, строку могли
+        // разобрать с другого устройства. Обновились 0 строк — значит она уже
+        // не на разборе, и подсказка к ней не относится.
+        const updated = await this.prisma.bankStatementLine.updateMany({
+          where: { id: line.id, status: 'NEW' },
+          data: { suggestedCategoryId: categoryId },
+        });
+        if (updated.count > 0) suggested++;
+        else skipped++;
         continue;
       }
       const counterpartyId =
