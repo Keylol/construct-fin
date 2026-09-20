@@ -495,6 +495,85 @@ describe('amoCRM: подсказки во «Входящих»', () => {
   });
 });
 
+describe('amoCRM: расхождения', () => {
+  type Check = { key: string; count: number; sum: string; tone: string };
+  const checkOf = (body: { checks: Check[] }, key: string) =>
+    body.checks.find((c) => c.key === key)!;
+
+  it('выигранная сделка без заказа — красная проверка с суммой; синк свежий', async () => {
+    await connect();
+    await sync();
+    const res = await H.inject({ method: 'GET', url: `${base()}/discrepancies`, token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ checks: Check[] }>();
+    // В подменном amo одна сделка закрыта успешно (90 000) и заказа у неё нет.
+    expect(checkOf(body, 'won_without_order')).toMatchObject({
+      count: 1,
+      sum: '90000.00',
+      tone: 'destructive',
+    });
+    expect(checkOf(body, 'sync_stale')).toMatchObject({ count: 0, tone: 'ok' });
+  });
+
+  it('заказ без сделки виден как расхождение', async () => {
+    await connect();
+    await sync();
+    await H.prisma.order.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        number: 'ORD-2026-0300',
+        phone: '+79000000002',
+        status: 'OPEN',
+        paymentStatus: 'UNPAID',
+        subtotal: '1000.00',
+        totalAmount: '1000.00',
+      },
+    });
+    const res = await H.inject({ method: 'GET', url: `${base()}/discrepancies`, token });
+    expect(checkOf(res.json<{ checks: Check[] }>(), 'order_without_deal')).toMatchObject({
+      count: 1,
+      sum: '1000.00',
+    });
+  });
+
+  it('горизонт: sinceDays=0 берёт всё время, окно в день ловит свежую продажу', async () => {
+    await connect();
+    await sync();
+    const wide = await H.inject({
+      method: 'GET',
+      url: `${base()}/discrepancies?sinceDays=0`,
+      token,
+    });
+    expect(wide.json<{ sinceDays: number }>().sinceDays).toBe(0);
+    expect(checkOf(wide.json<{ checks: Check[] }>(), 'won_without_order').count).toBe(1);
+
+    const day = await H.inject({
+      method: 'GET',
+      url: `${base()}/discrepancies?sinceDays=1`,
+      token,
+    });
+    expect(checkOf(day.json<{ checks: Check[] }>(), 'won_without_order').count).toBe(1);
+  });
+
+  it('без подключения синк красный, а списки пустые', async () => {
+    const res = await H.inject({ method: 'GET', url: `${base()}/discrepancies`, token });
+    const body = res.json<{ checks: Check[] }>();
+    expect(checkOf(body, 'sync_stale')).toMatchObject({ count: 1, tone: 'destructive' });
+    expect(checkOf(body, 'won_without_order').count).toBe(0);
+  });
+
+  it('оператор расхождения видит — это его работа, а не настройка', async () => {
+    await connect();
+    await sync();
+    const opTg = tg + 700n;
+    const op = await H.prisma.user.create({ data: { telegramId: opTg, firstName: 'Оператор' } });
+    await seedMember(H.prisma, seed.workspaceId, op.id, Role.MEMBER);
+    const opToken = await H.jwtFor(op.id, opTg);
+    const res = await H.inject({ method: 'GET', url: `${base()}/discrepancies`, token: opToken });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
 describe('amoCRM: сделка → заказ', () => {
   async function waitingDeal() {
     await connect();

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import type {
   CrmConnection,
   CrmDeal,
+  CrmDiscrepancies,
   CrmInboxSuggestion,
   CrmLinkBulkResult,
   CrmMatchResult,
@@ -55,6 +56,19 @@ export function useCrmInboxSuggestions(wsId: string | null) {
     queryKey: [...crmKey(wsId), 'inbox-suggestions'],
     queryFn: () =>
       api.get<{ items: CrmInboxSuggestion[] }>(`/workspaces/${wsId}/crm/inbox-suggestions`),
+    enabled: !!wsId,
+  });
+}
+
+/**
+ * Расхождения между CRM и учётом. Нужны и на вкладке «Расхождения», и в
+ * очереди «Сделать сейчас» на главной, поэтому запрос общий и кэшируется.
+ */
+export function useCrmDiscrepancies(wsId: string | null, sinceDays = 90) {
+  return useQuery({
+    queryKey: [...crmKey(wsId), 'discrepancies', sinceDays],
+    queryFn: () =>
+      api.get<CrmDiscrepancies>(`/workspaces/${wsId}/crm/discrepancies?sinceDays=${sinceDays}`),
     enabled: !!wsId,
   });
 }
