@@ -33,12 +33,14 @@ import {
   ModalTitle,
   ModalClose,
 } from '@/components/ui/Modal';
-import { D, add, toMoneyString } from '@construct/shared';
+import { D } from '@construct/shared';
 import { plural } from '@/lib/plural';
 import { ACCOUNT_TYPE_LABEL } from '@/lib/labels';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { useListHotkeys } from '@/hooks/useListHotkeys';
+import { useTotalCash } from '@/hooks/useTotalCash';
+import { cashCompositionText } from '@/lib/cash-composition';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
 import { KpiRow } from '@/components/ui/KpiRow';
@@ -81,33 +83,10 @@ function AccountsView() {
       (!q || a.name.toLowerCase().includes(q) || (a.note ?? '').toLowerCase().includes(q)),
   );
 
-  // Итоги по активным счетам (Decimal, не number): «по банку ?? по учёту» —
-  // главное число, рядом — сколько строк ждёт разбора и «по учёту» целиком.
-  const totals = (() => {
-    if (!balances.data || !accounts.data) return null;
-    let total = D(0);
-    let ledger = D(0);
-    let unresolvedNet = D(0);
-    let unresolvedCount = 0;
-    let hasBank = false;
-    for (const a of accounts.data) {
-      if (a.isArchived) continue;
-      const b = balances.data.get(a.id);
-      if (!b) continue;
-      total = add(total, D(b.bank ?? b.ledger));
-      ledger = add(ledger, D(b.ledger));
-      unresolvedNet = add(unresolvedNet, D(b.unresolvedNet));
-      unresolvedCount += b.unresolvedCount;
-      if (b.bank != null) hasBank = true;
-    }
-    return {
-      total: toMoneyString(total),
-      ledger: toMoneyString(ledger),
-      unresolvedNet: toMoneyString(unresolvedNet),
-      unresolvedCount,
-      hasBank,
-    };
-  })();
+  // Итоги по активным счетам считает общий хук — тот же источник, что у кассы
+  // в хедере и на главной: три места расходились бы по определению «всего денег».
+  const totals = useTotalCash(wsId);
+  const composition = cashCompositionText(totals.breakdown);
 
   if (!current) return null;
 
@@ -260,18 +239,18 @@ function AccountsView() {
       {/* Итоги — плитками, как везде: по банку (где банк отдаёт остаток),
           по учёту и очередь разбора. */}
       <div className="px-6 py-4">
-        <KpiRow loading={accounts.isLoading || balances.isLoading} count={totals?.hasBank ? 3 : 2}>
-          {totals && (
+        <KpiRow loading={totals.isLoading} count={totals.hasBank ? 3 : 2}>
+          {totals.total != null && (
             <>
               <KpiCard
                 label={totals.hasBank ? 'Денежные средства по банку' : 'Денежные средства'}
                 value={<Money value={totals.total} />}
-                hint="активные счета"
+                hint={composition ?? 'активные счета'}
               />
               {totals.hasBank && (
                 <KpiCard
                   label="По учёту"
-                  value={<Money value={totals.ledger} />}
+                  value={<Money value={totals.ledger ?? '0'} />}
                   hint="начальный остаток + проводки"
                 />
               )}
@@ -279,7 +258,7 @@ function AccountsView() {
                 label="Не разобрано"
                 value={
                   totals.unresolvedCount > 0 ? (
-                    <Money value={totals.unresolvedNet} />
+                    <Money value={totals.unresolvedNet ?? '0'} />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )

@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/Button';
 import { TransactionListItem } from '@/components/transactions/TransactionListItem';
 import { rangeFor } from '@/lib/periods';
 import { txDrilldownHref } from '@/lib/tx-filters';
+import { cashCompositionText } from '@/lib/cash-composition';
 import { formatDayLabel } from '@/lib/dates';
 import { plural } from '@/lib/plural';
 import { formatRub } from '@construct/shared';
@@ -93,6 +94,9 @@ export default function DashboardPage() {
   const inflowTrend = trendPoints.map((p) => Number(p.inflow));
   const outflowTrend = trendPoints.map((p) => Number(p.outflow));
 
+  // Состав кассы: банк · нал · карты · счета без выписки (см. cash-composition).
+  const composition = cashCompositionText(cash.breakdown);
+
   // «Сделать сейчас» — первое, что видно на главной: пока очередь не пуста,
   // цифры месяца всё равно неполные. Показываем ВСЕ сработавшие проверки, а не
   // первые три: список короткий по устройству, и обрезка прятала работу.
@@ -121,11 +125,20 @@ export default function DashboardPage() {
               label={cash.hasBank ? 'Денежные средства по банку' : 'Денежные средства'}
               value={<AnimatedNumber value={cash.total} />}
               hint={
-                cash.unresolvedCount > 0
-                  ? `не разобрано ${cash.unresolvedCount} ${plural(cash.unresolvedCount, 'строка', 'строки', 'строк')} на ${formatRub(cash.unresolvedNet ?? '0')}`
-                  : cash.hasBank
-                    ? `по учёту ${formatRub(cash.ledger ?? '0')}`
-                    : undefined
+                <>
+                  {/* Состав — первым: без него итог выглядит меньше банковского
+                      остатка, и цифре перестают верить. */}
+                  {composition && <span className="block">{composition}</span>}
+                  {cash.unresolvedCount > 0 ? (
+                    <span className="block">
+                      не разобрано {cash.unresolvedCount}{' '}
+                      {plural(cash.unresolvedCount, 'строка', 'строки', 'строк')} на{' '}
+                      {formatRub(cash.unresolvedNet ?? '0')}
+                    </span>
+                  ) : cash.hasBank ? (
+                    <span className="block">по учёту {formatRub(cash.ledger ?? '0')}</span>
+                  ) : null}
+                </>
               }
               size="display"
               href="/accounts"
