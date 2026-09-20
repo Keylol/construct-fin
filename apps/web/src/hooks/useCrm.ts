@@ -77,9 +77,18 @@ export interface UpdateCrmInput {
   triggerStatusId?: number | null;
 }
 
+/**
+ * Инвалидация НЕ возвращает промис намеренно: TanStack ждёт хук-уровневый
+ * onSuccess до вызова колбэков mutate(). Если за это время перечитанное
+ * подключение сменило ветку экрана и размонтировало окно, его колбэки
+ * (тост, закрытие, «открыть настройки») не вызываются вовсе — так на проде
+ * после «Подключить» не открылось окно настроек. Поэтому перечитываем в фоне.
+ */
 function useInvalidateCrm(wsId: string) {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: crmKey(wsId) });
+  return () => {
+    void qc.invalidateQueries({ queryKey: crmKey(wsId) });
+  };
 }
 
 export function useConnectCrm(wsId: string) {
