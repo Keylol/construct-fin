@@ -532,6 +532,89 @@ describe('D-e2e createCheck({anchor}): факт как якорь начальн
     expect(report.lastCheck?.discrepancy).toBe('0.00');
   });
 
+  it('счёт с выпиской: якорь считает по книге и неразобранным строкам, решения человека уважает', async () => {
+    const conn = await h.prisma.integrationConnection.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        provider: 'FILE',
+        accountId: seed.accountId,
+        createdById: seed.userId,
+      },
+    });
+    const tx = (date: string, amount: string, type: 'INCOME' | 'EXPENSE') =>
+      h.prisma.transaction.create({
+        data: {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          date: new Date(date),
+          amount,
+          type,
+          kind: 'OTHER',
+          createdById: seed.userId,
+        },
+      });
+    const line = (
+      externalId: string,
+      date: string,
+      amount: string,
+      direction: 'INCOME' | 'EXPENSE',
+      status: 'NEW' | 'RESOLVED' | 'DISMISSED',
+      transactionId?: string,
+    ) =>
+      h.prisma.bankStatementLine.create({
+        data: {
+          workspaceId: seed.workspaceId,
+          connectionId: conn.id,
+          externalId,
+          date: new Date(date),
+          amount,
+          direction,
+          status,
+          transactionId,
+          raw: {},
+        },
+      });
+
+    // Проведённая строка: +15 000 уже в книге.
+    const posted = await tx('2026-07-01T09:00:00.000Z', '15000.00', 'INCOME');
+    await line('l-1', '2026-07-01T09:00:00.000Z', '15000.00', 'INCOME', 'RESOLVED', posted.id);
+    // Строка на разборе: −8 000 в книгу ещё придёт.
+    await line('l-2', '2026-07-02T10:00:00.000Z', '8000.00', 'EXPENSE', 'NEW');
+    // Тестовая строка банка, отмечена «не учитывать»: в книгу не придёт никогда.
+    await line('l-3', '2026-07-03T10:00:00.000Z', '300.00', 'EXPENSE', 'DISMISSED');
+    // Операция, которую банк в выписку не отдал, — заведена руками, без строки.
+    await tx('2026-07-02T12:00:00.000Z', '1000.00', 'EXPENSE');
+    // Операция после дня сверки в якорь не входит.
+    await tx('2026-07-20T12:00:00.000Z', '99.00', 'EXPENSE');
+
+    await h.reconciliation.createCheck(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-07-05T00:00:00.000Z',
+      actualBalance: '20000.00',
+      anchor: true,
+    });
+
+    // 20 000 − (книга +15 000 − 1 000) − (на разборе −8 000) = 14 000.
+    // Прежняя формула «по всем строкам» дала бы 13 300 и вечное расхождение 700:
+    // ручная −1 000 и «не учитывать» −300 мерились бы банком, а не книгой.
+    const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('14000.00');
+    expect(acc.openingAnchorSource).toBe('CHECK');
+
+    // До проведения строки на разборе расхождение = ровно она (книга завышена).
+    const before = await h.reconciliation.build(seed.workspaceId, seed.accountId, '2026-07-05');
+    expect(before.lastCheck?.discrepancy).toBe('-8000.00');
+
+    // Провели её — книга сошлась с фактом копейка в копейку.
+    const postedLater = await tx('2026-07-02T10:00:00.000Z', '8000.00', 'EXPENSE');
+    await h.prisma.bankStatementLine.update({
+      where: { connectionId_externalId: { connectionId: conn.id, externalId: 'l-2' } },
+      data: { status: 'RESOLVED', transactionId: postedLater.id },
+    });
+    const after = await h.reconciliation.build(seed.workspaceId, seed.accountId, '2026-07-05');
+    expect(after.lastCheck?.discrepancy).toBe('0.00');
+  });
+
   it('без флага anchor начальный остаток не меняется', async () => {
     await h.reconciliation.createCheck(seed.workspaceId, seed.userId, {
       accountId: seed.accountId,

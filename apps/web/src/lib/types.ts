@@ -21,6 +21,8 @@ export interface Account {
   openingBalance: string;
   /** Когда начальный остаток выведен из якоря (банк/сверка); null — введён руками. */
   openingAnchoredAt: string | null;
+  /** Откуда якорь: BANK — сальдо выписки или остаток банка, CHECK — сверка. */
+  openingAnchorSource: 'BANK' | 'CHECK' | null;
   note: string | null;
   isArchived: boolean;
   createdAt: string;

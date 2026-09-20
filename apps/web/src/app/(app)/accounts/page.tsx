@@ -151,12 +151,18 @@ function AccountsView() {
           className="text-muted-foreground"
           title={
             a.openingAnchoredAt
-              ? `Выведен из остатка банка/сверки ${formatDateTime(a.openingAnchoredAt)}`
+              ? a.openingAnchorSource === 'CHECK'
+                ? `Принят из сверки ${formatDateTime(a.openingAnchoredAt)} — синк банка его не перезапишет`
+                : `Выведен из данных банка ${formatDateTime(a.openingAnchoredAt)}`
               : 'Введён вручную'
           }
         >
           <Money value={a.openingBalance} />
-          {a.openingAnchoredAt && <span className="ml-1 text-[10px] uppercase">авто</span>}
+          {a.openingAnchoredAt && (
+            <span className="ml-1 text-[10px] uppercase">
+              {a.openingAnchorSource === 'CHECK' ? 'сверка' : 'банк'}
+            </span>
+          )}
         </span>
       ),
       className: 'w-[160px]',

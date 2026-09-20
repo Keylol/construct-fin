@@ -126,6 +126,10 @@ model Account {
   /// Формула: openingBalance = остаток_по_банку − Σ(строк выписки до момента
   /// остатка). Так остаток «по учёту» сходится с банком без ввода истории.
   openingAnchoredAt DateTime?
+  /// Откуда якорь: BANK — входящее сальдо выписки либо вывод из остатка банка
+  /// (синк), CHECK — факт из сверки, принятый владельцем. Null — остаток ручной
+  /// или не задан. Якорь из сверки синк НЕ перезаписывает: это решение человека.
+  openingAnchorSource String?
   isArchived     Boolean      @default(false)
   note           String?
   createdAt      DateTime     @default(now())
