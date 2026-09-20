@@ -261,6 +261,11 @@ export class CrmDealsService {
    * Предложения «сделка ↔ существующий заказ»: сводит непривязанные сделки со
    * свободными заказами учёта. Считается на сервере целиком — человеку остаётся
    * снять лишние галочки, а не искать пары руками по 2 267 сделкам.
+   *
+   * Охват НАМЕРЕННО шире вкладки «Ждут заказа»: сюда входят и закрытые сделки, и
+   * этапы вне набора «ждут заказа», потому что сопоставлять надо в первую
+   * очередь старые, уже проведённые заказы (на проде их 63 из 94). Поэтому пар
+   * в окне бывает больше, чем число на бейдже, — так и задумано.
    */
   async matchSuggestions(workspaceId: string) {
     const conn = await this.connection(workspaceId);
@@ -381,10 +386,18 @@ export class CrmDealsService {
         continue;
       }
 
-      await this.prisma.crmDeal.update({
-        where: { id: deal.id },
+      // Привязка — одним условным UPDATE (`orderId: null` в where), а не
+      // «прочитали и записали»: два человека, нажавшие «Привязать отмеченные»
+      // на одном списке, иначе перезаписали бы привязку друг друга. Кто успел
+      // второй — получает skipped, как и на устаревшей паре.
+      const claimed = await this.prisma.crmDeal.updateMany({
+        where: { id: deal.id, workspaceId, orderId: null },
         data: { orderId: order.id, linkedAt: new Date(), dismissedAt: null },
       });
+      if (claimed.count === 0) {
+        skipped += 1;
+        continue;
+      }
       const patched = await this.patchClientFromDeal(workspaceId, userId, order.clientId, deal);
       if (patched) clientsPatched += 1;
       linked += 1;
