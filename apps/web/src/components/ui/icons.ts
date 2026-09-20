@@ -36,6 +36,8 @@ export {
   Reset as RotateCcw,
   Scales as Scale,
   Plug,
+  // amoCRM: сделки — рукопожатие, а не ещё одна «вилка» интеграций.
+  Collaborate as Handshake,
   Search,
   ShoppingCart,
   SidePanelClose,

@@ -91,6 +91,7 @@ ngrok http 3000                                       # публичный HTTPS
 | `apps/api/src/reports/pnl.service.ts` | ОПиУ по реализации (IJ9): признание по closedAt + события возвратов |
 | `apps/api/src/trade-reports/margin.service.ts` | Маржа (та же семантика; ключ «без клиента» содержит NUL-байт — grep видит binary) |
 | `apps/api/src/orders/order.service.ts` | Заказы: оплаты/отгрузка/finalize/RMA (пишет события OrderReturn) |
+| `apps/api/src/crm/` | amoCRM внутри приложения: клиент API v4 за `AMO_HTTP`, cron-синк сделок в `CrmDeal`, панель `/crm` (docs/amocrm.md) |
 | `apps/web/src/app/layout.tsx` | Telegram SDK Script (beforeInteractive) |
 | `apps/web/src/app/login/page.tsx` | Mini App auto-login + Widget fallback |
 | `apps/web/src/components/transactions/TransactionFormDialog.tsx` | FAB-форма быстрого ввода |

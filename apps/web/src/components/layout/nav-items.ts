@@ -18,6 +18,7 @@ import {
   ArrowLeftRight,
   Scale,
   Plug,
+  Handshake,
   Inbox,
   Calculator,
   Calendar,
@@ -52,6 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard', label: 'Главная', icon: Home },
       { href: '/inbox', label: 'Входящие', icon: Inbox },
+      { href: '/crm', label: 'amoCRM', icon: Handshake },
       { href: '/orders', label: 'Заказы', icon: ClipboardList },
       { href: '/purchases', label: 'Закупки', icon: ShoppingCart },
       { href: '/transactions', label: 'Операции', icon: Receipt },

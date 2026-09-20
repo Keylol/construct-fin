@@ -41,6 +41,7 @@ model User {
   createdRecurring      RecurringPayment[]      @relation("RecurringCreatedBy")
   createdPlanned        PlannedPayment[]        @relation("PlannedCreatedBy")
   createdBudgets        Budget[]                @relation("BudgetCreatedBy")
+  createdCrmConnections CrmConnection[]         @relation("CrmConnectionCreatedBy")
 }
 
 model Workspace {
@@ -79,6 +80,8 @@ model Workspace {
   recurringPayments RecurringPayment[]
   plannedPayments   PlannedPayment[]
   budgets           Budget[]
+  crmConnections    CrmConnection[]
+  crmDeals          CrmDeal[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -305,6 +308,7 @@ model Order {
   schedule       PaymentScheduleEntry[]
   returns        OrderReturn[]          @relation("OrderReturns")
   wbReceiptLines WbReceiptLine[]        @relation("WbReceiptLineOrder")
+  crmDeals       CrmDeal[]              @relation("CrmDealOrder")
 
   // Уникальность номера — partial-unique (WHERE deletedAt IS NULL), заведена
   // сырым SQL в миграции *_phase4_sku_number_unique: Prisma не умеет
@@ -1425,4 +1429,107 @@ model Budget {
   createdBy User      @relation("BudgetCreatedBy", fields: [createdById], references: [id])
 
   @@index([workspaceId, deletedAt])
+}
+
+// ───────────────────────────── CRM (amoCRM) ─────────────────────────────
+//
+// amoCRM живёт ДО денег (лид, переписка, воронка, бюджет), учёт — ПОСЛЕ
+// (заказ, оплата, себестоимость). Мост между ними — снимок сделок в CrmDeal:
+// приложение само опрашивает amo (cron раз в 10 минут + «Обновить»), кладёт
+// сделки сюда, а человек привязывает их к заказам или заводит заказ одной
+// кнопкой. Ничего не создаётся без человека — та же staging-модель, что у
+// строк выписки во «Входящих».
+
+enum CrmProvider {
+  AMOCRM
+}
+
+model CrmConnection {
+  id          String      @id @default(cuid())
+  workspaceId String
+  provider    CrmProvider @default(AMOCRM)
+  /// Поддомен аккаунта: «constructpcdirect» → https://constructpcdirect.amocrm.ru
+  subdomain   String
+  /// Долгосрочный токен amo, зашифрован тем же мастер-ключом, что у банков
+  /// (AES-256-GCM, формат `v1.<nonce>.<tag>.<ct>`). Наружу не отдаётся.
+  credentialEnc String
+  /// Маска токена для UI (последние 4 символа).
+  keyLast4      String
+  /// Имя аккаунта у amo (из /api/v4/account) — показать, к чему подключились.
+  accountName   String?
+  /// Воронка, за которой следим. Null — ещё не выбрана (первый синк подскажет).
+  pipelineId    Int?
+  /// Этап-порог: сделки на этом этапе и дальше «ждут заказа в учёте»
+  /// (решение владельца 20.09.2026 — «Отправлен»). Null — порога нет.
+  triggerStatusId Int?
+  /// Порядок этапа-порога в воронке на момент последнего синка — по нему
+  /// считается вкладка «ждут заказа» без похода в amo.
+  triggerStatusSort Int?
+  /// Снимок воронок и этапов (id, name, sort) с последнего синка — для окна
+  /// настроек и фильтра по этапу без живого запроса.
+  pipelines     Json?
+  status        IntegrationStatus @default(ACTIVE)
+  /// Курсор инкрементального синка: максимальный updated_at из увиденных сделок.
+  syncCursor    DateTime?
+  lastSyncAt    DateTime?
+  lastSyncError String?
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("CrmConnectionCreatedBy", fields: [createdById], references: [id])
+  deals     CrmDeal[]
+
+  @@index([workspaceId, deletedAt])
+}
+
+/// Снимок сделки amo. Идемпотентность синка — @@unique([connectionId, externalId]).
+model CrmDeal {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  /// id сделки у amo.
+  externalId   Int
+  name         String
+  /// Бюджет сделки (amo хранит целые рубли).
+  price        Decimal  @db.Decimal(14, 2)
+  pipelineId   Int
+  pipelineName String
+  statusId     Int
+  statusName   String
+  /// Порядок этапа в воронке — по нему работает порог triggerStatusId.
+  statusSort   Int
+  /// Сделка закрыта (системные этапы amo 142 «успешно» / 143 «не реализовано»).
+  isClosed     Boolean  @default(false)
+  isWon        Boolean  @default(false)
+  responsibleName String?
+  /// Основной контакт сделки: имя и телефон в каноническом виде «+7XXXXXXXXXX».
+  contactName  String?
+  phone        String?
+  /// «Пожелания по сборке» и прочие поля сделки, полезные при заведении заказа.
+  wishes       String?
+  remoteCreatedAt DateTime
+  remoteUpdatedAt DateTime
+  remoteClosedAt  DateTime?
+
+  /// Заказ в учёте, к которому привязана сделка. Null — ещё не привязана.
+  orderId     String?
+  linkedAt    DateTime?
+  /// «Не учитывать»: сделка не про заказ (тест, дубль, отказ) — уходит с вкладки
+  /// «ждут заказа», обратимо.
+  dismissedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection CrmConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  order      Order?        @relation("CrmDealOrder", fields: [orderId], references: [id])
+
+  @@unique([connectionId, externalId])
+  @@index([workspaceId, orderId])
+  @@index([workspaceId, isClosed, statusSort])
+  @@index([workspaceId, phone])
 }

@@ -25,6 +25,7 @@ import { PurchaseModule } from './purchase/purchase.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AuditModule } from './audit/audit.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { CrmModule } from './crm/crm.module';
 import { WbReceiptModule } from './wb-receipt/wb-receipt.module';
 import { PlanningModule } from './planning/planning.module';
 import { BudgetModule } from './budget/budget.module';
@@ -66,6 +67,7 @@ import { TelegramAlertService } from './common/telegram-alert.service';
     ReconciliationModule,
     AuditModule,
     IntegrationsModule,
+    CrmModule,
     WbReceiptModule,
     PlanningModule,
     BudgetModule,

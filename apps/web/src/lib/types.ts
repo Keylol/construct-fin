@@ -1136,3 +1136,111 @@ export interface PayPlannedInput {
   date?: string;
   note?: string | null;
 }
+
+// ───────────────────────────── amoCRM ─────────────────────────────
+
+export type CrmProvider = 'AMOCRM';
+
+export interface CrmPipelineStatus {
+  id: number;
+  name: string;
+  sort: number;
+  /** 0 — обычный этап, 1 — системный (успех/провал). */
+  type: number;
+}
+
+export interface CrmPipeline {
+  id: number;
+  name: string;
+  isMain: boolean;
+  statuses: CrmPipelineStatus[];
+}
+
+export interface CrmConnection {
+  id: string;
+  provider: CrmProvider;
+  subdomain: string;
+  /** Адрес аккаунта: https://<subdomain>.amocrm.ru */
+  url: string;
+  keyLast4: string;
+  accountName: string | null;
+  /** Наблюдаемая воронка; null — все. */
+  pipelineId: number | null;
+  /** Этап-порог «ждёт заказа»; null — порога нет. */
+  triggerStatusId: number | null;
+  triggerStatusSort: number | null;
+  /** Снимок воронок с последнего синка. */
+  pipelines: CrmPipeline[];
+  status: IntegrationStatus;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  createdAt: string;
+}
+
+/** Короткая форма заказа рядом со сделкой. */
+export interface CrmDealOrderRef {
+  id: string;
+  number: string;
+  phone: string | null;
+  status: OrderStatus;
+  paymentStatus: OrderPaymentState;
+  totalAmount: string;
+  paidAmount: string;
+  createdAt: string;
+}
+
+export interface CrmDeal {
+  id: string;
+  externalId: number;
+  /** Карточка сделки в amo. */
+  url: string | null;
+  name: string;
+  price: string;
+  pipelineId: number;
+  pipelineName: string;
+  statusId: number;
+  statusName: string;
+  statusSort: number;
+  isClosed: boolean;
+  isWon: boolean;
+  responsibleName: string | null;
+  contactName: string | null;
+  phone: string | null;
+  wishes: string | null;
+  remoteCreatedAt: string;
+  remoteUpdatedAt: string;
+  remoteClosedAt: string | null;
+  linkedAt: string | null;
+  dismissedAt: string | null;
+  order: CrmDealOrderRef | null;
+  /** Открытые заказы с тем же телефоном — кандидаты на «Привязать». */
+  suggestedOrders: CrmDealOrderRef[];
+}
+
+export interface CrmDealsPage {
+  items: CrmDeal[];
+  nextCursor: string | null;
+}
+
+export type CrmDealsTab = 'waiting' | 'linked' | 'all' | 'dismissed';
+
+export type CrmSummary =
+  | { connected: false }
+  | {
+      connected: true;
+      status: IntegrationStatus;
+      lastSyncAt: string | null;
+      lastSyncError: string | null;
+      pipelineName: string | null;
+      triggerStatusName: string | null;
+      waitingCount: number;
+      waitingSum: string;
+      linkedCount: number;
+      openCount: number;
+    };
+
+export interface CrmSyncResult {
+  fetched: number;
+  created: number;
+  updated: number;
+}

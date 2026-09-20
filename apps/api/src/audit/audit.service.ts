@@ -42,7 +42,17 @@ export type AuditAction =
   // Загрузка/замена клиентского сертификата mTLS (только отпечаток и срок).
   | 'integration.tls-rotate'
   // «Перезагрузить выписку»: снос банковских строк и проводок + сброс курсора.
-  | 'integration.reset';
+  | 'integration.reset'
+  // amoCRM внутри приложения: подключение и связь сделок с заказами.
+  | 'crm.connect'
+  | 'crm.token-rotate'
+  | 'crm.settings'
+  | 'crm.disable'
+  | 'crm.delete'
+  | 'crm.link'
+  | 'crm.unlink'
+  | 'crm.create-order'
+  | 'crm.dismiss';
 
 export interface AuditEntry {
   workspaceId: string;
