@@ -106,6 +106,12 @@ export class CrmController {
     return this.deals.waitingCount(ws.workspaceId);
   }
 
+  /** Подсказки для «Входящих»: приход из банка, сошедшийся по сумме со сделкой. */
+  @Get('inbox-suggestions')
+  inboxSuggestions(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.deals.inboxSuggestions(ws.workspaceId);
+  }
+
   /** Предложения «сделка ↔ существующий заказ» для окна сопоставления. */
   @Get('deals/match')
   match(@CurrentWorkspace() ws: WorkspaceContext) {

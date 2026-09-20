@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { toast } from '@/components/ui/Toaster';
 import { InboxRow } from '@/components/inbox/InboxRow';
 import { TransferSuggestions } from '@/components/inbox/TransferSuggestions';
+import { CrmDealSuggestions } from '@/components/inbox/CrmDealSuggestions';
 import { PlannedSuggestions } from '@/components/inbox/PlannedSuggestions';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { flatCodec } from '@/lib/url-codec';
@@ -176,7 +177,6 @@ function InboxView() {
             </TabsList>
           </Tabs>
         </div>
-
       </div>
 
       {/* Поиск и фильтры. Строк за месяц бывает под три сотни, и без них нужную
@@ -227,6 +227,7 @@ function InboxView() {
             отфильтрованному — при активном поиске прячем, чтобы не сбивать с толку. */}
         {tab === 'NEW' && !filtersActive && (
           <>
+            <CrmDealSuggestions wsId={current.id} />
             <TransferSuggestions wsId={current.id} />
             <PlannedSuggestions wsId={current.id} />
           </>
@@ -261,7 +262,11 @@ function InboxView() {
                 catOptions={line.direction === 'INCOME' ? catOptions.INCOME : catOptions.EXPENSE}
               />
             ))}
-            <LoadMore hasMore={inbox.hasNextPage} loading={inbox.isFetchingNextPage} onClick={() => void inbox.fetchNextPage()} />
+            <LoadMore
+              hasMore={inbox.hasNextPage}
+              loading={inbox.isFetchingNextPage}
+              onClick={() => void inbox.fetchNextPage()}
+            />
           </div>
         )}
       </div>

@@ -1262,6 +1262,31 @@ export interface CrmMatchItem {
   order: CrmDealOrderRef & { clientName: string | null };
 }
 
+/** Приход из банка, сошедшийся по сумме со сделкой amoCRM. */
+export interface CrmInboxSuggestion {
+  /** Расхождение сумм в рублях (округление бюджета в amo). */
+  diff: number;
+  line: {
+    id: string;
+    date: string;
+    amount: string;
+    description: string | null;
+    counterpartyName: string | null;
+  };
+  deal: {
+    id: string;
+    externalId: number;
+    url: string;
+    name: string;
+    price: string;
+    statusName: string;
+    contactName: string | null;
+    phone: string | null;
+  };
+  /** Заказ сделки, если он уже заведён: платёж можно зачесть сразу. */
+  order: CrmDealOrderRef | null;
+}
+
 export interface CrmMatchResult {
   items: CrmMatchItem[];
   confidentCount: number;

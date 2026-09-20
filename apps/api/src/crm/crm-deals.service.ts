@@ -12,7 +12,12 @@ import { CounterpartyService } from '../counterparty/counterparty.service';
 import { AuditService } from '../audit/audit.service';
 import type { ListCrmDealsQuery } from './crm.dto';
 import type { PipelineSnapshot } from './amo-map';
-import { matchDealsToOrders, type MatchPair, type MatchReason } from './crm-match';
+import {
+  matchDealsToOrders,
+  matchLinesToDeals,
+  type MatchPair,
+  type MatchReason,
+} from './crm-match';
 
 const ORDER_SELECT = {
   id: true,
@@ -351,6 +356,76 @@ export class CrmDealsService {
       ];
     });
     return { items, confidentCount: items.filter((i) => i.confident).length };
+  }
+
+  /**
+   * Подсказки для «Входящих»: приход из банка, сумма которого сошлась со
+   * сделкой amo. Банк приносит копейки, amo хранит целые рубли — поэтому
+   * платёж 150 198,25 и сделка на 150 198 это одна продажа (Донгак, Гаммаев,
+   * Лопатин на проде 20.09.2026).
+   *
+   * Ничего не проводит: человек видит, чей это платёж, и решает — зачесть в
+   * уже привязанный заказ или сперва завести заказ из сделки.
+   */
+  async inboxSuggestions(workspaceId: string) {
+    const conn = await this.connection(workspaceId);
+    if (!conn) return { items: [] };
+
+    const [lines, deals] = await Promise.all([
+      this.prisma.bankStatementLine.findMany({
+        where: { workspaceId, status: 'NEW', direction: 'INCOME' },
+        select: { id: true, date: true, amount: true, description: true, counterpartyName: true },
+      }),
+      this.prisma.crmDeal.findMany({
+        where: { workspaceId, connectionId: conn.id, dismissedAt: null, price: { gt: 0 } },
+        include: { order: { select: ORDER_SELECT } },
+      }),
+    ]);
+
+    const pairs = matchLinesToDeals(
+      lines.map((l) => ({ id: l.id, amount: l.amount.toFixed(2), date: l.date })),
+      deals.map((d) => ({
+        id: d.id,
+        price: d.price.toFixed(2),
+        phone: d.phone,
+        contactName: d.contactName,
+        name: d.name,
+        remoteCreatedAt: d.remoteCreatedAt,
+      })),
+    );
+
+    const lineById = new Map(lines.map((l) => [l.id, l]));
+    const dealById = new Map(deals.map((d) => [d.id, d]));
+    const items = pairs.flatMap((pair) => {
+      const line = lineById.get(pair.lineId);
+      const deal = dealById.get(pair.dealId);
+      if (!line || !deal) return [];
+      return [
+        {
+          diff: pair.diff,
+          line: {
+            id: line.id,
+            date: line.date.toISOString(),
+            amount: line.amount.toFixed(2),
+            description: line.description,
+            counterpartyName: line.counterpartyName,
+          },
+          deal: {
+            id: deal.id,
+            externalId: deal.externalId,
+            url: `https://${conn.subdomain}.amocrm.ru/leads/detail/${deal.externalId}`,
+            name: deal.name,
+            price: deal.price.toFixed(2),
+            statusName: deal.statusName,
+            contactName: deal.contactName,
+            phone: deal.phone,
+          },
+          // Заказ уже есть — платёж можно зачесть сразу, заводить нечего.
+          order: deal.order ? serializeOrder(deal.order) : null,
+        },
+      ];
+    });
+    return { items };
   }
 
   /**

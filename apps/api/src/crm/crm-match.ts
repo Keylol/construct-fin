@@ -150,3 +150,56 @@ export function matchDealsToOrders(deals: MatchDeal[], orders: MatchOrder[]): Ma
   }
   return pairs;
 }
+
+/**
+ * Подсказка «этот приход — по сделке amoCRM»: строка выписки и сделка сошлись
+ * по сумме. amo округляет бюджет до рубля, банк приносит копейки: платёж
+ * 150 198,25 против сделки 150 198 — одна и та же продажа (случай Донгака,
+ * Гаммаева, Лопатина на проде 20.09.2026). Поэтому допуск тот же, что и при
+ * сопоставлении с заказами, — рубль.
+ */
+export interface MatchLine {
+  id: string;
+  amount: string;
+  date: Date;
+}
+
+export interface LineDealPair {
+  lineId: string;
+  dealId: string;
+  /** Разница сумм в рублях — показать человеку, почему пара предложена. */
+  diff: number;
+}
+
+/**
+ * Пары «строка выписки ↔ сделка», один к одному: две строки на одну сделку —
+ * это либо предоплата и доплата, либо ошибка, и разбирать их нужно руками.
+ * При равном совпадении берём сделку, ближайшую по дате к платежу.
+ */
+export function matchLinesToDeals(lines: MatchLine[], deals: MatchDeal[]): LineDealPair[] {
+  const candidates: (LineDealPair & { daysApart: number })[] = [];
+  for (const line of lines) {
+    for (const deal of deals) {
+      const diff = Math.abs(money(line.amount) - money(deal.price));
+      if (diff > MONEY_EPS) continue;
+      candidates.push({
+        lineId: line.id,
+        dealId: deal.id,
+        diff: Math.round(diff * 100) / 100,
+        daysApart: Math.round(daysBetween(line.date, deal.remoteCreatedAt)),
+      });
+    }
+  }
+  candidates.sort((a, b) => a.diff - b.diff || a.daysApart - b.daysApart);
+
+  const usedLines = new Set<string>();
+  const usedDeals = new Set<string>();
+  const pairs: LineDealPair[] = [];
+  for (const c of candidates) {
+    if (usedLines.has(c.lineId) || usedDeals.has(c.dealId)) continue;
+    usedLines.add(c.lineId);
+    usedDeals.add(c.dealId);
+    pairs.push({ lineId: c.lineId, dealId: c.dealId, diff: c.diff });
+  }
+  return pairs;
+}
