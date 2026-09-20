@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn';
 import { NAV_ITEMS } from './nav-items';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useTotalCash } from '@/hooks/useTotalCash';
+import { cashCompositionText } from '@/lib/cash-composition';
 import { CreateMenu } from './CreateMenu';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
@@ -26,7 +27,10 @@ interface HeaderProps {
 function HeaderCash() {
   const { current } = useCurrentWorkspace();
   const wsId = current?.id ?? null;
-  const { total, hasBank, unresolvedCount } = useTotalCash(wsId);
+  const { total, hasBank, unresolvedCount, breakdown } = useTotalCash(wsId);
+  // В подсказке — состав: в шапке видна одна цифра, и она заметно меньше
+  // остатка в банке, пока счета без выписки сидят в минусе.
+  const composition = cashCompositionText(breakdown);
 
   if (total == null) return null;
 
@@ -40,7 +44,12 @@ function HeaderCash() {
       >
         <Link
           href="/accounts"
-          title={hasBank ? 'По данным банков (где есть API) — открыть счета' : 'Денежные средства на счетах — открыть'}
+          title={
+            composition ??
+            (hasBank
+              ? 'По данным банков (где есть API) — открыть счета'
+              : 'Денежные средства на счетах — открыть')
+          }
         >
           {/* Подпись — только на широком экране: на планшете шапке тесно. */}
           <span className="hidden text-[10px] font-medium uppercase tracking-wide text-muted-foreground lg:inline">
