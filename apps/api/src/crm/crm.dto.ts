@@ -61,3 +61,16 @@ export const LinkCrmDealSchema = z.object({
   orderId: z.string().cuid(),
 });
 export type LinkCrmDealDto = z.infer<typeof LinkCrmDealSchema>;
+
+/**
+ * Массовая привязка отмеченных пар. Лимит 500 — на проде пар около шестидесяти,
+ * но окно позволяет отметить всё сразу, и запрос не должен превращаться в
+ * бесконечный цикл по чужому списку.
+ */
+export const LinkCrmDealsBulkSchema = z.object({
+  pairs: z
+    .array(z.object({ dealId: z.string().cuid(), orderId: z.string().cuid() }))
+    .min(1, 'Не отмечено ни одной пары')
+    .max(500),
+});
+export type LinkCrmDealsBulkDto = z.infer<typeof LinkCrmDealsBulkSchema>;

@@ -12,6 +12,7 @@ import { CounterpartyService } from '../counterparty/counterparty.service';
 import { AuditService } from '../audit/audit.service';
 import type { ListCrmDealsQuery } from './crm.dto';
 import type { PipelineSnapshot } from './amo-map';
+import { matchDealsToOrders, type MatchPair, type MatchReason } from './crm-match';
 
 const ORDER_SELECT = {
   id: true,
@@ -247,6 +248,209 @@ export class CrmDealsService {
       orderNumber: order.number,
       deal: await this.one(workspaceId, deal.id),
     };
+  }
+
+  /** Счётчик «ждут заказа» для бейджа в меню — один лёгкий запрос. */
+  async waitingCount(workspaceId: string): Promise<{ count: number }> {
+    const conn = await this.connection(workspaceId);
+    if (!conn) return { count: 0 };
+    return { count: await this.prisma.crmDeal.count({ where: this.waitingWhere(conn) }) };
+  }
+
+  /**
+   * Предложения «сделка ↔ существующий заказ»: сводит непривязанные сделки со
+   * свободными заказами учёта. Считается на сервере целиком — человеку остаётся
+   * снять лишние галочки, а не искать пары руками по 2 267 сделкам.
+   *
+   * Охват НАМЕРЕННО шире вкладки «Ждут заказа»: сюда входят и закрытые сделки, и
+   * этапы вне набора «ждут заказа», потому что сопоставлять надо в первую
+   * очередь старые, уже проведённые заказы (на проде их 63 из 94). Поэтому пар
+   * в окне бывает больше, чем число на бейдже, — так и задумано.
+   */
+  async matchSuggestions(workspaceId: string) {
+    const conn = await this.connection(workspaceId);
+    if (!conn) return { items: [], confidentCount: 0 };
+
+    const [deals, orders] = await Promise.all([
+      this.prisma.crmDeal.findMany({
+        where: {
+          workspaceId,
+          connectionId: conn.id,
+          orderId: null,
+          dismissedAt: null,
+          // Сделка без телефона и без суммы не сопоставима ни одним правилом.
+          OR: [{ phone: { not: null } }, { price: { gt: 0 } }],
+        },
+        select: {
+          id: true,
+          externalId: true,
+          name: true,
+          price: true,
+          phone: true,
+          contactName: true,
+          statusName: true,
+          isClosed: true,
+          remoteCreatedAt: true,
+        },
+      }),
+      this.prisma.order.findMany({
+        // Заказ, на котором уже сидит сделка, во второй паре не участвует.
+        where: { workspaceId, deletedAt: null, crmDeals: { none: {} } },
+        select: { ...ORDER_SELECT, clientId: true, client: { select: { id: true, name: true } } },
+      }),
+    ]);
+
+    const pairs = matchDealsToOrders(
+      deals.map((d) => ({
+        id: d.id,
+        price: d.price.toFixed(2),
+        phone: d.phone,
+        contactName: d.contactName,
+        name: d.name,
+        remoteCreatedAt: d.remoteCreatedAt,
+      })),
+      orders.map((o) => ({
+        id: o.id,
+        phone: o.phone,
+        totalAmount: o.totalAmount.toFixed(2),
+        clientName: o.client?.name ?? null,
+        createdAt: o.createdAt,
+      })),
+    );
+
+    const dealById = new Map(deals.map((d) => [d.id, d]));
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const items = pairs.flatMap((pair: MatchPair) => {
+      const d = dealById.get(pair.dealId);
+      const o = orderById.get(pair.orderId);
+      if (!d || !o) return [];
+      return [
+        {
+          reason: pair.reason as MatchReason,
+          confident: pair.confident,
+          daysApart: pair.daysApart,
+          deal: {
+            id: d.id,
+            externalId: d.externalId,
+            url: `https://${conn.subdomain}.amocrm.ru/leads/detail/${d.externalId}`,
+            name: d.name,
+            price: d.price.toFixed(2),
+            statusName: d.statusName,
+            isClosed: d.isClosed,
+            contactName: d.contactName,
+            phone: d.phone,
+            remoteCreatedAt: d.remoteCreatedAt.toISOString(),
+          },
+          order: {
+            ...serializeOrder(o),
+            clientName: o.client?.name ?? null,
+          },
+        },
+      ];
+    });
+    return { items, confidentCount: items.filter((i) => i.confident).length };
+  }
+
+  /**
+   * Массовая привязка отмеченных пар. Пара пропускается (а не роняет весь
+   * разбор), если сделку или заказ уже заняли: список собран до нажатия, за это
+   * время состояние могло измениться.
+   *
+   * Заодно дозаполняет карточку клиента из контакта amo (решение владельца
+   * 20.09.2026: телефон заполнен у 46 клиентов из 161). Заполненное НЕ
+   * перезаписывается, каждое изменение — в аудит.
+   */
+  async linkBulk(
+    workspaceId: string,
+    userId: string,
+    pairs: { dealId: string; orderId: string }[],
+  ) {
+    let linked = 0;
+    let skipped = 0;
+    let clientsPatched = 0;
+
+    for (const pair of pairs) {
+      const deal = await this.prisma.crmDeal.findFirst({
+        where: { id: pair.dealId, workspaceId, orderId: null },
+      });
+      if (!deal) {
+        skipped += 1;
+        continue;
+      }
+      const order = await this.prisma.order.findFirst({
+        where: { id: pair.orderId, workspaceId, deletedAt: null, crmDeals: { none: {} } },
+        select: { id: true, number: true, clientId: true },
+      });
+      if (!order) {
+        skipped += 1;
+        continue;
+      }
+
+      // Привязка — одним условным UPDATE (`orderId: null` в where), а не
+      // «прочитали и записали»: два человека, нажавшие «Привязать отмеченные»
+      // на одном списке, иначе перезаписали бы привязку друг друга. Кто успел
+      // второй — получает skipped, как и на устаревшей паре.
+      const claimed = await this.prisma.crmDeal.updateMany({
+        where: { id: deal.id, workspaceId, orderId: null },
+        data: { orderId: order.id, linkedAt: new Date(), dismissedAt: null },
+      });
+      if (claimed.count === 0) {
+        skipped += 1;
+        continue;
+      }
+      const patched = await this.patchClientFromDeal(workspaceId, userId, order.clientId, deal);
+      if (patched) clientsPatched += 1;
+      linked += 1;
+
+      await this.audit.record(undefined, {
+        workspaceId,
+        actorId: userId,
+        action: 'crm.link',
+        entityType: 'CrmDeal',
+        entityId: deal.id,
+        diff: {
+          externalId: deal.externalId,
+          orderId: order.id,
+          orderNumber: order.number,
+          bulk: true,
+          clientPatched: patched,
+        },
+      });
+    }
+    return { linked, skipped, clientsPatched };
+  }
+
+  /**
+   * Телефон и источник клиенту из сделки — только в пустые поля. Возвращает
+   * true, если карточка действительно изменилась.
+   */
+  private async patchClientFromDeal(
+    workspaceId: string,
+    userId: string,
+    clientId: string | null,
+    deal: { phone: string | null; externalId: number },
+  ): Promise<boolean> {
+    if (!clientId) return false;
+    const client = await this.prisma.counterparty.findFirst({
+      where: { id: clientId, workspaceId, deletedAt: null },
+      select: { id: true, contact: true, source: true },
+    });
+    if (!client) return false;
+    const data: { contact?: string; source?: string } = {};
+    if (deal.phone && !client.contact?.trim()) data.contact = deal.phone;
+    if (!client.source?.trim()) data.source = 'amoCRM';
+    if (Object.keys(data).length === 0) return false;
+
+    await this.prisma.counterparty.update({ where: { id: client.id }, data });
+    await this.audit.record(undefined, {
+      workspaceId,
+      actorId: userId,
+      action: 'crm.client-enrich',
+      entityType: 'Counterparty',
+      entityId: client.id,
+      diff: { ...data, fromDeal: deal.externalId },
+    });
+    return true;
   }
 
   /**

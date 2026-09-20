@@ -244,6 +244,156 @@ describe('amoCRM: синк и вкладки', () => {
   });
 });
 
+describe('amoCRM: сопоставление с заказами', () => {
+  /** Заказ учёта с тем же телефоном и суммой, что у ждущей сделки. */
+  async function seedOrder(over: {
+    number: string;
+    phone: string | null;
+    total: string;
+    clientId?: string;
+  }) {
+    return H.prisma.order.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        number: over.number,
+        phone: over.phone,
+        clientId: over.clientId ?? null,
+        status: 'DONE',
+        paymentStatus: 'PAID',
+        subtotal: over.total,
+        totalAmount: over.total,
+        paidAmount: over.total,
+      },
+    });
+  }
+
+  it('предлагает пару по телефону и сумме как надёжную, по одному телефону — без галочки', async () => {
+    await connect();
+    await sync();
+    const exact = await seedOrder({
+      number: 'ORD-2026-0100',
+      phone: FAKE_AMO.phone,
+      total: '150198.00',
+    });
+    await seedOrder({ number: 'ORD-2026-0101', phone: FAKE_AMO.phone, total: '11111.00' });
+
+    const res = await H.inject({ method: 'GET', url: `${base()}/deals/match`, token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      items: {
+        reason: string;
+        confident: boolean;
+        deal: { externalId: number };
+        order: { id: string; number: string };
+      }[];
+      confidentCount: number;
+    }>();
+    expect(body.confidentCount).toBe(1);
+    const pair = body.items.find((i) => i.confident);
+    expect(pair).toMatchObject({ reason: 'phone_and_sum' });
+    expect(pair!.order.id).toBe(exact.id);
+    expect(pair!.deal.externalId).toBe(FAKE_AMO.leads.waiting);
+    // Второй заказ того же телефона в пару не попал: сделка уже занята сильной парой.
+    expect(body.items.filter((i) => i.deal.externalId === FAKE_AMO.leads.waiting)).toHaveLength(1);
+  });
+
+  it('массовая привязка: связывает пары, дозаполняет телефон и источник клиента, пропускает занятые', async () => {
+    await connect();
+    await sync();
+    const client = await H.prisma.counterparty.create({
+      data: { workspaceId: seed.workspaceId, name: 'Донгак Алдын-Херел', role: 'CLIENT' },
+    });
+    const order = await seedOrder({
+      number: 'ORD-2026-0100',
+      phone: FAKE_AMO.phone,
+      total: '150198.00',
+      clientId: client.id,
+    });
+    const match = await H.inject({ method: 'GET', url: `${base()}/deals/match`, token });
+    const pairs = match
+      .json<{ items: { confident: boolean; deal: { id: string }; order: { id: string } }[] }>()
+      .items.filter((i) => i.confident)
+      .map((i) => ({ dealId: i.deal.id, orderId: i.order.id }));
+    expect(pairs).toHaveLength(1);
+
+    const res = await H.inject({
+      method: 'POST',
+      url: `${base()}/deals/link-bulk`,
+      token,
+      payload: { pairs },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ linked: 1, skipped: 0, clientsPatched: 1 });
+
+    const linked = await H.prisma.crmDeal.findFirstOrThrow({
+      where: { externalId: FAKE_AMO.leads.waiting },
+    });
+    expect(linked.orderId).toBe(order.id);
+    const patched = await H.prisma.counterparty.findUniqueOrThrow({ where: { id: client.id } });
+    expect(patched.contact).toBe(FAKE_AMO.phone);
+    expect(patched.source).toBe('amoCRM');
+
+    // Повтор той же пары: сделка занята — пропуск, а не ошибка.
+    const again = await H.inject({
+      method: 'POST',
+      url: `${base()}/deals/link-bulk`,
+      token,
+      payload: { pairs },
+    });
+    expect(again.json()).toEqual({ linked: 0, skipped: 1, clientsPatched: 0 });
+
+    const audit = await H.prisma.auditLog.findMany({
+      where: { workspaceId: seed.workspaceId, action: { in: ['crm.link', 'crm.client-enrich'] } },
+    });
+    expect(audit).toHaveLength(2);
+  });
+
+  it('заполненный телефон клиента не перезаписывается', async () => {
+    await connect();
+    await sync();
+    const client = await H.prisma.counterparty.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        name: 'Донгак',
+        role: 'CLIENT',
+        contact: '+79000000000',
+        source: 'Avito',
+      },
+    });
+    await seedOrder({
+      number: 'ORD-2026-0100',
+      phone: FAKE_AMO.phone,
+      total: '150198.00',
+      clientId: client.id,
+    });
+    const match = await H.inject({ method: 'GET', url: `${base()}/deals/match`, token });
+    const pairs = match
+      .json<{ items: { confident: boolean; deal: { id: string }; order: { id: string } }[] }>()
+      .items.filter((i) => i.confident)
+      .map((i) => ({ dealId: i.deal.id, orderId: i.order.id }));
+    const res = await H.inject({
+      method: 'POST',
+      url: `${base()}/deals/link-bulk`,
+      token,
+      payload: { pairs },
+    });
+    expect(res.json<{ clientsPatched: number }>().clientsPatched).toBe(0);
+    const same = await H.prisma.counterparty.findUniqueOrThrow({ where: { id: client.id } });
+    expect(same.contact).toBe('+79000000000');
+    expect(same.source).toBe('Avito');
+  });
+
+  it('счётчик «ждут заказа» для бейджа совпадает со сводкой', async () => {
+    await connect();
+    await sync();
+    const count = await H.inject({ method: 'GET', url: `${base()}/deals/count`, token });
+    const summary = await H.inject({ method: 'GET', url: `${base()}/deals/summary`, token });
+    expect(count.json<{ count: number }>().count).toBe(
+      summary.json<{ waitingCount: number }>().waitingCount,
+    );
+  });
+});
+
 describe('amoCRM: сделка → заказ', () => {
   async function waitingDeal() {
     await connect();

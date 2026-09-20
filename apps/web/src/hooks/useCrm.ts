@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import type {
   CrmConnection,
   CrmDeal,
+  CrmLinkBulkResult,
+  CrmMatchResult,
   CrmDealsPage,
   CrmDealsTab,
   CrmPipeline,
@@ -27,6 +29,28 @@ export function useCrmConnection(wsId: string | null) {
     queryKey: [...crmKey(wsId), 'connection'],
     queryFn: () => api.get<CrmConnection | null>(`/workspaces/${wsId}/crm/connection`),
     enabled: !!wsId,
+  });
+}
+
+/**
+ * Счётчик «ждут заказа» для бейджа в меню: лёгкий запрос, освежается раз в
+ * минуту (синк на бэке — раз в десять).
+ */
+export function useCrmWaitingCount(wsId: string | null) {
+  return useQuery({
+    queryKey: [...crmKey(wsId), 'count'],
+    queryFn: () => api.get<{ count: number }>(`/workspaces/${wsId}/crm/deals/count`),
+    enabled: !!wsId,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Предложения «сделка ↔ существующий заказ» — только когда окно открыто. */
+export function useCrmMatch(wsId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...crmKey(wsId), 'match'],
+    queryFn: () => api.get<CrmMatchResult>(`/workspaces/${wsId}/crm/deals/match`),
+    enabled: !!wsId && enabled,
   });
 }
 
@@ -152,6 +176,16 @@ export function useLinkCrmDeal(wsId: string) {
   return useMutation({
     mutationFn: ({ dealId, orderId }: { dealId: string; orderId: string }) =>
       api.post<CrmDeal>(`/workspaces/${wsId}/crm/deals/${dealId}/link`, { orderId }),
+    onSuccess: invalidate,
+  });
+}
+
+/** Привязать отмеченные пары одним действием. */
+export function useLinkCrmDealsBulk(wsId: string) {
+  const invalidate = useInvalidateCrmAndOrders(wsId);
+  return useMutation({
+    mutationFn: (pairs: { dealId: string; orderId: string }[]) =>
+      api.post<CrmLinkBulkResult>(`/workspaces/${wsId}/crm/deals/link-bulk`, { pairs }),
     onSuccess: invalidate,
   });
 }
