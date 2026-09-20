@@ -120,6 +120,105 @@ describe('Управленческий баланс', () => {
     );
   });
 
+  it('неденежные проводки не трогают денежные средства', async () => {
+    // Деньги: начальный остаток 100 000, +50 000 прихода по заказу.
+    await h.prisma.account.update({
+      where: { id: seed.accountId },
+      data: { openingBalance: '100000.00' },
+    });
+    await h.prisma.transaction.createMany({
+      data: [
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'INCOME',
+          kind: 'ORDER_PAYMENT',
+          amount: '50000.00',
+          date: new Date(),
+          createdById: seed.userId,
+        },
+        // R2: себестоимость услуги и списание склада имеют счёт и тип EXPENSE,
+        // но деньги по ним не уходили — они ушли ещё при закупке.
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'EXPENSE',
+          kind: 'COGS',
+          amount: '7000.00',
+          date: new Date(),
+          createdById: seed.userId,
+        },
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'EXPENSE',
+          kind: 'WRITE_OFF',
+          amount: '3000.00',
+          date: new Date(),
+          createdById: seed.userId,
+        },
+      ],
+    });
+
+    const b = await h.balance.build(seed.workspaceId);
+    // 150 000, а не 140 000: неденежные 7 000 + 3 000 кассу не уменьшают.
+    expect(b.assets.cash.total).toBe('150000.00');
+  });
+
+  it('денежные средства сходятся с остатком счёта и с ОДДС на конец периода', async () => {
+    const period = { from: new Date(2026, 0, 1), to: new Date(2026, 0, 31, 23, 59, 59) };
+    await h.prisma.account.update({
+      where: { id: seed.accountId },
+      data: { openingBalance: '80000.00' },
+    });
+    await h.prisma.transaction.createMany({
+      data: [
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'INCOME',
+          kind: 'ORDER_PAYMENT',
+          amount: '25000.00',
+          date: new Date(2026, 0, 10, 12),
+          createdById: seed.userId,
+        },
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'EXPENSE',
+          kind: 'FIXED_COST',
+          amount: '5000.00',
+          date: new Date(2026, 0, 20, 12),
+          createdById: seed.userId,
+        },
+        {
+          workspaceId: seed.workspaceId,
+          accountId: seed.accountId,
+          type: 'EXPENSE',
+          kind: 'COGS',
+          amount: '9000.00',
+          date: new Date(2026, 0, 20, 12),
+          createdById: seed.userId,
+        },
+      ],
+    });
+
+    const b = await h.balance.build(seed.workspaceId);
+    const [acc] = await h.accounts.balances(seed.workspaceId);
+    const cf = await h.cashflow.build({
+      workspaceId: seed.workspaceId,
+      period,
+      accountId: null,
+      mode: 'consolidated',
+    });
+    const last = cf.series[0]!.points[cf.series[0]!.points.length - 1]!;
+
+    // Три экрана — одно число: 80 000 + 25 000 − 5 000.
+    expect(b.assets.cash.total).toBe('100000.00');
+    expect(acc!.ledger).toBe('100000.00');
+    expect(last.balance).toBe('100000.00');
+  });
+
   it('не смешивает: архивный счёт, отменённый заказ и чужое пространство вне баланса', async () => {
     // Архивный счёт с деньгами — не в балансе.
     await h.prisma.account.create({
