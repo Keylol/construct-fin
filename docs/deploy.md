@@ -14,34 +14,16 @@ constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) �
 
 ## Адрес прода
 
-Единственный адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `195.133.1.13`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
+Единственный рабочий адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `195.133.1.13`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
 
-**Почему съехали с `miniapp.aleksandrantropov.online`.** Домен стоял за Cloudflare, а часть провайдеров РФ режет её диапазоны — симптом «с VPN заходит, без VPN нет». 19.09.2026 старый адрес снят целиком: nginx-конфиг удалён, `PUBLIC_ORIGIN` и Telegram Mini App переведены на новый адрес, DNS-запись удалена владельцем.
+**Старый адрес `miniapp.aleksandrantropov.online`** (за Cloudflare) с 20.09.2026 отдаёт только страницу-затычку `deploy/nginx/miniapp-stub/index.html` (на VPS — `/var/www/miniapp-stub/`), конфиг `deploy/nginx/construct-v6.conf`: любой путь → затычка, `/api/*` → 410. DNS-запись и сертификат остаются, иначе затычка не откроется. Причина переезда: часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет».
 
-### Как снимался старый адрес (для истории и для повторения на другом домене)
+### Как переезжали (повторить при смене домена)
 
-```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 '
-  cd /srv/construct-v6 &&
-  cp .env.production .env.production.bak-$(date +%F) &&
-  sed -i "s|^PUBLIC_ORIGIN=.*|PUBLIC_ORIGIN=https://constructfin.aleksandrantropov.ru|" .env.production &&
-  docker compose up -d --no-deps web api &&
-  rm -f /etc/nginx/sites-enabled/construct-v6.conf &&
-  nginx -t && systemctl reload nginx'
-```
-
-Затем — Mini App на новый адрес (бот берёт токен из `.env.production`):
-
-```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 '
-  cd /srv/construct-v6 &&
-  TOKEN=$(grep -E "^TELEGRAM_BOT_TOKEN=" .env.production | cut -d= -f2-) &&
-  curl -s -X POST "https://api.telegram.org/bot$TOKEN/setChatMenuButton" \
-    -H "Content-Type: application/json" \
-    -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Construct\",\"web_app\":{\"url\":\"https://constructfin.aleksandrantropov.ru\"}}}"'
-```
-
-Руками у владельца остаётся: в BotFather `/setdomain` на новый адрес (Login Widget), удаление DNS-записи `miniapp` и смена URL в мониторинге. Сертификат старого домена можно оставить до истечения или снять `certbot delete --cert-name miniapp.aleksandrantropov.online`.
+1. `PUBLIC_ORIGIN` в `/srv/construct-v6/.env.production` → новый адрес, затем `docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --no-deps web api` (compose без явных `-f`/`--env-file` на VPS не находит файл).
+2. Mini App на новый адрес: `setChatMenuButton` — **с локальной машины**, с VPS `api.telegram.org` недоступен; токен брать по SSH в переменную и не печатать.
+3. Проверить вход без VPN и с телефона. Грабля 19.09: `telegram-web-app.js` со `strategy="beforeInteractive"` блокировал гидрацию у провайдеров, режущих telegram.org, — SDK из веба убран (#209).
+4. Старый `server` в nginx заменить на затычку (`construct-v6.conf`), `nginx -t && systemctl reload nginx`.
 
 Кука `construct_jwt` привязана к хосту: после переезда нужно войти заново.
 

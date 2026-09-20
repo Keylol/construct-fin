@@ -203,8 +203,8 @@ jobs:
 
       - name: Smoke-test external
         run: |
-          # Единственный прод-адрес с 19.09.2026: miniapp.aleksandrantropov.online
-          # снят (Cloudflare резала часть провайдеров РФ), остался прямой вход.
+          # Единственный рабочий адрес с 20.09.2026; miniapp.aleksandrantropov.online
+          # отдаёт затычку (Cloudflare резала часть провайдеров РФ).
           curl -fsS https://constructfin.aleksandrantropov.ru/api/v1/health
           echo
           curl -fsS -o /dev/null -w "login: %{http_code}\n" https://constructfin.aleksandrantropov.ru/login
