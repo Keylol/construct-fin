@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/Select';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ExportButtons } from '@/components/reports/ExportButtons';
 import { ReportPeriodFields } from '@/components/reports/ReportPeriodFields';
+import { ShareDonut } from '@/components/reports/ShareDonut';
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace';
 import { useBreakdownReport } from '@/hooks/useReports';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
@@ -72,8 +73,10 @@ function CategoriesReportView() {
       r.name
     );
 
-  // Структура читается по колонке «Доля» — без кольца и полос (решение 10.09:
-  // графики только в ОПиУ и ОДДС).
+  // Кольцо долей над таблицей (20.09): решение 10.09 «графики только в ОПиУ и
+  // ОДДС» отменено владельцем именно для этого разреза — он отвечает на вопрос
+  // «куда уходят деньги», а тридцать строк с процентами глазом не складываются.
+  // Таблица остаётся источником точных сумм, колонка «Доля» — тоже.
   const columns: Column<BreakdownRow>[] = [
     { key: 'name', header: 'Категория', cell: name, className: 'w-full max-w-0' },
     { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
@@ -139,6 +142,13 @@ function CategoriesReportView() {
               hint="Поменяйте период или тип — либо добавьте операции."
             />
           </Card>
+        )}
+
+        {query.data && rows.length > 0 && (
+          <ShareDonut
+            points={rows}
+            title={type === 'INCOME' ? 'Структура доходов' : 'Структура расходов'}
+          />
         )}
 
         {query.data && rows.length > 0 && (
