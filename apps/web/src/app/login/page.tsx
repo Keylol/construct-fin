@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
+import { api } from '@/lib/api';
+import { describeLoginFailure } from '@/lib/login-errors';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,19 +19,10 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ password }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { message?: string }).message || `HTTP ${res.status}`);
-      }
+      await api.post('/auth/login', { password });
       router.push('/dashboard');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка входа');
+    } catch (err) {
+      setError(describeLoginFailure(err));
     } finally {
       setLoading(false);
     }
