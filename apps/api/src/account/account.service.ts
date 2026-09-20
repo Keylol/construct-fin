@@ -130,13 +130,12 @@ export class AccountService {
         class: input.class ?? undefined,
         openingBalance:
           input.openingBalance !== undefined ? new Prisma.Decimal(input.openingBalance) : undefined,
-        // Введённое руками число — больше не выведенное: якорь снимаем, синк
-        // его не перезапишет (ненулевое ручное значение он не трогает).
-        openingAnchoredAt:
-          input.openingBalance !== undefined &&
-          input.openingBalance !== existing.openingBalance.toFixed(2)
-            ? null
-            : undefined,
+        // Введённое руками число — больше не выведенное: якорь и его источник
+        // снимаем, синк его не перезапишет (ненулевое ручное значение он не трогает).
+        ...(input.openingBalance !== undefined &&
+        input.openingBalance !== existing.openingBalance.toFixed(2)
+          ? { openingAnchoredAt: null, openingAnchorSource: null }
+          : {}),
         note: input.note === undefined ? undefined : input.note,
         isArchived: input.isArchived ?? undefined,
       },
@@ -170,6 +169,7 @@ export class AccountService {
     class: AccountClass;
     openingBalance: Prisma.Decimal;
     openingAnchoredAt: Date | null;
+    openingAnchorSource: string | null;
     note: string | null;
     isArchived: boolean;
     createdAt: Date;
@@ -182,6 +182,7 @@ export class AccountService {
       class: a.class,
       openingBalance: a.openingBalance.toFixed(2),
       openingAnchoredAt: a.openingAnchoredAt?.toISOString() ?? null,
+      openingAnchorSource: a.openingAnchorSource === 'CHECK' ? 'CHECK' : a.openingAnchoredAt ? 'BANK' : null,
       note: a.note,
       isArchived: a.isArchived,
       createdAt: a.createdAt,

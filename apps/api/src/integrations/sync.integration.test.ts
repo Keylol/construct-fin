@@ -501,7 +501,7 @@ describe('SyncService: остаток по банку → якорь начал�
     expect(c.bankBalance?.toFixed(2)).toBe('20000.00');
   });
 
-  it('следующий синк перевыводит якорь по новому остатку (самопроверка)', async () => {
+  it('следующий синк не перевыводит уже выведенный якорь по новому остатку', async () => {
     const conn = await makeConnection();
     const { fake, sync } = syncWithBalance({ current: { amount: '20000.00', at }, openingAt: null });
     await sync.syncConnection(conn.id);
@@ -509,9 +509,68 @@ describe('SyncService: остаток по банку → якорь начал�
     fake.balance = { current: { amount: '21000.00', at: later }, openingAt: null };
     await sync.syncConnection(conn.id); // курсор 'done' → новых строк нет
 
+    // Остаток «на сейчас» и строки живут в разном времени: перевывод каждым
+    // синком двигал бы начальный остаток, а с ним все отчёты за прошлое.
+    // Разница с банком — дело сверки и UI, а не молчаливой перезаписи.
     const acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
-    expect(acc.openingBalance.toFixed(2)).toBe('15450.50');
-    expect(acc.openingAnchoredAt?.toISOString()).toBe(later.toISOString());
+    expect(acc.openingBalance.toFixed(2)).toBe('14450.50');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(at.toISOString());
+    expect(acc.openingAnchorSource).toBe('BANK');
+    // Остаток по банку на подключении при этом обновился — он и покажет разницу.
+    const c = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(c.bankBalance?.toFixed(2)).toBe('21000.00');
+  });
+
+  it('входящее сальдо уточняет выведенный якорь и следует за сдвигом даты выгрузки', async () => {
+    const conn = await makeConnection();
+    const { fake, sync } = syncWithBalance({ current: { amount: '20000.00', at }, openingAt: null });
+    await sync.syncConnection(conn.id); // выведенный по остатку: 14450.50
+
+    // Банк отдал факт — сальдо на начало выгрузки. Факт точнее вывода.
+    const start = new Date('2026-06-01T00:00:00.000Z');
+    fake.balance = { current: { amount: '20000.00', at }, openingAt: { amount: '777.00', date: start } };
+    await sync.syncConnection(conn.id);
+    let acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('777.00');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(start.toISOString());
+    expect(acc.openingAnchorSource).toBe('BANK');
+
+    // Дату выгрузки сдвинули назад — сальдо берётся на новую дату.
+    const earlier = new Date('2026-05-01T00:00:00.000Z');
+    fake.balance = { current: null, openingAt: { amount: '500.00', date: earlier } };
+    await sync.syncConnection(conn.id);
+    acc = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(acc.openingBalance.toFixed(2)).toBe('500.00');
+    expect(acc.openingAnchoredAt?.toISOString()).toBe(earlier.toISOString());
+  });
+
+  it('якорь из сверки синк не перезаписывает', async () => {
+    const conn = await makeConnection();
+    const start = new Date('2026-06-01T00:00:00.000Z');
+    const { sync } = syncWithBalance({
+      current: { amount: '20000.00', at },
+      openingAt: { amount: '777.00', date: start },
+    });
+    await sync.syncConnection(conn.id); // якорь банка: 777
+
+    // Владелец сверил факт на 05.07 и принял его как якорь. Все четыре строки
+    // ещё на разборе (net +5549.50) → 9000 − 5549.50 = 3450.50.
+    await h.reconciliation.createCheck(seed.workspaceId, seed.userId, {
+      accountId: seed.accountId,
+      date: '2026-07-05T00:00:00.000Z',
+      actualBalance: '9000.00',
+      anchor: true,
+    });
+    const checked = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(checked.openingBalance.toFixed(2)).toBe('3450.50');
+    expect(checked.openingAnchorSource).toBe('CHECK');
+
+    // Следующий синк снова несёт сальдо банка — но решение человека старше.
+    await sync.syncConnection(conn.id);
+    const after = await h.prisma.account.findUniqueOrThrow({ where: { id: seed.accountId } });
+    expect(after.openingBalance.toFixed(2)).toBe('3450.50');
+    expect(after.openingAnchoredAt?.toISOString()).toBe(checked.openingAnchoredAt?.toISOString());
+    expect(after.openingAnchorSource).toBe('CHECK');
   });
 
   it('провайдер без остатка — синк строк как раньше, счёт не тронут', async () => {
