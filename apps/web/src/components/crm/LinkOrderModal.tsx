@@ -32,7 +32,10 @@ export function LinkOrderModal({
   onClose: () => void;
 }) {
   const open = deal !== null;
-  const orders = useOrders(wsId, { status: 'OPEN', limit: 100 });
+  // Без фильтра статуса: сопоставлять приходится прежде всего со СТАРЫМИ
+  // заказами, а они закрыты (на проде 63 из 94). С `status: 'OPEN'` окно их не
+  // показывало, и привязать сделку к проведённому заказу было нельзя.
+  const orders = useOrders(wsId, { limit: 200 });
   const link = useLinkCrmDeal(wsId);
   const [orderId, setOrderId] = useState('');
 
@@ -57,7 +60,13 @@ export function LinkOrderModal({
       ...list.map((o) => ({
         value: o.id,
         label: `${o.number}${o.client ? ` · ${o.client.name}` : ''}${o.phone ? ` · ${o.phone}` : ''}`,
-        group: suggested.has(o.id) ? 'Похоже на эту сделку' : 'Открытые заказы',
+        description:
+          o.status === 'DONE' ? 'закрыт' : o.status === 'CANCELLED' ? 'отменён' : undefined,
+        group: suggested.has(o.id)
+          ? 'Похоже на эту сделку'
+          : o.status === 'OPEN'
+            ? 'Открытые заказы'
+            : 'Закрытые заказы',
       })),
     ];
   }, [orders.data, deal]);
@@ -93,7 +102,7 @@ export function LinkOrderModal({
             </div>
           )}
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            <span>Открытый заказ</span>
+            <span>Заказ</span>
             <Combobox
               value={orderId}
               onChange={setOrderId}

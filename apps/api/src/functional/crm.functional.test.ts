@@ -297,6 +297,28 @@ describe('amoCRM: сопоставление с заказами', () => {
     expect(body.items.filter((i) => i.deal.externalId === FAKE_AMO.leads.waiting)).toHaveLength(1);
   });
 
+  it('ФИО с пометкой CRM и копейки в заказе: пара находится и отмечена', async () => {
+    await connect();
+    await sync();
+    // Сделка «Донгак Алдын-Херел (Р)» без телефона в заказе и с копейками:
+    // ровно тот случай, из-за которого 20.09.2026 девять сделок не нашли заказы.
+    const client = await H.prisma.counterparty.create({
+      data: { workspaceId: seed.workspaceId, name: 'Донгак Алдын-Херел', role: 'CLIENT' },
+    });
+    const order = await seedOrder({
+      number: 'ORD-2026-0200',
+      phone: '+79000000001',
+      total: '150198.84',
+      clientId: client.id,
+    });
+    const res = await H.inject({ method: 'GET', url: `${base()}/deals/match`, token });
+    const items =
+      res.json<{ reason: string; confident: boolean; order: { id: string } }[]>().items ??
+      res.json<{ items: { reason: string; confident: boolean; order: { id: string } }[] }>().items;
+    const pair = items.find((i) => i.order.id === order.id);
+    expect(pair).toMatchObject({ reason: 'name_and_sum', confident: true });
+  });
+
   it('массовая привязка: связывает пары, дозаполняет телефон и источник клиента, пропускает занятые', async () => {
     await connect();
     await sync();
