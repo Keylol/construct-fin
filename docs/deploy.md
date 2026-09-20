@@ -3,32 +3,29 @@
 ## Production топология
 
 ```
-miniapp.aleksandrantropov.online      ⇘
-                                        VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
-constructfin.aleksandrantropov.ru     ⇗   ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
-                                           └ /         → 127.0.0.1:3000 (web контейнер)
-                                         docker compose stack at /srv/construct-v6:
-                                           ├ postgres:16-alpine (volume pgdata)
-                                           ├ api (ghcr.io/keylol/construct-v6-api:latest)
-                                           └ web (ghcr.io/keylol/construct-v6-web:latest)
+constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
+                                      ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
+                                      └ /         → 127.0.0.1:3000 (web контейнер)
+                                    docker compose stack at /srv/construct-v6:
+                                      ├ postgres:16-alpine (volume pgdata)
+                                      ├ api (ghcr.io/keylol/construct-v6-api:latest)
+                                      └ web (ghcr.io/keylol/construct-v6-web:latest)
 ```
 
-Оба адреса ведут на один и тот же стек контейнеров — разные `server_name` в nginx, разные сертификаты, разные DNS. Один деплой обновляет оба.
+## Адрес прода
 
-## Два адреса
+Единственный рабочий адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `195.133.1.13`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
 
-С 15.09.2026 у прода два входа, оба поддерживаются:
+**Старый адрес `miniapp.aleksandrantropov.online`** (за Cloudflare) с 20.09.2026 отдаёт только страницу-затычку `deploy/nginx/miniapp-stub/index.html` (на VPS — `/var/www/miniapp-stub/`), конфиг `deploy/nginx/construct-v6.conf`: любой путь → затычка, `/api/*` → 410. DNS-запись и сертификат остаются, иначе затычка не откроется. Причина переезда: часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет».
 
-| Адрес | DNS / защита | Сертификат | Файл nginx |
-|---|---|---|---|
-| `miniapp.aleksandrantropov.online` | Cloudflare (проксирован) | `/etc/letsencrypt/live/miniapp.aleksandrantropov.online/`, до 04.11.2026 | `deploy/nginx/construct-v6.conf` |
-| `constructfin.aleksandrantropov.ru` | reg.ru NS, без прокси — A-запись прямо на `195.133.1.13` | `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/`, до 14.12.2026 | `deploy/nginx/constructfin.conf` |
+### Как переезжали (повторить при смене домена)
 
-**Зачем второй.** Часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет» на некоторых устройствах/сетях. `constructfin` идёт напрямую на российский сервер в обход Cloudflare и служит запасным входом для таких случаев. `miniapp` остаётся основным (защита и кэш Cloudflare для всех, кого не блокируют).
+1. `PUBLIC_ORIGIN` в `/srv/construct-v6/.env.production` → новый адрес, затем `docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --no-deps web api` (compose без явных `-f`/`--env-file` на VPS не находит файл).
+2. Mini App на новый адрес: `setChatMenuButton` — **с локальной машины**, с VPS `api.telegram.org` недоступен; токен брать по SSH в переменную и не печатать.
+3. Проверить вход без VPN и с телефона. Грабля 19.09: `telegram-web-app.js` со `strategy="beforeInteractive"` блокировал гидрацию у провайдеров, режущих telegram.org, — SDK из веба убран (#209).
+4. Старый `server` в nginx заменить на затычку (`construct-v6.conf`), `nginx -t && systemctl reload nginx`.
 
-**Оба сертификата — Let's Encrypt через certbot** (`authenticator=nginx` для miniapp, `authenticator=webroot` для constructfin — challenge на порту 80 идёт даже после появления редиректа на https). Продление — общий `certbot.timer`, `deploy-hook`/`renew_hook` = `systemctl reload nginx`. Проверить сроки: `certbot certificates`.
-
-Кука `construct_jwt` привязана к хосту — вход на одном адресе не переносится на другой, логиниться заново.
+Кука `construct_jwt` привязана к хосту: после переезда нужно войти заново.
 
 ## Деплой
 

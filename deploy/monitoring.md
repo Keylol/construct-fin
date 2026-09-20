@@ -6,7 +6,7 @@
 
 ## Что мониторить
 
-- **URL:** `https://miniapp.aleksandrantropov.online/api/v1/health`
+- **URL:** `https://constructfin.aleksandrantropov.ru/api/v1/health`
   (nginx проксирует `/api/v1/` → `127.0.0.1:4000/`, т.е. на бэкендовый `/health`)
 - **Ожидаемо:** HTTP `200`, тело `{"status":"ok","db":"ok"}`,
   `Content-Type: application/json`.
