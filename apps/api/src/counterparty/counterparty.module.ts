@@ -6,5 +6,7 @@ import { WorkspaceGuard } from '../common/workspace.guard';
 @Module({
   controllers: [CounterpartyController],
   providers: [CounterpartyService, WorkspaceGuard],
+  // CrmModule: заведение заказа из сделки amo подбирает/создаёт клиента.
+  exports: [CounterpartyService],
 })
 export class CounterpartyModule {}
