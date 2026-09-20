@@ -21,11 +21,17 @@ const token = z
 
 const amoId = z.coerce.number().int().positive();
 
+/** Этапы «ждут заказа»: до 50 id, без дублей. */
+const waitingStatusIds = z
+  .array(amoId)
+  .max(50)
+  .transform((ids) => [...new Set(ids)]);
+
 export const CreateCrmConnectionSchema = z.object({
   subdomain,
   token,
   pipelineId: amoId.optional(),
-  triggerStatusId: amoId.optional(),
+  waitingStatusIds: waitingStatusIds.optional(),
 });
 export type CreateCrmConnectionDto = z.infer<typeof CreateCrmConnectionSchema>;
 
@@ -33,9 +39,10 @@ export const UpdateCrmConnectionSchema = z.object({
   /** Ротация токена — заменяет секрет без пересоздания подключения. */
   token: token.optional(),
   status: z.enum(['ACTIVE', 'DISABLED']).optional(),
-  /** null снимает выбор воронки/порога: «не передали» и «сбросить» — разные намерения. */
+  /** null снимает выбор воронки: «не передали» и «сбросить» — разные намерения. */
   pipelineId: amoId.nullable().optional(),
-  triggerStatusId: amoId.nullable().optional(),
+  /** Пустой массив — «любой этап». */
+  waitingStatusIds: waitingStatusIds.optional(),
 });
 export type UpdateCrmConnectionDto = z.infer<typeof UpdateCrmConnectionSchema>;
 

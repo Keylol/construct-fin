@@ -46,7 +46,7 @@ async function connect(extra: Record<string, unknown> = {}) {
       subdomain: FAKE_AMO.subdomain,
       token: GOOD_TOKEN,
       pipelineId: FAKE_AMO.pipelineId,
-      triggerStatusId: FAKE_AMO.statuses.sent,
+      waitingStatusIds: [FAKE_AMO.statuses.sent, FAKE_AMO.statuses.parts],
       ...extra,
     },
   });
@@ -66,7 +66,7 @@ describe('amoCRM: подключение (OwnerGuard, маска токена)',
     expect(body.keyLast4).toBe('7788');
     expect(body.accountName).toBe('Fake amoCRM');
     expect(body.subdomain).toBe(FAKE_AMO.subdomain);
-    expect(body.triggerStatusSort).toBe(30);
+    expect(body.waitingStatusIds).toEqual([FAKE_AMO.statuses.sent, FAKE_AMO.statuses.parts]);
     expect(JSON.stringify(body)).not.toContain('fake-long-lived');
     expect(body).not.toHaveProperty('credentialEnc');
 
@@ -135,7 +135,7 @@ describe('amoCRM: подключение (OwnerGuard, маска токена)',
 });
 
 describe('amoCRM: синк и вкладки', () => {
-  it('синк кладёт снимок сделок; «ждут заказа» — только с порога, открытые, с телефоном из контакта', async () => {
+  it('синк кладёт снимок сделок; «ждут заказа» — только выбранные этапы, открытые, с телефоном из контакта', async () => {
     await connect();
     const first = await sync();
     expect(first).toEqual({ fetched: 3, created: 3, updated: 0 });
@@ -167,7 +167,7 @@ describe('amoCRM: синк и вкладки', () => {
     expect(s.waitingCount).toBe(1);
     expect(s.waitingSum).toBe('150198.00');
     expect(s.openCount).toBe(2);
-    expect(s.triggerStatusName).toBe('Отправлен');
+    expect(s.waitingStageNames).toEqual(['Отправлен', 'Фото комплектующих']);
   });
 
   it('поиск по телефону и по сумме; фильтр по этапу', async () => {
@@ -197,6 +197,28 @@ describe('amoCRM: синк и вкладки', () => {
     expect(
       byStage.json<{ items: { externalId: number }[] }>().items.map((d) => d.externalId),
     ).toEqual([FAKE_AMO.leads.beforeThreshold]);
+  });
+
+  it('этапы воронки отдаются в порядке доски с числом открытых и флагом «ждут»', async () => {
+    await connect();
+    await sync();
+    const res = await H.inject({ method: 'GET', url: `${base()}/stages`, token });
+    expect(res.statusCode).toBe(200);
+    const stages = res.json<{ id: number; name: string; openCount: number; waiting: boolean }[]>();
+    expect(stages.map((s) => s.name)).toEqual([
+      'САЙТ',
+      'Проверка',
+      'Отправлен',
+      'Фото комплектующих',
+    ]);
+    expect(stages.find((s) => s.name === 'Проверка')).toMatchObject({
+      openCount: 1,
+      waiting: false,
+    });
+    expect(stages.find((s) => s.name === 'Фото комплектующих')).toMatchObject({
+      openCount: 1,
+      waiting: true,
+    });
   });
 
   it('ошибка amo переводит подключение в ERROR с текстом, новый токен снимает ошибку', async () => {

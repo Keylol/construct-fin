@@ -92,6 +92,12 @@ export class CrmController {
 
   // ───────────────────────── сделки ─────────────────────────
 
+  /** Этапы воронки с числом открытых сделок — для настроек «ждут заказа». */
+  @Get('stages')
+  stages(@CurrentWorkspace() ws: WorkspaceContext) {
+    return this.deals.stages(ws.workspaceId);
+  }
+
   @Get('deals/summary')
   summary(@CurrentWorkspace() ws: WorkspaceContext) {
     return this.deals.summary(ws.workspaceId);

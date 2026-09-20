@@ -6,7 +6,6 @@ import { CryptoService } from '../integrations/crypto.service';
 import { sanitizeSecrets } from '../common/sanitize-secrets';
 import { AmoApiError, AmoClient, AMO_PAGE_LIMIT, type AmoCredentials } from './amo.client';
 import { mapLead, statusIndex } from './amo-map';
-import { resolveTriggerSort } from './crm-connection.service';
 
 /**
  * Первый синк тянет сделки, изменённые за этот срок. Открытые сделки живут
@@ -133,7 +132,6 @@ export class CrmSyncService {
           lastSyncError: null,
           status: 'ACTIVE',
           pipelines: pipelines as unknown as Prisma.InputJsonValue,
-          triggerStatusSort: resolveTriggerSort(pipelines, conn.triggerStatusId),
         },
       });
       return result;

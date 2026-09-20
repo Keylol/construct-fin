@@ -168,12 +168,7 @@ export interface Purchase {
 }
 
 export type OrderStatus = 'OPEN' | 'DONE' | 'CANCELLED';
-export type OrderPaymentState =
-  | 'UNPAID'
-  | 'PARTIAL'
-  | 'PAID'
-  | 'OVERPAID'
-  | 'REFUNDED';
+export type OrderPaymentState = 'UNPAID' | 'PARTIAL' | 'PAID' | 'OVERPAID' | 'REFUNDED';
 
 /** Источник себестоимости строки заказа (F1): факт / ручной ввод / оценка по складу. */
 export type OrderCostSource = 'actual' | 'manual' | 'estimate' | null;
@@ -334,8 +329,8 @@ export type TransactionKind =
 
 export interface Transaction {
   id: string;
-  date: string;          // ISO
-  amount: string;        // "1234.56"
+  date: string; // ISO
+  amount: string; // "1234.56"
   type: TxType;
   kind: TransactionKind;
   accountId: string;
@@ -376,12 +371,7 @@ export interface TransactionSummary {
   net: string;
 }
 
-export type ImportSource =
-  | 'GENERIC_CSV'
-  | 'GENERIC_XLSX'
-  | 'ALFA_XLSX'
-  | 'TINKOFF_PDF'
-  | 'WB_PDF';
+export type ImportSource = 'GENERIC_CSV' | 'GENERIC_XLSX' | 'ALFA_XLSX' | 'TINKOFF_PDF' | 'WB_PDF';
 
 export interface ColumnMapping {
   date: string;
@@ -1012,13 +1002,7 @@ export interface TaxPayInput {
 }
 
 // ── Регулярные и плановые платежи (Ф5 «Полный автомат») ──
-export type PlannedTxKind =
-  | 'FIXED_COST'
-  | 'VARIABLE_COST'
-  | 'SALARY'
-  | 'TAX'
-  | 'NON_OP'
-  | 'OTHER';
+export type PlannedTxKind = 'FIXED_COST' | 'VARIABLE_COST' | 'SALARY' | 'TAX' | 'NON_OP' | 'OTHER';
 export type RecurrenceCadence = 'MONTHLY' | 'WEEKLY';
 export type PlannedSource = 'RECURRING' | 'SALARY' | 'MANUAL';
 export type PlannedStatus = 'PLANNED' | 'PAID' | 'SKIPPED' | 'CANCELLED';
@@ -1166,9 +1150,8 @@ export interface CrmConnection {
   accountName: string | null;
   /** Наблюдаемая воронка; null — все. */
   pipelineId: number | null;
-  /** Этап-порог «ждёт заказа»; null — порога нет. */
-  triggerStatusId: number | null;
-  triggerStatusSort: number | null;
+  /** Этапы «ждут заказа»; пусто — любой открытый. */
+  waitingStatusIds: number[];
   /** Снимок воронок с последнего синка. */
   pipelines: CrmPipeline[];
   status: IntegrationStatus;
@@ -1232,12 +1215,21 @@ export type CrmSummary =
       lastSyncAt: string | null;
       lastSyncError: string | null;
       pipelineName: string | null;
-      triggerStatusName: string | null;
+      waitingStageNames: string[];
       waitingCount: number;
       waitingSum: string;
       linkedCount: number;
       openCount: number;
     };
+
+/** Этап воронки с числом открытых сделок — окно настроек. */
+export interface CrmStage {
+  id: number;
+  name: string;
+  sort: number;
+  openCount: number;
+  waiting: boolean;
+}
 
 export interface CrmSyncResult {
   fetched: number;
