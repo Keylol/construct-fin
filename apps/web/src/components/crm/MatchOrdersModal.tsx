@@ -28,10 +28,18 @@ import type { CrmMatchItem, CrmMatchReason } from '@/lib/types';
 /** Почему пара предложена — человеческим языком, с тоном доверия. */
 const REASON: Record<CrmMatchReason, { label: string; tone: 'success' | 'warning' | 'muted' }> = {
   phone_and_sum: { label: 'Телефон и сумма', tone: 'success' },
-  name_and_sum: { label: 'Имя и сумма', tone: 'warning' },
+  name_and_sum: { label: 'Имя и сумма', tone: 'success' },
   phone: { label: 'Только телефон', tone: 'warning' },
+  name: { label: 'Только имя', tone: 'warning' },
   sum_and_date: { label: 'Сумма и дата', tone: 'muted' },
 };
+
+/**
+ * Подпись для причины, которой фронт ещё не знает: сервер может добавить
+ * правило раньше, чем обновится вкладка. Падать из-за этого окно не должно —
+ * 20.09.2026 новое правило «только имя» уронило раздел целиком.
+ */
+const FALLBACK_REASON = { label: 'Похожая пара', tone: 'muted' } as const;
 
 type Filter = 'confident' | 'all';
 
@@ -185,7 +193,7 @@ function MatchRow({
   checked: boolean;
   onToggle: (on: boolean) => void;
 }) {
-  const reason = REASON[item.reason];
+  const reason = REASON[item.reason] ?? FALLBACK_REASON;
   const sameSum = Number(item.deal.price) === Number(item.order.totalAmount);
   return (
     <div className="rounded-md border border-border p-3">

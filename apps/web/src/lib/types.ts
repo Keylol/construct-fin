@@ -1240,7 +1240,7 @@ export interface CrmStage {
 }
 
 /** Почему пара «сделка ↔ заказ» предложена. */
-export type CrmMatchReason = 'phone_and_sum' | 'name_and_sum' | 'phone' | 'sum_and_date';
+export type CrmMatchReason = 'phone_and_sum' | 'name_and_sum' | 'phone' | 'name' | 'sum_and_date';
 
 export interface CrmMatchItem {
   reason: CrmMatchReason;
