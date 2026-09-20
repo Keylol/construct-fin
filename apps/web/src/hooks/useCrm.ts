@@ -8,6 +8,7 @@ import type {
   CrmDealsPage,
   CrmDealsTab,
   CrmPipeline,
+  CrmStage,
   CrmSummary,
   CrmSyncResult,
 } from '@/lib/types';
@@ -63,18 +64,27 @@ export function useCrmPipelines(wsId: string | null, enabled: boolean) {
   });
 }
 
+/** Этапы наблюдаемой воронки с числом открытых сделок — для окна настроек. */
+export function useCrmStages(wsId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...crmKey(wsId), 'stages'],
+    queryFn: () => api.get<CrmStage[]>(`/workspaces/${wsId}/crm/stages`),
+    enabled: !!wsId && enabled,
+  });
+}
+
 export interface ConnectCrmInput {
   subdomain: string;
   token: string;
   pipelineId?: number;
-  triggerStatusId?: number;
+  waitingStatusIds?: number[];
 }
 
 export interface UpdateCrmInput {
   token?: string;
   status?: 'ACTIVE' | 'DISABLED';
   pipelineId?: number | null;
-  triggerStatusId?: number | null;
+  waitingStatusIds?: number[];
 }
 
 /**

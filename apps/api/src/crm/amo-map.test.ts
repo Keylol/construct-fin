@@ -129,32 +129,28 @@ describe('mapLead', () => {
   });
 });
 
-describe('isWaiting — порог «Отправлен»', () => {
-  const conn = { pipelineId: 100, triggerStatusSort: 30 };
-  const base = {
-    isClosed: false,
-    orderId: null,
-    dismissedAt: null,
-    pipelineId: 100,
-    statusSort: 30,
-  };
+describe('isWaiting — набор этапов «ждут заказа»', () => {
+  const conn = { pipelineId: 100, waitingStatusIds: [3, 4] };
+  const base = { isClosed: false, orderId: null, dismissedAt: null, pipelineId: 100, statusId: 3 };
 
-  it('на этапе-пороге и дальше — ждёт', () => {
+  it('на выбранном этапе — ждёт', () => {
     expect(isWaiting(base, conn)).toBe(true);
-    expect(isWaiting({ ...base, statusSort: 40 }, conn)).toBe(true);
+    expect(isWaiting({ ...base, statusId: 4 }, conn)).toBe(true);
   });
-  it('раньше порога, закрытая, привязанная, отложенная или из другой воронки — нет', () => {
-    expect(isWaiting({ ...base, statusSort: 20 }, conn)).toBe(false);
+  it('на невыбранном этапе, закрытая, привязанная, отложенная или из другой воронки — нет', () => {
+    // Этап после «Отправлен» по порядку доски (сервисный) не считается: набор, а не порог.
+    expect(isWaiting({ ...base, statusId: 2 }, conn)).toBe(false);
+    expect(isWaiting({ ...base, statusId: 5 }, conn)).toBe(false);
     expect(isWaiting({ ...base, isClosed: true }, conn)).toBe(false);
     expect(isWaiting({ ...base, orderId: 'ord' }, conn)).toBe(false);
     expect(isWaiting({ ...base, dismissedAt: new Date() }, conn)).toBe(false);
     expect(isWaiting({ ...base, pipelineId: 200 }, conn)).toBe(false);
   });
-  it('без порога и воронки — любая открытая непривязанная', () => {
+  it('пустой набор и без воронки — любая открытая непривязанная', () => {
     expect(
       isWaiting(
-        { ...base, statusSort: 10, pipelineId: 200 },
-        { pipelineId: null, triggerStatusSort: null },
+        { ...base, statusId: 1, pipelineId: 200 },
+        { pipelineId: null, waitingStatusIds: [] },
       ),
     ).toBe(true);
   });

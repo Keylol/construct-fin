@@ -11,6 +11,7 @@ import { OrderService } from '../orders/order.service';
 import { CounterpartyService } from '../counterparty/counterparty.service';
 import { AuditService } from '../audit/audit.service';
 import type { ListCrmDealsQuery } from './crm.dto';
+import type { PipelineSnapshot } from './amo-map';
 
 const ORDER_SELECT = {
   id: true,
@@ -67,19 +68,17 @@ export class CrmDealsService {
         },
       }),
     ]);
-    const pipelines =
-      (conn.pipelines as unknown as
-        | { id: number; name: string; statuses: { id: number; name: string }[] }[]
-        | null) ?? [];
-    const pipeline = pipelines.find((p) => p.id === conn.pipelineId) ?? null;
-    const trigger = pipeline?.statuses.find((s) => s.id === conn.triggerStatusId) ?? null;
+    const pipeline = this.pipelineOf(conn);
+    const waitingStageNames = (pipeline?.statuses ?? [])
+      .filter((s) => conn.waitingStatusIds.includes(s.id))
+      .map((s) => s.name);
     return {
       connected: true as const,
       status: conn.status,
       lastSyncAt: conn.lastSyncAt?.toISOString() ?? null,
       lastSyncError: conn.lastSyncError,
       pipelineName: pipeline?.name ?? null,
-      triggerStatusName: trigger?.name ?? null,
+      waitingStageNames,
       waitingCount: waiting._count._all,
       waitingSum: (waiting._sum.price ?? new Prisma.Decimal(0)).toFixed(2),
       linkedCount: linked,
@@ -250,7 +249,40 @@ export class CrmDealsService {
     };
   }
 
+  /**
+   * Этапы наблюдаемой воронки в порядке доски с числом открытых сделок — для окна
+   * настроек: выбирать этапы «ждут заказа» глядя на цифры, а не по памяти.
+   */
+  async stages(workspaceId: string) {
+    const conn = await this.connection(workspaceId);
+    if (!conn) return [];
+    const pipeline = this.pipelineOf(conn);
+    if (!pipeline) return [];
+    const counts = await this.prisma.crmDeal.groupBy({
+      by: ['statusId'],
+      where: { workspaceId, connectionId: conn.id, pipelineId: pipeline.id, isClosed: false },
+      _count: { _all: true },
+    });
+    const byStatus = new Map(counts.map((c) => [c.statusId, c._count._all]));
+    return pipeline.statuses
+      .filter((s) => s.type === 0)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        sort: s.sort,
+        openCount: byStatus.get(s.id) ?? 0,
+        waiting: conn.waitingStatusIds.includes(s.id),
+      }));
+  }
+
   // ───────────────────────── внутреннее ─────────────────────────
+
+  /** Наблюдаемая воронка из снимка; воронка не выбрана — первая в снимке. */
+  private pipelineOf(conn: CrmConnection): PipelineSnapshot | null {
+    const pipelines = (conn.pipelines as unknown as PipelineSnapshot[] | null) ?? [];
+    if (conn.pipelineId == null) return pipelines[0] ?? null;
+    return pipelines.find((p) => p.id === conn.pipelineId) ?? null;
+  }
 
   private connection(workspaceId: string) {
     return this.prisma.crmConnection.findFirst({ where: { workspaceId, deletedAt: null } });
@@ -284,7 +316,7 @@ export class CrmDealsService {
       orderId: null,
       dismissedAt: null,
       ...this.pipelineFilter(conn),
-      ...(conn.triggerStatusSort != null ? { statusSort: { gte: conn.triggerStatusSort } } : {}),
+      ...(conn.waitingStatusIds.length > 0 ? { statusId: { in: conn.waitingStatusIds } } : {}),
     };
   }
 

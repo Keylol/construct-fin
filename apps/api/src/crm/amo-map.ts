@@ -178,7 +178,9 @@ export function mapLead(
 
 /**
  * Сделка «ждёт заказа»: открыта, не привязана, не отложена, в наблюдаемой
- * воронке и на этапе-пороге или дальше. Порога нет — считается любая открытая.
+ * воронке и на одном из выбранных этапов. Набор пуст — считается любая открытая.
+ * Именно набор, а не порог «с этапа и дальше»: на доске владельца сервисные
+ * этапы (Гарантия, Проверка, Отложенная покупка) стоят после «Отправлен».
  */
 export function isWaiting(
   deal: {
@@ -186,12 +188,13 @@ export function isWaiting(
     orderId: string | null;
     dismissedAt: Date | null;
     pipelineId: number;
-    statusSort: number;
+    statusId: number;
   },
-  conn: { pipelineId: number | null; triggerStatusSort: number | null },
+  conn: { pipelineId: number | null; waitingStatusIds: number[] },
 ): boolean {
   if (deal.isClosed || deal.orderId || deal.dismissedAt) return false;
   if (conn.pipelineId != null && deal.pipelineId !== conn.pipelineId) return false;
-  if (conn.triggerStatusSort != null && deal.statusSort < conn.triggerStatusSort) return false;
+  if (conn.waitingStatusIds.length > 0 && !conn.waitingStatusIds.includes(deal.statusId))
+    return false;
   return true;
 }

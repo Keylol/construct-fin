@@ -20,8 +20,7 @@ const PUBLIC_SELECT = {
   keyLast4: true,
   accountName: true,
   pipelineId: true,
-  triggerStatusId: true,
-  triggerStatusSort: true,
+  waitingStatusIds: true,
   pipelines: true,
   status: true,
   lastSyncAt: true,
@@ -79,8 +78,7 @@ export class CrmConnectionService {
         keyLast4: CryptoService.mask(dto.token),
         accountName: account.name,
         pipelineId: dto.pipelineId ?? null,
-        triggerStatusId: dto.triggerStatusId ?? null,
-        triggerStatusSort: resolveTriggerSort(pipelines, dto.triggerStatusId ?? null),
+        waitingStatusIds: dto.waitingStatusIds ?? [],
         pipelines: pipelines ? (pipelines as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         createdById: userId,
       },
@@ -125,13 +123,9 @@ export class CrmConnectionService {
       data.pipelineId = dto.pipelineId;
       diff.pipelineId = dto.pipelineId;
     }
-    if (dto.triggerStatusId !== undefined) {
-      data.triggerStatusId = dto.triggerStatusId;
-      data.triggerStatusSort = resolveTriggerSort(
-        existing.pipelines as unknown as PipelineSnapshot[] | null,
-        dto.triggerStatusId,
-      );
-      diff.triggerStatusId = dto.triggerStatusId;
+    if (dto.waitingStatusIds !== undefined) {
+      data.waitingStatusIds = dto.waitingStatusIds;
+      diff.waitingStatusIds = dto.waitingStatusIds;
     }
     const updated = await this.prisma.crmConnection.update({
       where: { id: existing.id },
@@ -173,10 +167,7 @@ export class CrmConnectionService {
       const pipelines = await this.amo.pipelines({ subdomain: existing.subdomain, token });
       await this.prisma.crmConnection.update({
         where: { id: existing.id },
-        data: {
-          pipelines: pipelines as unknown as Prisma.InputJsonValue,
-          triggerStatusSort: resolveTriggerSort(pipelines, existing.triggerStatusId),
-        },
+        data: { pipelines: pipelines as unknown as Prisma.InputJsonValue },
       });
       return pipelines;
     } catch (e) {
@@ -226,8 +217,7 @@ export class CrmConnectionService {
       keyLast4: r.keyLast4,
       accountName: r.accountName,
       pipelineId: r.pipelineId,
-      triggerStatusId: r.triggerStatusId,
-      triggerStatusSort: r.triggerStatusSort,
+      waitingStatusIds: r.waitingStatusIds,
       pipelines: (r.pipelines as unknown as PipelineSnapshot[] | null) ?? [],
       status: r.status,
       lastSyncAt: r.lastSyncAt?.toISOString() ?? null,
@@ -235,17 +225,4 @@ export class CrmConnectionService {
       createdAt: r.createdAt.toISOString(),
     };
   }
-}
-
-/** Порядок этапа-порога по снимку воронок; этап не найден → порога нет. */
-export function resolveTriggerSort(
-  pipelines: PipelineSnapshot[] | null | undefined,
-  triggerStatusId: number | null,
-): number | null {
-  if (triggerStatusId == null || !pipelines) return null;
-  for (const p of pipelines) {
-    const s = p.statuses.find((x) => x.id === triggerStatusId);
-    if (s) return s.sort;
-  }
-  return null;
 }
