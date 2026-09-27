@@ -38,11 +38,22 @@ export interface ActiveFilters {
   search?: string;
 }
 
-/** Подпись чипа группы: имена статей и видов без статьи, длинный список — «и ещё N». */
+/**
+ * Подпись чипа группы: корневые статьи (подстатьи группы сворачиваются в свой
+ * корень, как в «Итогах месяца») и виды операций без статьи; длинный список —
+ * «и ещё N».
+ */
 function groupChipLabel(active: ActiveFilters, categories: Category[]): string {
-  const nameById = new Map(categories.map((c) => [c.id, c.name]));
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const rootName = (id: string) => {
+    let cur = byId.get(id);
+    for (let depth = 0; cur?.parentId && byId.has(cur.parentId) && depth < 10; depth++) {
+      cur = byId.get(cur.parentId);
+    }
+    return cur?.name ?? 'статья';
+  };
   const names = [
-    ...(active.categoryIds ?? []).map((id) => nameById.get(id) ?? 'статья'),
+    ...new Set((active.categoryIds ?? []).map(rootName)),
     ...(active.uncategorizedKinds ?? []).map((k) => KIND_NO_CATEGORY_LABEL[k]),
   ];
   return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} и ещё ${names.length - 2}`;

@@ -8,6 +8,7 @@ import type {
   BreakevenReport,
   CashflowReport,
   CompareMode,
+  MonthSummaryReport,
   PeriodPreset,
   PnlReport,
 } from '@/lib/types';
@@ -40,6 +41,18 @@ export function usePnlReport(
   return useQuery({
     queryKey: ['reports', 'pnl', wsId, qs],
     queryFn: () => api.get<PnlReport>(`/workspaces/${wsId}/reports/pnl${qs}`),
+    enabled: !!wsId,
+  });
+}
+
+/** «Итоги месяца» — ОПиУ одного месяца простыми словами; month = YYYY-MM. */
+export function useMonthSummary(wsId: string | null, month: string) {
+  return useQuery({
+    queryKey: ['reports', 'month-summary', wsId, month],
+    queryFn: () =>
+      api.get<MonthSummaryReport>(
+        `/workspaces/${wsId}/reports/month-summary${buildQuery({ month })}`,
+      ),
     enabled: !!wsId,
   });
 }

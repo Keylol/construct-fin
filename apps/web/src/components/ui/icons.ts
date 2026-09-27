@@ -13,6 +13,9 @@ export {
   Renew as Repeat,
   ChartBar as BarChart3,
   Checkmark as Check,
+  // Статусы проверок («Готовность месяца»): рядом всегда слово, не только цвет.
+  CheckmarkOutline as CircleCheck,
+  WarningAlt as AlertTriangle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
