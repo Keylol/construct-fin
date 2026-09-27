@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { D, sub, toMoneyString } from '@construct/shared';
+import { D, add, sub, toMoneyString } from '@construct/shared';
 import { Calculator, Check } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -76,6 +76,14 @@ export default function TaxPage() {
   if (!current) return null;
 
   const rep = report.data;
+  // Долг — по месяцам, как в Балансе: переплата одного месяца (например, ЕНП
+  // за май, которого нет в учёте) не гасит неуплаченный другой.
+  const remainingToPay = toMoneyString(
+    (rep?.months ?? []).reduce((acc, m) => {
+      const left = sub(m.taxDue, m.taxPaid);
+      return left.gt(0) ? add(acc, left) : acc;
+    }, D(0)),
+  );
 
   const columns: Column<TaxMonthRow>[] = [
     {
@@ -182,13 +190,13 @@ export default function TaxPage() {
         <KpiRow loading={report.isLoading} count={3}>
           {rep && (
             <>
-              <KpiCard label={`Начислено за ${year}`} value={<Money value={rep.totals.taxDue} />} />
+              <KpiCard label={`Расчёт за ${year}`} value={<Money value={rep.totals.taxDue} />} />
               <KpiCard label="Уплачено" value={<Money value={rep.totals.taxPaid} />} tone="positive" />
               <KpiCard
                 label="Осталось уплатить"
-                value={<Money value={toMoneyString(sub(rep.totals.taxDue, rep.totals.taxPaid))} />}
-                tone={D(rep.totals.taxDue).gt(rep.totals.taxPaid) ? 'negative' : 'neutral'}
-                hint="по всем месяцам года"
+                value={<Money value={remainingToPay} />}
+                tone={D(remainingToPay).gt(0) ? 'negative' : 'neutral'}
+                hint="за месяцы, где уплачено меньше расчёта"
               />
             </>
           )}
