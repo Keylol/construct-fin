@@ -6,6 +6,7 @@ import { BreakdownService } from './breakdown.service';
 import { TaxService } from './tax.service';
 import { BalanceService } from './balance.service';
 import { BreakevenService } from './breakeven.service';
+import { MonthSummaryService } from './month-summary.service';
 import { TradeReportsModule } from '../trade-reports/trade-reports.module';
 import { WorkspaceGuard } from '../common/workspace.guard';
 
@@ -20,6 +21,7 @@ import { WorkspaceGuard } from '../common/workspace.guard';
     TaxService,
     BalanceService,
     BreakevenService,
+    MonthSummaryService,
     WorkspaceGuard,
   ],
   exports: [

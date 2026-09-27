@@ -23,11 +23,13 @@ import {
   BreakevenQuerySchema,
   CashflowQuerySchema,
   ExportFormatSchema,
+  MonthSummaryQuerySchema,
   PnlQuerySchema,
   type BreakdownQuery,
   type BreakevenQuery,
   type CashflowQuery,
   type ExportFormat,
+  type MonthSummaryQuery,
   type PnlQuery,
 } from './reports.dto';
 import {
@@ -45,6 +47,8 @@ import { BreakdownService } from './breakdown.service';
 import { TaxService } from './tax.service';
 import { BalanceService } from './balance.service';
 import { BreakevenService } from './breakeven.service';
+import { MonthSummaryService } from './month-summary.service';
+import { lastClosedMonth } from './month-summary.calc';
 import { renderReport } from './export';
 import {
   breakdownToTable,
@@ -62,7 +66,20 @@ export class ReportsController {
     private readonly tax: TaxService,
     private readonly balance: BalanceService,
     private readonly breakeven: BreakevenService,
+    private readonly monthSummary: MonthSummaryService,
   ) {}
+
+  /**
+   * «Итоги месяца» — ОПиУ месяца простыми словами: продажи, комплектующие,
+   * расходы по группам, на 100 ₽ и на один заказ, готовность месяца.
+   */
+  @Get('month-summary')
+  getMonthSummary(
+    @CurrentWorkspace() ws: WorkspaceContext,
+    @Query(new ZodPipe(MonthSummaryQuerySchema)) q: MonthSummaryQuery,
+  ) {
+    return this.monthSummary.build(ws.workspaceId, q.month ?? lastClosedMonth());
+  }
 
   /** Управленческий баланс «на сейчас» (активы / обязательства / капитал). */
   @Get('balance')
