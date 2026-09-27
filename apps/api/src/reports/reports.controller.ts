@@ -123,6 +123,8 @@ export class ReportsController {
       primary,
       comparison,
       groupBy: q.groupBy,
+      // Налог в ОПиУ — по начислению (решение владельца 27.09.2026).
+      taxMode: 'accrual',
     });
   }
 
@@ -182,6 +184,7 @@ export class ReportsController {
         primary,
         comparison: null,
         groupBy: q.groupBy,
+        taxMode: 'accrual', // как на экране ОПиУ
       });
       table = pnlToTable(report);
     } else if (kind === 'cashflow') {

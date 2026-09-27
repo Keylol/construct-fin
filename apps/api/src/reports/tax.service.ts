@@ -5,14 +5,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { add, sub, mul, money, D } from '../common/money';
-import {
-  yearPeriod,
-  businessMonthLabel,
-  ausnDueDate,
-  assertNotFuture,
-} from './period';
-import { classifyAusn, AUSN_RATE, AUSN_MIN_RATE } from './ausn-classify';
+import { add, money, D } from '../common/money';
+import { yearPeriod, ausnDueDate, assertNotFuture } from './period';
+import { AUSN_RATE, AUSN_MIN_RATE } from './ausn-classify';
+import { ausnSumsByMonth, ausnMonthTax, inferredTaxPeriod } from './ausn-tax';
 
 export interface TaxMonthRow {
   /** «YYYY-MM». */
@@ -53,63 +49,55 @@ export class TaxService {
   /**
    * Помесячный расчёт АУСН «Д−Р» за год. Один проход по операциям года:
    * классификатор относит каждую к доходу/расходу/вне базы (приоритет —
-   * маркировка ausnMark, иначе авто по kind). Налог = max(20%×база, 3%×доход)
-   * за месяц; «уплачено» — Σ TAX-расходов с taxPeriod=месяц.
+   * маркировка ausnMark, иначе авто по kind и группе статьи). Налог =
+   * max(20%×база, 3%×доход) за месяц; «уплачено» — операции «Уплатить» с
+   * taxPeriod=месяц и ЕНП из выписки (статья группы «Налоги»), отнесённые к
+   * месяцу перед платежом.
    */
   async yearReport(workspaceId: string, year: number): Promise<TaxYearReport> {
     const period = yearPeriod(year);
+    // ЕНП платится до 25-го следующего месяца: декабрьский налог уплачивают в
+    // январе. Берём операции до конца января следующего года — для уплат;
+    // база считается только по месяцам этого года (метки вне года не попадут).
+    const paidHorizon = new Date(period.to.getTime() + 32 * 24 * 60 * 60_000);
     const txs = await this.prisma.transaction.findMany({
       where: {
         workspaceId,
         deletedAt: null,
-        date: { gte: period.from, lte: period.to },
+        date: { gte: period.from, lte: paidHorizon },
       },
-      select: { type: true, kind: true, ausnMark: true, amount: true, date: true },
+      select: {
+        type: true,
+        kind: true,
+        ausnMark: true,
+        amount: true,
+        date: true,
+        taxPeriod: true,
+        category: { select: { bucket: true, deletedAt: true } },
+      },
     });
+    const inYear = txs.filter((t) => t.date <= period.to);
+    const buckets = ausnSumsByMonth(
+      inYear.map((t) => ({
+        ...t,
+        categoryBucket: t.category && !t.category.deletedAt ? t.category.bucket : null,
+      })),
+    );
 
-    // Копилка по месяцам: доход/расход (нетто с возвратами), счётчики.
-    type Bucket = {
-      income: Prisma.Decimal;
-      expense: Prisma.Decimal;
-      incomeCount: number;
-      expenseCount: number;
-    };
-    const buckets = new Map<string, Bucket>();
-    const bucketOf = (label: string): Bucket => {
-      let b = buckets.get(label);
-      if (!b) {
-        b = { income: D(0), expense: D(0), incomeCount: 0, expenseCount: 0 };
-        buckets.set(label, b);
-      }
-      return b;
-    };
-
-    for (const tx of txs) {
-      const cls = classifyAusn(tx);
-      if (cls === 'NOT_COUNTED') continue;
-      const b = bucketOf(businessMonthLabel(tx.date));
-      switch (cls) {
-        case 'INCOME_PLUS':
-          b.income = add(b.income, tx.amount);
-          b.incomeCount++;
-          break;
-        case 'INCOME_MINUS':
-          b.income = sub(b.income, tx.amount);
-          b.incomeCount++;
-          break;
-        case 'EXPENSE_PLUS':
-          b.expense = add(b.expense, tx.amount);
-          b.expenseCount++;
-          break;
-        case 'EXPENSE_MINUS':
-          b.expense = sub(b.expense, tx.amount);
-          b.expenseCount++;
-          break;
-      }
-    }
-
-    // Уплаченный налог по периодам: Σ TAX-расходов с taxPeriod из этого года.
+    // Уплаченный налог по периодам:
+    //  • операции «Уплатить» (kind=TAX) несут taxPeriod явно;
+    //  • ЕНП, проведённые из выписки статьёй группы «Налоги», периода не несут —
+    //    относим их к месяцу перед платежом (срок АУСН — 25-е следующего месяца).
+    //    Раньше такие платежи не считались уплатой вовсе, и «Налог к уплате» в
+    //    Балансе рос на все уплаченные ЕНП (аудит 27.09).
     const labels = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+    const labelSet = new Set(labels);
+    const paidByPeriod = new Map<string, Prisma.Decimal>();
+    const addPaid = (label: string | null, amount: Prisma.Decimal) => {
+      if (!label || !labelSet.has(label)) return;
+      paidByPeriod.set(label, add(paidByPeriod.get(label) ?? D(0), amount));
+    };
+    // «Уплатить» — по явному периоду, в какой бы день ни заплатили.
     const paidGroups = await this.prisma.transaction.groupBy({
       by: ['taxPeriod'],
       where: {
@@ -121,21 +109,19 @@ export class TaxService {
       },
       _sum: { amount: true },
     });
-    const paidByPeriod = new Map<string, Prisma.Decimal>();
-    for (const g of paidGroups) {
-      if (g.taxPeriod) paidByPeriod.set(g.taxPeriod, g._sum.amount ?? D(0));
+    for (const g of paidGroups) addPaid(g.taxPeriod, g._sum.amount ?? D(0));
+    // ЕНП из выписки: статья группы «Налоги», вида не TAX.
+    for (const t of txs) {
+      if (t.type !== 'EXPENSE' || t.kind === 'TAX') continue;
+      if (!t.category || t.category.deletedAt || t.category.bucket !== 'TAX') continue;
+      addPaid(t.taxPeriod ?? inferredTaxPeriod(t.date), t.amount);
     }
 
     const months: TaxMonthRow[] = labels.map((label, idx) => {
       const monthNo = idx + 1;
       const b = buckets.get(label);
-      // Доход/расход клампим на 0 (возвраты не уводят базу в минус).
-      const income = money(Prisma.Decimal.max(b?.income ?? D(0), D(0)));
-      const expense = money(Prisma.Decimal.max(b?.expense ?? D(0), D(0)));
-      const base = money(Prisma.Decimal.max(sub(income, expense), D(0)));
-      const taxCalc = money(mul(base, AUSN_RATE));
-      const taxMin = money(mul(income, AUSN_MIN_RATE));
-      const taxDue = money(Prisma.Decimal.max(taxCalc, taxMin));
+      // Формула — общая с ОПиУ (ausn-tax.ts): доход/расход клампятся на 0.
+      const { income, expense, base, taxCalc, taxMin, taxDue } = ausnMonthTax(b);
       const taxPaid = money(paidByPeriod.get(label) ?? D(0));
 
       let status: TaxMonthRow['status'];

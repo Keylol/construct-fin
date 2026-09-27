@@ -89,10 +89,15 @@ function PnlReportView() {
   // IJ9 (решение №4): выручка/себестоимость признаются по реализации —
   // drill-down ведёт в ЗАКАЗЫ, закрытые в периоде (сумма сходится с цифрой
   // отчёта). Прочие группы — операции с bucket-фильтром.
+  // Налог по начислению — это расчёт раздела «Налог», а не операции: в списке
+  // операций лежат уплаты ЕНП за прошлые месяцы, и сумма бы не сошлась.
+  const taxAccrued = query.data?.taxMode === 'accrual';
   const groupHref = (b: BucketBreakdown) =>
     b.bucket === 'REVENUE' || b.bucket === 'COGS'
       ? `/orders?status=DONE&closedFrom=${encodeURIComponent(totals?.from ?? '')}&closedTo=${encodeURIComponent(totals?.to ?? '')}`
-      : txDrilldownHref({ bucket: b.bucket, from: totals?.from, to: totals?.to });
+      : b.bucket === 'TAX' && taxAccrued
+        ? '/tax'
+        : txDrilldownHref({ bucket: b.bucket, from: totals?.from, to: totals?.to });
 
   const groupColumns: Column<BucketBreakdown>[] = [
     {
@@ -105,6 +110,9 @@ function PnlReportView() {
           </Link>
           {(b.bucket === 'CAPITAL' || b.bucket === 'PURCHASES') && (
             <span className="ml-2 text-xs text-muted-foreground">(не входит в чистую прибыль)</span>
+          )}
+          {b.bucket === 'TAX' && taxAccrued && (
+            <span className="ml-2 text-xs text-muted-foreground">(начислено по АУСН за месяц)</span>
           )}
         </>
       ),

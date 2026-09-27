@@ -509,6 +509,41 @@ describe('P&L отчёт (по данным)', () => {
     expect(pnl.primary.buckets[4]!.grossProfit).toBe('6000.00');
   });
 
+  it('налог по начислению: вместо уплаченных ЕНП — налог АУСН за сам месяц', async () => {
+    const taxCat = await makeCategory('Налоги', 'EXPENSE', 'TAX');
+    const rentCat = await makeCategory('Аренда', 'EXPENSE', 'FIXED');
+    // Март: оплата 10000 (доход АУСН) и аренда 2000 → база 8000 →
+    // налог = max(20 % × 8000, 3 % × 10000) = 1600.
+    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2) });
+    await tx({ amount: '2000', type: 'EXPENSE', date: d2025(2), categoryId: rentCat });
+    // ЕНП за февраль, уплаченный 25 марта из выписки, — движение денег.
+    await tx({ amount: '700', type: 'EXPENSE', date: d2025(2, 25), categoryId: taxCat });
+
+    const base = {
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month' as const,
+    };
+    const paid = await h.pnl.build(base);
+    const accrual = await h.pnl.build({ ...base, taxMode: 'accrual' });
+
+    expect(paid.taxMode).toBe('paid');
+    expect(bucketOf(paid.primary.totals, 'TAX').expense).toBe('700.00');
+    expect(accrual.taxMode).toBe('accrual');
+    expect(bucketOf(accrual.primary.totals, 'TAX').expense).toBe('1600.00');
+    const march = accrual.primary.buckets.find((b) => b.label === '2025-03')!;
+    expect(bucketOf(march, 'TAX').expense).toBe('1600.00');
+    // Чистая прибыль отличается ровно заменой 700 на 1600, тождество сохраняется.
+    expect(Number(accrual.primary.totals.net)).toBe(Number(paid.primary.totals.net) + 700 - 1600);
+    expect(
+      Number(accrual.primary.totals.income) - Number(accrual.primary.totals.expense),
+    ).toBe(Number(accrual.primary.totals.net));
+    // В разбивке по статьям — отдельная строка начисленного налога.
+    const row = accrual.primary.totals.byCategory.find((c) => c.categoryName === 'Налог АУСН (начислено)');
+    expect(row?.expense).toBe('1600.00');
+  });
+
   it('byCategory сортируется по убыванию суммарного оборота', async () => {
     const big = await makeCategory('Крупная', 'INCOME', 'REVENUE');
     const small = await makeCategory('Мелкая', 'INCOME', 'REVENUE');

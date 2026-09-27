@@ -1,0 +1,115 @@
+import { Prisma, type AusnMark, type CategoryBucket, type TransactionKind, type TxType } from '@prisma/client';
+import { add, sub, mul, money, D } from '../common/money';
+import { classifyAusn, AUSN_RATE, AUSN_MIN_RATE, type AusnClass } from './ausn-classify';
+import { businessMonthLabel } from './period';
+
+/**
+ * Налог АУСН «Доходы − Расходы» по месяцам — единая формула для раздела «Налог»
+ * (начисление и уплата по месяцам) и для ОПиУ, где с 27.09.2026 налог стоит
+ * по начислению: в августе — налог за август, а не ЕНП за июль, уплаченный
+ * 25 августа (решение владельца на аудите августа).
+ */
+
+export interface AusnTx {
+  type: TxType;
+  kind: TransactionKind;
+  ausnMark: AusnMark | null;
+  amount: Prisma.Decimal;
+  date: Date;
+  /** Группа статьи операции, если статья есть. */
+  categoryBucket?: CategoryBucket | null;
+}
+
+export interface AusnMonthSums {
+  income: Prisma.Decimal;
+  expense: Prisma.Decimal;
+  incomeCount: number;
+  expenseCount: number;
+}
+
+export interface AusnMonthTax {
+  income: Prisma.Decimal;
+  expense: Prisma.Decimal;
+  base: Prisma.Decimal;
+  taxCalc: Prisma.Decimal;
+  taxMin: Prisma.Decimal;
+  taxDue: Prisma.Decimal;
+}
+
+/**
+ * Класс операции для базы АУСН с учётом группы статьи.
+ *
+ * Маркировка банка (ausnMark) по-прежнему главнее всего. Без неё операции,
+ * заведённые формой, «Входящими» или правилом, имеют kind=OTHER, и
+ * classifyAusn видит только знак. Группа статьи уточняет то, что знак не видит:
+ *  • «Налоги» — сам налог (ЕНП из выписки) в базу не входит;
+ *  • «Вложения и изъятия» — деньги собственника в базу не входят;
+ *  • «Закупки» у дохода — возврат от поставщика уменьшает расход, а не
+ *    увеличивает доход.
+ */
+export function classifyAusnWithBucket(tx: AusnTx): AusnClass {
+  if (!tx.ausnMark && (tx.kind === 'OTHER' || tx.kind === 'NON_OP')) {
+    if (tx.categoryBucket === 'TAX' || tx.categoryBucket === 'CAPITAL') return 'NOT_COUNTED';
+    if (tx.categoryBucket === 'PURCHASES' && tx.type === 'INCOME') return 'EXPENSE_MINUS';
+  }
+  return classifyAusn(tx);
+}
+
+/** Доходы и расходы базы АУСН по месяцам бизнеса (UTC+5), метка «YYYY-MM». */
+export function ausnSumsByMonth(txs: AusnTx[]): Map<string, AusnMonthSums> {
+  const byMonth = new Map<string, AusnMonthSums>();
+  for (const tx of txs) {
+    const cls = classifyAusnWithBucket(tx);
+    if (cls === 'NOT_COUNTED') continue;
+    const label = businessMonthLabel(tx.date);
+    const s = byMonth.get(label) ?? { income: D(0), expense: D(0), incomeCount: 0, expenseCount: 0 };
+    switch (cls) {
+      case 'INCOME_PLUS':
+        s.income = add(s.income, tx.amount);
+        s.incomeCount++;
+        break;
+      case 'INCOME_MINUS':
+        s.income = sub(s.income, tx.amount);
+        s.incomeCount++;
+        break;
+      case 'EXPENSE_PLUS':
+        s.expense = add(s.expense, tx.amount);
+        s.expenseCount++;
+        break;
+      case 'EXPENSE_MINUS':
+        s.expense = sub(s.expense, tx.amount);
+        s.expenseCount++;
+        break;
+    }
+    byMonth.set(label, s);
+  }
+  return byMonth;
+}
+
+/**
+ * Налог месяца: max(20 % × max(доход − расход, 0), 3 % × доход). Доход и расход
+ * клампятся на 0 — возвраты не уводят базу в минус.
+ */
+export function ausnMonthTax(sums: AusnMonthSums | undefined): AusnMonthTax {
+  const income = money(Prisma.Decimal.max(sums?.income ?? D(0), D(0)));
+  const expense = money(Prisma.Decimal.max(sums?.expense ?? D(0), D(0)));
+  const base = money(Prisma.Decimal.max(sub(income, expense), D(0)));
+  const taxCalc = money(mul(base, AUSN_RATE));
+  const taxMin = money(mul(income, AUSN_MIN_RATE));
+  const taxDue = money(Prisma.Decimal.max(taxCalc, taxMin));
+  return { income, expense, base, taxCalc, taxMin, taxDue };
+}
+
+/**
+ * За какой месяц уплачен ЕНП, проведённый из выписки без отметки периода.
+ * Налог АУСН платится до 25-го числа следующего месяца, поэтому платёж августа
+ * относим к июлю. Операции, проведённые кнопкой «Уплатить», несут taxPeriod
+ * явно — для них эта догадка не нужна.
+ */
+export function inferredTaxPeriod(paidAt: Date): string {
+  const label = businessMonthLabel(paidAt);
+  const [y, m] = label.split('-').map(Number) as [number, number];
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  return `${prevY}-${String(prevM).padStart(2, '0')}`;
+}
