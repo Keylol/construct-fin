@@ -1,7 +1,7 @@
 import { ANY_PERIOD_LABELS, rangeForAny, type AnyPeriod } from '@/lib/periods';
 import { isReportBucket } from '@/lib/buckets';
 import type { ActiveFilters } from '@/components/transactions/TransactionFilters';
-import type { ReportBucket, TxType } from '@/lib/types';
+import type { ReportBucket, TransactionKind, TxType } from '@/lib/types';
 import type { UrlCodec } from '@/hooks/useUrlFilters';
 import { readStored, writeStored } from '@/lib/storage';
 
@@ -10,9 +10,11 @@ import { readStored, writeStored } from '@/lib/storage';
  *
  * Контракт query-параметров: from, to (ISO, точные границы периода из отчёта),
  * accountId, categoryId, counterpartyId, type (INCOME|EXPENSE), bucket
- * (P&L-группа из ОПиУ «По группам»), q (поиск), period=all («Всё время» без
- * границ). Остальные пресеты периода в URL не кладём: при явных from/to
- * выставляем period:'all', чтобы пресет rangeFor не перезаписал диапазон.
+ * (P&L-группа из ОПиУ «По группам»), categoryIds и uncategorizedKinds (группа
+ * расходов из «Итогов месяца»: её статьи и виды операций без статьи, через
+ * запятую), q (поиск), period=all («Всё время» без границ). Остальные пресеты
+ * периода в URL не кладём: при явных from/to выставляем period:'all', чтобы
+ * пресет rangeFor не перезаписал диапазон.
  *
  * Поиск живёт в адресе, как на остальных экранах: F5 и «назад» его не теряют, а
  * «Показать все» из общего поиска приходит сюда уже с запросом и за все даты.
@@ -31,8 +33,39 @@ export function filtersToSearchParams(active: ActiveFilters): string {
   if (active.counterpartyId) sp.set('counterpartyId', active.counterpartyId);
   if (active.type) sp.set('type', active.type);
   if (active.bucket) sp.set('bucket', active.bucket);
+  if (active.categoryIds?.length) sp.set('categoryIds', active.categoryIds.join(','));
+  if (active.uncategorizedKinds?.length) {
+    sp.set('uncategorizedKinds', active.uncategorizedKinds.join(','));
+  }
   if (active.search) sp.set('q', active.search);
   return sp.toString();
+}
+
+/** Все виды операций, кроме ног перевода: в группах их нет, API их отвергает. */
+const FILTER_KINDS: readonly TransactionKind[] = [
+  'SALARY',
+  'TAX',
+  'FIXED_COST',
+  'VARIABLE_COST',
+  'NON_OP',
+  'OTHER',
+  'ORDER_PAYMENT',
+  'CAPITAL_IN',
+  'SUPPLIER_REFUND',
+  'ORDER_REFUND',
+  'COGS',
+  'WRITE_OFF',
+  'PURCHASE',
+  'CAPITAL_OUT',
+];
+
+/** Список через запятую из адреса; пусто — undefined. */
+function csvParam(sp: URLSearchParams, key: string): string[] | undefined {
+  const parts = (sp.get(key) ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : undefined;
 }
 
 /** Разобрать фильтры из URL. Дефолт (пустой URL) = текущий месяц. */
@@ -50,8 +83,23 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
   // Бакет валидируем по словарю — мусор из URL отбрасываем.
   const bucket: ReportBucket | undefined =
     rawBucket && isReportBucket(rawBucket) ? rawBucket : undefined;
+  const categoryIds = csvParam(sp, 'categoryIds');
+  // Виды валидируем по словарю — мусор из URL отбрасываем, как bucket.
+  const kinds = csvParam(sp, 'uncategorizedKinds')?.filter((k): k is TransactionKind =>
+    (FILTER_KINDS as readonly string[]).includes(k),
+  );
+  const uncategorizedKinds = kinds?.length ? kinds : undefined;
   const search = sp.get('q') || undefined;
-  const dimensions = { accountId, categoryId, counterpartyId, type, bucket, search };
+  const dimensions = {
+    accountId,
+    categoryId,
+    counterpartyId,
+    type,
+    bucket,
+    categoryIds,
+    uncategorizedKinds,
+    search,
+  };
 
   // from > to → API вернёт 400 (assertFromBeforeTo). Невалидную пару отбрасываем.
   const validRange = from && to ? from <= to : true;
@@ -68,7 +116,19 @@ export function searchParamsToFilters(sp: URLSearchParams): ActiveFilters {
 
 /** Кодек для useUrlFilters: те же parse/serialize, ключи — весь контракт выше. */
 export const txFiltersCodec: UrlCodec<ActiveFilters> = {
-  keys: ['from', 'to', 'period', 'accountId', 'categoryId', 'counterpartyId', 'type', 'bucket', 'q'],
+  keys: [
+    'from',
+    'to',
+    'period',
+    'accountId',
+    'categoryId',
+    'counterpartyId',
+    'type',
+    'bucket',
+    'categoryIds',
+    'uncategorizedKinds',
+    'q',
+  ],
   parse: searchParamsToFilters,
   serialize: (a) => new URLSearchParams(filtersToSearchParams(a)),
 };
@@ -85,6 +145,10 @@ export function txDrilldownHref(params: {
   counterpartyId?: string;
   type?: TxType;
   bucket?: ReportBucket;
+  /** Группа «Итогов месяца»: её статьи… */
+  categoryIds?: string[];
+  /** …и виды операций без статьи. */
+  uncategorizedKinds?: TransactionKind[];
 }): string {
   const sp = new URLSearchParams();
   if (params.from) sp.set('from', params.from);
@@ -94,6 +158,10 @@ export function txDrilldownHref(params: {
   if (params.counterpartyId) sp.set('counterpartyId', params.counterpartyId);
   if (params.type) sp.set('type', params.type);
   if (params.bucket) sp.set('bucket', params.bucket);
+  if (params.categoryIds?.length) sp.set('categoryIds', params.categoryIds.join(','));
+  if (params.uncategorizedKinds?.length) {
+    sp.set('uncategorizedKinds', params.uncategorizedKinds.join(','));
+  }
   const qs = sp.toString();
   return qs ? `/transactions?${qs}` : '/transactions';
 }

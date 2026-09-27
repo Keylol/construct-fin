@@ -1,4 +1,4 @@
-import type { AccountType, ImportSource } from '@/lib/types';
+import type { AccountType, ImportSource, TransactionKind } from '@/lib/types';
 
 /**
  * Словари подписей, которые нужны больше чем одному экрану. Один владелец на
@@ -35,3 +35,24 @@ export const MONTH_NAMES = [
   'Ноябрь',
   'Декабрь',
 ] as const;
+
+/**
+ * Вид операции без статьи — подпись фильтра «Операций», куда ведёт группа
+ * расходов «Итогов месяца» («Зарплата» без статьи и т.п.).
+ */
+export const KIND_NO_CATEGORY_LABEL: Record<TransactionKind, string> = {
+  SALARY: 'Зарплата без статьи',
+  VARIABLE_COST: 'Комиссии без статьи',
+  FIXED_COST: 'Постоянные без статьи',
+  TAX: 'Налог без статьи',
+  NON_OP: 'Внереализационные без статьи',
+  OTHER: 'Прочее без статьи',
+  ORDER_PAYMENT: 'Оплаты заказов',
+  ORDER_REFUND: 'Возвраты клиентам',
+  COGS: 'Себестоимость заказов',
+  WRITE_OFF: 'Списания со склада',
+  PURCHASE: 'Закупки',
+  SUPPLIER_REFUND: 'Возвраты поставщиков',
+  CAPITAL_IN: 'Вложения владельца',
+  CAPITAL_OUT: 'Изъятия владельца',
+};

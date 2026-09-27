@@ -463,6 +463,70 @@ describe('Транзакции: bucket-фильтр (drill-down из ОПиУ «
   });
 });
 
+describe('Транзакции: фильтр группы «Итогов месяца» (categoryIds + uncategorizedKinds)', () => {
+  it('статьи группы ИЛИ операции без живой статьи нужных видов; сводка — по тем же строкам', async () => {
+    const root = await h.categories.create(seed.workspaceId, {
+      name: 'Зарплата',
+      kind: 'EXPENSE',
+      isFixedCost: true,
+      bucket: 'FIXED',
+    });
+    const managers = await h.categories.create(seed.workspaceId, {
+      name: 'Менеджеры',
+      kind: 'EXPENSE',
+      isFixedCost: true,
+      bucket: 'FIXED',
+      parentId: root.id,
+    });
+    const rent = await h.categories.create(seed.workspaceId, {
+      name: 'Аренда',
+      kind: 'EXPENSE',
+      isFixedCost: true,
+      bucket: 'FIXED',
+    });
+    const add = (amount: string, kind: 'SALARY' | 'OTHER', description: string, categoryId?: string) =>
+      h.transactions.create(seed.workspaceId, seed.userId, {
+        date: '2026-05-10',
+        amount,
+        type: 'EXPENSE',
+        kind,
+        accountId: seed.accountId,
+        categoryId: categoryId ?? null,
+        description,
+      });
+    await add('100.00', 'OTHER', 'менеджеры', managers.id);
+    await add('200.00', 'SALARY', 'зарплата без статьи');
+    await add('300.00', 'OTHER', 'прочее без статьи'); // другой вид — мимо
+    await add('400.00', 'SALARY', 'зарплата в аренде', rent.id); // живая чужая статья — мимо
+    // Удалённая статья — как без статьи: операция её вида входит в группу.
+    const gone = await h.categories.create(seed.workspaceId, {
+      name: 'Старая',
+      kind: 'EXPENSE',
+      isFixedCost: false,
+      bucket: 'OTHER',
+    });
+    await add('50.00', 'SALARY', 'зарплата в удалённой', gone.id);
+    await h.prisma.category.update({ where: { id: gone.id }, data: { deletedAt: new Date() } });
+
+    const filter = { categoryIds: [managers.id], uncategorizedKinds: ['SALARY' as const] };
+    const list = await h.transactions.list(seed.workspaceId, { ...filter, limit: 50 });
+    expect(list.items.map((i) => i.description).sort()).toEqual(
+      ['зарплата без статьи', 'зарплата в удалённой', 'менеджеры'].sort(),
+    );
+    const summary = await h.transactions.summary(seed.workspaceId, filter);
+    expect(summary.expense).toBe('350.00');
+
+    // Только статьи — без операций без статьи.
+    const onlyCats = await h.transactions.list(seed.workspaceId, {
+      categoryIds: [managers.id, rent.id],
+      limit: 50,
+    });
+    expect(onlyCats.items.map((i) => i.description).sort()).toEqual(
+      ['зарплата в аренде', 'менеджеры'].sort(),
+    );
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. Получение одной транзакции с вложениями
 // ─────────────────────────────────────────────────────────────────────────────

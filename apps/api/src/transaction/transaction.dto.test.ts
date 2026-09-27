@@ -191,3 +191,25 @@ describe('TransactionSummaryQuerySchema (#13)', () => {
     ).not.toThrow();
   });
 });
+
+describe('фильтр группы «Итогов месяца» (categoryIds, uncategorizedKinds)', () => {
+  it('списки через запятую разбираются, пустые куски отбрасываются', () => {
+    const parsed = ListTransactionsQuerySchema.parse({
+      categoryIds: 'cat_a, cat_b,,',
+      uncategorizedKinds: 'SALARY,VARIABLE_COST',
+    });
+    expect(parsed.categoryIds).toEqual(['cat_a', 'cat_b']);
+    expect(parsed.uncategorizedKinds).toEqual(['SALARY', 'VARIABLE_COST']);
+  });
+
+  it('пустая строка — без фильтра', () => {
+    const parsed = TransactionSummaryQuerySchema.parse({ categoryIds: '', uncategorizedKinds: ' , ' });
+    expect(parsed.categoryIds).toBeUndefined();
+    expect(parsed.uncategorizedKinds).toBeUndefined();
+  });
+
+  it('незнакомый вид операции и нога перевода отклоняются', () => {
+    expect(() => ListTransactionsQuerySchema.parse({ uncategorizedKinds: 'SALARY,BOGUS' })).toThrow();
+    expect(() => ListTransactionsQuerySchema.parse({ uncategorizedKinds: 'TRANSFER_OUT' })).toThrow();
+  });
+});

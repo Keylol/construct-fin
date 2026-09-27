@@ -87,6 +87,29 @@ function bucketWhere(bucket: CategoryBucket): Prisma.TransactionWhereInput {
   };
 }
 
+/**
+ * Prisma-условие «операция из группы расходов «Итогов месяца»»: статья из
+ * categoryIds ИЛИ операция без живой статьи одного из видов kinds — так
+ * операции без статьи (и с удалённой статьёй) относят ОПиУ и «Итоги месяца».
+ * Переводы в группы не входят.
+ */
+function reportGroupWhere(
+  categoryIds: string[] | undefined,
+  kinds: TransactionKind[] | undefined,
+): Prisma.TransactionWhereInput {
+  const or: Prisma.TransactionWhereInput[] = [];
+  if (categoryIds?.length) or.push({ categoryId: { in: categoryIds } });
+  if (kinds?.length) {
+    or.push({
+      AND: [
+        { OR: [{ categoryId: null }, { category: { is: { deletedAt: { not: null } } } }] },
+        { kind: { in: kinds } },
+      ],
+    });
+  }
+  return { kind: { notIn: TRANSFER_KINDS }, OR: or };
+}
+
 interface TransactionRow {
   id: string;
   date: Date;
@@ -158,6 +181,8 @@ export class TransactionService {
       | 'counterpartyId'
       | 'type'
       | 'bucket'
+      | 'categoryIds'
+      | 'uncategorizedKinds'
       | 'minAmount'
       | 'maxAmount'
       | 'search'
@@ -169,6 +194,13 @@ export class TransactionService {
     const ids = search
       ? await findSearchIds(this.prisma, transactionSearchSpec(workspaceId), search)
       : null;
+    // В AND-обёртке: bucketWhere и reportGroupWhere несут kind/OR на своём
+    // верхнем уровне, изоляция защищает их друг от друга и от будущих фильтров.
+    const and: Prisma.TransactionWhereInput[] = [];
+    if (query.bucket) and.push(bucketWhere(query.bucket));
+    if (query.categoryIds || query.uncategorizedKinds) {
+      and.push(reportGroupWhere(query.categoryIds, query.uncategorizedKinds));
+    }
     const filters: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
@@ -176,9 +208,7 @@ export class TransactionService {
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.counterpartyId ? { counterpartyId: query.counterpartyId } : {}),
       ...(query.type ? { type: query.type } : {}),
-      // В AND-обёртке: bucketWhere несёт kind/OR на своём верхнем уровне,
-      // изоляция защищает от коллизий с будущими одноимёнными фильтрами.
-      ...(query.bucket ? { AND: [bucketWhere(query.bucket)] } : {}),
+      ...(and.length ? { AND: and } : {}),
       ...(query.minAmount || query.maxAmount
         ? {
             amount: {
@@ -371,15 +401,17 @@ export class TransactionService {
   async summary(workspaceId: string, query: TransactionSummaryQuery) {
     const { filters } = await this.buildFilters(workspaceId, query);
     // Какие виды не считаем:
-    //  • фильтр по группе ОПиУ (переход из «По группам») — считаем всю группу,
-    //    как в отчёте, из которого пришли: у «Себестоимости» это и неденежные
-    //    проводки заказов. Ноги переводов bucketWhere уже исключил;
+    //  • фильтр по группе ОПиУ (переход из «По группам») или по группе расходов
+    //    «Итогов месяца» — считаем всю группу, как в отчёте, из которого пришли:
+    //    у «Себестоимости» это и неденежные проводки заказов. Ноги переводов
+    //    bucketWhere и reportGroupWhere уже исключили;
     //  • один счёт — только неденежное: перевод для счёта — настоящее движение,
     //    как в ОДДС по счёту;
     //  • иначе «net денег» по всем счетам: без переводов и неденежного (R2).
-    const kindFilter: Prisma.TransactionWhereInput = query.bucket
-      ? {}
-      : { kind: { notIn: query.accountId ? NON_CASH_FOR_ACCOUNT : NON_CASH_CONSOLIDATED } };
+    const kindFilter: Prisma.TransactionWhereInput =
+      query.bucket || query.categoryIds || query.uncategorizedKinds
+        ? {}
+        : { kind: { notIn: query.accountId ? NON_CASH_FOR_ACCOUNT : NON_CASH_CONSOLIDATED } };
     const where: Prisma.TransactionWhereInput = {
       ...filters,
       ...kindFilter,

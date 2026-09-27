@@ -8,7 +8,15 @@ import { FilterField } from '@/components/ui/FilterField';
 import { SearchField } from '@/components/ui/SearchField';
 import { DateRangeFields, PeriodSelect } from '@/components/ui/PeriodSelect';
 import { BUCKET_LABEL } from '@/lib/buckets';
-import type { ReportBucket, TxType, Account, Category, Counterparty } from '@/lib/types';
+import { KIND_NO_CATEGORY_LABEL } from '@/lib/labels';
+import type {
+  ReportBucket,
+  TransactionKind,
+  TxType,
+  Account,
+  Category,
+  Counterparty,
+} from '@/lib/types';
 import { type AnyPeriod, type DateRange, rangeForAny } from '@/lib/periods';
 import { Chip } from '@/components/ui/Chip';
 
@@ -21,7 +29,23 @@ export interface ActiveFilters {
   type?: TxType;
   /** P&L-группа — приходит только drill-down'ом из ОПиУ «По группам». */
   bucket?: ReportBucket;
+  /**
+   * Группа расходов «Итогов месяца» — тоже только drill-down'ом: её статьи и
+   * виды операций без статьи (условия внутри группы — через ИЛИ).
+   */
+  categoryIds?: string[];
+  uncategorizedKinds?: TransactionKind[];
   search?: string;
+}
+
+/** Подпись чипа группы: имена статей и видов без статьи, длинный список — «и ещё N». */
+function groupChipLabel(active: ActiveFilters, categories: Category[]): string {
+  const nameById = new Map(categories.map((c) => [c.id, c.name]));
+  const names = [
+    ...(active.categoryIds ?? []).map((id) => nameById.get(id) ?? 'статья'),
+    ...(active.uncategorizedKinds ?? []).map((k) => KIND_NO_CATEGORY_LABEL[k]),
+  ];
+  return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} и ещё ${names.length - 2}`;
 }
 
 interface Props {
@@ -140,8 +164,15 @@ export function TransactionFilters({
           value={active.categoryId ?? ''}
           onChange={(v) =>
             // Категория сама определяет P&L-группу — выбор категории снимает
-            // bucket-чип, иначе несовместимая пара дала бы пустой список.
-            onChange({ ...active, categoryId: v || undefined, bucket: undefined })
+            // bucket-чип и группу «Итогов месяца», иначе несовместимая пара дала
+            // бы пустой список.
+            onChange({
+              ...active,
+              categoryId: v || undefined,
+              bucket: undefined,
+              categoryIds: undefined,
+              uncategorizedKinds: undefined,
+            })
           }
           options={categoryOptions}
           placeholder="Все"
@@ -175,6 +206,17 @@ export function TransactionFilters({
             label={BUCKET_LABEL[active.bucket]}
             onRemove={() => onChange({ ...active, bucket: undefined })}
             title="Снять фильтр группы"
+          />
+        </FilterField>
+      )}
+      {((active.categoryIds?.length ?? 0) > 0 || (active.uncategorizedKinds?.length ?? 0) > 0) && (
+        <FilterField label="Группа расходов">
+          <Chip
+            label={groupChipLabel(active, categories)}
+            onRemove={() =>
+              onChange({ ...active, categoryIds: undefined, uncategorizedKinds: undefined })
+            }
+            title="Снять фильтр группы расходов"
           />
         </FilterField>
       )}
