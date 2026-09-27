@@ -266,6 +266,16 @@ describe('groupExpenses', () => {
     expect(groups[0]!.amount.toFixed(2)).toBe('100000.00');
   });
 
+  it('с доходной статьёй того же имени системная группа не сливается', () => {
+    const groups = groupExpenses({
+      lines: [line('OTHER', null, 'OTHER', '300.00')],
+      taxAccrued: '0',
+      categories: [...categories, cat('inc-other', 'Прочее', null, { kind: 'INCOME' })],
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ key: 'other', name: 'Прочее', uncategorizedKinds: ['OTHER'] });
+  });
+
   it('начисленный налог АУСН — группа «Налог» с отметкой taxAccrual', () => {
     const groups = groupExpenses({ lines: [], taxAccrued: '1600.00', categories });
     expect(groups).toHaveLength(1);

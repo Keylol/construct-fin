@@ -151,13 +151,13 @@ export function groupExpenses(input: {
   categories: CategoryNode[];
 }): ExpenseGroup[] {
   const roots = categoryRoots(input.categories);
-  // Корневая статья по имени: для слияния с системной группой. При двух
-  // одноимённых корнях берём расходную.
+  // Расходная корневая статья по имени — для слияния с системной группой.
+  // Доходная статья «Прочее» расходы без статьи к себе не забирает.
   const rootByName = new Map<string, CategoryNode>();
   for (const root of new Set(roots.values())) {
+    if (root.kind !== 'EXPENSE') continue;
     const key = normName(root.name);
-    const had = rootByName.get(key);
-    if (!had || (had.kind !== 'EXPENSE' && root.kind === 'EXPENSE')) rootByName.set(key, root);
+    if (!rootByName.has(key)) rootByName.set(key, root);
   }
 
   const groups = new Map<
