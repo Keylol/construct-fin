@@ -370,13 +370,19 @@ export class TransactionService {
    */
   async summary(workspaceId: string, query: TransactionSummaryQuery) {
     const { filters } = await this.buildFilters(workspaceId, query);
+    // Какие виды не считаем:
+    //  • фильтр по группе ОПиУ (переход из «По группам») — считаем всю группу,
+    //    как в отчёте, из которого пришли: у «Себестоимости» это и неденежные
+    //    проводки заказов. Ноги переводов bucketWhere уже исключил;
+    //  • один счёт — только неденежное: перевод для счёта — настоящее движение,
+    //    как в ОДДС по счёту;
+    //  • иначе «net денег» по всем счетам: без переводов и неденежного (R2).
+    const kindFilter: Prisma.TransactionWhereInput = query.bucket
+      ? {}
+      : { kind: { notIn: query.accountId ? NON_CASH_FOR_ACCOUNT : NON_CASH_CONSOLIDATED } };
     const where: Prisma.TransactionWhereInput = {
       ...filters,
-      // «Net денег» — только реальные движения. По всем счетам исключаем ноги
-      // переводов (раздували бы income и expense) и неденежный COGS (R2). Для
-      // одного счёта перевод — настоящее поступление или списание именно этого
-      // счёта, поэтому там исключаем только неденежное, как в ОДДС по счёту.
-      kind: { notIn: query.accountId ? NON_CASH_FOR_ACCOUNT : NON_CASH_CONSOLIDATED },
+      ...kindFilter,
       // R5/M8: границы периода считаем в поясе бизнеса (UTC+5), как cashflow/pnl.
       // from → начало суток, to → конец суток (inclusive lte). Сырой
       // new Date('2026-05-15') = 00:00 UTC резал бы день и расходился с отчётами.

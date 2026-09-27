@@ -195,6 +195,15 @@ describe('TransactionService.summary — те же фильтры, что у с�
     expect((calls[0]!.kind as { notIn: string[] }).notIn).toEqual(['COGS', 'WRITE_OFF']);
   });
 
+  it('фильтр по группе ОПиУ считает всю группу, включая неденежную себестоимость', async () => {
+    const { service, calls } = buildService2();
+    await service.summary('ws1', { bucket: 'COGS' } as never);
+    // Верхнеуровневого kind нет: иначе notIn [COGS, WRITE_OFF] вычёркивал бы
+    // проводки себестоимости, которые список под плитками показывает.
+    expect(calls[0]!.kind).toBeUndefined();
+    expect(calls[0]!.AND).toBeDefined();
+  });
+
   it('без счёта переводы исключены, как на дашборде', async () => {
     const { service, calls } = buildService2();
     await service.summary('ws1', { categoryId: 'cat1' } as never);
