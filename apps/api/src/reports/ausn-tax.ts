@@ -8,7 +8,7 @@ import {
 } from '@prisma/client';
 import { add, sub, mul, money, D } from '../common/money';
 import { classifyAusn, AUSN_RATE, AUSN_MIN_RATE, type AusnClass } from './ausn-classify';
-import { businessMonthLabel } from './period';
+import { businessDayParts, businessMonthLabel } from './period';
 
 /**
  * Налог АУСН «Доходы − Расходы» по месяцам — единая формула для раздела «Налог»
@@ -114,16 +114,46 @@ export function ausnMonthTax(sums: AusnMonthSums | undefined): AusnMonthTax {
   return { income, expense, base, taxCalc, taxMin, taxDue };
 }
 
+/** Уплата налога: «Уплатить» (kind=TAX) или ЕНП из выписки статьёй группы «Налоги». */
+export interface TaxPaymentRow {
+  kind: TransactionKind;
+  taxPeriod: string | null;
+  amount: Prisma.Decimal;
+  date: Date;
+}
+
+/**
+ * Уплачено по месяцам налога «YYYY-MM». «Уплатить» несёт период явно; ЕНП из
+ * выписки — по отметке периода, если она есть, иначе за месяц перед платежом.
+ * На вход — только расходные операции уплаты, отбор делает вызывающий.
+ */
+export function taxPaidByPeriod(
+  rows: TaxPaymentRow[],
+  labels: ReadonlySet<string>,
+): Map<string, Prisma.Decimal> {
+  const paid = new Map<string, Prisma.Decimal>();
+  for (const r of rows) {
+    const label = r.kind === 'TAX' ? r.taxPeriod : (r.taxPeriod ?? inferredTaxPeriod(r.date));
+    if (!label || !labels.has(label)) continue;
+    paid.set(label, add(paid.get(label) ?? D(0), r.amount));
+  }
+  return paid;
+}
+
 /**
  * За какой месяц уплачен ЕНП, проведённый из выписки без отметки периода.
- * Налог АУСН платится до 25-го числа следующего месяца, поэтому платёж августа
- * относим к июлю. Операции, проведённые кнопкой «Уплатить», несут taxPeriod
- * явно — для них эта догадка не нужна.
+ * Налоговая присылает сумму АУСН за месяц не позднее 15-го числа следующего
+ * месяца, срок уплаты — 25-е. Платёж с 15-го числа — налог за прошлый месяц
+ * (25.08 → июль). Платёж до 15-го суммы прошлого месяца ещё не знает: это
+ * доплата за позапрошлый (3 300 от 10.09 → июль, а не август — сверка
+ * 27.09.2026, август бухгалтер заплатил 27.09 полной суммой). Операции
+ * «Уплатить» несут taxPeriod явно — для них эта догадка не нужна.
  */
 export function inferredTaxPeriod(paidAt: Date): string {
-  const label = businessMonthLabel(paidAt);
-  const [y, m] = label.split('-').map(Number) as [number, number];
-  const prevY = m === 1 ? y - 1 : y;
-  const prevM = m === 1 ? 12 : m - 1;
-  return `${prevY}-${String(prevM).padStart(2, '0')}`;
+  const { y, mo, d } = businessDayParts(paidAt);
+  const back = d < 15 ? 2 : 1;
+  const idx = y * 12 + mo - back;
+  const py = Math.floor(idx / 12);
+  const pm = idx - py * 12;
+  return `${py}-${String(pm + 1).padStart(2, '0')}`;
 }

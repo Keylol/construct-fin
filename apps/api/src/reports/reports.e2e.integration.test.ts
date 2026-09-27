@@ -518,7 +518,8 @@ describe('P&L отчёт (по данным)', () => {
     // налог = max(20 % × 8000, 3 % × 10000) = 1600.
     await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(2) });
     await tx({ amount: '2000', type: 'EXPENSE', date: d2025(2), categoryId: rentCat });
-    // ЕНП за февраль, уплаченный 25 марта из выписки, — движение денег.
+    // ЕНП за февраль, уплаченный 25 марта из выписки, — движение денег. Расчёта
+    // за февраль нет (операций нет), поэтому налог февраля — уплаченные 700.
     await tx({ amount: '700', type: 'EXPENSE', date: d2025(2, 25), categoryId: taxCat });
 
     const base = {
@@ -533,17 +534,54 @@ describe('P&L отчёт (по данным)', () => {
     expect(paid.taxMode).toBe('paid');
     expect(bucketOf(paid.primary.totals, 'TAX').expense).toBe('700.00');
     expect(accrual.taxMode).toBe('accrual');
-    expect(bucketOf(accrual.primary.totals, 'TAX').expense).toBe('1600.00');
+    expect(bucketOf(accrual.primary.totals, 'TAX').expense).toBe('2300.00');
     const march = accrual.primary.buckets.find((b) => b.label === '2025-03')!;
     expect(bucketOf(march, 'TAX').expense).toBe('1600.00');
-    // Чистая прибыль отличается ровно заменой 700 на 1600, тождество сохраняется.
-    expect(Number(accrual.primary.totals.net)).toBe(Number(paid.primary.totals.net) + 700 - 1600);
+    const feb = accrual.primary.buckets.find((b) => b.label === '2025-02')!;
+    expect(bucketOf(feb, 'TAX').expense).toBe('700.00');
+    // Чистая прибыль отличается ровно заменой 700 на 700 + 1600, тождество сохраняется.
+    expect(Number(accrual.primary.totals.net)).toBe(Number(paid.primary.totals.net) + 700 - 2300);
     expect(
       Number(accrual.primary.totals.income) - Number(accrual.primary.totals.expense),
     ).toBe(Number(accrual.primary.totals.net));
     // В разбивке по статьям — отдельная строка начисленного налога.
     const row = accrual.primary.totals.byCategory.find((c) => c.categoryName === 'Налог АУСН (начислено)');
-    expect(row?.expense).toBe('1600.00');
+    expect(row?.expense).toBe('2300.00');
+  });
+
+  it('налог месяца не меньше уплаченного за него; у обрезанного месяца — только расчёт', async () => {
+    await h.prisma.account.update({ where: { id: seed.accountId }, data: { type: 'BANK' } });
+    const taxCat = await makeCategory('Налоги', 'EXPENSE', 'TAX');
+    // Апрель и май: по 10 000 дохода без расходов → расчёт 20 % × 10 000 = 2 000.
+    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(3) });
+    await tx({ amount: '10000', type: 'INCOME', kind: 'ORDER_PAYMENT', date: d2025(4) });
+    // Бухгалтер заплатил за апрель больше расчёта, за май — меньше.
+    await tx({ amount: '2500', type: 'EXPENSE', date: d2025(4, 25), categoryId: taxCat });
+    await tx({ amount: '1500', type: 'EXPENSE', date: d2025(5, 25), categoryId: taxCat });
+
+    const year = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: Y2025,
+      comparison: null,
+      groupBy: 'month',
+      taxMode: 'accrual',
+    });
+    const month = (label: string) => year.primary.buckets.find((b) => b.label === label)!;
+    expect(bucketOf(month('2025-04'), 'TAX').expense).toBe('2500.00'); // уплачено больше
+    expect(bucketOf(month('2025-05'), 'TAX').expense).toBe('2000.00'); // расчёт больше
+    expect(bucketOf(year.primary.totals, 'TAX').expense).toBe('4500.00');
+
+    // Период с 10 апреля: апрель обрезан — за него только расчёт, без уплаты.
+    const cut = await h.pnl.build({
+      workspaceId: seed.workspaceId,
+      primary: resolvePeriod({ from: '2025-04-10', to: '2025-06-30' }),
+      comparison: null,
+      groupBy: 'month',
+      taxMode: 'accrual',
+    });
+    const cutApril = cut.primary.buckets.find((b) => b.label === '2025-04')!;
+    expect(bucketOf(cutApril, 'TAX').expense).toBe('2000.00');
+    expect(bucketOf(cut.primary.totals, 'TAX').expense).toBe('4000.00');
   });
 
   it('byCategory сортируется по убыванию суммарного оборота', async () => {

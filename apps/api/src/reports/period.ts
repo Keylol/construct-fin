@@ -342,6 +342,18 @@ export function enumerateMonths(period: Period): { from: Date; to: Date; label: 
   return result;
 }
 
+/**
+ * Месяц из enumerateMonths не обрезан границами периода: начинается с первого
+ * дня и кончается последним (в поясе бизнеса).
+ */
+export function isWholeMonth(m: { from: Date; to: Date; label: string }): boolean {
+  const [y, mo] = m.label.split('-').map(Number) as [number, number];
+  return (
+    m.from.getTime() === startOfMonth(y, mo - 1).getTime() &&
+    m.to.getTime() === endOfMonth(y, mo - 1).getTime()
+  );
+}
+
 export function enumerateQuarters(period: Period): { from: Date; to: Date; label: string }[] {
   const result: { from: Date; to: Date; label: string }[] = [];
   const start = tzParts(period.from);

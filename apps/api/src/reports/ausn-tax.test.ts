@@ -5,6 +5,7 @@ import {
   ausnSumsByMonth,
   classifyAusnWithBucket,
   inferredTaxPeriod,
+  taxPaidByPeriod,
   type AusnTx,
 } from './ausn-tax';
 
@@ -78,9 +79,20 @@ describe('inferredTaxPeriod — ЕНП платится за прошлый ме
     expect(inferredTaxPeriod(new Date('2027-01-20T07:00:00.000Z'))).toBe('2026-12');
   });
 
-  it('месяц платежа берётся в поясе бизнеса (UTC+5)', () => {
-    // 31.08 20:00 UTC — уже 1 сентября в Екатеринбурге → налог за август.
-    expect(inferredTaxPeriod(new Date('2026-08-31T20:00:00.000Z'))).toBe('2026-08');
+  it('день платежа берётся в поясе бизнеса (UTC+5)', () => {
+    // 14.09 20:00 UTC — уже 15 сентября в Екатеринбурге → налог за август.
+    expect(inferredTaxPeriod(new Date('2026-09-14T20:00:00.000Z'))).toBe('2026-08');
+    // 14.09 18:00 UTC — ещё 14-е: сумма за август не пришла → доплата за июль.
+    expect(inferredTaxPeriod(new Date('2026-09-14T18:00:00.000Z'))).toBe('2026-07');
+  });
+
+  it('платёж до 15-го — доплата за позапрошлый месяц', () => {
+    // 3 300 от 10.09.2026 — не август: его сумму налоговая присылает к 15.09.
+    expect(inferredTaxPeriod(new Date('2026-09-10T16:50:00.000Z'))).toBe('2026-07');
+    // Через год: 5 февраля → декабрь прошлого года.
+    expect(inferredTaxPeriod(new Date('2027-02-05T07:00:00.000Z'))).toBe('2026-12');
+    // Август бухгалтер заплатил 27.09 — это август.
+    expect(inferredTaxPeriod(new Date('2026-09-27T07:00:00.000Z'))).toBe('2026-08');
   });
 });
 
@@ -92,5 +104,46 @@ describe('ausnSumsByMonth — месяцы по поясу бизнеса', () =
     ]);
     expect(m.get('2026-08')?.income.toFixed(2)).toBe('1000.00');
     expect(m.get('2026-09')?.income.toFixed(2)).toBe('1000.00');
+  });
+});
+
+describe('taxPaidByPeriod — за какой месяц уплачено', () => {
+  const pay = (o: { kind?: 'TAX' | 'OTHER'; taxPeriod?: string | null; amount: string; date: string }) => ({
+    kind: o.kind ?? 'OTHER',
+    taxPeriod: o.taxPeriod ?? null,
+    amount: new Prisma.Decimal(o.amount),
+    date: new Date(o.date),
+  });
+  const labels = new Set(['2026-06', '2026-07', '2026-08']);
+
+  it('ЕНП из выписки — за месяц перед платежом, два платежа одного дня суммируются', () => {
+    const paid = taxPaidByPeriod(
+      [
+        pay({ amount: '21415', date: '2026-07-26T13:42:00.000Z' }),
+        pay({ amount: '104377', date: '2026-07-26T13:42:00.000Z' }),
+        pay({ amount: '141621', date: '2026-08-25T05:07:00.000Z' }),
+      ],
+      labels,
+    );
+    expect(paid.get('2026-06')?.toFixed(2)).toBe('125792.00');
+    expect(paid.get('2026-07')?.toFixed(2)).toBe('141621.00');
+  });
+
+  it('«Уплатить» — по явному периоду; отметка периода у ЕНП главнее даты', () => {
+    const paid = taxPaidByPeriod(
+      [
+        pay({ kind: 'TAX', taxPeriod: '2026-06', amount: '1000', date: '2026-09-01T07:00:00.000Z' }),
+        pay({ taxPeriod: '2026-06', amount: '500', date: '2026-09-10T07:00:00.000Z' }),
+        pay({ kind: 'TAX', taxPeriod: null, amount: '999', date: '2026-07-10T07:00:00.000Z' }),
+      ],
+      labels,
+    );
+    expect(paid.get('2026-06')?.toFixed(2)).toBe('1500.00');
+    expect(paid.size).toBe(1);
+  });
+
+  it('месяцы вне набора не попадают', () => {
+    const paid = taxPaidByPeriod([pay({ amount: '174000', date: '2026-06-28T13:12:00.000Z' })], labels);
+    expect(paid.size).toBe(0); // за май, а май не в наборе
   });
 });

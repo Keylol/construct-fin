@@ -4,16 +4,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   enumerateMonths,
   enumerateQuarters,
+  isWholeMonth,
   type Period,
 } from './period';
-import { ausnMonthTax, ausnSumsByMonth, type AusnMonthSums } from './ausn-tax';
+import {
+  ausnMonthTax,
+  ausnSumsByMonth,
+  taxPaidByPeriod,
+  type AusnMonthSums,
+} from './ausn-tax';
 
 export type GroupBy = 'month' | 'quarter';
 
 /**
  * Как налог попадает в ОПиУ:
  *  • 'paid'    — уплаченные в месяце ЕНП (статьи группы «Налоги», kind=TAX);
- *  • 'accrual' — налог АУСН за сам месяц по формуле раздела «Налог».
+ *  • 'accrual' — налог АУСН за сам месяц: расчёт раздела «Налог», а если за
+ *    месяц уже уплачено больше расчёта — уплаченное (суммы считает бухгалтер
+ *    по данным налоговой, сверка 27.09.2026: июнь 125 792 при расчёте 95 368).
  * Отчёт на экране и выгрузка идут по начислению (решение владельца 27.09.2026);
  * прямые вызовы без режима считают по оплате, как раньше.
  */
@@ -231,6 +239,7 @@ export class PnlService {
     // разделе «Налог»). Для месяца, обрезанного границей периода, налог
     // считается по операциям внутри периода.
     let ausnByMonth: Map<string, AusnMonthSums> | null = null;
+    let paidByMonth = new Map<string, Prisma.Decimal>();
     if (taxMode === 'accrual') {
       const ausnTxs = await this.prisma.transaction.findMany({
         where: { workspaceId, deletedAt: null, date: { gte: period.from, lte: period.to } },
@@ -251,6 +260,32 @@ export class PnlService {
           accountType: t.account?.type ?? null,
         })),
       );
+
+      // Уплачено за целые месяцы периода: «Уплатить» с периодом и ЕНП из
+      // выписки (за месяц перед платежом, поэтому окно шире периода на два
+      // месяца). У обрезанного месяца налог только расчётный.
+      const whole = enumerateMonths(period)
+        .filter(isWholeMonth)
+        .map((m) => m.label);
+      if (whole.length > 0) {
+        const payments = await this.prisma.transaction.findMany({
+          where: {
+            workspaceId,
+            deletedAt: null,
+            type: 'EXPENSE',
+            OR: [
+              { kind: 'TAX', taxPeriod: { in: whole } },
+              {
+                kind: { not: 'TAX' },
+                category: { is: { bucket: 'TAX', deletedAt: null } },
+                date: { gte: period.from, lte: new Date(period.to.getTime() + 62 * 86_400_000) },
+              },
+            ],
+          },
+          select: { kind: true, taxPeriod: true, amount: true, date: true },
+        });
+        paidByMonth = taxPaidByPeriod(payments, new Set(whole));
+      }
     }
 
     const buckets: PnlBucket[] = [];
@@ -359,7 +394,11 @@ export class PnlService {
         // Налог за месяцы слайса (у квартала — сумма трёх месяцев).
         let accrued = zero;
         for (const m of enumerateMonths({ from: slice.from, to: slice.to })) {
-          accrued = accrued.plus(ausnMonthTax(ausnByMonth.get(m.label)).taxDue);
+          const calc = ausnMonthTax(ausnByMonth.get(m.label)).taxDue;
+          // Налог месяца не меньше того, что за него уже заплатили: сумму
+          // считает бухгалтер по данным налоговой, расчёт — только оценка.
+          const paid = paidByMonth.get(m.label);
+          accrued = accrued.plus(paid && paid.greaterThan(calc) ? paid : calc);
         }
         if (!accrued.isZero()) {
           bucketMap.get('TAX')!.expense = bucketMap.get('TAX')!.expense.plus(accrued);
