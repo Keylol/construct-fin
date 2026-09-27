@@ -27,8 +27,14 @@ export interface CategoryRow {
 // то есть такой расход УМЕНЬШАЕТ выручку, а не попадает в неё. Изначальный запрет
 // M13 делал легальную категорию «Возврат выручки» нередактируемой: любое
 // сохранение упиралось в 400, включая переименование.
+//
+// INCOME+PURCHASES разрешён по той же логике (аудит августа, 27.09): это возврат
+// денег от поставщика. Закупка лежит в группе «Закупки» и в прибыль не входит,
+// значит и возврат обязан её уменьшать, а не попадать в доход. Статья
+// «Закупка товара (возврат)» стояла доходом с себестоимостью и завышала чистую
+// прибыль ОПиУ на всю сумму возвратов (август — 145 389, июнь — 628 998).
 const ALLOWED_BUCKETS: Record<'INCOME' | 'EXPENSE', ReadonlySet<CategoryBucket>> = {
-  INCOME: new Set<CategoryBucket>(['REVENUE', 'CAPITAL', 'OTHER']),
+  INCOME: new Set<CategoryBucket>(['REVENUE', 'PURCHASES', 'CAPITAL', 'OTHER']),
   EXPENSE: new Set<CategoryBucket>([
     'REVENUE',
     'COGS',
@@ -41,7 +47,7 @@ const ALLOWED_BUCKETS: Record<'INCOME' | 'EXPENSE', ReadonlySet<CategoryBucket>>
   ]),
 };
 
-function assertBucketMatchesKind(
+export function assertBucketMatchesKind(
   kind: 'INCOME' | 'EXPENSE',
   bucket: CategoryBucket | undefined,
 ): void {

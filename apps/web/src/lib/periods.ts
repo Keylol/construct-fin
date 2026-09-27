@@ -199,18 +199,25 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
   all: 'Всё время',
 };
 
-/** Локальная дата YYYY-MM-DD для <input type="date">. */
 /** Сегодня для `<input type="date">` — в бизнес-поясе, а не по UTC. */
 export function todayInput(now: Date = new Date()): string {
   return toLocalDateInput(now);
 }
 
+/**
+ * Дата YYYY-MM-DD для `<input type="date">` — календарный день момента в поясе
+ * бизнеса (UTC+5), как его режут все отчёты (R5).
+ *
+ * Раньше день брался в поясе браузера. Форма операции при каждом сохранении
+ * заново отправляет дату из поля, поэтому операция с вечерним временем по UTC
+ * (строка Т-Банка в 22:30 МСК) в браузере не в UTC+5 переезжала на соседние
+ * сутки, а на стыке месяцев — в соседний месяц (K7, аудит августа 27.09).
+ * Пара к fromLocalDateInput: туда и обратно — один и тот же бизнес-день.
+ */
 export function toLocalDateInput(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d;
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const p = tzParts(date);
+  return `${p.y}-${String(p.mo + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
 }
 
 /** Из YYYY-MM-DD в ISO. */

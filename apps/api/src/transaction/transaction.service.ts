@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, type CategoryBucket, type TransactionKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { NON_CASH_CONSOLIDATED } from '../common/transaction-kinds';
+import { NON_CASH_CONSOLIDATED, NON_CASH_FOR_ACCOUNT } from '../common/transaction-kinds';
 import { startOfDay, endOfDay } from '../reports/period';
 import { parseSearchQuery } from '@construct/shared';
 import { findSearchIds } from '../common/text-search';
@@ -111,12 +111,7 @@ export class TransactionService {
   ) {}
 
   async list(workspaceId: string, query: ListTransactionsQuery) {
-    // Поиск — общими правилами (common/text-search.ts): описание, контрагент,
-    // статья, счёт, заказ, строка выписки, телефон, ИНН и сумма в любом виде.
-    const search = parseSearchQuery(query.search);
-    const ids = search
-      ? await findSearchIds(this.prisma, transactionSearchSpec(workspaceId), search)
-      : null;
+    const { filters, ids } = await this.buildFilters(workspaceId, query);
 
     // Границы периода — как в summary() (R5/M8): сутки в поясе бизнеса (UTC+5),
     // from → начало, to → конец (inclusive lte). Фронт шлёт полдень выбранного
@@ -132,6 +127,48 @@ export class TransactionService {
             },
           }
         : {};
+    const limit = query.limit;
+    const items = await this.prisma.transaction.findMany({
+      where: { ...filters, ...period },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    });
+
+    const hasMore = items.length > limit;
+    const page = hasMore ? items.slice(0, limit) : items;
+    const last = page[page.length - 1];
+    return {
+      items: page.map(this.serialize),
+      nextCursor: hasMore && last ? last.id : null,
+      outsideCount: await this.countOutsidePeriod(filters, query, ids),
+    };
+  }
+
+  /**
+   * Фильтры списка без периода — общие для list() и summary(), чтобы плитки над
+   * списком считались по тем же операциям, что видны под ними.
+   */
+  private async buildFilters(
+    workspaceId: string,
+    query: Pick<
+      ListTransactionsQuery,
+      | 'accountId'
+      | 'categoryId'
+      | 'counterpartyId'
+      | 'type'
+      | 'bucket'
+      | 'minAmount'
+      | 'maxAmount'
+      | 'search'
+    >,
+  ): Promise<{ filters: Prisma.TransactionWhereInput; ids: string[] | null }> {
+    // Поиск — общими правилами (common/text-search.ts): описание, контрагент,
+    // статья, счёт, заказ, строка выписки, телефон, ИНН и сумма в любом виде.
+    const search = parseSearchQuery(query.search);
+    const ids = search
+      ? await findSearchIds(this.prisma, transactionSearchSpec(workspaceId), search)
+      : null;
     const filters: Prisma.TransactionWhereInput = {
       workspaceId,
       deletedAt: null,
@@ -152,23 +189,7 @@ export class TransactionService {
         : {}),
       ...(ids ? { id: { in: ids } } : {}),
     };
-
-    const limit = query.limit;
-    const items = await this.prisma.transaction.findMany({
-      where: { ...filters, ...period },
-      orderBy: [{ date: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
-
-    const hasMore = items.length > limit;
-    const page = hasMore ? items.slice(0, limit) : items;
-    const last = page[page.length - 1];
-    return {
-      items: page.map(this.serialize),
-      nextCursor: hasMore && last ? last.id : null,
-      outsideCount: await this.countOutsidePeriod(filters, query, ids),
-    };
+    return { filters, ids };
   }
 
   /**
@@ -343,16 +364,25 @@ export class TransactionService {
   }
 
   /**
-   * Сводка INCOME/EXPENSE/NET за период. Используется в дашборде.
-   * Учитывает opening balance счетов отдельно — здесь только движение.
+   * Сводка INCOME/EXPENSE/NET за период: плитки дашборда (только период) и
+   * плитки над списком операций (период + те же фильтры, что у списка).
+   * Остатки счетов сюда не входят — здесь только движение.
    */
   async summary(workspaceId: string, query: TransactionSummaryQuery) {
+    const { filters } = await this.buildFilters(workspaceId, query);
+    // Какие виды не считаем:
+    //  • фильтр по группе ОПиУ (переход из «По группам») — считаем всю группу,
+    //    как в отчёте, из которого пришли: у «Себестоимости» это и неденежные
+    //    проводки заказов. Ноги переводов bucketWhere уже исключил;
+    //  • один счёт — только неденежное: перевод для счёта — настоящее движение,
+    //    как в ОДДС по счёту;
+    //  • иначе «net денег» по всем счетам: без переводов и неденежного (R2).
+    const kindFilter: Prisma.TransactionWhereInput = query.bucket
+      ? {}
+      : { kind: { notIn: query.accountId ? NON_CASH_FOR_ACCOUNT : NON_CASH_CONSOLIDATED } };
     const where: Prisma.TransactionWhereInput = {
-      workspaceId,
-      deletedAt: null,
-      // Дашбордный «net денег» — только реальные движения: исключаем ноги
-      // переводов (раздували бы income и expense) и неденежный COGS (R2).
-      kind: { notIn: NON_CASH_CONSOLIDATED },
+      ...filters,
+      ...kindFilter,
       // R5/M8: границы периода считаем в поясе бизнеса (UTC+5), как cashflow/pnl.
       // from → начало суток, to → конец суток (inclusive lte). Сырой
       // new Date('2026-05-15') = 00:00 UTC резал бы день и расходился с отчётами.

@@ -156,6 +156,62 @@ describe('TransactionService.summary — исключение ног перев�
   });
 });
 
+describe('TransactionService.summary — те же фильтры, что у списка (аудит 27.09)', () => {
+  function buildService2() {
+    const calls: Array<Record<string, unknown>> = [];
+    const prisma = {
+      transaction: {
+        groupBy: vi.fn().mockImplementation((args: { where: Record<string, unknown> }) => {
+          calls.push(args.where);
+          return Promise.resolve([]);
+        }),
+      },
+    };
+    const audit = { record: vi.fn() };
+    return { service: new TransactionService(prisma as never, audit as never), calls };
+  }
+
+  it('счёт, статья, контрагент и тип попадают в where сводки', async () => {
+    const { service, calls } = buildService2();
+    await service.summary('ws1', {
+      accountId: 'acc1',
+      categoryId: 'cat1',
+      counterpartyId: 'cp1',
+      type: 'EXPENSE',
+    } as never);
+    expect(calls[0]).toMatchObject({
+      workspaceId: 'ws1',
+      deletedAt: null,
+      accountId: 'acc1',
+      categoryId: 'cat1',
+      counterpartyId: 'cp1',
+      type: 'EXPENSE',
+    });
+  });
+
+  it('по одному счёту ноги переводов остаются — это его настоящие движения', async () => {
+    const { service, calls } = buildService2();
+    await service.summary('ws1', { accountId: 'acc1' } as never);
+    expect((calls[0]!.kind as { notIn: string[] }).notIn).toEqual(['COGS', 'WRITE_OFF']);
+  });
+
+  it('фильтр по группе ОПиУ считает всю группу, включая неденежную себестоимость', async () => {
+    const { service, calls } = buildService2();
+    await service.summary('ws1', { bucket: 'COGS' } as never);
+    // Верхнеуровневого kind нет: иначе notIn [COGS, WRITE_OFF] вычёркивал бы
+    // проводки себестоимости, которые список под плитками показывает.
+    expect(calls[0]!.kind).toBeUndefined();
+    expect(calls[0]!.AND).toBeDefined();
+  });
+
+  it('без счёта переводы исключены, как на дашборде', async () => {
+    const { service, calls } = buildService2();
+    await service.summary('ws1', { categoryId: 'cat1' } as never);
+    expect((calls[0]!.kind as { notIn: string[] }).notIn).toContain('TRANSFER_IN');
+    expect((calls[0]!.kind as { notIn: string[] }).notIn).toContain('TRANSFER_OUT');
+  });
+});
+
 describe('TransactionService.list — границы периода как в summary (M8)', () => {
   function buildListService() {
     const findManyCalls: Array<Record<string, unknown>> = [];

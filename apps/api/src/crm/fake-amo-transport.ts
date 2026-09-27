@@ -28,7 +28,10 @@ export const FAKE_AMO = {
   phone: '+79243634029',
 } as const;
 
-const NOW = 1_790_000_000;
+// Часы фейка идут от настоящего «сейчас»: окно расхождений считается от
+// текущего времени сервера, и с фиксированным моментом (21.09.2026) проверка
+// «окно в день ловит свежую продажу» начала падать через сутки после написания.
+const nowSec = (): number => Math.floor(Date.now() / 1000);
 
 @Injectable()
 export class FakeAmoTransport implements AmoHttp {
@@ -81,8 +84,8 @@ export class FakeAmoTransport implements AmoHttp {
         status_id: status,
         pipeline_id: FAKE_AMO.pipelineId,
         responsible_user_id: 9,
-        created_at: NOW - 86_400,
-        updated_at: NOW - 3_600 + id,
+        created_at: nowSec() - 86_400,
+        updated_at: nowSec() - 3_600 + id,
         closed_at: null,
         custom_fields_values: [
           { field_name: 'Пожелания по сборке', values: [{ value: 'под игры, белый корпус' }] },
@@ -107,7 +110,7 @@ export class FakeAmoTransport implements AmoHttp {
               FAKE_AMO.statuses.parts,
               502,
             ),
-            lead(FAKE_AMO.leads.won, 'Старый клиент', 90000, 142, null, { closed_at: NOW - 7_200 }),
+            lead(FAKE_AMO.leads.won, 'Старый клиент', 90000, 142, null, { closed_at: nowSec() - 7_200 }),
           ],
         },
       });

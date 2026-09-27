@@ -119,7 +119,7 @@ function BreakevenView() {
                 <p className="text-xs text-muted-foreground">
                   {achieved != null && achieved >= 100
                     ? 'Точка пройдена — дальнейшая выручка формирует прибыль.'
-                    : 'Точка ещё не пройдена — прибыль за период пока отрицательная.'}
+                    : 'Точка ещё не пройдена — маржинального дохода пока не хватает, чтобы покрыть постоянные расходы. Налоги и прочие статьи в этот расчёт не входят.'}
                 </p>
               </Card>
             )}
@@ -127,7 +127,9 @@ function BreakevenView() {
             {/* Состав формулы */}
             <SectionCard title="Составляющие расчёта">
               <div className="divide-y divide-border/60 text-sm">
-                <FormulaRow label="Выручка (по закрытым заказам)" value={r.revenue} />
+                {/* В выручку входят и закрытые заказы, и доходы статей группы «Выручка»
+                    (продажи без заказа) — так же, как в ОПиУ. */}
+                <FormulaRow label="Выручка (закрытые заказы и продажи без заказа)" value={r.revenue} />
                 <FormulaRow
                   label="Переменные расходы"
                   value={r.variableCosts.total}

@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { D, add, toMoneyString } from '@construct/shared';
+import { D, add, toMoneyString, sub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -53,6 +53,8 @@ function CounterpartiesReportView() {
   const period = query.data?.period;
   const sum = (pick: (r: BreakdownRow) => string) =>
     toMoneyString(rows.reduce((acc, r) => add(acc, pick(r)), D(0)));
+  const rowTotal = (r: BreakdownRow) =>
+    type === 'ALL' ? toMoneyString(sub(D(r.income), D(r.expense))) : r.total;
 
   const name = (r: BreakdownRow) =>
     r.id !== null ? (
@@ -90,9 +92,12 @@ function CounterpartiesReportView() {
     },
     {
       key: 'total',
-      header: 'Итого',
+      // При типе «Всё» сервер отдаёт в total оборот (доход + расход) — число без
+      // смысла. Показываем сальдо: сколько контрагент принёс за вычетом того,
+      // что мы ему заплатили (аудит 27.09).
+      header: type === 'ALL' ? 'Сальдо' : 'Итого',
       align: 'right',
-      cell: (r) => <Money value={r.total} className="font-medium" />,
+      cell: (r) => <Money value={rowTotal(r)} className="font-medium" />,
     },
   ];
   const card = (r: BreakdownRow) => (
@@ -104,7 +109,7 @@ function CounterpartiesReportView() {
           <Money value={r.expense} tone="plain" />
         </div>
       </div>
-      <Money value={r.total} className="font-semibold" />
+      <Money value={rowTotal(r)} className="font-semibold" />
     </div>
   );
 
@@ -156,7 +161,7 @@ function CounterpartiesReportView() {
                 name: 'Итого',
                 income: <Money value={sum((r) => r.income)} />,
                 expense: <Money value={sum((r) => r.expense)} />,
-                total: <Money value={sum((r) => r.total)} />,
+                total: <Money value={sum(rowTotal)} />,
               }}
             />
           </Card>

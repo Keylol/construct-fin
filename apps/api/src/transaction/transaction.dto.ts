@@ -122,10 +122,22 @@ export const ListTransactionsQuerySchema = z
   .superRefine(assertFromBeforeTo);
 export type ListTransactionsQuery = z.infer<typeof ListTransactionsQuerySchema>;
 
+// Сводка над списком операций считается по ТЕМ ЖЕ фильтрам, что и сам список:
+// иначе плитки «Доходы/Расходы» показывали весь период, пока под ними стоял
+// список одного счёта или статьи, и цифры не сходились глазами (аудит 27.09).
+// Дашборд передаёт только from/to — для него поведение прежнее.
 export const TransactionSummaryQuerySchema = z
   .object({
     from: isoDate.optional(),
     to: isoDate.optional(),
+    accountId: cuid.optional(),
+    categoryId: cuid.optional(),
+    counterpartyId: cuid.optional(),
+    type: TxTypeEnum.optional(),
+    bucket: BucketEnum.optional(),
+    minAmount: moneyString.optional(),
+    maxAmount: moneyString.optional(),
+    search: searchParam,
   })
   .superRefine(assertFromBeforeTo);
 export type TransactionSummaryQuery = z.infer<typeof TransactionSummaryQuerySchema>;
