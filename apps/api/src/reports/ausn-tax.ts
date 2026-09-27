@@ -114,6 +114,32 @@ export function ausnMonthTax(sums: AusnMonthSums | undefined): AusnMonthTax {
   return { income, expense, base, taxCalc, taxMin, taxDue };
 }
 
+/** Уплата налога: «Уплатить» (kind=TAX) или ЕНП из выписки статьёй группы «Налоги». */
+export interface TaxPaymentRow {
+  kind: TransactionKind;
+  taxPeriod: string | null;
+  amount: Prisma.Decimal;
+  date: Date;
+}
+
+/**
+ * Уплачено по месяцам налога «YYYY-MM». «Уплатить» несёт период явно; ЕНП из
+ * выписки — по отметке периода, если она есть, иначе за месяц перед платежом.
+ * На вход — только расходные операции уплаты, отбор делает вызывающий.
+ */
+export function taxPaidByPeriod(
+  rows: TaxPaymentRow[],
+  labels: ReadonlySet<string>,
+): Map<string, Prisma.Decimal> {
+  const paid = new Map<string, Prisma.Decimal>();
+  for (const r of rows) {
+    const label = r.kind === 'TAX' ? r.taxPeriod : (r.taxPeriod ?? inferredTaxPeriod(r.date));
+    if (!label || !labels.has(label)) continue;
+    paid.set(label, add(paid.get(label) ?? D(0), r.amount));
+  }
+  return paid;
+}
+
 /**
  * За какой месяц уплачен ЕНП, проведённый из выписки без отметки периода.
  * Налог АУСН платится до 25-го числа следующего месяца, поэтому платёж августа

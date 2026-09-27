@@ -3,12 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { add, money, D } from '../common/money';
 import { yearPeriod, ausnDueDate, assertNotFuture } from './period';
 import { AUSN_RATE, AUSN_MIN_RATE } from './ausn-classify';
-import { ausnSumsByMonth, ausnMonthTax, inferredTaxPeriod } from './ausn-tax';
+import { ausnSumsByMonth, ausnMonthTax, taxPaidByPeriod } from './ausn-tax';
 
 export interface TaxMonthRow {
   /** «YYYY-MM». */
@@ -94,14 +93,8 @@ export class TaxService {
     //    Балансе рос на все уплаченные ЕНП (аудит 27.09).
     const labels = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
     const labelSet = new Set(labels);
-    const paidByPeriod = new Map<string, Prisma.Decimal>();
-    const addPaid = (label: string | null, amount: Prisma.Decimal) => {
-      if (!label || !labelSet.has(label)) return;
-      paidByPeriod.set(label, add(paidByPeriod.get(label) ?? D(0), amount));
-    };
     // «Уплатить» — по явному периоду, в какой бы день ни заплатили.
-    const paidGroups = await this.prisma.transaction.groupBy({
-      by: ['taxPeriod'],
+    const taxKindPaid = await this.prisma.transaction.findMany({
       where: {
         workspaceId,
         deletedAt: null,
@@ -109,15 +102,18 @@ export class TaxService {
         type: 'EXPENSE',
         taxPeriod: { in: labels },
       },
-      _sum: { amount: true },
+      select: { kind: true, taxPeriod: true, amount: true, date: true },
     });
-    for (const g of paidGroups) addPaid(g.taxPeriod, g._sum.amount ?? D(0));
     // ЕНП из выписки: статья группы «Налоги», вида не TAX.
-    for (const t of txs) {
-      if (t.type !== 'EXPENSE' || t.kind === 'TAX') continue;
-      if (!t.category || t.category.deletedAt || t.category.bucket !== 'TAX') continue;
-      addPaid(t.taxPeriod ?? inferredTaxPeriod(t.date), t.amount);
-    }
+    const bankEnp = txs.filter(
+      (t) =>
+        t.type === 'EXPENSE' &&
+        t.kind !== 'TAX' &&
+        !!t.category &&
+        !t.category.deletedAt &&
+        t.category.bucket === 'TAX',
+    );
+    const paidByPeriod = taxPaidByPeriod([...taxKindPaid, ...bankEnp], labelSet);
 
     const months: TaxMonthRow[] = labels.map((label, idx) => {
       const monthNo = idx + 1;

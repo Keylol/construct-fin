@@ -3,6 +3,7 @@ import {
   businessYear,
   enumerateMonths,
   enumerateQuarters,
+  isWholeMonth,
   resolveComparison,
   resolvePeriod,
   resolvePreset,
@@ -181,6 +182,13 @@ describe('enumerateMonths', () => {
   it('через границу года', () => {
     const months = enumerateMonths(resolvePeriod({ from: '2025-11-01', to: '2026-02-28' }, NOW));
     expect(months.map((m) => m.label)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+  });
+
+  it('isWholeMonth: целые месяцы — да, обрезанные края — нет', () => {
+    const whole = enumerateMonths(resolvePeriod({ from: '2026-01-01', to: '2026-03-31' }, NOW));
+    expect(whole.map(isWholeMonth)).toEqual([true, true, true]);
+    const cut = enumerateMonths(resolvePeriod({ from: '2026-01-15', to: '2026-03-10' }, NOW));
+    expect(cut.map(isWholeMonth)).toEqual([false, true, false]);
   });
 });
 
