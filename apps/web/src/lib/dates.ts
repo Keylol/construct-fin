@@ -1,10 +1,20 @@
-const DATE_FMT = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+// Даты показываем в поясе бизнеса (UTC+5, Екатеринбург), как их режут отчёты
+// (R5): иначе в браузере с другим поясом заголовок дня в списке и месяц в отчёте
+// расходились на вечерних операциях.
+const BUSINESS_TZ = 'Asia/Yekaterinburg';
+const DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: BUSINESS_TZ,
+});
 const DATE_TIME_FMT = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
+  timeZone: BUSINESS_TZ,
 });
 
 /** 12.07.2026 */
@@ -25,8 +35,8 @@ export function formatDayLabel(d: string | Date): string {
   const target = formatDate(d);
   const now = new Date();
   if (target === formatDate(now)) return `Сегодня · ${target}`;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
+  // Екатеринбург без перехода на летнее время: «вчера» — ровно сутки назад.
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60_000);
   if (target === formatDate(yesterday)) return `Вчера · ${target}`;
   return target;
 }

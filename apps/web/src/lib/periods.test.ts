@@ -69,8 +69,21 @@ describe('rangeFor (границы в фиксированном UTC+5)', () => 
 });
 
 describe('toLocalDateInput / fromLocalDateInput', () => {
-  it('toLocalDateInput даёт YYYY-MM-DD в локали', () => {
-    expect(toLocalDateInput(new Date(2026, 0, 5))).toBe('2026-01-05');
+  it('toLocalDateInput даёт YYYY-MM-DD бизнес-дня (UTC+5), а не дня браузера', () => {
+    expect(toLocalDateInput(new Date('2026-01-05T12:00:00+05:00'))).toBe('2026-01-05');
+    // 31.08 в 18:59:59 UTC — ещё 31 августа в UTC+5 (23:59:59).
+    expect(toLocalDateInput('2026-08-31T18:59:59.000Z')).toBe('2026-08-31');
+    // 31.08 в 20:30 UTC (23:30 МСК) — уже 1 сентября в UTC+5. В браузере с
+    // московским поясом старая версия давала 31.08, и сохранение формы
+    // переносило операцию из сентября в август.
+    expect(toLocalDateInput('2026-08-31T20:30:00.000Z')).toBe('2026-09-01');
+  });
+
+  it('туда-обратно через форму день не меняется и на вечернем времени', () => {
+    const evening = '2026-07-08T19:30:00.000Z'; // 09.07 00:30 по UTC+5
+    const day = toLocalDateInput(evening);
+    expect(day).toBe('2026-07-09');
+    expect(toLocalDateInput(fromLocalDateInput(day))).toBe(day);
   });
 
   it('roundtrip сохраняет дату (через полдень, без сдвига дня)', () => {

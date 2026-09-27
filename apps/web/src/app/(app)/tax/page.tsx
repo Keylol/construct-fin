@@ -48,11 +48,19 @@ const STATUS_META: Record<
   NONE: { label: '—', tone: 'muted' },
 };
 
-/** Диапазон [from,to) месяца в ISO для drill-down в операции (по бизнес-дате). */
+/**
+ * Месяц для drill-down в операции: первый и последний день месяца полднем в
+ * поясе бизнеса, дальше сервер сам растягивает их до границ суток (UTC+5).
+ * Раньше «по» уходило как 23:59 UTC последнего дня — это уже следующие сутки
+ * по UTC+5, и список операций за август захватывал 1 сентября.
+ */
 function monthRange(year: number, monthNo: number): { from: string; to: string } {
-  const from = new Date(Date.UTC(year, monthNo - 1, 1));
-  const to = new Date(Date.UTC(year, monthNo, 0, 23, 59, 59));
-  return { from: from.toISOString(), to: to.toISOString() };
+  const mm = String(monthNo).padStart(2, '0');
+  const lastDay = new Date(Date.UTC(year, monthNo, 0)).getUTCDate();
+  return {
+    from: fromLocalDateInput(`${year}-${mm}-01`),
+    to: fromLocalDateInput(`${year}-${mm}-${String(lastDay).padStart(2, '0')}`),
+  };
 }
 
 /** Годы для выбора: текущий и пять назад — глубже архивов нет. */

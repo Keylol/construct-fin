@@ -122,7 +122,13 @@ function TransactionsView() {
   );
 
   const txs = useInfiniteTransactions(wsId, apiFilters);
-  const summary = useTransactionSummary(wsId, filters.range);
+  // Плитки считаются по тем же фильтрам, что и список под ними (без курсора
+  // и размера страницы): иначе «Доходы» за весь период стояли над списком одного счёта.
+  const summaryFilters = useMemo(() => {
+    const { limit: _limit, ...rest } = apiFilters;
+    return rest;
+  }, [apiFilters]);
+  const summary = useTransactionSummary(wsId, summaryFilters);
 
   const txRows = useMemo<Transaction[]>(
     () => txs.data?.pages.flatMap((p) => p.items) ?? [],

@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { BarChart3 } from '@/components/ui/icons';
 import { Money } from '@/components/ui/Money';
-import { D, add, toMoneyString } from '@construct/shared';
+import { D, add, toMoneyString, sub } from '@construct/shared';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -52,7 +52,14 @@ function CategoriesReportView() {
 
   const rows = query.data?.rows ?? [];
   const period = query.data?.period;
-  const total = toMoneyString(rows.reduce((acc, r) => add(acc, r.total), D(0)));
+  const sum = (pick: (r: BreakdownRow) => string) =>
+    toMoneyString(rows.reduce((acc, r) => add(acc, pick(r)), D(0)));
+  const total = sum((r) => r.total);
+  // При типе «Всё» сервер отдаёт в total оборот (доход + расход) — такое число
+  // ничего не значит, а «Итого» внизу складывало приход с расходом. В этом режиме
+  // показываем доход, расход и сальдо по статье, без долей и кольца (аудит 27.09).
+  const all = type === 'ALL';
+  const net = (r: BreakdownRow) => toMoneyString(sub(D(r.income), D(r.expense)));
 
   const name = (r: BreakdownRow) =>
     r.id !== null ? (
@@ -77,33 +84,68 @@ function CategoriesReportView() {
   // ОДДС» отменено владельцем именно для этого разреза — он отвечает на вопрос
   // «куда уходят деньги», а тридцать строк с процентами глазом не складываются.
   // Таблица остаётся источником точных сумм, колонка «Доля» — тоже.
-  const columns: Column<BreakdownRow>[] = [
-    { key: 'name', header: 'Категория', cell: name, className: 'w-full max-w-0' },
-    { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
-    {
-      key: 'total',
-      header: 'Итого',
-      align: 'right',
-      cell: (r) => <Money value={r.total} className="font-medium" />,
-      className: 'w-[170px]',
-    },
-    {
-      key: 'share',
-      header: 'Доля',
-      align: 'right',
-      cell: (r) => <span className="text-muted-foreground">{(r.share * 100).toFixed(1)}%</span>,
-      className: 'w-[90px]',
-    },
-  ];
+  const columns: Column<BreakdownRow>[] = all
+    ? [
+        { key: 'name', header: 'Категория', cell: name, className: 'w-full max-w-0' },
+        { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
+        {
+          key: 'income',
+          header: 'Доход',
+          align: 'right',
+          cell: (r) => <Money value={r.income} tone="plain" className="text-success" />,
+          className: 'w-[150px]',
+        },
+        {
+          key: 'expense',
+          header: 'Расход',
+          align: 'right',
+          cell: (r) => <Money value={r.expense} tone="plain" className="text-destructive" />,
+          className: 'w-[150px]',
+        },
+        {
+          key: 'total',
+          header: 'Сальдо',
+          align: 'right',
+          cell: (r) => <Money value={net(r)} className="font-medium" />,
+          className: 'w-[150px]',
+        },
+      ]
+    : [
+        { key: 'name', header: 'Категория', cell: name, className: 'w-full max-w-0' },
+        { key: 'count', header: 'Операций', align: 'right', cell: (r) => r.count, className: 'w-[110px]' },
+        {
+          key: 'total',
+          header: 'Итого',
+          align: 'right',
+          cell: (r) => <Money value={r.total} className="font-medium" />,
+          className: 'w-[170px]',
+        },
+        {
+          key: 'share',
+          header: 'Доля',
+          align: 'right',
+          cell: (r) => <span className="text-muted-foreground">{(r.share * 100).toFixed(1)}%</span>,
+          className: 'w-[90px]',
+        },
+      ];
   const card = (r: BreakdownRow) => (
     <div className="flex items-baseline justify-between gap-3">
       <div className="min-w-0">
         <div className="truncate font-medium">{name(r)}</div>
         <div className="text-xs text-muted-foreground">
-          {r.count} оп. · {(r.share * 100).toFixed(1)}%
+          {all ? (
+            <>
+              {r.count} оп. · +<Money value={r.income} tone="plain" /> · −
+              <Money value={r.expense} tone="plain" />
+            </>
+          ) : (
+            <>
+              {r.count} оп. · {(r.share * 100).toFixed(1)}%
+            </>
+          )}
         </div>
       </div>
-      <Money value={r.total} className="font-semibold" />
+      <Money value={all ? net(r) : r.total} className="font-semibold" />
     </div>
   );
 
@@ -144,7 +186,7 @@ function CategoriesReportView() {
           </Card>
         )}
 
-        {query.data && rows.length > 0 && (
+        {query.data && rows.length > 0 && !all && (
           <ShareDonut
             points={rows}
             title={type === 'INCOME' ? 'Структура доходов' : 'Структура расходов'}
@@ -158,7 +200,16 @@ function CategoriesReportView() {
               columns={columns}
               rowKey={(r) => r.id ?? `none:${r.name}`}
               mobileCards={card}
-              footer={{ name: 'Итого', total: <Money value={total} /> }}
+              footer={
+                all
+                  ? {
+                      name: 'Итого',
+                      income: <Money value={sum((r) => r.income)} />,
+                      expense: <Money value={sum((r) => r.expense)} />,
+                      total: <Money value={sum(net)} />,
+                    }
+                  : { name: 'Итого', total: <Money value={total} /> }
+              }
             />
           </Card>
         )}

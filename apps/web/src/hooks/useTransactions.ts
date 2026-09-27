@@ -104,14 +104,19 @@ export function useTransaction(wsId: string | null, id: string | null) {
   });
 }
 
+/**
+ * Доходы/расходы/чистый поток за период. Экран «Операции» передаёт сюда те же
+ * фильтры, что и списку (счёт, статья, контрагент, тип, группа, поиск), —
+ * иначе плитки считали весь период, пока под ними стоял отфильтрованный список.
+ */
 export function useTransactionSummary(
   wsId: string | null,
-  range: { from?: string; to?: string } = {},
+  filters: Omit<TransactionFilters, 'cursor' | 'limit'> = {},
 ) {
   return useQuery({
-    queryKey: ['transactions-summary', wsId, range],
+    queryKey: ['transactions-summary', wsId, filters],
     queryFn: () =>
-      api.get<TransactionSummary>(`/workspaces/${wsId}/transactions/summary?${buildQS(range)}`),
+      api.get<TransactionSummary>(`/workspaces/${wsId}/transactions/summary?${buildQS(filters)}`),
     enabled: !!wsId,
   });
 }
