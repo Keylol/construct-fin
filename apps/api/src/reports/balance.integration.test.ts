@@ -43,9 +43,10 @@ describe('Управленческий баланс', () => {
 
   it('каждая строка из своего контура + Активы − Обязательства = Капитал', async () => {
     // Деньги: начальный остаток 100 000, +50 000 дохода, −20 000 расхода → 130 000.
+    // Счёт расчётный: наличные в базу АУСН не входят, а строке налога нужен доход.
     await h.prisma.account.update({
       where: { id: seed.accountId },
-      data: { openingBalance: '100000.00' },
+      data: { openingBalance: '100000.00', type: 'BANK' },
     });
     await h.prisma.transaction.createMany({
       data: [
@@ -256,7 +257,9 @@ describe('Управленческий баланс', () => {
   });
 
   it('неуплаченный АУСН попадает в обязательства (после уплаты — уходит)', async () => {
-    // Май: доход 1 000 000 (SALE по кассе) → база без расходов, налог 20% = 200 000.
+    // Май: доход 1 000 000 на расчётный счёт → база без расходов, налог 20% = 200 000.
+    // Наличные в базу АУСН не входят, поэтому счёт переводим в банковский.
+    await h.prisma.account.update({ where: { id: seed.accountId }, data: { type: 'BANK' } });
     const may = new Date(new Date().getFullYear(), 4, 15, 12);
     await h.prisma.transaction.create({
       data: {

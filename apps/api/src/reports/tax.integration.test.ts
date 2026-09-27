@@ -28,6 +28,12 @@ beforeEach(async () => {
   await resetDb(h.prisma);
   tg += 1n;
   seed = await seedBase(h.prisma, tg);
+  // Базовый счёт харнесса — касса, а наличные в базу АУСН не входят: для
+  // расчёта налога нужен расчётный счёт.
+  await h.prisma.account.update({
+    where: { id: seed.accountId },
+    data: { type: 'BANK', name: 'Расчётный счёт' },
+  });
 });
 
 /** Проводка на середину месяца (UTC+5 → тот же бизнес-месяц). */

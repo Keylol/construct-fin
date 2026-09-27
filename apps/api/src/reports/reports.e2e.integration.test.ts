@@ -510,6 +510,8 @@ describe('P&L отчёт (по данным)', () => {
   });
 
   it('налог по начислению: вместо уплаченных ЕНП — налог АУСН за сам месяц', async () => {
+    // Базовый счёт харнесса — касса; наличные в базу АУСН не входят.
+    await h.prisma.account.update({ where: { id: seed.accountId }, data: { type: 'BANK' } });
     const taxCat = await makeCategory('Налоги', 'EXPENSE', 'TAX');
     const rentCat = await makeCategory('Аренда', 'EXPENSE', 'FIXED');
     // Март: оплата 10000 (доход АУСН) и аренда 2000 → база 8000 →
