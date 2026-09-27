@@ -32,6 +32,12 @@ describe('classifyAusnWithBucket — группа статьи уточняет 
     expect(classifyAusnWithBucket(t({ type: 'INCOME', categoryBucket: 'PURCHASES' }))).toBe('EXPENSE_MINUS');
   });
 
+  it('наличные в базу не входят ни доходом, ни расходом', () => {
+    expect(classifyAusnWithBucket(t({ type: 'INCOME', kind: 'ORDER_PAYMENT', accountType: 'CASH' }))).toBe('NOT_COUNTED');
+    expect(classifyAusnWithBucket(t({ kind: 'SALARY', accountType: 'CASH' }))).toBe('NOT_COUNTED');
+    expect(classifyAusnWithBucket(t({ type: 'INCOME', kind: 'ORDER_PAYMENT', accountType: 'BANK' }))).toBe('INCOME_PLUS');
+  });
+
   it('маркировка банка главнее группы статьи', () => {
     expect(classifyAusnWithBucket(t({ categoryBucket: 'TAX', ausnMark: 'EXPENSE' }))).toBe('EXPENSE_PLUS');
   });

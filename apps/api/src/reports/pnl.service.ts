@@ -241,12 +241,14 @@ export class PnlService {
           amount: true,
           date: true,
           category: { select: { bucket: true, deletedAt: true } },
+          account: { select: { type: true } },
         },
       });
       ausnByMonth = ausnSumsByMonth(
         ausnTxs.map((t) => ({
           ...t,
           categoryBucket: t.category && !t.category.deletedAt ? t.category.bucket : null,
+          accountType: t.account?.type ?? null,
         })),
       );
     }

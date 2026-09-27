@@ -22,6 +22,8 @@ beforeEach(async () => {
   await resetDb(H.prisma);
   tg += 1n;
   seed = await seedBase(H.prisma, tg);
+  // Базовый счёт харнесса — касса, а наличные в базу АУСН не входят.
+  await H.prisma.account.update({ where: { id: seed.accountId }, data: { type: 'BANK' } });
   await seedMember(H.prisma, seed.workspaceId, seed.userId);
   token = await H.jwtFor(seed.userId, tg);
 });
