@@ -71,6 +71,32 @@ describe('TaxService.yearReport', () => {
     expect(rep.totals.taxDue).toBe('12000.00');
   });
 
+  it('наличные в базу АУСН не входят: ни оплата заказа, ни зарплата', async () => {
+    const cash = await h.prisma.account.create({
+      data: { workspaceId: seed.workspaceId, name: 'Наличные', type: 'CASH', openingBalance: '0' },
+    });
+    await txn(8, '100000.00', 'INCOME', 'ORDER_PAYMENT'); // банк
+    const onCash = (amount: string, type: TxType, kind: TransactionKind) =>
+      h.prisma.transaction.create({
+        data: {
+          workspaceId: seed.workspaceId,
+          accountId: cash.id,
+          date: new Date('2026-08-15T12:00:00.000Z'),
+          amount,
+          type,
+          kind,
+          createdById: seed.userId,
+        },
+      });
+    await onCash('200000.00', 'INCOME', 'ORDER_PAYMENT');
+    await onCash('50000.00', 'EXPENSE', 'SALARY');
+
+    const aug = (await h.tax.yearReport(seed.workspaceId, 2026)).months.find((m) => m.month === '2026-08')!;
+    expect(aug.income).toBe('100000.00'); // только банк
+    expect(aug.expense).toBe('0.00'); // наличная зарплата вне базы
+    expect(aug.taxDue).toBe('20000.00'); // 20 % × 100000
+  });
+
   it('ЕНП из выписки (статья «Налоги») — уплата за прошлый месяц и не расход базы', async () => {
     const taxCat = await h.prisma.category.create({
       data: { workspaceId: seed.workspaceId, name: 'Налоги', kind: 'EXPENSE', bucket: 'TAX' },

@@ -1,4 +1,11 @@
-import { Prisma, type AusnMark, type CategoryBucket, type TransactionKind, type TxType } from '@prisma/client';
+import {
+  Prisma,
+  type AccountType,
+  type AusnMark,
+  type CategoryBucket,
+  type TransactionKind,
+  type TxType,
+} from '@prisma/client';
 import { add, sub, mul, money, D } from '../common/money';
 import { classifyAusn, AUSN_RATE, AUSN_MIN_RATE, type AusnClass } from './ausn-classify';
 import { businessMonthLabel } from './period';
@@ -18,6 +25,8 @@ export interface AusnTx {
   date: Date;
   /** Группа статьи операции, если статья есть. */
   categoryBucket?: CategoryBucket | null;
+  /** Тип счёта операции: наличные в базу АУСН не входят. */
+  accountType?: AccountType | null;
 }
 
 export interface AusnMonthSums {
@@ -39,7 +48,8 @@ export interface AusnMonthTax {
 /**
  * Класс операции для базы АУСН с учётом группы статьи.
  *
- * Маркировка банка (ausnMark) по-прежнему главнее всего. Без неё операции,
+ * Наличные (счёт типа CASH) в базу не входят никогда. Дальше маркировка банка
+ * (ausnMark) главнее всего. Без неё операции,
  * заведённые формой, «Входящими» или правилом, имеют kind=OTHER, и
  * classifyAusn видит только знак. Группа статьи уточняет то, что знак не видит:
  *  • «Налоги» — сам налог (ЕНП из выписки) в базу не входит;
@@ -48,6 +58,10 @@ export interface AusnMonthTax {
  *    увеличивает доход.
  */
 export function classifyAusnWithBucket(tx: AusnTx): AusnClass {
+  // АУСН считает налоговая по данным банка: наличные в базу не попадают ни
+  // доходом, ни расходом (владелец, 27.09.2026). Раньше наличная оплата заказа
+  // поднимала минимальный налог, а наличная зарплата уменьшала базу.
+  if (tx.accountType === 'CASH') return 'NOT_COUNTED';
   if (!tx.ausnMark && (tx.kind === 'OTHER' || tx.kind === 'NON_OP')) {
     if (tx.categoryBucket === 'TAX' || tx.categoryBucket === 'CAPITAL') return 'NOT_COUNTED';
     if (tx.categoryBucket === 'PURCHASES' && tx.type === 'INCOME') return 'EXPENSE_MINUS';

@@ -74,6 +74,7 @@ export class TaxService {
         date: true,
         taxPeriod: true,
         category: { select: { bucket: true, deletedAt: true } },
+        account: { select: { type: true } },
       },
     });
     const inYear = txs.filter((t) => t.date <= period.to);
@@ -81,6 +82,7 @@ export class TaxService {
       inYear.map((t) => ({
         ...t,
         categoryBucket: t.category && !t.category.deletedAt ? t.category.bucket : null,
+        accountType: t.account?.type ?? null,
       })),
     );
 
