@@ -71,6 +71,35 @@ describe('TaxService.yearReport', () => {
     expect(rep.totals.taxDue).toBe('12000.00');
   });
 
+  it('ЕНП из выписки (статья «Налоги») — уплата за прошлый месяц и не расход базы', async () => {
+    const taxCat = await h.prisma.category.create({
+      data: { workspaceId: seed.workspaceId, name: 'Налоги', kind: 'EXPENSE', bucket: 'TAX' },
+    });
+    await txn(3, '100000.00', 'INCOME', 'ORDER_PAYMENT');
+    // ЕНП 25 апреля за март, проведённый из выписки: kind=OTHER + статья «Налоги».
+    await h.prisma.transaction.create({
+      data: {
+        workspaceId: seed.workspaceId,
+        accountId: seed.accountId,
+        date: new Date('2026-04-25T07:00:00.000Z'),
+        amount: '3000.00',
+        type: 'EXPENSE',
+        kind: 'OTHER',
+        categoryId: taxCat.id,
+        createdById: seed.userId,
+      },
+    });
+
+    const rep = await h.tax.yearReport(seed.workspaceId, 2026);
+    const mar = rep.months.find((m) => m.month === '2026-03')!;
+    const apr = rep.months.find((m) => m.month === '2026-04')!;
+    expect(mar.taxDue).toBe('20000.00'); // 20 % × 100000 — расходов нет
+    expect(mar.taxPaid).toBe('3000.00');
+    expect(mar.status).toBe('PARTIAL');
+    expect(apr.expense).toBe('0.00'); // сам налог в базу апреля не попал
+    expect(rep.totals.taxPaid).toBe('3000.00');
+  });
+
   it('минимальный налог: доход 100000, расход 95000 → база 5000, налог = max(1000, 3000) = 3000', async () => {
     await txn(4, '100000.00', 'INCOME', 'ORDER_PAYMENT');
     await txn(4, '95000.00', 'EXPENSE', 'PURCHASE');

@@ -576,6 +576,8 @@ export interface PnlSeries {
 export interface PnlReport {
   primary: PnlSeries;
   comparison: PnlSeries | null;
+  /** Налог в отчёте: 'accrual' — начислен за месяц по АУСН, 'paid' — уплаченные ЕНП. */
+  taxMode?: 'paid' | 'accrual';
 }
 
 export interface CashflowPoint {

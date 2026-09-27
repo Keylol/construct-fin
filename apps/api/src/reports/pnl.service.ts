@@ -6,8 +6,22 @@ import {
   enumerateQuarters,
   type Period,
 } from './period';
+import { ausnMonthTax, ausnSumsByMonth, type AusnMonthSums } from './ausn-tax';
 
 export type GroupBy = 'month' | 'quarter';
+
+/**
+ * Как налог попадает в ОПиУ:
+ *  • 'paid'    — уплаченные в месяце ЕНП (статьи группы «Налоги», kind=TAX);
+ *  • 'accrual' — налог АУСН за сам месяц по формуле раздела «Налог».
+ * Отчёт на экране и выгрузка идут по начислению (решение владельца 27.09.2026);
+ * прямые вызовы без режима считают по оплате, как раньше.
+ */
+export type PnlTaxMode = 'paid' | 'accrual';
+
+/** Ключ строки начисленного налога в разбивке по статьям (статьи у неё нет). */
+const TAX_ACCRUAL_KEY = '__ausn_accrual__';
+const TAX_ACCRUAL_NAME = 'Налог АУСН (начислено)';
 
 export interface CategoryBreakdown {
   categoryId: string | null;
@@ -45,6 +59,8 @@ export interface PnlBucket {
 export interface PnlReport {
   primary: { period: { from: string; to: string }; buckets: PnlBucket[]; totals: PnlBucket };
   comparison: { period: { from: string; to: string }; buckets: PnlBucket[]; totals: PnlBucket } | null;
+  /** Как в отчёте посчитан налог — см. PnlTaxMode. */
+  taxMode: PnlTaxMode;
 }
 
 const ALL_BUCKETS: CategoryBucket[] = [
@@ -73,7 +89,9 @@ export class PnlService {
     primary: Period;
     comparison: Period | null;
     groupBy: GroupBy;
+    taxMode?: PnlTaxMode;
   }): Promise<PnlReport> {
+    const taxMode: PnlTaxMode = opts.taxMode ?? 'paid';
     const categories = await this.prisma.category.findMany({
       where: { workspaceId: opts.workspaceId, deletedAt: null },
       select: { id: true, name: true, bucket: true },
@@ -85,11 +103,12 @@ export class PnlService {
       opts.primary,
       opts.groupBy,
       catById,
+      taxMode,
     );
     const comparison = opts.comparison
-      ? await this.computeSeries(opts.workspaceId, opts.comparison, opts.groupBy, catById)
+      ? await this.computeSeries(opts.workspaceId, opts.comparison, opts.groupBy, catById, taxMode)
       : null;
-    return { primary, comparison };
+    return { primary, comparison, taxMode };
   }
 
   private async computeSeries(
@@ -97,6 +116,7 @@ export class PnlService {
     period: Period,
     groupBy: GroupBy,
     catById: Map<string, CategoryMeta>,
+    taxMode: PnlTaxMode,
   ) {
     const slices =
       groupBy === 'month' ? enumerateMonths(period) : enumerateQuarters(period);
@@ -207,6 +227,30 @@ export class PnlService {
     );
     const retByLabel = new Map(returnRows.map((r) => [r.label, r]));
 
+    // Налог по начислению: база АУСН по месяцам периода (та же формула, что в
+    // разделе «Налог»). Для месяца, обрезанного границей периода, налог
+    // считается по операциям внутри периода.
+    let ausnByMonth: Map<string, AusnMonthSums> | null = null;
+    if (taxMode === 'accrual') {
+      const ausnTxs = await this.prisma.transaction.findMany({
+        where: { workspaceId, deletedAt: null, date: { gte: period.from, lte: period.to } },
+        select: {
+          type: true,
+          kind: true,
+          ausnMark: true,
+          amount: true,
+          date: true,
+          category: { select: { bucket: true, deletedAt: true } },
+        },
+      });
+      ausnByMonth = ausnSumsByMonth(
+        ausnTxs.map((t) => ({
+          ...t,
+          categoryBucket: t.category && !t.category.deletedAt ? t.category.bucket : null,
+        })),
+      );
+    }
+
     const buckets: PnlBucket[] = [];
     let totalIncome = new Prisma.Decimal(0);
     let totalExpense = new Prisma.Decimal(0);
@@ -230,6 +274,19 @@ export class PnlService {
       for (const g of groups) {
         const amount = g._sum.amount ?? new Prisma.Decimal(0);
         const key = g.categoryId;
+        // По бакету. Приоритет: явная категория пользователя → её bucket.
+        // Если категории нет (системные операции: ORDER_PAYMENT, COGS, ноги
+        // капитала, комиссия перевода и т.п. заводятся БЕЗ categoryId) —
+        // классифицируем по kind. Раньше всё бескатегорийное падало в OTHER:
+        // выручка заказов пряталась в «Прочем», а CAPITAL_IN/OUT попадали в
+        // операционку и искажали net. Теперь byBucket сходится с headline:
+        // byBucket.COGS.expense === cogs.
+        const bucket: CategoryBucket = key
+          ? catById.get(key)?.bucket ?? bucketForSystemKind(g.kind)
+          : bucketForSystemKind(g.kind);
+        // По начислению уплаты налога — движение денег (ОДДС), а не расход
+        // периода: вместо них ниже встаёт налог за сам месяц.
+        if (taxMode === 'accrual' && bucket === 'TAX') continue;
         const entry = catMap.get(key) ?? {
           income: new Prisma.Decimal(0),
           expense: new Prisma.Decimal(0),
@@ -249,16 +306,6 @@ export class PnlService {
         else totalEntry.expense = totalEntry.expense.plus(amount);
         totalsByCat.set(key, totalEntry);
 
-        // По бакету. Приоритет: явная категория пользователя → её bucket.
-        // Если категории нет (системные операции: ORDER_PAYMENT, COGS, ноги
-        // капитала, комиссия перевода и т.п. заводятся БЕЗ categoryId) —
-        // классифицируем по kind. Раньше всё бескатегорийное падало в OTHER:
-        // выручка заказов пряталась в «Прочем», а CAPITAL_IN/OUT попадали в
-        // операционку и искажали net. Теперь byBucket сходится с headline:
-        // byBucket.COGS.expense === cogs.
-        const bucket: CategoryBucket = key
-          ? catById.get(key)?.bucket ?? bucketForSystemKind(g.kind)
-          : bucketForSystemKind(g.kind);
         const bEntry = bucketMap.get(bucket)!;
         const tEntry = totalsByBucket.get(bucket)!;
         if (g.type === 'INCOME') {
@@ -304,6 +351,25 @@ export class PnlService {
         tNull.income = tNull.income.plus(recRevenue);
         tNull.expense = tNull.expense.plus(retRevenue).plus(recCogs).minus(retCogs);
         totalsByCat.set(null, tNull);
+      }
+
+      if (ausnByMonth) {
+        // Налог за месяцы слайса (у квартала — сумма трёх месяцев).
+        let accrued = zero;
+        for (const m of enumerateMonths({ from: slice.from, to: slice.to })) {
+          accrued = accrued.plus(ausnMonthTax(ausnByMonth.get(m.label)).taxDue);
+        }
+        if (!accrued.isZero()) {
+          bucketMap.get('TAX')!.expense = bucketMap.get('TAX')!.expense.plus(accrued);
+          const tTax = totalsByBucket.get('TAX')!;
+          tTax.expense = tTax.expense.plus(accrued);
+          const acc = catMap.get(TAX_ACCRUAL_KEY) ?? { income: zero, expense: zero };
+          acc.expense = acc.expense.plus(accrued);
+          catMap.set(TAX_ACCRUAL_KEY, acc);
+          const tAcc = totalsByCat.get(TAX_ACCRUAL_KEY) ?? { income: zero, expense: zero };
+          tAcc.expense = tAcc.expense.plus(accrued);
+          totalsByCat.set(TAX_ACCRUAL_KEY, tAcc);
+        }
       }
 
       // Себестоимость периода = расходная часть бакета COGS: признание заказов
@@ -439,6 +505,15 @@ function buildBreakdown(
 ): CategoryBreakdown[] {
   const out: CategoryBreakdown[] = [];
   for (const [categoryId, sums] of catMap.entries()) {
+    if (categoryId === TAX_ACCRUAL_KEY) {
+      out.push({
+        categoryId: null,
+        categoryName: TAX_ACCRUAL_NAME,
+        income: sums.income.toFixed(2),
+        expense: sums.expense.toFixed(2),
+      });
+      continue;
+    }
     out.push({
       categoryId,
       categoryName: categoryId ? nameById.get(categoryId) ?? null : null,
