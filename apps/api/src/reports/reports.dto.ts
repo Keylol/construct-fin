@@ -77,5 +77,20 @@ export const BreakevenQuerySchema = z
   .strict();
 export type BreakevenQuery = z.infer<typeof BreakevenQuerySchema>;
 
+/** «Итоги месяца»: месяц YYYY-MM; без него — прошлый законченный месяц (UTC+5). */
+export const MonthSummaryQuerySchema = z
+  .object({
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Месяц в формате YYYY-MM')
+      .refine((m) => {
+        const y = Number(m.slice(0, 4));
+        return y >= 2000 && y <= 2100;
+      }, 'Год вне диапазона 2000–2100')
+      .optional(),
+  })
+  .strict();
+export type MonthSummaryQuery = z.infer<typeof MonthSummaryQuerySchema>;
+
 export const ExportFormatSchema = z.enum(['csv', 'xlsx']);
 export type ExportFormat = z.infer<typeof ExportFormatSchema>;

@@ -29,7 +29,8 @@ export type PnlTaxMode = 'paid' | 'accrual';
 
 /** Ключ строки начисленного налога в разбивке по статьям (статьи у неё нет). */
 const TAX_ACCRUAL_KEY = '__ausn_accrual__';
-const TAX_ACCRUAL_NAME = 'Налог АУСН (начислено)';
+/** Имя строки начисленного налога в byCategory (categoryId у неё null). */
+export const TAX_ACCRUAL_NAME = 'Налог АУСН (начислено)';
 
 export interface CategoryBreakdown {
   categoryId: string | null;
@@ -40,6 +41,21 @@ export interface CategoryBreakdown {
 
 export interface BucketBreakdown {
   bucket: CategoryBucket;
+  income: string;
+  expense: string;
+}
+
+/**
+ * Операции ОПиУ до свёртки по статьям: одна статья, один вид операции (kind)
+ * в своём бакете. Только операции — признание заказов, события возвратов и
+ * начисленный налог сюда не входят, их видно в byBucket и byCategory.
+ * Отдаются по запросу (withLines) в итогах серии: «Итогам месяца» нужна
+ * разбивка операций без статьи по виду, которой в byCategory нет.
+ */
+export interface PnlLine {
+  bucket: CategoryBucket;
+  categoryId: string | null;
+  kind: TransactionKind;
   income: string;
   expense: string;
 }
@@ -62,6 +78,8 @@ export interface PnlBucket {
   net: string;
   byCategory: CategoryBreakdown[];
   byBucket: BucketBreakdown[];
+  /** Только у итогов серии и только при withLines — см. PnlLine. */
+  lines?: PnlLine[];
 }
 
 export interface PnlReport {
@@ -98,8 +116,11 @@ export class PnlService {
     comparison: Period | null;
     groupBy: GroupBy;
     taxMode?: PnlTaxMode;
+    /** Отдать в итогах серий строки операций (PnlLine). По умолчанию — нет. */
+    withLines?: boolean;
   }): Promise<PnlReport> {
     const taxMode: PnlTaxMode = opts.taxMode ?? 'paid';
+    const withLines = opts.withLines ?? false;
     const categories = await this.prisma.category.findMany({
       where: { workspaceId: opts.workspaceId, deletedAt: null },
       select: { id: true, name: true, bucket: true },
@@ -112,9 +133,17 @@ export class PnlService {
       opts.groupBy,
       catById,
       taxMode,
+      withLines,
     );
     const comparison = opts.comparison
-      ? await this.computeSeries(opts.workspaceId, opts.comparison, opts.groupBy, catById, taxMode)
+      ? await this.computeSeries(
+          opts.workspaceId,
+          opts.comparison,
+          opts.groupBy,
+          catById,
+          taxMode,
+          withLines,
+        )
       : null;
     return { primary, comparison, taxMode };
   }
@@ -125,6 +154,7 @@ export class PnlService {
     groupBy: GroupBy,
     catById: Map<string, CategoryMeta>,
     taxMode: PnlTaxMode,
+    withLines: boolean,
   ) {
     const slices =
       groupBy === 'month' ? enumerateMonths(period) : enumerateQuarters(period);
@@ -294,6 +324,17 @@ export class PnlService {
     let totalCogs = new Prisma.Decimal(0);
     const totalsByCat = new Map<string | null, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
     const totalsByBucket = newBucketMap();
+    // Строки операций для итогов серии (withLines): ключ — бакет, статья, kind.
+    const totalsByLine = new Map<
+      string,
+      {
+        bucket: CategoryBucket;
+        categoryId: string | null;
+        kind: TransactionKind;
+        income: Prisma.Decimal;
+        expense: Prisma.Decimal;
+      }
+    >();
 
     for (const slice of slices) {
       // Системные операции без categoryId (WRITE_OFF, ноги капитала и т.п.)
@@ -324,6 +365,19 @@ export class PnlService {
         // По начислению уплаты налога — движение денег (ОДДС), а не расход
         // периода: вместо них ниже встаёт налог за сам месяц.
         if (taxMode === 'accrual' && bucket === 'TAX') continue;
+        if (withLines) {
+          const lineKey = `${bucket}|${key ?? ''}|${g.kind}`;
+          const line = totalsByLine.get(lineKey) ?? {
+            bucket,
+            categoryId: key,
+            kind: g.kind,
+            income: new Prisma.Decimal(0),
+            expense: new Prisma.Decimal(0),
+          };
+          if (g.type === 'INCOME') line.income = line.income.plus(amount);
+          else line.expense = line.expense.plus(amount);
+          totalsByLine.set(lineKey, line);
+        }
         const entry = catMap.get(key) ?? {
           income: new Prisma.Decimal(0),
           expense: new Prisma.Decimal(0),
@@ -477,6 +531,17 @@ export class PnlService {
         net: totalIncome.minus(totalExpense).toFixed(2),
         byCategory: buildBreakdown(totalsByCat, nameById),
         byBucket: buildBucketBreakdown(totalsByBucket),
+        ...(withLines
+          ? {
+              lines: [...totalsByLine.values()].map((l) => ({
+                bucket: l.bucket,
+                categoryId: l.categoryId,
+                kind: l.kind,
+                income: l.income.toFixed(2),
+                expense: l.expense.toFixed(2),
+              })),
+            }
+          : {}),
       },
     };
   }

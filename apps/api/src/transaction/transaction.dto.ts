@@ -104,6 +104,47 @@ const BucketEnum = z.enum([
   'OTHER',
 ]);
 
+// Виды операций для фильтра «без статьи» (переводы в группы не входят).
+const KindEnum = z.enum([
+  'ORDER_PAYMENT',
+  'CAPITAL_IN',
+  'SUPPLIER_REFUND',
+  'ORDER_REFUND',
+  'COGS',
+  'WRITE_OFF',
+  'PURCHASE',
+  'SALARY',
+  'TAX',
+  'FIXED_COST',
+  'VARIABLE_COST',
+  'NON_OP',
+  'CAPITAL_OUT',
+  'OTHER',
+]);
+
+/**
+ * Список через запятую в адресе: «a,b» → ['a', 'b'], пустые куски
+ * отбрасываются, пустой список — «без фильтра». preprocess, а не transform —
+ * как у searchParam: вход схемы остаётся unknown, и ZodPipe выводит тип.
+ */
+const csvList = <T extends z.ZodTypeAny>(item: T) =>
+  z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const parts = value
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    return parts.length ? parts : undefined;
+  }, z.array(item).min(1).max(200).optional());
+
+// Группа расходов «Итогов месяца» (drill-down): статьи группы ИЛИ операции без
+// живой статьи перечисленных видов. Условия внутри группы — через ИЛИ, с
+// остальными фильтрами — через И.
+const groupFilter = {
+  categoryIds: csvList(cuid),
+  uncategorizedKinds: csvList(KindEnum),
+};
+
 export const ListTransactionsQuerySchema = z
   .object({
     from: isoDate.optional(),
@@ -113,6 +154,7 @@ export const ListTransactionsQuerySchema = z
     counterpartyId: cuid.optional(),
     type: TxTypeEnum.optional(),
     bucket: BucketEnum.optional(),
+    ...groupFilter,
     minAmount: moneyString.optional(),
     maxAmount: moneyString.optional(),
     search: searchParam,
@@ -135,6 +177,7 @@ export const TransactionSummaryQuerySchema = z
     counterpartyId: cuid.optional(),
     type: TxTypeEnum.optional(),
     bucket: BucketEnum.optional(),
+    ...groupFilter,
     minAmount: moneyString.optional(),
     maxAmount: moneyString.optional(),
     search: searchParam,

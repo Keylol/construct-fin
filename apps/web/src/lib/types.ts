@@ -580,6 +580,73 @@ export interface PnlReport {
   taxMode?: 'paid' | 'accrual';
 }
 
+/** Группа расходов «Итогов месяца»: корневая статья или операции без статьи по виду. */
+export interface MonthSummaryGroup {
+  key: string;
+  name: string;
+  amount: string;
+  /** Рублей из каждых 100 ₽ продаж, один знак; null — продаж нет. */
+  per100: string | null;
+  /** Рублей на один закрытый заказ; null — закрытых заказов нет. */
+  perOrder: string | null;
+  prevAmount: string;
+  categoryIds: string[];
+  uncategorizedKinds: TransactionKind[];
+  /** В группе начисленный налог АУСН — смотреть раздел «Налог», а не операции. */
+  taxAccrual: boolean;
+}
+
+export interface MonthSummaryOrderRef {
+  id: string;
+  number: string;
+  phone: string | null;
+  clientName: string | null;
+}
+
+/** «Итоги месяца» (GET /reports/month-summary): ОПиУ месяца простыми словами. */
+export interface MonthSummaryReport {
+  month: string;
+  from: string;
+  to: string;
+  ordersClosed: number;
+  sales: string;
+  components: string;
+  markup: string;
+  markupPct: string | null;
+  expenses: string;
+  otherIncome: string;
+  net: string;
+  netPct: string | null;
+  netPerOrder: string | null;
+  per100: { components: string; expenses: string; otherIncome: string } | null;
+  perOrder: {
+    sales: string;
+    components: string;
+    markup: string;
+    expenses: string;
+    otherIncome: string;
+  } | null;
+  groups: MonthSummaryGroup[];
+  prev: {
+    month: string;
+    from: string;
+    to: string;
+    ordersClosed: number;
+    sales: string;
+    components: string;
+    markup: string;
+    expenses: string;
+    otherIncome: string;
+    net: string;
+  };
+  checks: {
+    identity: { ok: boolean; diff: string };
+    inbox: { count: number; incomeCount: number; income: string; expenseCount: number; expense: string };
+    ordersWithoutCost: { count: number; orders: MonthSummaryOrderRef[] };
+    openPrepaid: { count: number; paid: string };
+  };
+}
+
 export interface CashflowPoint {
   label: string;
   from: string;

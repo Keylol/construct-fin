@@ -28,6 +28,10 @@ export interface TransactionFilters {
   type?: TxType;
   /** P&L-группа (drill-down из ОПиУ «По группам») — фильтр повторяет атрибуцию отчёта. */
   bucket?: ReportBucket;
+  /** Группа расходов «Итогов месяца»: статьи через запятую… */
+  categoryIds?: string;
+  /** …и виды операций без статьи через запятую. */
+  uncategorizedKinds?: string;
   minAmount?: string;
   maxAmount?: string;
   search?: string;

@@ -8,6 +8,8 @@ import { useRole } from '@/hooks/useRole';
 import { isPathHidden } from '@/components/layout/nav-items';
 
 const TABS = [
+  // Первая: итоги месяца простыми словами — то, с чего владелец начинает.
+  { href: '/reports/summary', label: 'Итоги месяца' },
   { href: '/reports', label: 'ОПиУ' },
   { href: '/reports/cashflow', label: 'ОДДС' },
   { href: '/reports/balance', label: 'Баланс' },

@@ -192,6 +192,7 @@ const LABELS: Record<string, string> = {
   budget: 'Бюджет',
   rules: 'Правила',
   pnl: 'ОПиУ',
+  summary: 'Итоги месяца',
   margin: 'Валовая прибыль',
   receivables: 'Дебиторская задолженность',
 };

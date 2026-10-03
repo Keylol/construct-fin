@@ -115,6 +115,8 @@ function TransactionsView() {
       counterpartyId: filters.counterpartyId,
       type: filters.type,
       bucket: filters.bucket,
+      categoryIds: filters.categoryIds?.join(','),
+      uncategorizedKinds: filters.uncategorizedKinds?.join(','),
       search: debouncedSearch,
       limit: 100,
     }),
@@ -252,10 +254,15 @@ function TransactionsView() {
         <KpiRow loading={summary.isLoading || !summary.data}>
           <KpiCard label="Доходы" value={<Money value={summary.data?.income ?? '0'} tone="plain" />} tone="positive" />
           <KpiCard label="Расходы" value={<Money value={summary.data?.expense ?? '0'} tone="plain" />} tone="negative" />
-          {/* С фильтром по группе ОПиУ плитки считают всю группу, включая
-              неденежную себестоимость, — это уже не денежный поток. */}
+          {/* С фильтром по группе ОПиУ (или группе расходов «Итогов месяца»)
+              плитки считают всю группу, включая неденежную себестоимость, —
+              это уже не денежный поток. */}
           <KpiCard
-            label={filters.bucket ? 'Сальдо группы' : 'Чистый денежный поток'}
+            label={
+              filters.bucket || filters.categoryIds || filters.uncategorizedKinds
+                ? 'Сальдо группы'
+                : 'Чистый денежный поток'
+            }
             value={<Money value={summary.data?.net ?? '0'} />}
           />
         </KpiRow>
