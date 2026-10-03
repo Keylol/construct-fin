@@ -51,7 +51,12 @@ beforeAll(async () => {
       return;
     }
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ auth: req.headers.authorization ?? null }));
+    res.end(
+      JSON.stringify({
+        auth: req.headers.authorization ?? null,
+        encoding: req.headers['accept-encoding'] ?? null,
+      }),
+    );
   });
   // Без адреса — на всех интерфейсах: localhost может резолвиться и в ::1, и в 127.0.0.1.
   await new Promise<void>((resolve) => server!.listen(0, resolve));
@@ -80,7 +85,7 @@ describe('httpsGetJson', () => {
     ).rejects.toThrow(/self-signed|certificate/i);
   });
 
-  it.runIf(openssl)('с нужным корнем запрос проходит, заголовки уходят', async () => {
+  it.runIf(openssl)('с нужным корнем запрос проходит, заголовки уходят, сжатие не просим', async () => {
     const res = await httpsGetJson(
       `${base}/ok`,
       { Authorization: 'Bearer t' },
@@ -88,7 +93,7 @@ describe('httpsGetJson', () => {
       'Test API',
     );
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ auth: 'Bearer t' });
+    expect(JSON.parse(res.body)).toEqual({ auth: 'Bearer t', encoding: 'identity' });
   });
 
   it.runIf(openssl)('4xx банка возвращается как есть: текст ошибки строит адаптер', async () => {

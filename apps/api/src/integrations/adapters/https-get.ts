@@ -28,6 +28,11 @@ export const BANK_TRUSTED_CA: readonly string[] = [...rootCertificates, RUSSIAN_
  *
  * `label` — имя API в текстах ошибок («Alfa API», «T-Bank API»): они доезжают
  * до владельца в статусе подключения.
+ *
+ * Сжатие явно отключаем: fetch сам просил gzip и распаковывал, `node:https` не
+ * распаковывает, и сжатое тело превратилось бы в мусор при разборе JSON.
+ * Редиректы не отслеживаются — API банков их не отдают, а 3xx дойдёт до
+ * адаптера как «банк ответил HTTP 3xx».
  */
 export function httpsGetJson(
   url: string,
@@ -38,7 +43,12 @@ export function httpsGetJson(
   return new Promise<BankHttpResponse>((resolve, reject) => {
     const req = httpsRequest(
       url,
-      { method: 'GET', agent, headers, timeout: REQUEST_TIMEOUT_MS },
+      {
+        method: 'GET',
+        agent,
+        headers: { 'Accept-Encoding': 'identity', ...headers },
+        timeout: REQUEST_TIMEOUT_MS,
+      },
       (res) => {
         const chunks: Buffer[] = [];
         let size = 0;
