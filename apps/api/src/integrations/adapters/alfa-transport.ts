@@ -2,11 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { Agent, request as httpsRequest } from 'node:https';
-import { rootCertificates } from 'node:tls';
+import { Agent } from 'node:https';
 import type { ConfigSchema } from '../../config';
 import type { BankHttp, BankHttpResponse, TlsMaterial } from './bank-http';
-import { RUSSIAN_TRUSTED_ROOT_CA } from './russian-trusted-root-ca';
+import { BANK_TRUSTED_CA, httpsGetJson } from './https-get';
 
 /**
  * Транспорт к Alfa API (Ф2). Отдельный класс, потому что у него две обязанности,
@@ -14,19 +13,14 @@ import { RUSSIAN_TRUSTED_ROOT_CA } from './russian-trusted-root-ca';
  * сертификат + доверенная цепочка) и сеть. Адаптер зависит от интерфейса
  * `BankHttp`, поэтому в тестах подменяется одним объектом без сети.
  *
- * Почему `node:https`, а не глобальный fetch: клиентский сертификат задаётся
- * только через агент соединения, а fetch в Node принимает его лишь через
- * undici-dispatcher — это внешняя зависимость ради того, что `https.Agent`
- * умеет из коробки. Никаких новых пакетов в проект.
+ * Почему `node:https`, а не глобальный fetch — см. `httpsGetJson`: клиентский
+ * сертификат задаётся только через агент соединения.
  *
  * Сертификат приходит ОТ ПОДКЛЮЧЕНИЯ (банк выдаёт его на компанию по договору,
  * у разных ИП он разный). Сертификат из env остаётся запасным вариантом — для
  * подключений, заведённых до того, как загрузка появилась в интерфейсе.
  */
 
-/** Потолок тела ответа: страница выписки — до 1000 операций, ~2-3 МБ с запасом. */
-const MAX_BODY_BYTES = 16 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 30_000;
 /** Сколько разных сертификатов держим в кэше агентов (пространств — единицы). */
 const MAX_AGENTS = 16;
 
@@ -60,41 +54,7 @@ export class AlfaTransport implements BankHttp {
     headers: Record<string, string>,
     tls?: TlsMaterial,
   ): Promise<BankHttpResponse> {
-    const agent = this.resolveAgent(tls);
-    return new Promise<BankHttpResponse>((resolve, reject) => {
-      const req = httpsRequest(
-        url,
-        { method: 'GET', agent, headers, timeout: REQUEST_TIMEOUT_MS },
-        (res) => {
-          const chunks: Buffer[] = [];
-          let size = 0;
-          res.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > MAX_BODY_BYTES) {
-              res.destroy();
-              reject(new Error('Alfa API: ответ превысил допустимый размер'));
-              return;
-            }
-            chunks.push(chunk);
-          });
-          res.on('end', () => {
-            resolve({
-              status: res.statusCode ?? 0,
-              body: Buffer.concat(chunks).toString('utf8'),
-              headers: res.headers,
-            });
-          });
-          res.on('error', reject);
-        },
-      );
-      req.on('timeout', () => {
-        req.destroy(new Error(`Alfa API: таймаут запроса (${REQUEST_TIMEOUT_MS} мс)`));
-      });
-      // Сообщения сетевых ошибок Node несут только хост/код (ECONNREFUSED и т.п.),
-      // но URL с параметрами сюда не подставляем — в нём номер расчётного счёта.
-      req.on('error', (e) => reject(e));
-      req.end();
-    });
+    return httpsGetJson(url, headers, this.resolveAgent(tls), 'Alfa API');
   }
 
   /** Агент под сертификат подключения, иначе — под сертификат из env. */
@@ -112,14 +72,10 @@ export class AlfaTransport implements BankHttp {
     const agent = new Agent({
       cert: material.cert,
       key: material.key,
-      // Доверенные корни ДОПОЛНЯЕМ, а не заменяем: `ca` в Node вытесняет
-      // системный набор целиком, и соединение с любым обычным сервером (или с
-      // самим банком, если он сменит УЦ) сломалось бы. Сертификаты Минцифры
-      // нужны потому, что баас Альфы подписан Russian Trusted Root CA, которого
-      // в стандартном наборе Node нет.
+      // Системные корни + Минцифры (см. BANK_TRUSTED_CA), дополнительно —
+      // цепочка из env и из подключения.
       ca: [
-        ...rootCertificates,
-        RUSSIAN_TRUSTED_ROOT_CA,
+        ...BANK_TRUSTED_CA,
         ...this.extraCa(),
         ...(material.ca ? [material.ca] : []),
       ],
