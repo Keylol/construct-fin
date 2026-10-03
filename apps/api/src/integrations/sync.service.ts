@@ -34,6 +34,20 @@ const RAW_TTL_DAYS = 30;
 const OFFLINE_PROVIDERS: IntegrationProvider[] = ['FILE'];
 
 /**
+ * Раз во сколько часов плановый синк повторяет подключение в ERROR.
+ *
+ * Одна ошибка не должна останавливать ленту выписки насовсем: 26.09 Альфа один
+ * раз не ответила по DNS (`EAI_AGAIN`), подключение встало в ERROR, крон брал
+ * только ACTIVE — и строки не шли до ручного «Обновить». Но и повторять каждый
+ * час незачем: при вечной ошибке (битый токен, истёкший сертификат) крон
+ * круглые сутки стучался бы в банк с негодным ключом. Три часа: временный сбой
+ * проходит сам в тот же день, а вечный даёт 8 попыток в сутки вместо 24. Отсчёт —
+ * от updatedAt: неудачный синк переписывает статус и текст ошибки, так что каждая
+ * попытка отодвигает следующую.
+ */
+const ERROR_RETRY_HOURS = 3;
+
+/**
  * Окно поиска ручного «двойника» строки выписки, в днях. Ручные записи датируют
  * приблизительно, банк — точно. Проверено на срезе прода: при ±5 дней на 198
  * операциях счёта неоднозначных пар (та же сумма и направление) — 2, столько же,
@@ -76,11 +90,23 @@ export class SyncService {
     private readonly anchor: BalanceAnchorService,
   ) {}
 
-  /** Ежечасный фоновый синк всех активных подключений (решение №12). */
+  /**
+   * Ежечасный фоновый синк (решение №12). Рабочие подключения — каждый час,
+   * упавшие (ERROR) — раз в ERROR_RETRY_HOURS; удачный синк сам вернёт их в
+   * ACTIVE. Выключенные владельцем (DISABLED) и файловые крон не трогает.
+   */
   @Cron(CronExpression.EVERY_HOUR)
   async syncAllActive(): Promise<void> {
+    // Порог на полчаса короче интервала: крон срабатывает в :00, а ERROR
+    // записывается позже (сетевой таймаут, очередь соседних подключений). Со
+    // строгим порогом повтор всякий раз съезжал бы на лишний тик.
+    const retryErrorsBefore = new Date(Date.now() - (ERROR_RETRY_HOURS * 60 - 30) * 60 * 1000);
     const connections = await this.prisma.integrationConnection.findMany({
-      where: { status: 'ACTIVE', deletedAt: null, provider: { notIn: OFFLINE_PROVIDERS } },
+      where: {
+        deletedAt: null,
+        provider: { notIn: OFFLINE_PROVIDERS },
+        OR: [{ status: 'ACTIVE' }, { status: 'ERROR', updatedAt: { lte: retryErrorsBefore } }],
+      },
       select: { id: true },
     });
     for (const c of connections) {
