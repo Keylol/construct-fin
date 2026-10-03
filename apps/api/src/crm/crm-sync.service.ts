@@ -17,6 +17,18 @@ const FIRST_SYNC_DAYS = 180;
 const CURSOR_OVERLAP_MS = 60_000;
 /** Предохранитель от бесконечного листания: 40 × 250 = 10 000 сделок за проход. */
 const MAX_PAGES = 40;
+/**
+ * Раз во сколько минут плановый синк повторяет подключение в ERROR.
+ *
+ * Одна ошибка не должна останавливать сделки насовсем: сбой сети или 5xx у amo
+ * проходит сам, а крон брал только ACTIVE — сделки стояли до ручного «Обновить».
+ * Но и повторять на каждом тике незачем: отозванный токен даёт 401 на каждой
+ * попытке, и крон стучался бы в amo с негодным ключом 144 раза в сутки. Час:
+ * временный сбой проходит сам в пределах часа, вечный даёт 24 попытки в сутки.
+ * Отсчёт — от updatedAt: неудачный синк переписывает статус и текст ошибки, так
+ * что каждая попытка отодвигает следующую.
+ */
+const ERROR_RETRY_MINUTES = 60;
 
 export interface CrmSyncResult {
   fetched: number;
@@ -39,10 +51,22 @@ export class CrmSyncService {
     private readonly amo: AmoClient,
   ) {}
 
+  /**
+   * Плановый синк. Рабочие подключения — на каждом тике, упавшие (ERROR) — раз
+   * в ERROR_RETRY_MINUTES; удачный синк сам вернёт их в ACTIVE. Выключенные
+   * владельцем (DISABLED) и удалённые крон не трогает.
+   */
   @Cron('*/10 * * * *')
   async syncAllActive(): Promise<void> {
+    // Порог на полтика (5 минут) короче интервала: крон срабатывает в :00, :10,
+    // …, а ERROR записывается позже (таймаут запроса, соседние подключения). Со
+    // строгим порогом повтор всякий раз съезжал бы на лишний тик.
+    const retryErrorsBefore = new Date(Date.now() - (ERROR_RETRY_MINUTES - 5) * 60 * 1000);
     const connections = await this.prisma.crmConnection.findMany({
-      where: { status: 'ACTIVE', deletedAt: null },
+      where: {
+        deletedAt: null,
+        OR: [{ status: 'ACTIVE' }, { status: 'ERROR', updatedAt: { lte: retryErrorsBefore } }],
+      },
       select: { id: true },
     });
     for (const c of connections) {

@@ -350,8 +350,11 @@ function CrmView() {
 
       {conn?.status === 'ERROR' && (
         <div className="mx-6 mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          Синхронизация остановлена: {conn.lastSyncError ?? 'ошибка amoCRM'}.
-          {isOwner ? ' Проверьте токен в настройках.' : ' Сообщите владельцу.'}
+          Синхронизация не удалась: {conn.lastSyncError ?? 'ошибка amoCRM'}. Повторим автоматически
+          в течение часа.
+          {isOwner
+            ? ' Если ошибка повторяется — проверьте токен в настройках.'
+            : ' Если ошибка повторяется — сообщите владельцу.'}
         </div>
       )}
       {conn?.status === 'DISABLED' && (

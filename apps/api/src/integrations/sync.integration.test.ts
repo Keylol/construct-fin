@@ -239,6 +239,87 @@ describe('SyncService.syncConnection', () => {
   });
 });
 
+describe('SyncService.syncAllActive — плановый крон', () => {
+  const HOUR = 60 * 60 * 1000;
+
+  /** Синк, чей банк всегда отвечает ошибкой; calls.n — сколько раз к банку сходили. */
+  function failingSync(message: string) {
+    const calls = { n: 0 };
+    const registry = new AdapterRegistry(new FakeBankAdapter(), { get: () => 'test' } as never);
+    registry.register('ALFA', {
+      provider: 'ALFA',
+      fetchStatement: () => {
+        calls.n += 1;
+        return Promise.reject(new Error(message));
+      },
+    });
+    return { sync: buildSync(registry), calls };
+  }
+
+  /** Время последней ошибки — updatedAt подключения; сдвигаем его на `ms` назад. */
+  async function failedAgo(connectionId: string, ms: number) {
+    await h.prisma.integrationConnection.update({
+      where: { id: connectionId },
+      data: { updatedAt: new Date(Date.now() - ms) },
+    });
+  }
+
+  it('подключение в ERROR подхватывается плановым синком и возвращается в ACTIVE', async () => {
+    // Как Альфа 26.09: на тике 09:00 имя банка не резолвилось, подключение
+    // встало в ERROR, а крон брал только ACTIVE — лента стояла до ручного «Обновить».
+    const conn = await makeConnection();
+    const dnsDown = failingSync('getaddrinfo EAI_AGAIN baas.alfabank.ru');
+    await expect(dnsDown.sync.syncConnection(conn.id)).rejects.toThrow(/EAI_AGAIN/);
+    // Ошибка записана через пару минут после тика, сейчас тик 12:00.
+    await failedAgo(conn.id, 3 * HOUR - 2 * 60 * 1000);
+
+    await sync.syncAllActive(); // DNS снова работает
+
+    const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(after.status).toBe('ACTIVE');
+    expect(after.lastSyncError).toBeNull();
+    expect(after.lastSyncAt).not.toBeNull();
+    expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(4);
+  });
+
+  it('вечную ошибку повторяет раз в три часа, а не каждый час', async () => {
+    const conn = await makeConnection();
+    const badToken = failingSync('401 Unauthorized');
+    await expect(badToken.sync.syncConnection(conn.id)).rejects.toThrow(/401/);
+    expect(badToken.calls.n).toBe(1);
+
+    // Два часа после ошибки — к банку не идём.
+    await failedAgo(conn.id, 2 * HOUR);
+    await badToken.sync.syncAllActive();
+    expect(badToken.calls.n).toBe(1);
+
+    // Три часа — одна попытка. Она снова упала и отложила следующую на тот же срок.
+    await failedAgo(conn.id, 3 * HOUR);
+    await badToken.sync.syncAllActive();
+    expect(badToken.calls.n).toBe(2);
+    await badToken.sync.syncAllActive();
+    expect(badToken.calls.n).toBe(2);
+
+    const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(after.status).toBe('ERROR');
+    expect(after.lastSyncError).toContain('401');
+  });
+
+  it('выключенное владельцем подключение крон не трогает, сколько бы ни прошло', async () => {
+    const conn = await makeConnection();
+    await h.prisma.integrationConnection.update({
+      where: { id: conn.id },
+      data: { status: 'DISABLED', updatedAt: new Date(Date.now() - 48 * HOUR) },
+    });
+
+    await sync.syncAllActive();
+
+    const after = await h.prisma.integrationConnection.findUniqueOrThrow({ where: { id: conn.id } });
+    expect(after.status).toBe('DISABLED');
+    expect(await h.prisma.bankStatementLine.count({ where: { connectionId: conn.id } })).toBe(0);
+  });
+});
+
 describe('IntegrationsService.resetStatement — перезагрузка выписки', () => {
   function svc() {
     return new IntegrationsService(h.prisma as never, crypto, sync, h.audit as never);

@@ -40,7 +40,7 @@
 
 1. **Снять свежий дамп прода** — точка отката и источник контрольных итогов:
    ```
-   ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
+   ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 \
      'docker exec construct-v6-postgres-1 pg_dump -U construct construct_v6' | gzip > snapshot.sql.gz
    ```
    Записать до начала: число операций и денежные средства с дашборда.
