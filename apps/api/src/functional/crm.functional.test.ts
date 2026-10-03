@@ -3,15 +3,18 @@
  * amo (FakeAmoTransport, NODE_ENV=test). Проверяем: OwnerGuard на подключении,
  * маску токена (секрет наружу не уходит), отказ плохого токена, синк →
  * снимок сделок → вкладка «ждут заказа» с порогом «Отправлен», заведение
- * заказа с клиентом по телефону, привязку/отвязку, «не учитывать».
+ * заказа с клиентом по телефону, привязку/отвязку, «не учитывать», повтор
+ * упавшего синка плановым кроном.
  *
  * Диапазон telegramId: 2900000n+ (не пересекается с другими сьютами).
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
 import { Role } from '@prisma/client';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { buildHttpApp, type HttpApp } from '../e2e/http-harness';
 import { resetDb, seedBase, seedMember, type Seed } from '../test/money-harness';
-import { FAKE_AMO } from '../crm/fake-amo-transport';
+import { FAKE_AMO, FakeAmoTransport } from '../crm/fake-amo-transport';
+import { CrmSyncService } from '../crm/crm-sync.service';
 
 let H: HttpApp;
 let seed: Seed;
@@ -23,6 +26,9 @@ const GOOD_TOKEN =
 
 beforeAll(async () => {
   H = await buildHttpApp();
+  // Крон синка тесты зовут руками. Настоящий тик `*/10` посреди теста сходил бы
+  // в подменный amo вне сценария и сбил бы счёт сделок и запросов.
+  for (const job of H.app.get(SchedulerRegistry).getCronJobs().values()) job.stop();
 });
 afterAll(async () => {
   await H.app.close();
@@ -241,6 +247,98 @@ describe('amoCRM: синк и вкладки', () => {
       status: 'ACTIVE',
       lastSyncError: null,
     });
+  });
+});
+
+describe('amoCRM: плановый крон повторяет упавший синк', () => {
+  const MINUTE = 60 * 1000;
+  const cron = () => H.app.get(CrmSyncService).syncAllActive();
+  /** Транспорт подменного amo: шпион на нём считает запросы и роняет нужные. */
+  const amoHttp = () => vi.spyOn(H.app.get(FakeAmoTransport), 'getJson');
+  const connection = () => H.prisma.crmConnection.findFirstOrThrow();
+
+  /** Время последней попытки — updatedAt подключения; сдвигаем его на `ms` назад. */
+  async function lastAttemptAgo(ms: number) {
+    const { id } = await connection();
+    await H.prisma.crmConnection.update({
+      where: { id },
+      data: { updatedAt: new Date(Date.now() - ms) },
+    });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('сбой сети: подключение в ERROR крон подхватывает через час и возвращает в ACTIVE', async () => {
+    await connect();
+    // Тик крона пришёлся на минуту, когда amo не отвечал по сети. Раньше
+    // подключение оставалось в ERROR, а крон брал только ACTIVE — сделки
+    // стояли до ручного «Обновить».
+    amoHttp().mockRejectedValueOnce(new TypeError('fetch failed'));
+    await cron();
+    const failed = await connection();
+    expect(failed.status).toBe('ERROR');
+    expect(failed.lastSyncError).toContain('недоступен');
+    expect(await H.prisma.crmDeal.count()).toBe(0);
+
+    // Ошибка записана через пару минут после тика, сейчас тик часом позже.
+    await lastAttemptAgo(60 * MINUTE - 2 * MINUTE);
+    await cron(); // сеть вернулась
+
+    const after = await connection();
+    expect(after.status).toBe('ACTIVE');
+    expect(after.lastSyncError).toBeNull();
+    expect(after.lastSyncAt).not.toBeNull();
+    expect(await H.prisma.crmDeal.count()).toBe(3);
+  });
+
+  it('свежую ошибку не повторяет, отозванный токен (401) — не чаще раза в час', async () => {
+    await connect();
+    const amo = amoHttp().mockResolvedValue({ status: 401, body: '{"title":"Unauthorized"}' });
+    await cron();
+    expect(amo).toHaveBeenCalledTimes(1);
+    expect((await connection()).lastSyncError).toContain('отклонил токен');
+
+    // Следующие тики в пределах часа к amo не ходят.
+    await cron();
+    await lastAttemptAgo(50 * MINUTE);
+    await cron();
+    expect(amo).toHaveBeenCalledTimes(1);
+
+    // Через час — одна попытка. Она снова упала и отложила следующую на час.
+    await lastAttemptAgo(60 * MINUTE);
+    await cron();
+    expect(amo).toHaveBeenCalledTimes(2);
+    await cron();
+    expect(amo).toHaveBeenCalledTimes(2);
+
+    const after = await connection();
+    expect(after.status).toBe('ERROR');
+    expect(after.lastSyncError).toContain('отклонил токен');
+  });
+
+  it('выключенное и удалённое подключения крон не трогает, сколько бы ни прошло', async () => {
+    await connect();
+    const amo = amoHttp();
+    const { id } = await connection();
+    const dayAgo = new Date(Date.now() - 24 * 60 * MINUTE);
+
+    await H.prisma.crmConnection.update({
+      where: { id },
+      data: { status: 'DISABLED', updatedAt: dayAgo },
+    });
+    await cron();
+
+    // Удалённое в ERROR (синк упал, пока владелец удалял) — тоже мимо.
+    await H.prisma.crmConnection.update({
+      where: { id },
+      data: { status: 'ERROR', deletedAt: dayAgo, updatedAt: dayAgo },
+    });
+    await cron();
+
+    expect(amo).not.toHaveBeenCalled();
+    expect(await H.prisma.crmDeal.count()).toBe(0);
   });
 });
 
