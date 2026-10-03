@@ -80,6 +80,11 @@ jobs:
     name: Deploy to VPS
     needs: build-and-push
     runs-on: ubuntu-latest
+    # Адрес сервера — переменная репо, а не строка в коде: при переезде VPS
+    # (03.10.2026, RUVDS → новый сервер) меняется одной командой
+    # `gh variable set VPS_HOST`, без PR.
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
     steps:
       # Нужен для синка compose на VPS: /srv/construct-v6 — НЕ git-репо (просто
       # файлы), а деплой раньше тянул только образы. Из-за этого правки compose
@@ -94,16 +99,17 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 195.133.1.13 >> ~/.ssh/known_hosts 2>/dev/null
+          if [ -z "$VPS_HOST" ]; then echo "::error::переменная репо VPS_HOST не задана"; exit 1; fi
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Sync compose to VPS (config-sync ДО up -d)
         run: |
           scp -i ~/.ssh/deploy_key deploy/docker-compose.prod.yml \
-            root@195.133.1.13:/srv/construct-v6/deploy/docker-compose.prod.yml
+            "root@$VPS_HOST:/srv/construct-v6/deploy/docker-compose.prod.yml"
 
       - name: Pull, restart, migrate (с авто-откатом, E2)
         run: |
-          ssh -i ~/.ssh/deploy_key root@195.133.1.13 << 'REMOTE'
+          ssh -i ~/.ssh/deploy_key "root@$VPS_HOST" << 'REMOTE'
             cd /srv/construct-v6
             DC="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 

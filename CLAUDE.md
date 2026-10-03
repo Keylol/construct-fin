@@ -21,7 +21,7 @@
 - **IJ9 закрыт (2026-07-14):** ОПиУ и маржа — «по реализации» (`Order.closedAt`), возвраты — датированные события `OrderReturn` (минус в месяц возврата), «Закупки» — инфо-строка вне прибыли (склад = актив), ОДДС остаётся строго cash. Дизайн: `docs/ij9-accrual-design.md`.
 - **Генплан «Полный автомат» без ключей закрыт (2026-07-17):** Ф1 фундамент + Ф6 закупки (WB/ДНС/ОТ/ручной) + Ф4 «Налог» (АУСН Д−Р, `/tax`) + Ф5 «Платежи» (регулярные/плановые + напоминания, `/planning`). Ф2 Альфа / Ф3 Т-Банк ждут банковских ключей.
 - **Ревизия 2026-07-18:** лексика UI сведена к стандартной финансовой (Денежные средства / Дебиторская задолженность / Валовая прибыль / ОПиУ, «обработка/проведение» вместо «разбора», «вы»-формы); все плитки дашборда кликабельны (drill-down); раздел **«Зарплата» `/salary`** (сотрудники role=EMPLOYEE c должностью/окладом, разовые и регулярные выплаты, фильтр `txKind=SALARY`); общие компоненты платежей в `components/planning/`.
-- **Прод:** VPS 195.133.1.13 (RUVDS, Королёв), https://constructfin.aleksandrantropov.ru (прямой адрес, без Cloudflare; TLS до 14.12.2026). Старый `miniapp.aleksandrantropov.online` с 20.09.2026 отдаёт затычку (`deploy/nginx/construct-v6.conf`) — часть провайдеров РФ резала диапазоны Cloudflare. Деплой = push в `v6` (см. ветвление выше).
+- **Прод:** VPS 193.108.113.5 (RUVDS, с 03.10.2026; адрес для деплоя — переменная репо `VPS_HOST`), https://constructfin.aleksandrantropov.ru (прямой адрес, без Cloudflare; TLS до 14.12.2026). Старый `miniapp.aleksandrantropov.online` с 20.09.2026 отдаёт затычку (`deploy/nginx/construct-v6.conf`) — часть провайдеров РФ резала диапазоны Cloudflare. Деплой = push в `v6` (см. ветвление выше).
 - **Тесты:** ~399 unit + ~461 integration + ~149 functional (числа плывут вверх; все против `construct_v6_test` на :5433).
 - **Роли (2026-09-07):** два пароля — владелец (`AUTH_PASSWORD_HASH`, OWNER) и оператор (`OPERATOR_PASSWORD_HASH`, MEMBER во всех пространствах: без удаления/отмены, без технических разделов); правило держит `WorkspaceGuard` + `common/role-policy.ts`, подробности `docs/roles.md`.
 - **Mini App логин end-to-end:** `@ConstructFinance_bot`; локально для браузера можно подписать JWT секретом из `apps/api/.env` и положить cookie `construct_jwt` (API локально живёт БЕЗ префикса `/api/v1` — его добавляет прод-nginx).
@@ -44,7 +44,7 @@
 5. **TS strict, money как Decimal-строка.** Никогда `number` для денег.
 6. **Soft-delete везде.** `deletedAt`, не физическое удаление.
 7. **Workspace-scoped:** каждый запрос проходит `WorkspaceGuard` через `:wsId` в URL.
-8. **Telegram bot token** живёт на новом прод-VPS в `/srv/construct-v6/.env.production`, читать через `ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13`. Локальный мог устареть. (Старый VPS `45.82.254.230`/`/srv/construct/app` мёртв с ~05.06 — хостер обанкротился.)
+8. **Telegram bot token** живёт на новом прод-VPS в `/srv/construct-v6/.env.production`, читать через `ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5`. Локальный мог устареть. (Старый VPS `45.82.254.230`/`/srv/construct/app` мёртв с ~05.06 — хостер обанкротился.)
 
 ## Что НЕ делаем в MVP
 
