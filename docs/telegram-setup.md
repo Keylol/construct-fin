@@ -6,7 +6,7 @@
 
 | Параметр | Значение | Где смотреть/менять |
 |---|---|---|
-| Token | **в доках не храним** (секрет) | прод: `/srv/construct-v6/.env.production` на VPS 195.133.1.13; CI: `gh secret list -R Keylol/construct-fin`; локально: `apps/api/.env`. Значения токена, попавшие в git-историю этого файла, считать скомпрометированными — при сомнении Revoke в BotFather |
+| Token | **в доках не храним** (секрет) | прод: `/srv/construct-v6/.env.production` на VPS 193.108.113.5; CI: `gh secret list -R Keylol/construct-fin`; локально: `apps/api/.env`. Значения токена, попавшие в git-историю этого файла, считать скомпрометированными — при сомнении Revoke в BotFather |
 | Username | `ConstructFinance_bot` | `@BotFather → Bot Settings` |
 | Login Widget domain | `aleksandrantropov.ru` (вкл. поддомены `*.aleksandrantropov.ru`) | `@BotFather → Bot Settings → Domain` |
 | Mini App URL (Menu button) | `https://constructfin.aleksandrantropov.ru` (v6 прод) | Бот устанавливает через `set_chat_menu_button` |
@@ -35,7 +35,7 @@ ngrok http 3000
 
 Когда хочется протестить v6 серьёзно, не ломая прод v5.2.1:
 
-1. Прод v6 живёт на **`constructfin.aleksandrantropov.ru`** (VPS `195.133.1.13`; старый VPS 45.82.254.230 мёртв с ~2026-06-05 — хостер обанкротился).
+1. Прод v6 живёт на **`constructfin.aleksandrantropov.ru`** (VPS `193.108.113.5`; старый VPS 45.82.254.230 мёртв с ~2026-06-05 — хостер обанкротился).
 2. Прописываем nginx + Let's Encrypt для нового поддомена.
 3. В `@BotFather` домен уже `aleksandrantropov.ru` (с подстановочными поддоменами), ничего менять не надо.
 4. Открываем `https://v6.aleksandrantropov.ru/login` — Login Widget работает.
@@ -88,7 +88,7 @@ Token периодически ротируется. Источники в по�
 
 1. **VPS:** `/srv/construct-v6/.env.production` (deploy ssh ключ `~/.ssh/deploy_ferrum`):
    ```bash
-   ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
+   ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 \
      'grep TELEGRAM_BOT_TOKEN /srv/construct-v6/.env.production'
    ```
 2. **GitHub Secrets:** `gh secret list -R Keylol/construct-fin` — имена видны, значения не читаются. Только setting:

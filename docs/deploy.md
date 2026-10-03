@@ -3,7 +3,7 @@
 ## Production топология
 
 ```
-constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) → nginx :443
+constructfin.aleksandrantropov.ru → VPS 193.108.113.5 (RUVDS) → nginx :443
                                       ├ /api/v1/* → 127.0.0.1:4000 (api контейнер)
                                       └ /         → 127.0.0.1:3000 (web контейнер)
                                     docker compose stack at /srv/construct-v6:
@@ -14,7 +14,7 @@ constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) �
 
 ## Адрес прода
 
-Единственный рабочий адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `195.133.1.13`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
+Единственный рабочий адрес — `constructfin.aleksandrantropov.ru`: A-запись reg.ru прямо на `193.108.113.5`, без Cloudflare. Сертификат Let's Encrypt `/etc/letsencrypt/live/constructfin.aleksandrantropov.ru/` (до 14.12.2026), конфиг `deploy/nginx/constructfin.conf`, продление общим `certbot.timer` с `renew_hook = systemctl reload nginx`.
 
 **Старый адрес `miniapp.aleksandrantropov.online`** (за Cloudflare) с 20.09.2026 отдаёт только страницу-затычку `deploy/nginx/miniapp-stub/index.html` (на VPS — `/var/www/miniapp-stub/`), конфиг `deploy/nginx/construct-v6.conf`: любой путь → затычка, `/api/*` → 410. DNS-запись и сертификат остаются, иначе затычка не откроется. Причина переезда: часть провайдеров РФ режет диапазоны Cloudflare — симптом «с VPN заходит, без VPN нет».
 
@@ -27,6 +27,16 @@ constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) �
 
 Кука `construct_jwt` привязана к хосту: после переезда нужно войти заново.
 
+### Переезд на другой сервер (03.10.2026: 195.133.1.13 → 193.108.113.5)
+
+Тариф у сервера RUVDS не меняется, поэтому переезд — это новый сервер. Данные живут только на старом диске: включить старый сервер, иначе снимать нечего.
+
+1. Новый сервер: Ubuntu 24.04, ключ `deploy_ferrum.pub`, swap 4 ГБ, Docker из официального apt-репо, nginx, certbot.
+2. Со старого — на Mac и на новый: `tar` `/srv/construct-v6`, `/etc/nginx/sites-{available,enabled}`, `/etc/letsencrypt`, `/var/www/{letsencrypt,miniapp-stub}`; тома `construct-v6_uploads` и `construct-v6_backups` (`tar -C /var/lib/docker/volumes`, распаковывать с `--numeric-owner`, uploads принадлежат uid 1000).
+3. На новом поднять **те же образы**, что работают на старом (`docker image inspect … RepoDigests` → `pull @sha256` → `tag :latest`), `docker compose … create`, `start postgres`, `pg_restore -1 --exit-on-error` из `pg_dump -Fc`, затем `up -d`. Проверка на самом сервере: `curl --resolve constructfin.aleksandrantropov.ru:443:127.0.0.1 https://constructfin.aleksandrantropov.ru/api/v1/health`.
+4. Переключение: на старом `stop api web`, финальный дамп и тома, повторное восстановление, сверка `count(*)` по всем таблицам. Затем A-запись в reg.ru, `gh variable set VPS_HOST`, деплой из `v6`.
+5. Хвосты: Happ-профиль «Construct direct» (DirectIp нового сервера), `~/scripts/construct-v6-backup.sh` на Mac, старый сервер и снэпшот удалить через сутки.
+
 ## Деплой
 
 **Автоматический (рекомендуется):** push в ветку `v6` → GitHub Actions `.github/workflows/deploy.yml` собирает образы в GHCR, пуллит на VPS, рестартит compose, прогоняет миграции. Цикл ~5 минут.
@@ -34,13 +44,13 @@ constructfin.aleksandrantropov.ru → VPS 195.133.1.13 (RUVDS, Королёв) �
 **Ручной с локали:**
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose pull && docker compose up -d'
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 'cd /srv/construct-v6 && docker compose pull && docker compose up -d'
 ```
 
 **Если CI упал и нужно собрать прямо на VPS:**
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6/src && git fetch origin && git reset --hard origin/v6 && docker build -f deploy/api.Dockerfile -t ghcr.io/keylol/construct-v6-api:latest . && docker build -f deploy/web.Dockerfile --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t ghcr.io/keylol/construct-v6-web:latest . && cd /srv/construct-v6 && docker compose up -d'
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 'cd /srv/construct-v6/src && git fetch origin && git reset --hard origin/v6 && docker build -f deploy/api.Dockerfile -t ghcr.io/keylol/construct-v6-api:latest . && docker build -f deploy/web.Dockerfile --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t ghcr.io/keylol/construct-v6-web:latest . && cd /srv/construct-v6 && docker compose up -d'
 ```
 
 ## Миграции БД
@@ -48,31 +58,32 @@ ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6/src && git f
 CI прогоняет `prisma migrate deploy` автоматически после `up -d`. Ручной запуск:
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 \
   'cd /srv/construct-v6 && docker compose exec -T api sh -c "cd /app/node_modules/@construct/db && npx prisma migrate deploy"'
 ```
 
 ## Логи и отладка
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose logs api -f --tail=100'
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'cd /srv/construct-v6 && docker compose logs web -f --tail=100'
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 'docker exec construct-v6-postgres-1 psql -U construct -d construct_v6 -c "SELECT count(*) FROM \"Workspace\";"'
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 'cd /srv/construct-v6 && docker compose logs api -f --tail=100'
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 'cd /srv/construct-v6 && docker compose logs web -f --tail=100'
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 'docker exec construct-v6-postgres-1 psql -U construct -d construct_v6 -c "SELECT count(*) FROM \"Workspace\";"'
 ```
 
 ## Известные грабли
 
 - **VPS — QEMU virtual CPU v1 baseline.** Нет SSE4/AVX/POPCNT. `pdf-parse@2` (использует pdfjs-dist 4.x) падает с SIGILL — поэтому в [apps/api/package.json](../apps/api/package.json) зафиксирован `pdf-parse@1.1.1`. При апгрейде до v2 проверять что VPS заменили.
 - **`pnpm deploy` кладёт содержимое api напрямую в `/app`**, а не `/app/apps/api`. CMD в [deploy/api.Dockerfile](../deploy/api.Dockerfile) — `node dist/main.js`, не `node apps/api/dist/main.js`.
-- **VPS 961 МБ RAM + 2 ГБ swap.** Билд Next.js на VPS впритык — CI на GitHub runners делает его быстрее и без OOM-рисков.
-- **15 ГБ диск.** `docker system prune -af` перед каждым релизом не нужен — CI делает `docker image prune -f` для висящих слоёв.
+- **VPS 870 МБ RAM + 5 ГБ swap** (`/swap.img` 1 ГБ + `/swapfile2` 4 ГБ, `vm.swappiness=10`). Билд Next.js на VPS впритык — CI на GitHub runners делает его быстрее и без OOM-рисков.
+- **20 ГБ диск.** `docker system prune -af` перед каждым релизом не нужен — CI делает `docker image prune -f` для висящих слоёв.
 - **Правки `deploy/nginx/*.conf` не деплоятся автоматически** (в отличие от compose) — `/etc/nginx/sites-available/` на VPS раскладывается вручную: `scp` нужного файла → `nginx -t` → `systemctl reload nginx`. Правь оба файла (`construct-v6.conf`, `constructfin.conf`) синхронно с VPS, иначе репо и прод расходятся.
 
 ## Секреты репозитория (Settings → Secrets and variables → Actions)
 
 | Имя | Что |
 |---|---|
-| `VPS_SSH_KEY` | Приватный SSH-ключ `deploy_ferrum` для root@195.133.1.13 |
+| `VPS_SSH_KEY` | Приватный SSH-ключ `deploy_ferrum` для root@`VPS_HOST` |
+| `VPS_HOST` (variable, не secret) | IP прод-сервера для деплоя, сейчас `193.108.113.5`. Переезд сервера — `gh variable set VPS_HOST -R Keylol/construct-fin --body <IP>` |
 
 GHCR работает через `secrets.GITHUB_TOKEN` (auto), отдельный PAT не нужен.
 
@@ -81,7 +92,7 @@ GHCR работает через `secrets.GITHUB_TOKEN` (auto), отдельны
 Все теги остаются: `latest` (последний) + `<short-sha>`. Откат на предыдущий релиз:
 
 ```bash
-ssh -i ~/.ssh/deploy_ferrum root@195.133.1.13 \
+ssh -i ~/.ssh/deploy_ferrum root@193.108.113.5 \
   'cd /srv/construct-v6 && \
    docker compose pull && \
    API_IMAGE=ghcr.io/keylol/construct-v6-api:<sha> \
