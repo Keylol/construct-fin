@@ -14,7 +14,7 @@ const EXPECTED_FINGERPRINT =
 describe('Russian Trusted Root CA', () => {
   const cert = new X509Certificate(RUSSIAN_TRUSTED_ROOT_CA);
 
-  it('отпечаток совпадает с корнем, которым подписан сервер Альфы', () => {
+  it('отпечаток совпадает с корнем, которым подписаны сервера Альфы и Т-Банка', () => {
     expect(cert.fingerprint256).toBe(EXPECTED_FINGERPRINT);
   });
 
